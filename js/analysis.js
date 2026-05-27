@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, getValidFilterState, setFilterState */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -9,6 +9,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   applyRoleVisibility(auth.role);
 
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "setup", validSections: ["setup", "metrics", "charts", "insights"] });
+  }
+
+  await loadPumpSettings();
   await initAnalysisPage();
 });
 
@@ -25,97 +30,16 @@ function formatPercent(value) {
   return sign + n.toFixed(1) + "%";
 }
 
-// --- Date range helpers (aligned with dashboard) ---
-
-function formatDateInput(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function formatDisplayDate(dateStr) {
-  const date = new Date(`${dateStr}T00:00:00`);
-  return date.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getWeekRange(date) {
-  const diffToMonday = (date.getDay() + 6) % 7;
-  const start = new Date(date);
-  start.setDate(date.getDate() - diffToMonday);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { start: formatDateInput(start), end: formatDateInput(end) };
-}
-
-function getMonthRange(year, monthIndex) {
-  const start = new Date(year, monthIndex, 1);
-  const end = new Date(year, monthIndex + 1, 0);
-  return { start: formatDateInput(start), end: formatDateInput(end) };
-}
-
-function getLast3MonthsRange() {
-  const end = new Date();
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 2);
-  start.setDate(1);
-  const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0);
-  return { start: formatDateInput(start), end: formatDateInput(lastDay) };
-}
-
-function getCustomRange(startValue, endValue) {
-  if (!startValue && !endValue) return null;
-  let start = startValue || endValue;
-  let end = endValue || startValue;
-  if (end < start) [start, end] = [end, start];
-  return { start, end };
-}
-
-function getRangeForSelection(selection, startInput, endInput) {
-  const today = new Date();
-  if (selection === "this-week") {
-    return { ...getWeekRange(today), modeInfo: { mode: "this-week" } };
-  }
-  if (selection === "this-month") {
-    return {
-      ...getMonthRange(today.getFullYear(), today.getMonth()),
-      modeInfo: { mode: "this-month" },
-    };
-  }
-  if (selection === "last-3-months") {
-    return { ...getLast3MonthsRange(), modeInfo: { mode: "last-3-months" } };
-  }
-  if (selection === "custom") {
-    const range = getCustomRange(startInput?.value, endInput?.value);
-    if (!range) return null;
-    return { ...range, modeInfo: { mode: "custom" } };
-  }
-  return null;
-}
-
-function setCustomRangeVisibility(container, startInput, endInput, isVisible) {
-  if (!container) return;
-  if (isVisible) container.classList.remove("hidden");
-  else container.classList.add("hidden");
-  if (startInput) startInput.disabled = !isVisible;
-  if (endInput) endInput.disabled = !isVisible;
-}
-
 // --- Data fetch ---
 
-const RECEIPT_HISTORY_START = "2000-01-01";
 
 async function fetchAnalysisData(startDate, endDate) {
-  const [dsrResult, expenseResult, receiptResult] = await Promise.all([
+  const receiptHistoryStart = PumpSettings.getReceiptHistoryStart();
+  const [dsrResult, expenseResult] = await Promise.all([
     supabaseClient
       .from("dsr")
       .select("date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre")
-      .gte("date", startDate)
+      .gte("date", receiptHistoryStart)
       .lte("date", endDate)
       .order("date", { ascending: true }),
     supabaseClient
@@ -123,24 +47,26 @@ async function fetchAnalysisData(startDate, endDate) {
       .select("date, amount")
       .gte("date", startDate)
       .lte("date", endDate),
-    supabaseClient
-      .from("dsr")
-      .select("date, product, buying_price_per_litre")
-      .gte("date", RECEIPT_HISTORY_START)
-      .lte("date", endDate)
-      .gt("receipts", 0)
-      .not("buying_price_per_litre", "is", null)
-      .order("date", { ascending: false }),
   ]);
 
   if (dsrResult.error) AppError.report(dsrResult.error, { context: "fetchAnalysisData", type: "dsr" });
   if (expenseResult.error) AppError.report(expenseResult.error, { context: "fetchAnalysisData", type: "expenses" });
-  if (receiptResult.error) AppError.report(receiptResult.error, { context: "fetchAnalysisData", type: "receipt" });
+
+  const allDsr = dsrResult.data ?? [];
+  const dsrData = allDsr.filter((row) => row.date >= startDate && row.date <= endDate);
+  const receiptRows = allDsr
+    .filter(
+      (row) =>
+        Number(row.receipts ?? 0) > 0 &&
+        row.buying_price_per_litre != null &&
+        row.date <= endDate
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return {
-    dsrData: dsrResult.data ?? [],
+    dsrData,
     expenseData: expenseResult.data ?? [],
-    receiptRows: receiptResult.data ?? [],
+    receiptRows,
   };
 }
 
@@ -204,8 +130,11 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
         ? Number(row.petrol_rate ?? 0)
         : Number(row.diesel_rate ?? 0);
     const revenue = Number.isFinite(rate) && rate > 0 ? netSale * rate : 0;
-    const buyingPrice = getEffectiveBuying(row.product, row.date);
-    const cost = buyingPrice != null && Number.isFinite(buyingPrice) ? netSale * buyingPrice : 0;
+    const buyingExVat = getEffectiveBuying(row.product, row.date);
+    const buyingGross =
+      buyingExVat != null ? grossBuyingRatePerLitre(buyingExVat, row.product) : null;
+    const cost =
+      buyingGross != null && Number.isFinite(buyingGross) ? netSale * buyingGross : 0;
     const entry = byDate.get(key);
     entry.salesRupees += revenue;
     entry.costRupees += cost;
@@ -258,24 +187,6 @@ function computeGrowthPercent(currentTotal, previousTotal) {
 }
 
 // --- UI: label, KPIs, charts ---
-
-function updateAnalysisDateLabel(range, modeInfo) {
-  const label = document.getElementById("analysis-date-label");
-  if (!label) return;
-  if (modeInfo?.mode === "this-month") {
-    const d = new Date(`${range.start}T00:00:00`);
-    label.textContent = `This month · ${d.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}`;
-    return;
-  }
-  if (modeInfo?.mode === "last-3-months") {
-    label.textContent = `Last 3 months · ${formatDisplayDate(range.start)} – ${formatDisplayDate(range.end)}`;
-    return;
-  }
-  const startLabel = formatDisplayDate(range.start);
-  const endLabel = formatDisplayDate(range.end);
-  label.textContent =
-    startLabel === endLabel ? `Date: ${startLabel}` : `${startLabel} – ${endLabel}`;
-}
 
 function setStatTone(el, value, isPercent) {
   if (!el) return;
@@ -601,7 +512,6 @@ async function loadAndRender(range) {
 
   const insights = computeInsights(series, totals, profitGrowthPercent);
 
-  updateAnalysisDateLabel(range, range.modeInfo);
   renderKPIs(totals, growthPercent, insights);
   renderInsights(series, totals, insights);
   renderCharts(series, totals);
@@ -620,99 +530,21 @@ function loadChartJs() {
 }
 
 async function initAnalysisPage() {
-  const rangeSelect = document.getElementById("analysis-range");
-  const startInput = document.getElementById("analysis-start");
-  const endInput = document.getElementById("analysis-end");
-  const form = document.getElementById("analysis-filter-form");
-  const customRange = document.getElementById("analysis-custom-range");
-
-  if (!rangeSelect || !form || !customRange) return;
+  if (!document.getElementById("analysis-range")) return;
 
   await loadChartJs();
 
-  const ANALYSIS_RANGES = new Set(["this-week", "this-month", "last-3-months", "custom"]);
-  const stored = typeof window.getValidFilterState === "function"
-    ? window.getValidFilterState("analysis", ANALYSIS_RANGES)
-    : null;
-  if (stored) {
-    rangeSelect.value = stored.range;
-    if (stored.range === "custom" && stored.start && stored.end && startInput && endInput) {
-      startInput.value = stored.start;
-      endInput.value = stored.end;
-    }
-  } else if (!ANALYSIS_RANGES.has(rangeSelect.value)) {
-    rangeSelect.value = "this-month";
-  }
-
-  const isCustom = rangeSelect.value === "custom";
-  setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-  if (isCustom && (!startInput?.value || !endInput?.value)) {
-    const today = new Date();
-    if (startInput) startInput.value = formatDateInput(today);
-    if (endInput) endInput.value = formatDateInput(today);
-  }
-
-  const initialRange = getRangeForSelection(
-    rangeSelect.value,
-    startInput,
-    endInput
-  );
-  if (initialRange) await loadAndRender(initialRange);
-
-  const saveAnalysisFilter = () => {
-    window.setFilterState && window.setFilterState("analysis", {
-      range: rangeSelect.value,
-      start: startInput?.value || undefined,
-      end: endInput?.value || undefined,
-    });
-  };
-
-  rangeSelect.addEventListener("change", async () => {
-    const isCustom = rangeSelect.value === "custom";
-    setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-    if (isCustom && (!startInput?.value || !endInput?.value)) {
-      const today = new Date();
-      if (startInput) startInput.value = formatDateInput(today);
-      if (endInput) endInput.value = formatDateInput(today);
-    }
-    saveAnalysisFilter();
-    const range = getRangeForSelection(rangeSelect.value, startInput, endInput);
-    if (!range) return;
-    updateAnalysisDateLabel(range, range.modeInfo);
-    await loadAndRender(range);
-    if (isCustom) saveAnalysisFilter();
+  createDateRangeFilter({
+    storageKey: "analysis",
+    ranges: ["this-week", "this-month", "last-3-months", "custom"],
+    defaultRange: "this-month",
+    rangeSelect: "analysis-range",
+    startInput: "analysis-start",
+    endInput: "analysis-end",
+    customRange: "analysis-custom-range",
+    form: "analysis-filter-form",
+    labelEl: "analysis-date-label",
+    labelStyle: "compact",
+    onApply: (range) => loadAndRender(range),
   });
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (rangeSelect.value === "custom" && startInput?.value && endInput?.value && startInput.value > endInput.value) {
-      alert("Start date cannot be after end date.");
-      return;
-    }
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startInput,
-      endInput
-    );
-    if (!range) return;
-    await loadAndRender(range);
-    saveAnalysisFilter();
-  });
-
-  if (startInput && endInput) {
-    const onCustomChange = async () => {
-      if (rangeSelect.value !== "custom") return;
-      if (startInput.value && endInput.value && startInput.value > endInput.value) return;
-      const range = getRangeForSelection(
-        rangeSelect.value,
-        startInput,
-        endInput
-      );
-      if (!range) return;
-      await loadAndRender(range);
-      saveAnalysisFilter();
-    };
-    startInput.addEventListener("change", onCustomChange);
-    endInput.addEventListener("change", onCustomChange);
-  }
 }

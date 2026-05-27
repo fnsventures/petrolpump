@@ -5,15 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Open Credit · Bishnupriya Fuels</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M19 5v2h-4V5h4m-6 0v2H9V5h4m-6 0v2H5V5h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4'/></svg>" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/app.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
-    <script defer src="js/utils.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=5"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/auth.js?v=2"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/creditCustomerDetail.js"></script>
     <script defer src="js/credit-overdue.js"></script>
   </head>
   <body>
@@ -39,6 +47,7 @@
             <a href="credit-overdue.html">Overdue</a>
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -52,6 +61,7 @@
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
             <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
           </div>
         </div>
@@ -59,123 +69,267 @@
       </nav>
     </header>
 
-    <main class="stack">
-      <section class="card at-a-glance-item">
-        <div class="card-head">
-          <div>
-            <h2>Outstanding summary</h2>
-            <p id="credit-overdue-summary" class="muted">Loading…</p>
-            <p id="credit-overdue-as-of" class="muted text-sm">As of —</p>
-          </div>
-          <div class="form-field">
-            <label for="credit-overdue-date">As of date</label>
-            <input id="credit-overdue-date" type="date" />
-          </div>
-        </div>
-      </section>
+    <main class="settings-layout">
+      <!-- Single grid column: toggles list vs customer nav (two nav roots broke the 2-col grid). -->
+      <div class="settings-sidebar">
+        <nav id="list-view-root" class="settings-nav card" aria-label="Overdue sections">
+          <p class="settings-nav-title">Overdue</p>
+          <button type="button" class="settings-nav-item is-active" data-section="overdue-summary">Summary</button>
+          <button type="button" class="settings-nav-item" data-section="overdue-list">Outstanding list</button>
+        </nav>
 
-      <section class="card">
-        <h2>Outstanding list</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Vehicle</th>
-              <th>Outstanding (₹)</th>
-              <th>Last paid</th>
-              <th>Sale date</th>
-            </tr>
-          </thead>
-          <tbody id="credit-overdue-body">
-            <tr>
-              <td colspan="5" class="muted">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-    </main>
+        <nav id="customer-view-root" class="settings-nav card hidden" aria-label="Customer sections">
+          <p class="settings-nav-title">Customer</p>
+          <a class="settings-nav-back" href="credit-overdue.html#overdue-list">← Back to list</a>
+          <button type="button" class="settings-nav-item is-active" data-section="summary">Summary</button>
+          <button type="button" class="settings-nav-item" data-section="settle">Record payment</button>
+          <button type="button" class="settings-nav-item" data-section="credit">Credit taken</button>
+          <button type="button" class="settings-nav-item" data-section="payments">Settlements</button>
+        </nav>
+      </div>
 
-    <!-- Customer credit detail modal -->
-    <div id="customer-detail-overlay" class="overdue-detail-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title">
-      <div class="overdue-detail-backdrop" id="customer-detail-backdrop"></div>
-      <div class="overdue-detail-card card">
-        <div class="overdue-detail-head">
-          <h2 id="customer-detail-title">Credit details</h2>
-          <button type="button" class="overdue-detail-close" id="customer-detail-close" aria-label="Close">×</button>
-        </div>
-        <p id="customer-detail-as-of" class="muted text-sm"></p>
-        <div id="customer-detail-content">
-          <div class="overdue-detail-summary">
+      <div class="settings-panels">
+        <!-- LIST: Summary -->
+        <section id="list-panel-summary" class="settings-panel card is-visible at-a-glance-item" data-panel="overdue-summary">
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Overview</h2>
+              <p class="muted">Outstanding credit balances as of the selected date. Open a customer from the list to view full history and record settlements.</p>
+              <p id="credit-overdue-as-of" class="muted text-sm">As of —</p>
+            </div>
+            <div class="snapshot-controls dsr-filter">
+              <div class="form-field">
+                <label for="credit-overdue-date">Show balances as of</label>
+                <input id="credit-overdue-date" type="date" />
+              </div>
+            </div>
+          </div>
+          <div class="stat-grid">
+            <div class="stat-card stat-card-highlight">
+              <span class="stat-label">Total outstanding</span>
+              <strong id="overdue-total-outstanding" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Customers with balance</span>
+              <strong id="overdue-customer-count" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Quick link</span>
+              <a href="#overdue-list" class="stat-link">View outstanding list →</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- LIST: Outstanding table -->
+        <section id="list-panel-list" class="settings-panel card" data-panel="overdue-list" hidden>
+          <h2>Outstanding list</h2>
+          <p class="muted">Click a customer to view full credit history, settlements, and record payments.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Vehicle</th>
+                  <th>Outstanding (₹)</th>
+                  <th>Last paid</th>
+                  <th>Sale date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="credit-overdue-body">
+                <tr>
+                  <td colspan="6" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- CUSTOMER: sticky filters (visible on every customer tab) -->
+        <section
+          id="customer-period-toolbar"
+          class="card customer-filter-card hidden"
+          aria-label="Customer filters"
+          hidden
+        >
+          <div class="customer-filter-head">
+            <h2 class="customer-filter-title">Date filter</h2>
+            <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
+              Reset to today
+            </button>
+          </div>
+
+          <p class="muted text-sm customer-filter-intro">
+            One range for Summary balances, Credit taken, and Settlements. &ldquo;Through&rdquo; is the last day included.
+          </p>
+
+          <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
+            <div class="form-field form-field-inline">
+              <label for="filter-range">Period</label>
+              <select id="filter-range" aria-describedby="customer-filter-summary">
+                <option value="this-month" selected>This month</option>
+                <option value="last-30-days">Last 30 days</option>
+                <option value="all-time">All history</option>
+                <option value="custom">Custom range</option>
+              </select>
+            </div>
+            <div class="form-field form-field-inline">
+              <label for="filter-through">Through</label>
+              <input id="filter-through" type="date" aria-describedby="customer-filter-summary" />
+            </div>
+            <div id="customer-custom-range" class="customer-custom-range hidden" aria-hidden="true">
+              <div class="form-field form-field-inline">
+                <label for="filter-from">From</label>
+                <input id="filter-from" type="date" />
+              </div>
+            </div>
+          </form>
+
+          <div id="customer-filter-summary" class="customer-filter-summary" aria-live="polite"></div>
+
+          <div class="stat-grid stat-grid-inline customer-toolbar-stats">
+            <div class="stat-card">
+              <span class="stat-label">Credit in selected range</span>
+              <strong id="stat-period-credit" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Settled in selected range</span>
+              <strong id="stat-period-settled" class="stat-value">—</strong>
+            </div>
+          </div>
+        </section>
+
+        <!-- CUSTOMER: Summary (lifetime totals + history) -->
+        <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="credit.html">Credit</a>
+            <span aria-hidden="true">/</span>
+            <a href="credit-overdue.html">Overdue</a>
+            <span aria-hidden="true">/</span>
+            <span id="breadcrumb-customer">Customer</span>
+          </nav>
+
+          <header class="page-header">
+            <h1 id="customer-title">Loading…</h1>
+            <p id="customer-meta" class="muted"></p>
+          </header>
+
+          <div class="overdue-detail-summary credit-lifetime-summary">
             <div class="overdue-detail-row overdue-detail-row-block">
               <div>
                 <span class="overdue-detail-label">Credit taken</span>
-                <p id="customer-detail-credit-when" class="overdue-detail-when muted text-sm"></p>
+                <p id="customer-credit-when" class="overdue-detail-when muted text-sm"></p>
               </div>
-              <span id="customer-detail-credit-taken" class="overdue-detail-value">—</span>
+              <span id="stat-lifetime-credit" class="overdue-detail-value">—</span>
             </div>
             <div class="overdue-detail-row overdue-detail-row-block">
               <div>
                 <span class="overdue-detail-label">Settlement done</span>
-                <p id="customer-detail-settlement-when" class="overdue-detail-when muted text-sm"></p>
+                <p id="customer-settlement-when" class="overdue-detail-when muted text-sm"></p>
               </div>
-              <span id="customer-detail-settlement-done" class="overdue-detail-value">—</span>
+              <span id="stat-lifetime-settled" class="overdue-detail-value">—</span>
             </div>
             <div class="overdue-detail-row overdue-detail-row-remaining">
               <span class="overdue-detail-label">Remaining</span>
-              <span id="customer-detail-remaining" class="overdue-detail-value">—</span>
+              <span id="stat-outstanding" class="overdue-detail-value">—</span>
             </div>
           </div>
-          <div class="overdue-detail-meta">
-            <p id="customer-detail-vehicle" class="text-sm muted"></p>
+
+          <h3 class="settings-subheading">All credit taken (through selected date)</h3>
+          <p class="muted text-sm">Every credit sale up to the through date in the filter.</p>
+          <div class="table-wrap">
+            <table class="overdue-detail-table">
+              <thead>
+                <tr><th>Date</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody id="lifetime-credit-body"></tbody>
+            </table>
           </div>
-          <div class="overdue-detail-breakdowns">
-            <div class="overdue-detail-breakdown">
-              <h3 class="overdue-detail-breakdown-title">Credit taken (breakdown)</h3>
-              <div class="table-wrap">
-                <table class="overdue-detail-table">
-                  <thead>
-                    <tr><th>Date</th><th>Amount (₹)</th></tr>
-                  </thead>
-                  <tbody id="customer-detail-credit-breakdown"></tbody>
-                </table>
-              </div>
-              <p id="customer-detail-credit-breakdown-empty" class="muted text-sm hidden">No credit entries.</p>
-              <div id="customer-detail-credit-breakdown-pagination" class="breakdown-pagination hidden">
-                <span id="customer-detail-credit-breakdown-info" class="breakdown-pagination-info"></span>
-                <div class="breakdown-pagination-buttons">
-                  <button type="button" id="customer-detail-credit-breakdown-back" class="button-secondary button-sm">Back</button>
-                  <button type="button" id="customer-detail-credit-breakdown-more" class="button-secondary button-sm">Show more</button>
-                </div>
-              </div>
-            </div>
-            <div class="overdue-detail-breakdown">
-              <h3 class="overdue-detail-breakdown-title">Settlement done (breakdown)</h3>
-              <div class="table-wrap">
-                <table class="overdue-detail-table">
-                  <thead>
-                    <tr><th>Date</th><th>Amount (₹)</th></tr>
-                  </thead>
-                  <tbody id="customer-detail-settlement-breakdown"></tbody>
-                </table>
-              </div>
-              <p id="customer-detail-settlement-breakdown-empty" class="muted text-sm hidden">No settlements.</p>
-              <div id="customer-detail-settlement-breakdown-pagination" class="breakdown-pagination hidden">
-                <span id="customer-detail-settlement-breakdown-info" class="breakdown-pagination-info"></span>
-                <div class="breakdown-pagination-buttons">
-                  <button type="button" id="customer-detail-settlement-breakdown-back" class="button-secondary button-sm">Back</button>
-                  <button type="button" id="customer-detail-settlement-breakdown-more" class="button-secondary button-sm">Show more</button>
-                </div>
-              </div>
-            </div>
+          <p id="lifetime-credit-empty" class="muted text-sm hidden">No credit entries.</p>
+
+          <h3 class="settings-subheading">All settlements (through selected date)</h3>
+          <p class="muted text-sm">Every payment received up to the through date in the filter.</p>
+          <div class="table-wrap">
+            <table class="overdue-detail-table">
+              <thead>
+                <tr><th>Date</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody id="lifetime-payment-body"></tbody>
+            </table>
           </div>
-        </div>
-        <p id="customer-detail-error" class="error hidden"></p>
-        <p id="customer-detail-loading" class="muted hidden">Loading…</p>
-        <div class="overdue-detail-actions">
-          <button type="button" class="button-secondary" id="customer-detail-close-btn">Close</button>
-        </div>
+          <p id="lifetime-payment-empty" class="muted text-sm hidden">No settlements.</p>
+        </section>
+
+        <!-- CUSTOMER: Record payment -->
+        <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
+          <h2>Record payment</h2>
+          <p class="muted">Payment is allocated to oldest credit first (FIFO).</p>
+          <div class="settle-inline settle-inline-page">
+            <label class="settle-date-label" for="settle-date">Payment date</label>
+            <input type="date" class="settle-date" id="settle-date" />
+            <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="Bank">Bank</option>
+            </select>
+            <input type="number" min="0" step="0.01" class="settle-amount" id="settle-amount" placeholder="Amount (₹)" />
+            <button type="button" class="settle-confirm" id="settle-btn">Record payment</button>
+          </div>
+          <p id="settle-msg" class="muted" aria-live="polite"></p>
+        </section>
+
+        <!-- CUSTOMER: Credit entries -->
+        <section class="settings-panel card" data-panel="credit" hidden>
+          <h2>Credit taken</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Fuel</th>
+                  <th>Qty (L)</th>
+                  <th>Amount</th>
+                  <th>Open</th>
+                </tr>
+              </thead>
+              <tbody id="credit-entries-body"></tbody>
+            </table>
+          </div>
+          <p id="credit-entries-empty" class="muted hidden">No credit in this period.</p>
+          <div id="credit-entries-pagination" class="pagination-controls hidden">
+            <span id="credit-entries-info" class="muted"></span>
+            <button type="button" id="credit-entries-back" class="button-secondary">Back</button>
+            <button type="button" id="credit-entries-more" class="button-secondary">Show more</button>
+          </div>
+        </section>
+
+        <!-- CUSTOMER: Payment entries -->
+        <section class="settings-panel card" data-panel="payments" hidden>
+          <h2>Settlements</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Mode</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody id="payment-entries-body" data-breakdown-mode="payment-rich"></tbody>
+            </table>
+          </div>
+          <p id="payment-entries-empty" class="muted hidden">No settlements in this period.</p>
+          <div id="payment-entries-pagination" class="pagination-controls hidden">
+            <span id="payment-entries-info" class="muted"></span>
+            <button type="button" id="payment-entries-back" class="button-secondary">Back</button>
+            <button type="button" id="payment-entries-more" class="button-secondary">Show more</button>
+          </div>
+        </section>
+
+        <p id="detail-error" class="error hidden"></p>
       </div>
-    </div>
+    </main>
 
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>

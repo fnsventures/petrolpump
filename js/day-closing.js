@@ -147,12 +147,13 @@ async function initializeDayClosing() {
     loadDayClosingBreakdown(dateInput.value || todayStr);
   });
 
+  const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
   if (nightCashInput) {
-    nightCashInput.addEventListener("input", updateDayClosingShortLive);
+    nightCashInput.addEventListener("input", debouncedShortUpdate);
     nightCashInput.addEventListener("change", updateDayClosingShortLive);
   }
   if (phonePayInput) {
-    phonePayInput.addEventListener("input", updateDayClosingShortLive);
+    phonePayInput.addEventListener("input", debouncedShortUpdate);
     phonePayInput.addEventListener("change", updateDayClosingShortLive);
   }
 
@@ -316,22 +317,18 @@ async function initializeDayClosing() {
   }
 }
 
-function escapeHtml(str) {
-  if (str == null) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "day-closing",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
+
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "close", validSections: ["close", "register"] });
+  }
 
   await initializeDayClosing();
 });

@@ -1,13 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, AppCache, AppError */
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -105,21 +96,8 @@ function matrixCellContents(record) {
   return `<div class="att-cell-stack">${parts.join("")}</div>`;
 }
 
-const SHIFT_STORAGE_KEYS = {
-  morningName: "petrolpump_shift_morning_name",
-  afternoonName: "petrolpump_shift_afternoon_name",
-};
-const DEFAULT_SHIFT_NAMES = { morningName: "Morning shift", afternoonName: "Afternoon shift" };
-
 function getShiftConfig() {
-  try {
-    return {
-      morningName: localStorage.getItem(SHIFT_STORAGE_KEYS.morningName) ?? DEFAULT_SHIFT_NAMES.morningName,
-      afternoonName: localStorage.getItem(SHIFT_STORAGE_KEYS.afternoonName) ?? DEFAULT_SHIFT_NAMES.afternoonName,
-    };
-  } catch (_) {
-    return { ...DEFAULT_SHIFT_NAMES };
-  }
+  return PumpSettings.getShiftConfig();
 }
 
 function getShiftLabel(shiftValue) {
@@ -137,7 +115,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     pageName: "attendance",
   });
   if (!auth) return;
+  await loadPumpSettings();
   applyRoleVisibility(auth.role);
+
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "mark", validSections: ["mark", "history"] });
+  }
 
   const attendanceDateInput = document.getElementById("attendance-date");
   const historyMonthInput = document.getElementById("history-month");
@@ -234,7 +217,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!staffList.length) {
       attendanceBody.innerHTML =
-        '<tr><td colspan="5" class="muted">Add staff in <a href="settings.html#manage-staff-section">Settings → Manage staff (HR)</a> first (admin).</td></tr>';
+        '<tr><td colspan="5" class="muted">Add staff in <a href="settings.html#hr">Settings → Manage staff (HR)</a> first (admin).</td></tr>';
       if (attendanceSummary) attendanceSummary.textContent = "";
       return;
     }
@@ -364,8 +347,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!staffList.length) return;
     showMessage("");
 
-    let saved = 0;
-    let errMsg = "";
+    const rows = [];
     for (const s of staffList) {
       const row = attendanceBody?.querySelector(`tr[data-staff-id="${s.id}"]`);
       if (!row) continue;
@@ -374,36 +356,31 @@ document.addEventListener("DOMContentLoaded", async () => {
       const shiftEl = row.querySelector(".att-shift");
       const noteEl = row.querySelector(".att-note");
 
-      const status = statusEl?.value ?? "present";
-      const shift = (shiftEl?.value || "").trim() || null;
-      const note = noteEl?.value?.trim() || null;
-
-      const payload = {
+      rows.push({
         employee_id: s.id,
-        date,
-        status,
-        shift,
-        note,
-        updated_at: new Date().toISOString(),
-      };
-      if (auth?.session?.user?.id) payload.created_by = auth.session.user.id;
-
-      const existing = attendanceByDate.get(s.id);
-      if (existing) {
-        const { error } = await supabaseClient.from("employee_attendance").update(payload).eq("id", existing.id);
-        if (error) errMsg = AppError.getUserMessage(error);
-        else saved++;
-      } else {
-        const { error } = await supabaseClient.from("employee_attendance").insert(payload);
-        if (error) errMsg = AppError.getUserMessage(error);
-        else saved++;
-      }
+        status: statusEl?.value ?? "present",
+        shift: (shiftEl?.value || "").trim() || "",
+        note: noteEl?.value?.trim() || "",
+      });
     }
 
-    if (errMsg) {
-      showMessage(errMsg, true);
+    if (!rows.length) {
+      showMessage("No changes to save.");
       return;
     }
+
+    const { data, error } = await supabaseClient.rpc("save_employee_attendance_batch", {
+      p_date: date,
+      p_rows: rows,
+    });
+
+    if (error) {
+      showMessage(AppError.getUserMessage(error), true);
+      AppError.report(error, { context: "attendance saveAll" });
+      return;
+    }
+
+    const saved = Number(data?.saved ?? 0);
     showMessage(saved ? `Saved ${saved} record(s).` : "No changes to save.");
     if (typeof AppCache !== "undefined" && AppCache) {
       AppCache.invalidateByType("recent_activity");
@@ -440,7 +417,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!staffList.length) {
       if (historyMatrixSummary) historyMatrixSummary.textContent = "";
       historyMatrixWrap.innerHTML =
-        '<p class="muted att-matrix-placeholder">Add staff in <a href="settings.html#manage-staff-section">Settings → Manage staff (HR)</a> first (admin).</p>';
+        '<p class="muted att-matrix-placeholder">Add staff in <a href="settings.html#hr">Settings → Manage staff (HR)</a> first (admin).</p>';
       return;
     }
 

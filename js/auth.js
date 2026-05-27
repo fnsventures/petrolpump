@@ -1,4 +1,4 @@
-/* global supabaseClient, AppCache, AppError */
+/* global supabaseClient, AppCache, AppError, AppConfig */
 
 const loginForm = document.getElementById("login-form");
 const loginError = document.getElementById("login-error");
@@ -30,6 +30,46 @@ function resolveLanding(role) {
   return LANDING_BY_ROLE[role] ?? LANDING_BY_ROLE[DEFAULT_ROLE];
 }
 
+function enhanceTopbarBrand() {
+  const topbar = document.querySelector("header.topbar");
+  const brand = topbar?.querySelector(".brand");
+  if (!brand || brand.querySelector(".brand-mark")) return;
+
+  const link = brand.querySelector("a");
+  const subtitle = brand.querySelector(".page-subtitle");
+  if (!link || typeof AppConfig === "undefined" || !AppConfig.BPCL_LOGO_SRC) return;
+
+  topbar?.classList.add("topbar--bpcl");
+
+  const mark = document.createElement("span");
+  mark.className = "brand-mark";
+  const img = document.createElement("img");
+  img.src = AppConfig.BPCL_LOGO_SRC;
+  img.alt = "Bharat Petroleum";
+  img.className = "brand-logo";
+  img.width = 36;
+  img.height = 44;
+  img.decoding = "async";
+  mark.appendChild(img);
+
+  const textWrap = document.createElement("div");
+  textWrap.className = "brand-text";
+  textWrap.appendChild(link);
+
+  if (!brand.querySelector(".brand-dealer")) {
+    const dealer = document.createElement("span");
+    dealer.className = "brand-dealer";
+    dealer.textContent = "Authorized BPCL Dealer";
+    textWrap.appendChild(dealer);
+  }
+
+  if (subtitle) textWrap.appendChild(subtitle);
+
+  brand.textContent = "";
+  brand.appendChild(mark);
+  brand.appendChild(textWrap);
+}
+
 function markCurrentNavLink() {
   const path = window.location.pathname;
   let current = path.split("/").pop() || "";
@@ -42,6 +82,8 @@ function markCurrentNavLink() {
     if (href === current) {
       link.classList.add("nav-active");
       link.setAttribute("aria-current", "page");
+      const block = link.closest(".nav-group-block");
+      if (block) block.classList.add("has-active");
     }
   });
 }
@@ -118,6 +160,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
   }
+  enhanceTopbarBrand();
   markCurrentNavLink();
   initNavToggle();
 });
@@ -273,7 +316,7 @@ async function requireAuth(options = {}) {
   const {
     allowedRoles = null,
     redirectTo = "index.html",
-    onDenied = "credit.html",
+    onDenied = "dashboard.html",
     pageName = null,
   } = options;
 
@@ -295,12 +338,9 @@ async function requireAuth(options = {}) {
   if (pageName) {
     const accessCheck = await verifyPageAccess(pageName);
     if (accessCheck && !accessCheck.allowed) {
-      if (Array.isArray(allowedRoles) && allowedRoles.length > 0 && !allowedRoles.includes(role)) {
-        console.warn(`Access denied to ${pageName} for role: ${accessCheck.role}`);
-        window.location.href = onDenied;
-        return null;
-      }
-      return { session, role, display_name };
+      console.warn(`Access denied to ${pageName} for role: ${accessCheck.role ?? role}`);
+      window.location.href = onDenied;
+      return null;
     }
     if (accessCheck?.role) {
       return { session, role: accessCheck.role, display_name };
@@ -345,6 +385,11 @@ function applyRoleVisibility(role) {
   document
     .querySelectorAll("[data-role='supervisor-only']")
     .forEach((el) => role === "admin" && el.remove());
+
+  document.querySelectorAll(".nav-group-block").forEach((block) => {
+    const links = block.querySelectorAll(".nav-group a[href]");
+    if (!links.length) block.remove();
+  });
 }
 
 window.requireAuth = requireAuth;

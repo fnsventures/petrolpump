@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="refresh" content="0;url=credit-overdue.html" />
+    <title>Redirecting…</title>
+    <script>
+      (function () {
+        var p = new URLSearchParams(window.location.search);
+        var name = p.get("name");
+        var id = p.get("id");
+        var url = "credit-overdue.html";
+        var qs = [];
+        if (name) qs.push("name=" + encodeURIComponent(name));
+        if (id) qs.push("id=" + encodeURIComponent(id));
+        if (qs.length) url += "?" + qs.join("&");
+        window.location.replace(url);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="credit-overdue.html">Open Credit</a>…</p>
+  </body>
+</html>
