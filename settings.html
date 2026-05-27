@@ -5,18 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Settings · Bishnupriya Fuels</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M19 5v2h-4V5h4m-6 0v2H9V5h4m-6 0v2H5V5h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4'/></svg>" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/app.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
-    <script defer src="js/utils.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=5"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/auth.js?v=2"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
     <script defer src="js/settings.js"></script>
   </head>
-  <body>
+  <body class="settings-page">
     <header class="topbar">
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
@@ -39,6 +45,7 @@
             <a href="credit-overdue.html">Overdue</a>
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -52,6 +59,7 @@
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
             <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
           </div>
         </div>
@@ -59,249 +67,410 @@
       </nav>
     </header>
 
-    <main class="stack">
-      <section class="card">
-        <h2>Add or update user role</h2>
-        <p class="muted">
-          Assign roles to operator emails. Roles control access in the dashboard. Add new user or change role for existing email.
-        </p>
-        <form id="settings-form" class="form">
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="staff-email">Email</label>
-              <input
-                id="staff-email"
-                name="email"
-                type="email"
-                placeholder="operator@company.com"
-                required
-              />
-            </div>
-            <div class="form-field">
-              <label for="staff-display-name">Display name</label>
-              <input
-                id="staff-display-name"
-                name="display_name"
-                type="text"
-                placeholder="Name shown in app"
-                maxlength="120"
-              />
-            </div>
-            <div class="form-field">
-              <label for="staff-role">Role</label>
-              <select id="staff-role" name="role" required>
-                <option value="supervisor">Supervisor</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="staff-password">Set password</label>
-              <input
-                id="staff-password"
-                name="password"
-                type="password"
-                placeholder="Leave empty to skip"
-                minlength="6"
-              />
-            </div>
-          </div>
-          <p class="muted">
-            Provide a password to create a new login. Leave it empty to only update the role for an existing user.
-          </p>
-          <button type="submit">Save role</button>
-          <p id="settings-success" class="success hidden">Role saved.</p>
-          <p id="settings-error" class="error hidden"></p>
-        </form>
-      </section>
-      <section class="card" id="manage-staff-section">
-        <h2>Manage staff (HR)</h2>
-        <p class="muted">
-          Add, edit, or remove who appears on salary and attendance lists. Job title and monthly pay are stored here. App login roles for operators are set in the section above.
-        </p>
-        <form id="emp-member-form" class="form" autocomplete="off">
-          <input type="hidden" id="emp-member-id" name="id" value="" />
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="emp-name">Name</label>
-              <input
-                id="emp-name"
-                name="name"
-                type="text"
-                maxlength="120"
-                placeholder="Staff name"
-                required
-              />
-            </div>
-            <div class="form-field">
-              <label for="emp-job-role">Job title / role</label>
-              <input
-                id="emp-job-role"
-                name="role_display"
-                type="text"
-                maxlength="60"
-                placeholder="e.g. Supervisor, Operator"
-              />
-            </div>
-            <div class="form-field">
-              <label for="emp-monthly-salary">Monthly salary (₹)</label>
-              <input
-                id="emp-monthly-salary"
-                name="monthly_salary"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0"
-                required
-              />
-            </div>
-          </div>
-          <button type="submit" id="emp-submit-btn">Add staff</button>
-          <button type="button" id="emp-cancel-btn" class="button-secondary hidden">Cancel</button>
-          <p id="emp-form-success" class="success hidden">Saved.</p>
-          <p id="emp-form-error" class="error hidden"></p>
-        </form>
-        <table class="margin-top">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Job title</th>
-              <th>Monthly salary (₹)</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="emp-members-body">
-            <tr>
-              <td colspan="4" class="muted">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
-      <section class="card">
-        <h2>Attendance shifts</h2>
-        <p class="muted">Set shift names and times. On the Attendance page, choosing a shift will pre-fill check-in and check-out for that row.</p>
-        <form id="shifts-form" class="form" autocomplete="off">
-          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
-            <div class="form-field">
-              <label for="shift-morning-name">Morning shift name</label>
-              <input id="shift-morning-name" name="morningName" type="text" maxlength="60" placeholder="Morning shift" />
-            </div>
-            <div class="form-field"></div>
-            <div class="form-field">
-              <label for="shift-morning-start">Morning start</label>
-              <input id="shift-morning-start" name="morningStart" type="time" />
-            </div>
-            <div class="form-field">
-              <label for="shift-morning-end">Morning end</label>
-              <input id="shift-morning-end" name="morningEnd" type="time" />
-            </div>
-            <div class="form-field">
-              <label for="shift-afternoon-name">Afternoon shift name</label>
-              <input id="shift-afternoon-name" name="afternoonName" type="text" maxlength="60" placeholder="Afternoon shift" />
-            </div>
-            <div class="form-field"></div>
-            <div class="form-field">
-              <label for="shift-afternoon-start">Afternoon start</label>
-              <input id="shift-afternoon-start" name="afternoonStart" type="time" />
-            </div>
-            <div class="form-field">
-              <label for="shift-afternoon-end">Afternoon end</label>
-              <input id="shift-afternoon-end" name="afternoonEnd" type="time" />
-            </div>
-          </div>
-          <button type="submit">Save shifts</button>
-          <p id="shifts-success" class="success hidden">Shifts saved.</p>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Low stock alert</h2>
-        <p class="muted">Set minimum stock (L) per product. Dashboard shows an alert when current stock is below these values.</p>
-        <form id="low-stock-form" class="form" autocomplete="off">
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="low-stock-petrol">Petrol threshold (L)</label>
-              <input id="low-stock-petrol" name="petrol" type="number" min="0" step="100" placeholder="5000" />
-            </div>
-            <div class="form-field">
-              <label for="low-stock-diesel">Diesel threshold (L)</label>
-              <input id="low-stock-diesel" name="diesel" type="number" min="0" step="100" placeholder="5000" />
-            </div>
-          </div>
-          <button type="submit">Save thresholds</button>
-          <p id="low-stock-success" class="success hidden">Thresholds saved.</p>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Alerts &amp; reminders</h2>
-        <p class="muted">Dashboard will show reminders when these thresholds are exceeded. Set to 0 to disable an alert.</p>
-        <form id="alerts-form" class="form" autocomplete="off">
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="alert-high-credit">High credit alert (₹)</label>
-              <input id="alert-high-credit" name="highCredit" type="number" min="0" step="1000" placeholder="e.g. 50000" />
-            </div>
-            <div class="form-field">
-              <label for="alert-high-variation">High variation alert (L)</label>
-              <input id="alert-high-variation" name="highVariation" type="number" min="0" step="10" placeholder="e.g. 50" />
-            </div>
-          </div>
-          <div class="form-field">
-            <label class="checkbox-label">
-              <input id="alert-day-closing" name="dayClosingReminder" type="checkbox" checked />
-              Remind if yesterday&apos;s day closing is not done
-            </label>
-          </div>
-          <button type="submit">Save alert settings</button>
-          <p id="alerts-success" class="success hidden">Alert settings saved.</p>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Expense categories</h2>
-        <p class="muted">Categories shown in the Expenses form. Add or remove categories below. Deleting a category that is used by existing expenses is not allowed.</p>
-        <form id="expense-category-add-form" class="form margin-top" autocomplete="off">
-          <div class="form-grid" style="grid-template-columns: 1fr auto;">
-            <div class="form-field">
-              <label for="expense-category-label">New category name</label>
-              <input id="expense-category-label" type="text" placeholder="e.g. Transport" maxlength="80" required />
-            </div>
-            <div class="form-field" style="align-self: flex-end;">
-              <button type="submit">Add category</button>
-            </div>
-          </div>
-          <p id="expense-category-add-error" class="error hidden" role="alert"></p>
-          <p id="expense-category-add-success" class="success hidden">Category added.</p>
-        </form>
-        <table class="margin-top">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th style="width: 8rem;">Action</th>
-            </tr>
-          </thead>
-          <tbody id="settings-expense-categories">
-            <tr><td colspan="2" class="muted">Loading…</td></tr>
-          </tbody>
-        </table>
-      </section>
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Settings sections">
+        <p class="settings-nav-title">Configuration</p>
+        <button type="button" class="settings-nav-item is-active" data-section="station">Station &amp; branding</button>
+        <button type="button" class="settings-nav-item" data-section="billing">Billing</button>
+        <button type="button" class="settings-nav-item" data-section="pumps">Pumps &amp; tanks</button>
+        <button type="button" class="settings-nav-item" data-section="users">Users &amp; roles</button>
+        <button type="button" class="settings-nav-item" data-section="hr">Staff (HR)</button>
+        <button type="button" class="settings-nav-item" data-section="attendance">Attendance shifts</button>
+        <button type="button" class="settings-nav-item" data-section="alerts">Alerts &amp; thresholds</button>
+        <button type="button" class="settings-nav-item" data-section="expenses">Expense categories</button>
+        <button type="button" class="settings-nav-item" data-section="access">Access list</button>
+      </nav>
 
-      <section class="card">
-        <h2>Current access list</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Display name</th>
-              <th>Role</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody id="settings-table-body">
-            <tr>
-              <td colspan="4" class="muted">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      <div class="settings-panels">
+        <!-- Station -->
+        <section id="settings-panel-station" class="settings-panel card is-visible" data-panel="station">
+          <h2>Station &amp; branding</h2>
+          <p class="muted">Used on invoices, reports, and page titles. Saved to the server for all devices.</p>
+          <form id="station-form" class="form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="st-display-name">Display name (nav / titles)</label>
+                <input id="st-display-name" type="text" maxlength="120" required />
+              </div>
+              <div class="form-field">
+                <label for="st-legal-name">Legal name (reports)</label>
+                <input id="st-legal-name" type="text" maxlength="200" required />
+              </div>
+              <div class="form-field">
+                <label for="st-brand-short">Invoice brand (first part)</label>
+                <input id="st-brand-short" type="text" maxlength="80" placeholder="Bishnu Priya" />
+              </div>
+              <div class="form-field">
+                <label for="st-brand-accent">Invoice brand (accent)</label>
+                <input id="st-brand-accent" type="text" maxlength="40" placeholder="Fuels" />
+              </div>
+              <div class="form-field form-field-full">
+                <label for="st-tagline">Tagline</label>
+                <input id="st-tagline" type="text" maxlength="200" />
+              </div>
+              <div class="form-field form-field-full">
+                <label for="st-address">Address</label>
+                <textarea id="st-address" rows="2" maxlength="500"></textarea>
+              </div>
+              <div class="form-field">
+                <label for="st-email">Station email</label>
+                <input id="st-email" type="email" maxlength="120" />
+              </div>
+              <div class="form-field">
+                <label for="st-mobile">Station mobile</label>
+                <input id="st-mobile" type="text" maxlength="30" />
+              </div>
+              <div class="form-field">
+                <label for="st-gstin">GSTIN</label>
+                <input id="st-gstin" type="text" maxlength="20" />
+              </div>
+              <div class="form-field">
+                <label for="st-license">License no.</label>
+                <input id="st-license" type="text" maxlength="80" />
+              </div>
+              <div class="form-field">
+                <label for="st-support-email">Support email (footer)</label>
+                <input id="st-support-email" type="email" maxlength="120" />
+              </div>
+              <div class="form-field">
+                <label for="st-support-whatsapp">Support WhatsApp</label>
+                <input id="st-support-whatsapp" type="text" maxlength="30" />
+              </div>
+            </div>
+            <button type="submit">Save station details</button>
+            <p id="station-success" class="success hidden">Station details saved.</p>
+            <p id="station-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <!-- Billing -->
+        <section id="settings-panel-billing" class="settings-panel card" data-panel="billing" hidden>
+          <h2>Billing</h2>
+          <p class="muted">Invoice defaults and product master for billing.</p>
+          <form id="billing-defaults-form" class="form margin-bottom">
+            <h3 class="settings-subheading">Defaults</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="bill-invoice-prefix">Invoice prefix</label>
+                <input id="bill-invoice-prefix" type="text" maxlength="20" placeholder="CRI/" />
+                <small class="muted">Number sequence uses DB function; prefix is for display/reference.</small>
+              </div>
+              <div class="form-field">
+                <label for="bill-default-party">Default party name</label>
+                <input id="bill-default-party" type="text" maxlength="200" />
+              </div>
+              <div class="form-field">
+                <label for="bill-fuel-gst">Default fuel GST % (billing)</label>
+                <input id="bill-fuel-gst" type="number" min="0" max="28" step="0.01" />
+              </div>
+              <div class="form-field">
+                <label for="bill-petrol-vat">MS purchase VAT/LST %</label>
+                <input id="bill-petrol-vat" type="number" min="0" max="100" step="0.01" />
+                <small class="muted">Petrol inward (e.g. BPCL 28%).</small>
+              </div>
+              <div class="form-field">
+                <label for="bill-diesel-vat">HSD purchase VAT/LST %</label>
+                <input id="bill-diesel-vat" type="number" min="0" max="100" step="0.01" />
+                <small class="muted">Diesel inward (e.g. BPCL 24%).</small>
+              </div>
+              <div class="form-field form-field-checkbox">
+                <label>
+                  <input id="bill-purchase-tax-inclusive" type="checkbox" />
+                  Buying rate includes VAT/LST
+                </label>
+                <small class="muted">Leave unchecked for BPCL invoices (rate is pre-tax).</small>
+              </div>
+              <div class="form-field">
+                <label for="bill-receipt-start">Receipt history from</label>
+                <input id="bill-receipt-start" type="date" />
+              </div>
+            </div>
+            <button type="submit">Save billing defaults</button>
+            <p id="billing-defaults-success" class="success hidden">Billing defaults saved.</p>
+            <p id="billing-defaults-error" class="error hidden"></p>
+          </form>
+
+          <h3 class="settings-subheading">Product master</h3>
+          <p class="muted">Products available when creating invoices.</p>
+          <form id="product-form" class="form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="prod-name">Product name</label>
+                <input id="prod-name" name="name" type="text" maxlength="200" required />
+              </div>
+              <div class="form-field">
+                <label for="prod-hsn">HSN <span class="optional-label">(optional)</span></label>
+                <input id="prod-hsn" name="hsn_code" type="text" maxlength="20" />
+              </div>
+              <div class="form-field">
+                <label for="prod-unit">Unit</label>
+                <select id="prod-unit" name="unit"></select>
+              </div>
+              <div class="form-field">
+                <label for="prod-rate">Default rate (₹)</label>
+                <input id="prod-rate" name="default_rate" type="number" step="0.01" min="0" value="0" required />
+              </div>
+              <div class="form-field">
+                <label for="prod-gst">GST %</label>
+                <select id="prod-gst" name="gst_percent"></select>
+              </div>
+            </div>
+            <button type="submit">Add product</button>
+            <p id="product-success" class="success hidden">Product added.</p>
+            <p id="product-error" class="error hidden"></p>
+          </form>
+          <div class="table-wrap margin-top">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>HSN</th>
+                  <th>Unit</th>
+                  <th>Rate</th>
+                  <th>GST</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="products-table-body">
+                <tr><td colspan="6" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Pumps -->
+        <section id="settings-panel-pumps" class="settings-panel card" data-panel="pumps" hidden>
+          <h2>Pumps &amp; tanks</h2>
+          <p class="muted">Meter reading layout and tank labels. Changing pump/nozzle counts may require HTML form updates until dynamic forms are enabled.</p>
+          <form id="pumps-form" class="form">
+            <h3 class="settings-subheading">Petrol (MS)</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="pump-petrol-pumps">Pumps</label>
+                <input id="pump-petrol-pumps" type="number" min="1" max="8" required />
+              </div>
+              <div class="form-field">
+                <label for="pump-petrol-nozzles">Nozzles per pump</label>
+                <input id="pump-petrol-nozzles" type="number" min="1" max="8" required />
+              </div>
+              <div class="form-field">
+                <label for="pump-petrol-label">Tank label</label>
+                <input id="pump-petrol-label" type="text" maxlength="60" />
+              </div>
+              <div class="form-field">
+                <label for="pump-petrol-capacity">Tank capacity</label>
+                <input id="pump-petrol-capacity" type="text" maxlength="20" placeholder="15KL" />
+              </div>
+            </div>
+            <h3 class="settings-subheading">Diesel (HSD)</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="pump-diesel-pumps">Pumps</label>
+                <input id="pump-diesel-pumps" type="number" min="1" max="8" required />
+              </div>
+              <div class="form-field">
+                <label for="pump-diesel-nozzles">Nozzles per pump</label>
+                <input id="pump-diesel-nozzles" type="number" min="1" max="8" required />
+              </div>
+              <div class="form-field">
+                <label for="pump-diesel-label">Tank label</label>
+                <input id="pump-diesel-label" type="text" maxlength="60" />
+              </div>
+              <div class="form-field">
+                <label for="pump-diesel-capacity">Tank capacity</label>
+                <input id="pump-diesel-capacity" type="text" maxlength="20" placeholder="20KL" />
+              </div>
+            </div>
+            <button type="submit">Save pump configuration</button>
+            <p id="pumps-success" class="success hidden">Pump configuration saved.</p>
+            <p id="pumps-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <!-- Users -->
+        <section id="settings-panel-users" class="settings-panel card" data-panel="users" hidden>
+          <h2>Users &amp; roles</h2>
+          <p class="muted">Assign app login roles. Add new user or update role for an existing email.</p>
+          <form id="settings-form" class="form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="staff-email">Email</label>
+                <input id="staff-email" name="email" type="email" placeholder="operator@company.com" required />
+              </div>
+              <div class="form-field">
+                <label for="staff-display-name">Display name</label>
+                <input id="staff-display-name" name="display_name" type="text" maxlength="120" />
+              </div>
+              <div class="form-field">
+                <label for="staff-role">Role</label>
+                <select id="staff-role" name="role" required>
+                  <option value="supervisor">Supervisor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="staff-password">Set password</label>
+                <input id="staff-password" name="password" type="password" placeholder="Leave empty to skip" minlength="6" />
+              </div>
+            </div>
+            <p class="muted">Password required only when creating a new login.</p>
+            <button type="submit">Save role</button>
+            <p id="settings-success" class="success hidden">Role saved.</p>
+            <p id="settings-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <!-- HR -->
+        <section id="settings-panel-hr" class="settings-panel card" data-panel="hr" hidden>
+          <h2>Staff (HR)</h2>
+          <p class="muted">Roster for salary and attendance. App login roles are configured under Users.</p>
+          <form id="emp-member-form" class="form" autocomplete="off">
+            <input type="hidden" id="emp-member-id" value="" />
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="emp-name">Name</label>
+                <input id="emp-name" type="text" maxlength="120" required />
+              </div>
+              <div class="form-field">
+                <label for="emp-job-role">Job title</label>
+                <input id="emp-job-role" type="text" maxlength="60" />
+              </div>
+              <div class="form-field">
+                <label for="emp-monthly-salary">Monthly salary (₹)</label>
+                <input id="emp-monthly-salary" type="number" min="0" step="0.01" required />
+              </div>
+            </div>
+            <button type="submit" id="emp-submit-btn">Add staff</button>
+            <button type="button" id="emp-cancel-btn" class="button-secondary hidden">Cancel</button>
+            <p id="emp-form-success" class="success hidden">Saved.</p>
+            <p id="emp-form-error" class="error hidden"></p>
+          </form>
+          <table class="margin-top">
+            <thead>
+              <tr><th>Name</th><th>Job title</th><th>Monthly salary</th><th>Action</th></tr>
+            </thead>
+            <tbody id="emp-members-body">
+              <tr><td colspan="4" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Attendance -->
+        <section id="settings-panel-attendance" class="settings-panel card" data-panel="attendance" hidden>
+          <h2>Attendance shifts</h2>
+          <p class="muted">Shift names appear on the Attendance page. Times are stored for future check-in/out features.</p>
+          <form id="shifts-form" class="form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="shift-morning-name">Morning name</label>
+                <input id="shift-morning-name" type="text" maxlength="60" />
+              </div>
+              <div class="form-field">
+                <label for="shift-morning-start">Morning start</label>
+                <input id="shift-morning-start" type="time" />
+              </div>
+              <div class="form-field">
+                <label for="shift-morning-end">Morning end</label>
+                <input id="shift-morning-end" type="time" />
+              </div>
+              <div class="form-field">
+                <label for="shift-afternoon-name">Afternoon name</label>
+                <input id="shift-afternoon-name" type="text" maxlength="60" />
+              </div>
+              <div class="form-field">
+                <label for="shift-afternoon-start">Afternoon start</label>
+                <input id="shift-afternoon-start" type="time" />
+              </div>
+              <div class="form-field">
+                <label for="shift-afternoon-end">Afternoon end</label>
+                <input id="shift-afternoon-end" type="time" />
+              </div>
+            </div>
+            <button type="submit">Save shifts</button>
+            <p id="shifts-success" class="success hidden">Shifts saved.</p>
+            <p id="shifts-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <!-- Alerts -->
+        <section id="settings-panel-alerts" class="settings-panel card" data-panel="alerts" hidden>
+          <h2>Alerts &amp; thresholds</h2>
+          <p class="muted">Dashboard reminders. Set a threshold to 0 to disable that alert.</p>
+          <form id="alerts-form" class="form">
+            <h3 class="settings-subheading">Low stock</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="low-stock-petrol">Petrol minimum (L)</label>
+                <input id="low-stock-petrol" type="number" min="0" step="100" />
+              </div>
+              <div class="form-field">
+                <label for="low-stock-diesel">Diesel minimum (L)</label>
+                <input id="low-stock-diesel" type="number" min="0" step="100" />
+              </div>
+            </div>
+            <h3 class="settings-subheading">Other alerts</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-high-credit">High credit (₹)</label>
+                <input id="alert-high-credit" type="number" min="0" step="1000" />
+              </div>
+              <div class="form-field">
+                <label for="alert-high-variation">High variation (L)</label>
+                <input id="alert-high-variation" type="number" min="0" step="10" />
+              </div>
+            </div>
+            <div class="form-field">
+              <label class="checkbox-label">
+                <input id="alert-day-closing" type="checkbox" checked />
+                Remind if yesterday&apos;s day closing is not done
+              </label>
+            </div>
+            <button type="submit">Save alerts</button>
+            <p id="alerts-success" class="success hidden">Alert settings saved.</p>
+            <p id="alerts-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <!-- Expenses -->
+        <section id="settings-panel-expenses" class="settings-panel card" data-panel="expenses" hidden>
+          <h2>Expense categories</h2>
+          <p class="muted">Categories in the Expenses form. Cannot delete if used by existing expenses.</p>
+          <form id="expense-category-add-form" class="form">
+            <div class="form-grid" style="grid-template-columns: 1fr auto;">
+              <div class="form-field">
+                <label for="expense-category-label">New category</label>
+                <input id="expense-category-label" type="text" maxlength="80" required />
+              </div>
+              <div class="form-field" style="align-self: flex-end;">
+                <button type="submit">Add</button>
+              </div>
+            </div>
+            <p id="expense-category-add-error" class="error hidden"></p>
+            <p id="expense-category-add-success" class="success hidden">Category added.</p>
+          </form>
+          <table class="margin-top">
+            <thead><tr><th>Category</th><th>Action</th></tr></thead>
+            <tbody id="settings-expense-categories">
+              <tr><td colspan="2" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- Access list -->
+        <section id="settings-panel-access" class="settings-panel card" data-panel="access" hidden>
+          <h2>Current access list</h2>
+          <table>
+            <thead>
+              <tr><th>Email</th><th>Display name</th><th>Role</th><th>Created</th></tr>
+            </thead>
+            <tbody id="settings-table-body">
+              <tr><td colspan="4" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
     </main>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>

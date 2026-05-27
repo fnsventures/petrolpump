@@ -33,32 +33,36 @@ interface StockRow {
 }
 
 interface ExpenseRow {
-  id: number;
   date: string;
   category: string;
   description: string | null;
   amount: number | null;
 }
 
+interface CreditRow {
+  amount: number | null;
+  amount_settled: number | null;
+}
+
 interface DashboardResponse {
   dsrData: DsrRow[] | null;
   stockData: StockRow[] | null;
   expenseData: ExpenseRow[] | null;
+  creditData: CreditRow[] | null;
   errors: {
     dsr: string | null;
     stock: string | null;
     expense: string | null;
+    credit: string | null;
   };
 }
 
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    // Get authorization header from request
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
@@ -70,7 +74,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Parse request body
     const { startDate, endDate }: DashboardRequest = await req.json();
 
     if (!startDate || !endDate) {
@@ -83,7 +86,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create Supabase client with the user's auth token
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -92,34 +94,35 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    // Execute all queries in parallel within a single Edge Function call
-    // This is still a single network round-trip from the client
-    const [dsrResult, stockResult, expenseResult] = await Promise.all([
+    const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
       supabase
         .from("dsr")
         .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
         .gte("date", startDate)
         .lte("date", endDate),
-      supabase
-        .from("dsr_stock")
-        .select("date, product, variation, dip_stock")
-        .gte("date", startDate)
-        .lte("date", endDate),
+      supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
       supabase
         .from("expenses")
-        .select("*")
+        .select("date, amount, category, description")
         .gte("date", startDate)
         .lte("date", endDate),
+      supabase
+        .from("credit_entries")
+        .select("amount, amount_settled")
+        .gte("transaction_date", startDate)
+        .lte("transaction_date", endDate),
     ]);
 
     const response: DashboardResponse = {
       dsrData: dsrResult.data,
       stockData: stockResult.data,
       expenseData: expenseResult.data,
+      creditData: creditResult.data,
       errors: {
         dsr: dsrResult.error?.message ?? null,
         stock: stockResult.error?.message ?? null,
         expense: expenseResult.error?.message ?? null,
+        credit: creditResult.error?.message ?? null,
       },
     };
 

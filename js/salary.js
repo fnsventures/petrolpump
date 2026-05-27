@@ -1,21 +1,12 @@
 /* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError */
 
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function getMonthStartEnd(year, month) {
   const m = month - 1;
   const start = new Date(year, m, 1);
   const end = new Date(year, m + 1, 0);
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: toLocalDateString(start),
+    end: toLocalDateString(end),
   };
 }
 
@@ -28,6 +19,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   applyRoleVisibility(auth.role);
 
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "record", validSections: ["record", "summary", "recent"] });
+  }
+
   const paymentForm = document.getElementById("salary-payment-form");
   const paymentSuccess = document.getElementById("salary-payment-success");
   const paymentError = document.getElementById("salary-payment-error");
@@ -36,7 +31,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const salaryMonthInput = document.getElementById("salary-month");
 
   if (paymentDateInput) {
-    paymentDateInput.value = new Date().toISOString().slice(0, 10);
+    paymentDateInput.value = getLocalDateString();
   }
 
   const now = new Date();
@@ -107,7 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!tbody) return;
 
     if (!staffList.length) {
-      tbody.innerHTML = "<tr><td colspan=\"6\" class=\"muted\">Add staff in <a href=\"settings.html#manage-staff-section\">Settings → Manage staff (HR)</a> first (admin).</td></tr>";
+      tbody.innerHTML = "<tr><td colspan=\"6\" class=\"muted\">Add staff in <a href=\"settings.html#hr\">Settings → Manage staff (HR)</a> first (admin).</td></tr>";
       return;
     }
 
@@ -257,7 +252,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await supabaseClient.from("expenses").insert(expensePayload);
 
       paymentForm.reset();
-      paymentDateInput.value = new Date().toISOString().slice(0, 10);
+      paymentDateInput.value = getLocalDateString();
       fillStaffSelect(paymentStaffSelect);
       paymentSuccess?.classList.remove("hidden");
       await refreshAll();

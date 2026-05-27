@@ -5,15 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Meter Reading · Bishnupriya Fuels</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M19 5v2h-4V5h4m-6 0v2H9V5h4m-6 0v2H5V5h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4'/></svg>" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/app.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
-    <script defer src="js/utils.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=5"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/auth.js?v=2"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
     <script defer src="js/dsr.js"></script>
   </head>
   <body>
@@ -39,6 +45,7 @@
             <a href="credit-overdue.html">Overdue</a>
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -52,6 +59,7 @@
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
             <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
           </div>
         </div>
@@ -59,11 +67,26 @@
       </nav>
     </header>
 
-    <main class="stack">
-      <section class="card dsr-card" data-product="petrol">
+    <main class="settings-layout page-layout-wide dsr-page-layout">
+      <nav class="settings-nav card" aria-label="Meter reading sections">
+        <p class="settings-nav-title">Meter reading</p>
+        <button type="button" class="settings-nav-item is-active" data-section="petrol">Petrol (MS)</button>
+        <button type="button" class="settings-nav-item" data-section="diesel">Diesel (HSD)</button>
+      </nav>
+      <div class="settings-panels">
+      <div class="meter-toolbar">
+        <label for="meter-fuel-select" class="meter-toolbar-label">Fuel Type</label>
+        <select id="meter-fuel-select" class="meter-fuel-select">
+          <option value="all">All Products</option>
+          <option value="petrol">MS · Petrol (15 KL)</option>
+          <option value="diesel">HSD · Diesel (20 KL)</option>
+        </select>
+      </div>
+
+      <section class="settings-panel card dsr-card is-visible" data-panel="petrol" data-product="petrol">
         <div class="dsr-card-head">
           <div>
-            <h2>Petrol · Daily Meter Readings</h2>
+            <h2>MS (Petrol) · 15KL Tank</h2>
             <p class="muted">
               Fill the reading sheet exactly like the physical DSR register.
             </p>
@@ -221,8 +244,9 @@
               </table>
             </div>
 
-            <div class="meter-block">
+            <div class="meter-block meter-block-wide">
               <h3 class="meter-title">Sales, testing & stock</h3>
+              <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
                 <thead>
                   <tr>
@@ -376,11 +400,12 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
-            <div>
+          <div class="sheet-rate-row">
+            <div class="form-field">
               <label for="petrol-rate">Petrol Rate (₹/L)</label>
               <input
                 id="petrol-rate"
@@ -428,6 +453,7 @@
                   <th>Stock (L)</th>
                   <th>Rate (₹/L)</th>
                   <th>Remarks</th>
+                  <th data-role="admin-only">Actions</th>
                 </tr>
               </thead>
               <tbody id="dsr-table-petrol">
@@ -441,12 +467,12 @@
       </section>
 
 
-      <section class="card dsr-card" data-product="diesel">
+      <section class="settings-panel card dsr-card" data-panel="diesel" data-product="diesel" hidden>
         <div class="dsr-card-head">
           <div>
-            <h2>Diesel · Daily Meter Readings</h2>
+            <h2>HSD (Diesel) · 20KL Tank</h2>
             <p class="muted">
-              Use the same structure for diesel nozzles and testing.
+              Fill the reading sheet exactly like the physical DSR register.
             </p>
           </div>
         </div>
@@ -602,8 +628,9 @@
               </table>
             </div>
 
-            <div class="meter-block">
+            <div class="meter-block meter-block-wide">
               <h3 class="meter-title">Sales, testing & stock</h3>
+              <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
                 <thead>
                   <tr>
@@ -757,11 +784,12 @@
                   </tr>
                 </tbody>
               </table>
+              </div>
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr; gap: 1rem;">
-            <div>
+          <div class="sheet-rate-row">
+            <div class="form-field">
               <label for="diesel-rate">Diesel Rate (₹/L)</label>
               <input
                 id="diesel-rate"
@@ -809,6 +837,7 @@
                   <th>Stock (L)</th>
               <th>Rate (₹/L)</th>
               <th>Remarks</th>
+              <th data-role="admin-only">Actions</th>
             </tr>
           </thead>
               <tbody id="dsr-table-diesel">
@@ -820,7 +849,7 @@
           </div>
         </div>
       </section>
-
+      </div>
     </main>
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>

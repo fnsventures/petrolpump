@@ -24,6 +24,13 @@ const AppCache = (function () {
     // DSR summary data - moderate TTL
     dsr_summary: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 }, // 3 min, 15min stale
     profit_loss: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 }, // 3 min, 15min stale
+
+    // Settings & auth — longer TTL, revalidated on save
+    pump_settings: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 },
+    user_role: { ttl: 30 * 60 * 1000, staleTtl: 2 * 60 * 60 * 1000 },
+
+    // Reports page aggregate fetch
+    reports_data: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 },
   };
 
   /**

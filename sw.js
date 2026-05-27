@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v22";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -17,22 +17,34 @@ const STATIC_ASSETS = [
   "/dsr.html",
   "/credit.html",
   "/credit-overdue.html",
+  "/credit-customer.html",
   "/expenses.html",
   "/day-closing.html",
   "/attendance.html",
   "/sales-daily.html",
   "/analysis.html",
+  "/reports.html",
+  "/billing.html",
   "/settings.html",
+  "/salary.html",
   "/about.html",
   "/css/base.css",
   "/css/app.css",
   "/css/landing.css",
   "/css/login.css",
+  "/assets/bpcl-logo.png",
   "/js/env.js",
+  "/js/errorHandler.js",
+  "/js/cache.js",
+  "/js/appConfig.js",
   "/js/utils.js",
+  "/js/dateRangeFilter.js",
+  "/js/pumpSettings.js",
+  "/js/purchaseTaxUtils.js",
   "/js/supabase.js",
   "/js/auth.js",
-  "/js/cache.js",
+  "/js/pageSections.js",
+  "/js/creditCustomerDetail.js",
   "/js/dashboard.js",
   "/js/dsr.js",
   "/js/credit.js",
@@ -42,7 +54,10 @@ const STATIC_ASSETS = [
   "/js/attendance.js",
   "/js/sales-daily.js",
   "/js/analysis.js",
+  "/js/reports.js",
+  "/js/billing.js",
   "/js/settings.js",
+  "/js/salary.js",
   "/js/landing.js",
   "/assets/landing-01.JPG",
   "/assets/landing-02.JPG",

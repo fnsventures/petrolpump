@@ -56,4 +56,18 @@ function startRandomSlideshow() {
   window.setInterval(showSlide, SLIDE_INTERVAL_MS);
 }
 
-document.addEventListener("DOMContentLoaded", startRandomSlideshow);
+function initAboutPopupA11y() {
+  const panel = document.getElementById("about-popup");
+  if (!panel) return;
+  const sync = () => {
+    const open = location.hash === "#about-popup";
+    panel.setAttribute("aria-hidden", open ? "false" : "true");
+  };
+  sync();
+  window.addEventListener("hashchange", sync);
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  startRandomSlideshow();
+  initAboutPopupA11y();
+});
