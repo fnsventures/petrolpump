@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v25";
+const CACHE_VERSION = "v53";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -21,6 +21,7 @@ const STATIC_ASSETS = [
   "/expenses.html",
   "/day-closing.html",
   "/attendance.html",
+  "/staff.html",
   "/sales-daily.html",
   "/analysis.html",
   "/reports.html",
@@ -30,6 +31,7 @@ const STATIC_ASSETS = [
   "/about.html",
   "/css/base.css",
   "/css/app.css",
+  "/css/staff-id-print.css",
   "/css/landing.css",
   "/css/login.css",
   "/assets/bpcl-logo.png",
@@ -51,6 +53,7 @@ const STATIC_ASSETS = [
   "/js/expenses.js",
   "/js/day-closing.js",
   "/js/attendance.js",
+  "/js/staff.js",
   "/js/sales-daily.js",
   "/js/analysis.js",
   "/js/reports.js",
@@ -156,8 +159,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Credit data must always be fresh - skip cache for credit_customers
-  if (isApiRequest(url) && isCreditApiRequest(url)) {
+  // Sensitive / financial data must always be fresh — never cache
+  if (isApiRequest(url) && isNoCacheApiRequest(url)) {
     event.respondWith(fetch(request));
     return;
   }
@@ -191,11 +194,22 @@ function isApiRequest(url) {
   return API_PATTERNS.some((pattern) => pattern.test(url.pathname));
 }
 
-/**
- * Check if request is for credit_customers (open credit) - never cache so dashboard stays current
- */
-function isCreditApiRequest(url) {
-  return url.pathname.includes("credit_customers") || (url.searchParams && url.searchParams.get("table") === "credit_customers");
+/** API paths that must never be cached (PII, credit, staff, auth-related). */
+function isNoCacheApiRequest(url) {
+  const path = url.pathname;
+  const table = url.searchParams?.get("table") ?? "";
+  const noCacheTables = [
+    "credit_customers",
+    "credit_entries",
+    "credit_payments",
+    "employees",
+    "users",
+    "employee_attendance",
+    "salary_payments",
+  ];
+  if (noCacheTables.some((t) => path.includes(t) || table === t)) return true;
+  if (path.includes("/rpc/")) return true;
+  return false;
 }
 
 /**
@@ -217,6 +231,25 @@ function isHtmlPage(url) {
  * Network-first strategy - try network, fall back to cache
  * Best for API requests where fresh data is preferred
  */
+function isApiCacheFresh(response) {
+  const cachedAt = response.headers.get("sw-cached-at");
+  if (!cachedAt) return true;
+  const age = Date.now() - Number(cachedAt);
+  return Number.isFinite(age) && age < CACHE_TTL.api;
+}
+
+async function putApiCacheEntry(cache, request, response) {
+  const headers = new Headers(response.headers);
+  headers.set("sw-cached-at", String(Date.now()));
+  const body = await response.clone().blob();
+  const stamped = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+  await cache.put(request, stamped);
+}
+
 async function networkFirstStrategy(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
@@ -224,8 +257,7 @@ async function networkFirstStrategy(request, cacheName) {
     // Only cache successful responses
     if (networkResponse.ok) {
       const cache = await caches.open(cacheName);
-      // Clone response before caching
-      cache.put(request, networkResponse.clone());
+      await putApiCacheEntry(cache, request, networkResponse);
     }
 
     return networkResponse;
@@ -233,7 +265,7 @@ async function networkFirstStrategy(request, cacheName) {
     console.log("[SW] Network failed, trying cache:", request.url);
     const cachedResponse = await caches.match(request);
 
-    if (cachedResponse) {
+    if (cachedResponse && isApiCacheFresh(cachedResponse)) {
       return cachedResponse;
     }
 
@@ -402,7 +434,7 @@ async function getOfflineFallback() {
       margin-bottom: 1.5rem;
     }
     button {
-      background: #2563eb;
+      background: #0070c0;
       color: white;
       border: none;
       padding: 0.75rem 1.5rem;
@@ -411,7 +443,7 @@ async function getOfflineFallback() {
       font-size: 1rem;
     }
     button:hover {
-      background: #1d4ed8;
+      background: #005a9c;
     }
   </style>
 </head>

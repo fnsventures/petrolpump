@@ -169,12 +169,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let attendanceByDate = new Map();
 
   async function loadStaffMembers() {
-    const { data, error } = await supabaseClient
-      .from("employees")
-      .select("id, name, role_display, display_order")
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
+    const { data, error } = await supabaseClient.rpc("list_employees_roster");
 
     if (error) {
       AppError.report(error, { context: "loadStaffMembers" });
@@ -217,7 +212,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!staffList.length) {
       attendanceBody.innerHTML =
-        '<tr><td colspan="5" class="muted">Add staff in <a href="settings.html#hr">Settings → Manage staff (HR)</a> first (admin).</td></tr>';
+        '<tr><td colspan="5" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first (admin).</td></tr>';
       if (attendanceSummary) attendanceSummary.textContent = "";
       return;
     }
@@ -417,7 +412,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!staffList.length) {
       if (historyMatrixSummary) historyMatrixSummary.textContent = "";
       historyMatrixWrap.innerHTML =
-        '<p class="muted att-matrix-placeholder">Add staff in <a href="settings.html#hr">Settings → Manage staff (HR)</a> first (admin).</p>';
+        '<p class="muted att-matrix-placeholder">Add staff in <a href="staff.html">HR → Staff</a> first (admin).</p>';
       return;
     }
 

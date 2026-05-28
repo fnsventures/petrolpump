@@ -98,6 +98,67 @@ function formatDisplayDate(dateStr) {
 }
 
 /**
+ * Single letter for avatar fallback (first letter of name or email local part).
+ * @param {string|null|undefined} nameOrEmail
+ * @returns {string}
+ */
+function getAvatarInitial(nameOrEmail) {
+  const raw = String(nameOrEmail ?? "").trim();
+  if (!raw) return "?";
+
+  if (raw.includes("@")) {
+    const local = raw.split("@")[0] ?? "";
+    const letter = (local.replace(/[^a-zA-Z0-9]/g, "").charAt(0) || local.charAt(0) || "?");
+    return letter.toUpperCase();
+  }
+
+  const parts = raw.split(/\s+/).filter(Boolean);
+  const letter = parts[0]?.[0] || raw[0] || "?";
+  return letter.toUpperCase();
+}
+
+/**
+ * Two-letter initials for avatar chips (name or email).
+ * @param {string|null|undefined} nameOrEmail
+ * @returns {string}
+ */
+function getAvatarInitials(nameOrEmail) {
+  const raw = String(nameOrEmail ?? "").trim();
+  if (!raw) return "";
+
+  if (raw.includes("@")) {
+    const local = raw.split("@")[0] ?? "";
+    const parts = local.replace(/[._+-]+/g, " ").split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    const letters = local.replace(/[^a-zA-Z0-9]/g, "");
+    return (letters.slice(0, 2) || local.slice(0, 2)).toUpperCase();
+  }
+
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return raw.slice(0, 2).toUpperCase();
+}
+
+/**
+ * Human-readable label from an email local part (e.g. operator.name → Operator Name).
+ * @param {string|null|undefined} email
+ * @returns {string}
+ */
+function formatEmailLocalLabel(email) {
+  const local = String(email ?? "").trim().split("@")[0] ?? "";
+  if (!local) return "";
+  return local
+    .replace(/[._+-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+/**
  * Normalize product name for comparisons.
  * @param {*} value
  * @returns {string}
@@ -321,6 +382,9 @@ window.throttle = throttle;
 window.toLocalDateString = toLocalDateString;
 window.formatDateInput = formatDateInput;
 window.formatDisplayDate = formatDisplayDate;
+window.getAvatarInitial = getAvatarInitial;
+window.getAvatarInitials = getAvatarInitials;
+window.formatEmailLocalLabel = formatEmailLocalLabel;
 window.normalizeProduct = normalizeProduct;
 window.formatQuantity = formatQuantity;
 window.formatGstLabel = formatGstLabel;

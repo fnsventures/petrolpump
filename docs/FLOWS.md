@@ -6,12 +6,14 @@ This document describes the main **user and data flows** in the Petrol Pump appl
 
 | Flow | Section | Key pages / data |
 |------|---------|-------------------|
-| Auth & roles | §1 | login → users (role) → dashboard |
-| Daily operations | §2 | dsr → credit → expenses → day-closing |
+| Auth & roles | §1 | login → users (role) → dashboard; `check_page_access` |
+| Daily operations | §2 | dsr_petrol/diesel → credit → expenses → day-closing |
 | Credit ledger | §3 | credit_customers, credit_entries, credit_payments |
-| DSR & stock | §4 | dsr, dsr_stock (Meter + Stock forms) |
-| HR | §5 | employees, attendance, salary |
-| Admin | §6 | settings, analysis, audit_log |
+| DSR & stock | §4 | dsr_petrol, dsr_diesel, dsr_stock view |
+| Billing | §5 | products, invoices, save_invoice |
+| Reports | §6 | reports.html (admin); DSR, GST, trading/P&L |
+| HR | §7 | employees, attendance, salary |
+| Admin & config | §8 | pump_settings, settings, analysis, audit_log |
 
 ---
 
@@ -22,13 +24,18 @@ User opens app (index.html / login.html)
     → Enters email + password
     → Supabase Auth signs in
     → auth.js: fetch role from public.users (by email)
-    → Role cached (e.g. AppCache), stored in session
+    → Role cached (AppCache), stored in session
     → Redirect: admin/supervisor → dashboard.html
-    → requireAuth() on every protected page: redirect to login if no session
-    → Navigation: admin sees Analysis + Settings; supervisor does not
+    → requireAuth() on protected pages; optional pageName → check_page_access RPC
+    → Navigation: admin sees Analysis, Reports, Settings; supervisor sees ops + billing only
 ```
 
-**Important:** All data access is enforced by RLS in the database. Hiding links is for UX only.
+**Important:** All data access is enforced by RLS in the database. Hiding links and `check_page_access` are for UX and defense-in-depth.
+
+| Page | `check_page_access` |
+|------|---------------------|
+| settings, analysis, reports | admin only |
+| dashboard, dsr, credit, expenses, day-closing, sales-daily, attendance, salary, billing | admin or supervisor |
 
 ---
 
@@ -38,30 +45,31 @@ A typical daily sequence:
 
 ```
 1. Meter Reading (dsr.html)
-   → Enter/update DSR for today: nozzle readings, total_sales, testing, dip, stock, receipts, rates
-   → Optionally fill Stock form → dsr_stock (opening/closing, dip_stock, variation)
+   → Upsert dsr_petrol and/or dsr_diesel for today
+   → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
+   → dsr_stock view recalculates opening/closing/variation automatically
 
 2. Credit (credit.html)
    → Add credit sale → credit_entries (transaction_date = today)
-   → Record payment from customer → credit_payments (FIFO allocation via record_credit_payment)
+   → Record payment → record_credit_payment (FIFO allocation)
 
 3. Expenses (expenses.html)
    → Add expenses for the day → expenses
 
 4. Day closing (day-closing.html)
-   → Call get_day_closing_breakdown(date) → get total_sale, collection, short_previous, credit_today, expenses_today
+   → get_day_closing_breakdown(date) or compute_day_closing_components
    → Enter night_cash, phone_pay, remarks
-   → save_day_closing(...) → computes short_today, stores full snapshot, generates closing_reference (e.g. DC-2026-00001)
+   → save_day_closing(...) → short_today, snapshot, closing_reference
    → short_today becomes next day’s short_previous
 ```
 
 **Data dependencies:**
 
-- **Total sale:** From `dsr` (petrol + diesel net sale × rate).
+- **Total sale:** From `dsr_petrol` / `dsr_diesel` (net litres × rate).
 - **Collection:** Sum of `credit_payments.amount` for that date.
-- **Credit today:** Sum of `credit_entries.amount` for `transaction_date = date` plus legacy `credit_customers.amount_due` where `date = date` and no entries.
+- **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
 - **Expenses today:** Sum of `expenses.amount` for that date.
-- **Short previous:** `day_closing.short_today` of the previous date.
+- **Short previous:** Previous `day_closing.short_today`.
 
 ---
 
@@ -69,74 +77,117 @@ A typical daily sequence:
 
 ```
 Create / identify customer
-   → credit_customers (customer_name, vehicle_no, etc.)
-   → If new sale: add_credit_entry(...) or insert credit_entries
+   → credit_customers
+   → add_credit_entry(...) or insert credit_entries
    → Trigger updates credit_customers.amount_due
+
+Customer detail (credit.html#…)
+   → Balance hero + period filter (this month, last 30 days, custom)
+   → get_customer_credit_detail_as_of(name, date) for summary and line lists
 
 Receive payment
    → record_credit_payment(customer_id, date, amount, note, payment_mode)
-   → RPC allocates amount to credit_entries (FIFO by transaction_date)
-   → Inserts credit_payments
-   → Trigger + explicit update keeps credit_customers.amount_due and last_payment correct
+   → FIFO allocation to credit_entries; insert credit_payments
 ```
 
-- **Ledger view:** `get_credit_ledger_aggregated()` — one row per customer (by name), with total due.
-- **Overdue / as-of:** `get_outstanding_credit_list_as_of(date)`, `get_customer_credit_summary_as_of(name, date)`, `get_customer_credit_breakdown_as_of(name, date)` or `get_customer_credit_detail_as_of(name, date)`.
+- **Ledger view:** `get_credit_ledger_aggregated()`.
+- **Overdue:** `get_outstanding_credit_list_as_of(date)` on credit-overdue / outstanding list.
+- **Legacy URL:** `credit-customer.html` redirects to `credit.html` with the same query/hash.
 
 ---
 
 ## 4. DSR and stock flow
 
-- **Meter form** → `dsr`: one row per (date, product). Contains nozzle readings, total_sales, testing, dip_reading, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre (admin).
-- **Stock form** (same page) → `dsr_stock`: optional row per (date, product) with opening_stock, receipts, total_stock, sale_from_meter, testing, net_sale, closing_stock, dip_stock, variation.
-- **Dashboard / sales-daily:** Prefer `dsr_stock` when present (dip_stock, variation); else fall back to `dsr`.
-- **Receipts:** If `dsr.receipts = 0`, admin can run `sync_dsr_receipts_from_stock(start_date, end_date)` to copy from `dsr_stock` into `dsr`.
+- **Meter form** → `dsr_petrol` or `dsr_diesel` (one row per date per product).
+- **Stock reconciliation** → read-only `dsr_stock` view (or `get_dsr_stock_range` for date ranges). Dip stock comes from the `stock` column on the meter row.
+- **Union reads** → `dsr` view when code queries “all products”.
+- **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
-See [DSR_TABLES.md](DSR_TABLES.md) for when to use which table.
+See [DSR_TABLES.md](DSR_TABLES.md).
 
 ---
 
-## 5. HR flow (attendance and salary)
+## 5. Billing flow (lube / accessories)
 
 ```
-Employees (settings or dedicated HR)
-   → employees: name, role_display, monthly_salary, display_order, is_active
+Products (admin maintains catalog in DB / future UI)
+   → products: name, HSN, unit, rate, gst_percent
+
+Create invoice (billing.html)
+   → Line items with GST slabs (from AppConfig.GST_SLABS)
+   → save_invoice(date, type, party, …, items jsonb)
+   → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
+
+Reports
+   → GST sales summary/detail reads invoices for outward supply
+```
+
+Supervisors can create invoices; only admins manage the product catalog (RLS).
+
+---
+
+## 6. Reports flow (admin)
+
+```
+Reports (reports.html)
+   → requireAuth({ pageName: 'reports' })
+   → Date range filter (shared dateRangeFilter.js)
+   → Catalog: tank-wise DSR, GST sales/purchase, trading account, P&L
+   → Data from dsr_*, invoices, expenses, pump_settings (purchase VAT %)
+   → Print-friendly layout (no-print chrome)
+```
+
+Analysis (`analysis.html`) remains a separate admin P&L view; Reports consolidates printable registers.
+
+---
+
+## 7. HR flow (attendance and salary)
+
+```
+Employees (Settings → Staff HR, admin only)
+   → employees: name, role_display, monthly_salary, personal fields
+     (aadhar, address, phone, PAN, PF), display_order, is_active
 
 Attendance (attendance.html)
-   → employee_attendance: one row per (employee_id, date); status (present/absent/half_day/leave), optional shift, check_in, check_out
+   → save_employee_attendance_batch(date, jsonb) or per-row upsert
+   → status: present | absent | half_day | leave; optional shift, check_in/out
 
 Salary (salary.html)
-   → salary_payments: installments (employee_id, date, amount, note)
-   → One employee can have multiple payments across dates (e.g. partial salary)
+   → salary_payments: installments per employee_id
 ```
 
----
-
-## 6. Admin-only flows
-
-- **Settings (settings.html):** Manage `users` (upsert_staff, delete_staff), expense_categories, employees. Admin-only by RLS and UI.
-- **Analysis (analysis.html):** P&L and reporting; may use DSR buying price, receipts, sales. Admin-only.
-- **Dashboard buying price:** Admin can set `buying_price_per_litre` on DSR rows (via `update_dsr_buying_price` RPC).
-- **Audit log:** Only admins can read `audit_log`; writes happen only via triggers.
+Supervisors can record attendance and salary payments; **employee master data** is admin-only (RLS).
 
 ---
 
-## 7. Page → data mapping (quick reference)
+## 8. Admin-only flows
+
+- **Settings (settings.html):** Sections — station & branding, billing defaults, pumps & tanks, users, staff HR, attendance shifts, alerts, expense categories, access notes. Persists to `pump_settings.config` (and `users` / `employees` / `expense_categories` tables).
+- **Analysis (analysis.html):** P&L; uses DSR buying price, expenses, credit.
+- **Reports (reports.html):** See §6.
+- **Dashboard P&L section:** Admin-only panel; buying price via `update_dsr_buying_price`.
+- **Audit log:** Admins read `audit_log`; writes via triggers only.
+
+---
+
+## 9. Page → data mapping (quick reference)
 
 | Page | Primary tables / RPCs |
 |------|------------------------|
-| Login | auth.users (Supabase), public.users (role) |
-| Dashboard | dsr, dsr_stock, day_closing, get_day_closing_breakdown, update_dsr_buying_price |
-| Meter Reading (DSR) | dsr, dsr_stock |
-| DSR (sales-daily) | dsr, dsr_stock |
-| Credit | credit_customers, credit_entries, credit_payments, add_credit_entry, record_credit_payment, get_credit_ledger_aggregated |
-| Overdue | get_outstanding_credit_list_as_of, get_customer_credit_detail_as_of (or summary + breakdown) |
+| Login | Supabase Auth, public.users (role) |
+| Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, pump_settings, get_day_closing_breakdown, update_dsr_buying_price |
+| Meter Reading (DSR) | dsr_petrol, dsr_diesel |
+| DSR (sales-daily) | dsr view, dsr_stock, get_dsr_stock_range |
+| Credit | credit_*, add_credit_entry, record_credit_payment, get_customer_credit_detail_as_of |
+| Overdue | get_outstanding_credit_list_as_of |
+| Billing | products, invoices, save_invoice |
 | Expenses | expenses, expense_categories |
 | Day closing | day_closing, get_day_closing_breakdown, save_day_closing |
-| Attendance | employee_attendance, employees |
+| Attendance | employee_attendance, employees, save_employee_attendance_batch |
 | Salary | salary_payments, employees |
-| Analysis | dsr, dsr_stock, expenses, day_closing, credit_* |
-| Settings | users, expense_categories, employees (upsert_staff, delete_staff) |
+| Reports | dsr_*, invoices, expenses, pump_settings (admin) |
+| Analysis | dsr_*, expenses, day_closing, credit_* (admin) |
+| Settings | pump_settings, users, employees, expense_categories, upsert_staff, delete_staff (admin) |
 
 ---
 
@@ -146,5 +197,5 @@ Salary (salary.html)
 |----------|-------------|
 | [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment |
 | [Data Tables](DATA_TABLES.md) | Table reference and RLS |
-| [DSR Tables](DSR_TABLES.md) | DSR vs dsr_stock |
+| [DSR Tables](DSR_TABLES.md) | DSR tables and computed stock |
 | [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |

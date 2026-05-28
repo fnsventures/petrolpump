@@ -25,7 +25,7 @@
     <script defer src="js/auth.js"></script>
     <script defer src="js/dashboard.js"></script>
   </head>
-  <body>
+  <body class="dashboard-page">
     <header class="topbar">
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
@@ -55,6 +55,7 @@
           <div class="nav-group" role="menu">
             <a href="attendance.html">Attendance</a>
             <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -71,16 +72,26 @@
 
     <main class="settings-layout dashboard-page-layout">
       <nav class="settings-nav card no-print" aria-label="Dashboard sections">
-        <p class="settings-nav-title">Dashboard</p>
+        <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="snapshot">Daily snapshot</button>
         <button type="button" class="settings-nav-item" data-section="dsr">DSR summary</button>
         <button type="button" class="settings-nav-item" data-section="pl" data-role="admin-only" style="display:none">Profit &amp; loss</button>
         <button type="button" class="settings-nav-item" data-section="notifications">Notifications</button>
       </nav>
-      <div class="settings-panels">
-      <header class="dashboard-welcome-strip no-print" aria-label="Welcome">
-        <span class="dashboard-welcome-text">Welcome back, <span id="operator-name" class="dashboard-operator-name">Loading…</span> <span id="operator-role" class="dashboard-operator-role"></span></span>
-      </header>
+      <div class="settings-panels dashboard-primary">
+        <header class="dashboard-primary-head no-print" aria-label="Welcome">
+          <div class="dashboard-primary-head-inner">
+            <h1 class="dashboard-page-title">Dashboard</h1>
+            <p class="dashboard-page-greeting">
+              Welcome back, <span id="operator-name" class="dashboard-operator-name">Loading…</span>
+              <span id="operator-role" class="dashboard-operator-role"></span>
+            </p>
+            <p class="dashboard-page-meta">
+              <span id="dashboard-hero-date" class="dashboard-hero-date">—</span>
+              <span id="dashboard-hero-badge" class="dashboard-hero-badge hidden">Today</span>
+            </p>
+          </div>
+        </header>
 
       <section class="settings-panel card dashboard-card loading is-visible" id="snapshot-card" data-panel="snapshot">
         <div class="card-head snapshot-head">
@@ -95,25 +106,40 @@
 
         <div class="dashboard-snapshot-grid grid">
           <a id="sales-daily-link" class="card-link" href="sales-daily.html">
-            <article class="card highlight-card clickable-card">
-              <h3>Total Sale</h3>
+            <article class="card highlight-card clickable-card dashboard-metric-card dashboard-metric-card--sales">
+              <div class="dashboard-metric-card-head">
+                <h3>Total sale</h3>
+                <span class="dashboard-metric-pill" id="today-date"></span>
+              </div>
               <div class="stat-grid">
                 <article class="stat-tile">
                   <h4>Quantity (L)</h4>
                   <p class="stat" id="today-total">&#8212;</p>
                 </article>
                 <article class="stat-tile">
-                  <h4>Price (₹)</h4>
+                  <h4>Value (₹)</h4>
                   <p class="stat stat-sub" id="today-total-rupees">&#8212;</p>
                 </article>
               </div>
-              <small id="today-date" class="muted"></small>
+              <div class="dashboard-fuel-split" aria-label="Volume by product">
+                <span class="dashboard-fuel-chip dashboard-fuel-chip--petrol">
+                  <span class="dashboard-fuel-chip-label">MS</span>
+                  <span id="today-petrol-liters" class="dashboard-fuel-chip-value">—</span>
+                </span>
+                <span class="dashboard-fuel-chip dashboard-fuel-chip--diesel">
+                  <span class="dashboard-fuel-chip-label">HSD</span>
+                  <span id="today-diesel-liters" class="dashboard-fuel-chip-value">—</span>
+                </span>
+              </div>
             </article>
           </a>
           <a class="card-link" href="credit.html#outstanding">
-            <article class="card highlight-card clickable-card">
-              <h3>Open credit (outstanding)</h3>
-              <p class="stat" id="credit-total">&#8212;</p>
+            <article class="card highlight-card clickable-card dashboard-metric-card dashboard-metric-card--credit">
+              <div class="dashboard-metric-card-head">
+                <h3>Open credit</h3>
+                <span class="dashboard-metric-pill dashboard-metric-pill--muted">Outstanding</span>
+              </div>
+              <p class="stat dashboard-metric-hero-stat" id="credit-total">&#8212;</p>
               <small class="muted">Total due across customers as of selected date</small>
             </article>
           </a>
@@ -205,7 +231,7 @@
               <dd id="dsr-summary-expense">—</dd>
             </div>
             <div class="dsr-summary-row">
-              <dt>New credit in period (₹)</dt>
+              <dt>Unsettled credit in period (₹)</dt>
               <dd id="dsr-summary-credit">—</dd>
             </div>
             <div class="dsr-summary-row dsr-summary-inhand">
@@ -281,38 +307,10 @@
         </div>
       </section>
 
-        <section class="settings-panel card no-print" data-panel="notifications" hidden aria-label="Notifications and quick stats">
+        <section class="settings-panel card no-print" data-panel="notifications" hidden aria-label="Notifications and alerts">
           <h2 class="dashboard-sidebar-title">Notifications</h2>
           <div class="dashboard-sidebar-inner">
-            <div class="notification-block notification-today-price">
-              <h3 class="notification-block-title">Today&apos;s price</h3>
-              <div class="notification-rate-fields">
-                <div class="form-field">
-                  <label for="snapshot-petrol-rate">Petrol (₹/L)</label>
-                  <input id="snapshot-petrol-rate" type="number" inputmode="decimal" step="0.01" min="0" placeholder="—" readonly aria-label="Petrol rate" />
-                </div>
-                <div class="form-field">
-                  <label for="snapshot-diesel-rate">Diesel (₹/L)</label>
-                  <input id="snapshot-diesel-rate" type="number" inputmode="decimal" step="0.01" min="0" placeholder="—" readonly aria-label="Diesel rate" />
-                </div>
-              </div>
-            </div>
-            <div class="dashboard-status-bar no-print hidden" id="dashboard-status-bar">
-              <div id="at-a-glance" class="at-a-glance at-a-glance-sidebar hidden">
-                <div class="at-a-glance-item">
-                  <span class="label">Today's sale</span>
-                  <span class="value" id="glance-sale">—</span>
-                </div>
-                <div class="at-a-glance-item">
-                  <span class="label">Open credit</span>
-                  <span class="value" id="glance-credit">—</span>
-                </div>
-                <div class="at-a-glance-item">
-                  <span class="label">Net cash</span>
-                  <span class="value" id="glance-cash">—</span>
-                </div>
-              </div>
-            </div>
+            <p class="dashboard-notifications-hint muted">Fuel rates and dip stock for the snapshot date are in the At a glance panel.</p>
             <div id="day-closing-block" class="day-closing-block hidden" aria-live="polite">
               <div id="day-closing-banners"></div>
             </div>
@@ -333,6 +331,115 @@
           </div>
         </section>
       </div>
+
+      <aside class="dashboard-context-rail card no-print" aria-label="Fuels at a glance">
+        <p class="dashboard-context-rail-title">At a glance</p>
+        <p class="dashboard-context-rail-hint muted">Rates &amp; dip stock for the snapshot date</p>
+
+        <div class="dashboard-context-rates" aria-label="Selling rates">
+          <article class="fuel-rate-card fuel-rate-card--petrol fuel-rate-card--compact" aria-labelledby="hero-petrol-label">
+            <div class="fuel-rate-card-head">
+              <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+              <span id="hero-petrol-label" class="fuel-rate-label">Petrol</span>
+            </div>
+            <p class="fuel-rate-value-wrap">
+              <span class="fuel-rate-currency">₹</span>
+              <span class="fuel-rate-value" id="hero-petrol-rate">—</span>
+            </p>
+            <span class="fuel-rate-unit">per litre</span>
+            <a href="dsr.html" class="fuel-rate-cta hidden" id="hero-petrol-cta">Enter rate</a>
+          </article>
+          <article class="fuel-rate-card fuel-rate-card--diesel fuel-rate-card--compact" aria-labelledby="hero-diesel-label">
+            <div class="fuel-rate-card-head">
+              <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+              <span id="hero-diesel-label" class="fuel-rate-label">Diesel</span>
+            </div>
+            <p class="fuel-rate-value-wrap">
+              <span class="fuel-rate-currency">₹</span>
+              <span class="fuel-rate-value" id="hero-diesel-rate">—</span>
+            </p>
+            <span class="fuel-rate-unit">per litre</span>
+            <a href="dsr.html" class="fuel-rate-cta hidden" id="hero-diesel-cta">Enter rate</a>
+          </article>
+        </div>
+
+        <div class="dashboard-tank-row dashboard-tank-row--compact" aria-label="Dip stock">
+          <article class="fuel-tank fuel-tank--petrol fuel-tank--compact" id="hero-petrol-tank" aria-labelledby="hero-petrol-tank-label">
+            <div
+              class="fuel-tank-visual"
+              role="meter"
+              aria-labelledby="hero-petrol-tank-label"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="hero-petrol-tank-meter"
+            >
+              <div class="fuel-tank-shell" id="hero-petrol-tank-shell">
+                <div class="fuel-tank-cap" aria-hidden="true"></div>
+                <div class="fuel-tank-cylinder">
+                  <ul class="fuel-tank-scale" aria-hidden="true">
+                    <li></li>
+                    <li></li>
+                    <li></li>
+                    <li></li>
+                  </ul>
+                  <div class="fuel-tank-fill" id="hero-petrol-tank-fill">
+                    <div class="fuel-tank-surface" aria-hidden="true">
+                      <span class="fuel-tank-wave"></span>
+                      <span class="fuel-tank-wave fuel-tank-wave--delay"></span>
+                    </div>
+                  </div>
+                  <div class="fuel-tank-glass" aria-hidden="true"></div>
+                  <span class="fuel-tank-level-badge" id="hero-petrol-tank-badge" aria-hidden="true">—</span>
+                </div>
+                <div class="fuel-tank-base" aria-hidden="true"></div>
+              </div>
+            </div>
+            <div class="fuel-tank-meta">
+              <span id="hero-petrol-tank-label" class="fuel-tank-label">MS dip</span>
+              <span class="fuel-tank-value" id="hero-petrol-stock">—</span>
+              <span class="fuel-tank-pct" id="hero-petrol-stock-pct"></span>
+            </div>
+          </article>
+          <article class="fuel-tank fuel-tank--diesel fuel-tank--compact" id="hero-diesel-tank" aria-labelledby="hero-diesel-tank-label">
+            <div
+              class="fuel-tank-visual"
+              role="meter"
+              aria-labelledby="hero-diesel-tank-label"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              id="hero-diesel-tank-meter"
+            >
+              <div class="fuel-tank-shell" id="hero-diesel-tank-shell">
+                <div class="fuel-tank-cap" aria-hidden="true"></div>
+                <div class="fuel-tank-cylinder">
+                  <ul class="fuel-tank-scale" aria-hidden="true">
+                    <li></li>
+                    <li></li>
+                    <li></li>
+                    <li></li>
+                  </ul>
+                  <div class="fuel-tank-fill" id="hero-diesel-tank-fill">
+                    <div class="fuel-tank-surface" aria-hidden="true">
+                      <span class="fuel-tank-wave"></span>
+                      <span class="fuel-tank-wave fuel-tank-wave--delay"></span>
+                    </div>
+                  </div>
+                  <div class="fuel-tank-glass" aria-hidden="true"></div>
+                  <span class="fuel-tank-level-badge" id="hero-diesel-tank-badge" aria-hidden="true">—</span>
+                </div>
+                <div class="fuel-tank-base" aria-hidden="true"></div>
+              </div>
+            </div>
+            <div class="fuel-tank-meta">
+              <span id="hero-diesel-tank-label" class="fuel-tank-label">HSD dip</span>
+              <span class="fuel-tank-value" id="hero-diesel-stock">—</span>
+              <span class="fuel-tank-pct" id="hero-diesel-stock-pct"></span>
+            </div>
+          </article>
+        </div>
+      </aside>
     </main>
 
     <footer class="app-footer">

@@ -17,22 +17,21 @@ create extension if not exists "uuid-ossp";
 -- ROLE HELPER FUNCTIONS (Security Definer - bypasses RLS for internal checks)
 -- ============================================================================
 
--- Get the current user's role from users table or JWT metadata
--- Returns 'admin', 'supervisor', or null if not found
+-- Get the current user's role from public.users only (no JWT metadata fallback).
+-- Returns 'admin', 'supervisor', or null if not provisioned.
 create or replace function public.get_user_role()
 returns text
 language sql
 security definer
 stable
 as $$
-  select coalesce(
-    (select role from public.users where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email')) limit 1),
-    (auth.jwt() -> 'user_metadata' ->> 'role'),
-    (auth.jwt() -> 'app_metadata' ->> 'role')
-  );
+  select role
+  from public.users
+  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'))
+  limit 1;
 $$;
 
-comment on function public.get_user_role() is 'Returns the role of the current authenticated user (admin/supervisor/null).';
+comment on function public.get_user_role() is 'Returns admin/supervisor from public.users only. Null if not provisioned.';
 
 -- Helper function to check if current user is admin
 -- This centralizes the admin check logic and improves performance
@@ -196,6 +195,7 @@ begin
   -- Define page access rules
   v_allowed := case p_page
     when 'settings' then v_role = 'admin'
+    when 'staff' then v_role = 'admin'
     when 'analysis' then v_role = 'admin'
     when 'reports' then v_role = 'admin'
     when 'dashboard' then v_role in ('admin', 'supervisor')
@@ -868,6 +868,7 @@ create table if not exists public.users (
   email text not null unique,
   role text not null check (role in ('admin', 'supervisor')),
   display_name text check (display_name is null or (char_length(trim(display_name)) <= 120)),
+  avatar_url text,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -875,6 +876,40 @@ create index if not exists users_email_idx on public.users (email);
 
 comment on table public.users is 'App users (login / operator roles). Display name shown in UI.';
 comment on column public.users.display_name is 'Name shown in the app (e.g. welcome message). Optional; falls back to email if empty.';
+comment on column public.users.avatar_url is 'Public URL of operator profile photo (Supabase Storage user-avatars bucket).';
+
+create or replace function public.my_avatar_storage_folder()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select lower(regexp_replace(trim(coalesce(auth.jwt() ->> 'email', '')), '[^a-z0-9._-]', '_', 'g'));
+$$;
+
+grant execute on function public.my_avatar_storage_folder() to authenticated;
+
+create or replace function public.update_my_avatar(p_avatar_url text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.jwt() ->> 'email' is null or trim(auth.jwt() ->> 'email') = '' then
+    raise exception 'Not authenticated';
+  end if;
+  update public.users
+  set avatar_url = nullif(trim(p_avatar_url), '')
+  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'));
+  if not found then
+    raise exception 'User not provisioned';
+  end if;
+end;
+$$;
+
+grant execute on function public.update_my_avatar(text) to authenticated;
 
 alter table public.users enable row level security;
 
@@ -901,6 +936,19 @@ create table if not exists public.employees (
   name text not null check (char_length(trim(name)) > 0 and char_length(name) <= 120),
   role_display text check (char_length(role_display) <= 60),
   monthly_salary numeric(14,2) not null default 0 check (monthly_salary >= 0),
+  aadhar_number text check (aadhar_number is null or aadhar_number ~ '^[0-9]{12}$'),
+  address text check (address is null or char_length(trim(address)) <= 500),
+  phone_number text check (phone_number is null or phone_number ~ '^[0-9]{10}$'),
+  pan_number text check (pan_number is null or pan_number ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'),
+  pf_number text check (pf_number is null or (char_length(trim(pf_number)) > 0 and char_length(pf_number) <= 30)),
+  blood_group text check (
+    blood_group is null
+    or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')
+  ),
+  photo_url text,
+  date_of_birth date,
+  id_valid_from date,
+  id_valid_to date,
   display_order smallint not null default 0,
   is_active boolean not null default true,
   created_by uuid references auth.users (id) on delete set null,
@@ -910,12 +958,61 @@ create table if not exists public.employees (
 create index if not exists employees_display_order_idx on public.employees (display_order, name);
 
 comment on table public.employees is 'Pump employees who receive salary (e.g. supervisor + operators). Used for salary and attendance.';
+comment on column public.employees.photo_url is 'Public URL of staff photo for ID card (staff-photos bucket).';
+comment on column public.employees.date_of_birth is 'Date of birth (shown on staff ID card).';
+comment on column public.employees.id_valid_from is 'ID card valid from (back of card).';
+comment on column public.employees.id_valid_to is 'ID card valid until (back of card).';
+
+create or replace function public.set_employee_photo(p_employee_id uuid, p_photo_url text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin only';
+  end if;
+  update public.employees
+  set photo_url = nullif(trim(p_photo_url), '')
+  where id = p_employee_id and is_active = true;
+  if not found then
+    raise exception 'Employee not found';
+  end if;
+end;
+$$;
+
+grant execute on function public.set_employee_photo(uuid, text) to authenticated;
+
+create or replace function public.list_employees_roster()
+returns table (
+  id uuid,
+  name text,
+  role_display text,
+  monthly_salary numeric,
+  display_order smallint
+)
+language sql
+security definer
+stable
+as $$
+  select e.id, e.name, e.role_display, e.monthly_salary, e.display_order
+  from public.employees e
+  where e.is_active = true
+  order by e.display_order, e.name;
+$$;
+
+comment on function public.list_employees_roster() is
+  'Active employees without PII — for salary and attendance (all authenticated).';
+
+grant execute on function public.list_employees_roster() to authenticated;
 
 alter table public.employees enable row level security;
 
 drop policy if exists "employees_select_authenticated" on public.employees;
-create policy "employees_select_authenticated" on public.employees
-  for select to authenticated using (true);
+drop policy if exists "employees_select_admin" on public.employees;
+create policy "employees_select_admin" on public.employees
+  for select to authenticated using (public.is_admin());
 
 drop policy if exists "employees_insert_own_or_admin" on public.employees;
 drop policy if exists "employees_insert_admin" on public.employees;
@@ -1021,6 +1118,10 @@ declare
   v_row jsonb;
   v_count int := 0;
 begin
+  if not public.is_supervisor_or_admin() then
+    raise exception 'Supervisor or admin access required';
+  end if;
+
   if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
     return jsonb_build_object('saved', 0);
   end if;
@@ -1055,7 +1156,7 @@ end;
 $$;
 
 comment on function public.save_employee_attendance_batch(date, jsonb) is
-  'Upsert attendance rows for one date in a single transaction.';
+  'Upsert attendance rows for one date. Supervisor or admin only.';
 
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 
@@ -1535,6 +1636,9 @@ begin
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
+  if p_transaction_date > current_date then
+    raise exception 'transaction date cannot be in the future';
+  end if;
 
   v_fuel_type := coalesce(nullif(trim(p_fuel_type), ''), 'HSD');
   if v_fuel_type not in ('MS', 'HSD') then
@@ -1576,7 +1680,7 @@ begin
   );
 end;
 $$;
-comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text) is 'Add a credit sale. Transaction date = DSR date. Fuel type and quantity optional (default HSD, 1).';
+comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text) is 'Add a credit sale. Transaction date = DSR date. Fuel type and quantity optional (default HSD, 1). Rejects future dates.';
 
 -- RPC: Record credit payment (FIFO allocation; Settlement Date; payment_mode)
 create or replace function public.record_credit_payment(
@@ -1597,6 +1701,9 @@ declare
 begin
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
+  end if;
+  if p_date > current_date then
+    raise exception 'payment date cannot be in the future';
   end if;
   if p_payment_mode is not null and p_payment_mode not in ('Cash', 'UPI', 'Bank') then
     raise exception 'payment_mode must be Cash, UPI, or Bank';
@@ -1659,7 +1766,7 @@ begin
   );
 end;
 $$;
-comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO by transaction date. Settlement date = p_date.';
+comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Rejects future settlement dates.';
 
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)

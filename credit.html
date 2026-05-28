@@ -55,6 +55,7 @@
           <div class="nav-group" role="menu">
             <a href="attendance.html">Attendance</a>
             <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -235,25 +236,52 @@
         </section>
 
         <section
+          id="customer-balance-hero"
+          class="card customer-balance-hero hidden"
+          aria-label="Customer balance"
+          hidden
+        >
+          <nav class="breadcrumb customer-balance-breadcrumb" aria-label="Breadcrumb">
+            <a href="credit.html">Credit</a>
+            <span aria-hidden="true">/</span>
+            <a href="credit.html#outstanding">Outstanding</a>
+            <span aria-hidden="true">/</span>
+            <span id="breadcrumb-customer">Customer</span>
+          </nav>
+
+          <div class="customer-balance-hero-body">
+            <div class="customer-balance-hero-intro">
+              <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
+              <p id="customer-meta" class="customer-balance-meta muted"></p>
+            </div>
+            <div class="customer-balance-hero-amount" aria-live="polite">
+              <span class="customer-balance-label">Outstanding</span>
+              <strong id="stat-outstanding" class="customer-balance-value">—</strong>
+              <a
+                href="#settle"
+                id="customer-record-payment-cta"
+                class="customer-balance-cta hidden"
+              >Record payment</a>
+            </div>
+          </div>
+        </section>
+
+        <section
           id="customer-period-toolbar"
           class="card customer-filter-card hidden"
-          aria-label="Customer filters"
+          aria-label="Customer period"
           hidden
         >
           <div class="customer-filter-head">
-            <h2 class="customer-filter-title">Date filter</h2>
+            <h2 class="customer-filter-title">Period</h2>
             <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
               Reset to today
             </button>
           </div>
 
-          <p class="muted text-sm customer-filter-intro">
-            One range for Summary balances, Credit taken, and Settlements. &ldquo;Through&rdquo; is the last day included.
-          </p>
-
           <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
             <div class="form-field form-field-inline">
-              <label for="filter-range">Period</label>
+              <label for="filter-range">Range</label>
               <select id="filter-range" aria-describedby="customer-filter-summary">
                 <option value="this-month" selected>This month</option>
                 <option value="last-30-days">Last 30 days</option>
@@ -273,53 +301,37 @@
             </div>
           </form>
 
-          <div id="customer-filter-summary" class="customer-filter-summary" aria-live="polite"></div>
+          <p id="customer-filter-summary" class="customer-filter-summary muted text-sm" aria-live="polite"></p>
 
           <div class="stat-grid stat-grid-inline customer-toolbar-stats">
-            <div class="stat-card">
-              <span class="stat-label">Credit in selected range</span>
+            <div class="stat-card stat-card-compact">
+              <span class="stat-label">Credit in range</span>
               <strong id="stat-period-credit" class="stat-value">—</strong>
             </div>
-            <div class="stat-card">
-              <span class="stat-label">Settled in selected range</span>
+            <div class="stat-card stat-card-compact">
+              <span class="stat-label">Settled in range</span>
               <strong id="stat-period-settled" class="stat-value">—</strong>
             </div>
           </div>
         </section>
 
         <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
-          <nav class="breadcrumb" aria-label="Breadcrumb">
-            <a href="credit.html">Credit</a>
-            <span aria-hidden="true">/</span>
-            <a href="credit.html#outstanding">Outstanding</a>
-            <span aria-hidden="true">/</span>
-            <span id="breadcrumb-customer">Customer</span>
-          </nav>
+          <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
+          <p class="muted text-sm customer-summary-lead">
+            Totals through the selected date. Outstanding above is what they still owe.
+          </p>
 
-          <header class="page-header">
-            <h1 id="customer-title">Loading…</h1>
-            <p id="customer-meta" class="muted"></p>
-          </header>
-
-          <div class="overdue-detail-summary credit-lifetime-summary">
-            <div class="overdue-detail-row overdue-detail-row-block">
-              <div>
-                <span class="overdue-detail-label">Credit taken</span>
-                <p id="customer-credit-when" class="overdue-detail-when muted text-sm"></p>
-              </div>
-              <span id="stat-lifetime-credit" class="overdue-detail-value">—</span>
-            </div>
-            <div class="overdue-detail-row overdue-detail-row-block">
-              <div>
-                <span class="overdue-detail-label">Settlement done</span>
-                <p id="customer-settlement-when" class="overdue-detail-when muted text-sm"></p>
-              </div>
-              <span id="stat-lifetime-settled" class="overdue-detail-value">—</span>
-            </div>
-            <div class="overdue-detail-row overdue-detail-row-remaining">
-              <span class="overdue-detail-label">Remaining</span>
-              <span id="stat-outstanding" class="overdue-detail-value">—</span>
-            </div>
+          <div class="customer-lifetime-stats">
+            <article class="customer-lifetime-stat">
+              <span class="customer-lifetime-stat-label">Credit taken</span>
+              <strong id="stat-lifetime-credit" class="customer-lifetime-stat-value">—</strong>
+              <p id="customer-credit-when" class="customer-lifetime-stat-meta muted text-sm"></p>
+            </article>
+            <article class="customer-lifetime-stat">
+              <span class="customer-lifetime-stat-label">Settlement done</span>
+              <strong id="stat-lifetime-settled" class="customer-lifetime-stat-value">—</strong>
+              <p id="customer-settlement-when" class="customer-lifetime-stat-meta muted text-sm"></p>
+            </article>
           </div>
 
           <h3 class="settings-subheading">All credit taken (through selected date)</h3>

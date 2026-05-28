@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce */
 
 const { getMonthStart, filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -82,10 +82,13 @@ function initListView() {
     transactionDateInput.value = getLocalDateString();
   }
 
-  document.getElementById("credit-search")?.addEventListener("input", (e) => {
-    creditPagination.searchQuery = (e.target.value || "").trim().toLowerCase();
+  const onCreditSearch = debounce((value) => {
+    creditPagination.searchQuery = value;
     creditPagination.offset = 0;
     renderLedgerPage(true);
+  }, 150);
+  document.getElementById("credit-search")?.addEventListener("input", (e) => {
+    onCreditSearch((e.target.value || "").trim().toLowerCase());
   });
 
   if (typeof initPageSections === "function") {
@@ -104,6 +107,7 @@ function initListView() {
 
 function hideCustomerPanels() {
   const ids = [
+    "customer-balance-hero",
     "customer-period-toolbar",
     "customer-panel-summary",
     "settle-section",
@@ -123,10 +127,12 @@ function hideCustomerPanels() {
 }
 
 function setCustomerToolbarVisible(visible) {
-  const toolbar = document.getElementById("customer-period-toolbar");
-  if (!toolbar) return;
-  toolbar.classList.toggle("hidden", !visible);
-  toolbar.hidden = !visible;
+  ["customer-balance-hero", "customer-period-toolbar"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle("hidden", !visible);
+    el.hidden = !visible;
+  });
 }
 
 async function initCustomerView() {
@@ -141,8 +147,10 @@ async function initCustomerView() {
     el.hidden = true;
   });
 
-  document.getElementById("breadcrumb-customer").textContent = customerName;
-  document.getElementById("customer-title").textContent = customerName;
+  const breadcrumbEl = document.getElementById("breadcrumb-customer");
+  const titleEl = document.getElementById("customer-title");
+  if (breadcrumbEl) breadcrumbEl.textContent = customerName;
+  if (titleEl) titleEl.textContent = customerName;
   document.title = `${customerName} · Credit · Bishnupriya Fuels`;
 
   const today = getLocalDateString();
@@ -242,7 +250,7 @@ function updateCustomerFilterSummary(asOfDate, from, to, selection) {
   const el = document.getElementById("customer-filter-summary");
   if (!el) return;
   const activity = describeActivityRange(from, to, selection);
-  el.innerHTML = `<p>Showing <strong>${escapeHtml(activity)}</strong> (through <strong>${formatDisplayDate(asOfDate)}</strong>) on Summary, Credit taken, and Settlements.</p>`;
+  el.textContent = `Showing ${activity} on Summary, Credit taken, and Settlements.`;
 }
 
 function resetCustomerPeriodFilter() {
@@ -330,7 +338,9 @@ async function resolveCustomerIds() {
     const primary = rows.find((r) => Number(r.amount_due) > 0) || rows[0];
     customerId = primary.id;
   } else if (customerId && !customerIds.includes(customerId)) {
-    customerIds.push(customerId);
+    const urlIdValid = rows.some((r) => r.id === customerId);
+    if (urlIdValid) customerIds.push(customerId);
+    else customerId = rows[0]?.id ?? null;
   }
 
   const vehicles = [...new Set(rows.map((r) => r.vehicle_no).filter(Boolean))];
@@ -395,6 +405,15 @@ function applyLifetimeSummary(row) {
   set("stat-lifetime-credit", formatCurrency(creditTaken));
   set("stat-lifetime-settled", formatCurrency(settlementDone));
 
+  const outstandingEl = document.getElementById("stat-outstanding");
+  const heroAmount = outstandingEl?.closest(".customer-balance-hero-amount");
+  if (heroAmount) {
+    heroAmount.classList.toggle("is-cleared", outstanding <= 0);
+  }
+
+  const payCta = document.getElementById("customer-record-payment-cta");
+  if (payCta) payCta.classList.toggle("hidden", outstanding <= 0);
+
   const creditWhen = document.getElementById("customer-credit-when");
   if (creditWhen) {
     if (row) {
@@ -450,7 +469,7 @@ async function loadCustomerDetail() {
       clearStat("stat-period-credit");
       clearStat("stat-period-settled");
       const filterSummary = document.getElementById("customer-filter-summary");
-      if (filterSummary) filterSummary.innerHTML = "";
+      if (filterSummary) filterSummary.textContent = "";
       creditPager?.setEntries([]);
       paymentPager?.setEntries([]);
       if (errorEl) {
@@ -509,8 +528,13 @@ async function loadCustomerDetail() {
 
 async function handleSettle() {
   const msg = document.getElementById("settle-msg");
-  if (msg) msg.textContent = "";
-  if (!customerId) {
+  if (msg) {
+    msg.textContent = "";
+    msg.classList.remove("success");
+  }
+
+  const settleIds = customerIds.length > 0 ? [...customerIds] : customerId ? [customerId] : [];
+  if (settleIds.length === 0) {
     if (msg) msg.textContent = "No customer record to settle.";
     return;
   }
@@ -539,33 +563,69 @@ async function handleSettle() {
   const btn = document.getElementById("settle-btn");
   if (btn) btn.disabled = true;
 
-  const { data, error } = await supabaseClient.rpc("record_credit_payment", {
-    p_credit_customer_id: customerId,
-    p_date: settlementDate,
-    p_amount: amount,
-    p_note: null,
-    p_payment_mode: paymentMode,
-  });
+  let remainingPay = amount;
+
+  for (const id of settleIds) {
+    if (remainingPay <= 0) break;
+
+    const { data: customerRow, error: fetchErr } = await supabaseClient
+      .from("credit_customers")
+      .select("amount_due")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      if (btn) btn.disabled = false;
+      if (msg) msg.textContent = AppError.getUserMessage(fetchErr);
+      AppError.report(fetchErr, { context: "creditCustomerSettleFetch" });
+      return;
+    }
+
+    const due = Number(customerRow?.amount_due ?? 0);
+    if (due <= 0) continue;
+
+    const payAmount = Math.min(remainingPay, due);
+    const { data, error } = await supabaseClient.rpc("record_credit_payment", {
+      p_credit_customer_id: id,
+      p_date: settlementDate,
+      p_amount: payAmount,
+      p_note: null,
+      p_payment_mode: paymentMode,
+    });
+
+    if (error) {
+      if (btn) btn.disabled = false;
+      if (msg) msg.textContent = AppError.getUserMessage(error);
+      AppError.report(error, { context: "creditCustomerSettle", customerId: id });
+      invalidateCreditCaches();
+      await resolveCustomerIds();
+      await loadCustomerDetail();
+      return;
+    }
+
+    remainingPay -= payAmount;
+  }
 
   if (btn) btn.disabled = false;
 
-  if (error) {
-    if (msg) msg.textContent = AppError.getUserMessage(error);
-    AppError.report(error, { context: "creditCustomerSettle" });
+  if (remainingPay >= amount) {
+    if (msg) msg.textContent = "No outstanding balance to apply payment to.";
     return;
   }
 
-  document.getElementById("settle-amount").value = "";
-  const remaining = Number(data?.new_due ?? 0);
-  if (msg) {
-    msg.classList.add("success");
-    msg.textContent =
-      remaining === 0 ? "Fully settled." : `Settled · remaining ${formatCurrency(remaining)}`;
-  }
-
+  const settleAmountInput = document.getElementById("settle-amount");
+  if (settleAmountInput) settleAmountInput.value = "";
   invalidateCreditCaches();
   await resolveCustomerIds();
   await loadCustomerDetail();
+
+  if (msg) {
+    msg.classList.add("success");
+    msg.textContent =
+      customerOutstandingDue === 0
+        ? "Fully settled."
+        : `Settled · remaining ${formatCurrency(customerOutstandingDue)}`;
+  }
 }
 
 function invalidateCreditCaches() {
@@ -593,7 +653,7 @@ async function loadCustomerNames() {
       return;
     }
     const names = [...new Set((data || []).map((r) => (r.customer_name || "").trim()).filter(Boolean))];
-    datalist.innerHTML = '<option value="Temp">';
+    datalist.innerHTML = "";
     names.forEach((name) => {
       const opt = document.createElement("option");
       opt.value = name;
@@ -636,6 +696,16 @@ async function handleCreditSubmit(event) {
       submitBtn.textContent = "Save credit entry";
     }
     AppError.handle(new Error("Customer and amount are required."), { target: errorEl });
+    return;
+  }
+
+  const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
+  if (transactionDate > todayStr) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save credit entry";
+    }
+    AppError.handle(new Error("Credit date cannot be in the future."), { target: errorEl });
     return;
   }
 
@@ -742,7 +812,7 @@ function renderLedgerPage(resetTable) {
 
   if (resetTable) {
     tbody.innerHTML = "";
-    if (creditPagination.searchQuery) creditPagination.offset = 0;
+    creditPagination.offset = 0;
   }
 
   const sliceStart = creditPagination.offset;
