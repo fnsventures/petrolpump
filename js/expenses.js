@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "expenses",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
@@ -175,7 +176,7 @@ function initExpenseFilter() {
  * Initialize pagination controls for expenses table
  */
 function initExpensesPaginationControls() {
-  const tableSection = document.querySelector("section.card:has(#expense-table-body)");
+  const tableSection = document.getElementById("expense-table-body")?.closest("section.card");
   if (!tableSection) return;
 
   // Check if pagination controls already exist

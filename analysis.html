@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Analysis · Bishnupriya Fuels</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M19 5v2h-4V5h4m-6 0v2H9V5h4m-6 0v2H5V5h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4'/></svg>" type="image/svg+xml" />
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
@@ -16,15 +17,15 @@
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/utils.js?v=5"></script>
-    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/dateRangeFilter.js?v=2"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/analysis.js"></script>
+    <script defer src="js/analysis.js?v=3"></script>
   </head>
-  <body>
+  <body class="analysis-page">
     <header class="topbar">
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
@@ -44,7 +45,6 @@
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="credit.html">Credit</a>
-            <a href="credit-overdue.html">Overdue</a>
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
             <a href="billing.html">Billing</a>
@@ -69,162 +69,293 @@
       </nav>
     </header>
 
-    <main class="settings-layout">
-      <nav class="settings-nav card" aria-label="Analysis sections">
-        <p class="settings-nav-title">Analysis</p>
-        <button type="button" class="settings-nav-item is-active" data-section="setup">Date range</button>
-        <button type="button" class="settings-nav-item" data-section="metrics">Metrics</button>
-        <button type="button" class="settings-nav-item" data-section="charts">Charts</button>
-        <button type="button" class="settings-nav-item" data-section="insights">Insights</button>
+    <main class="settings-layout analysis-layout">
+      <nav class="settings-nav card analysis-nav" aria-label="Analysis sections">
+        <p class="settings-nav-title">Intelligence</p>
+        <button type="button" class="settings-nav-item is-active" data-section="setup">
+          <span class="analysis-nav-icon" aria-hidden="true">◷</span> Date range
+        </button>
+        <button type="button" class="settings-nav-item" data-section="metrics">
+          <span class="analysis-nav-icon" aria-hidden="true">◈</span> Metrics
+        </button>
+        <button type="button" class="settings-nav-item" data-section="charts">
+          <span class="analysis-nav-icon" aria-hidden="true">▤</span> Charts
+        </button>
+        <button type="button" class="settings-nav-item" data-section="insights">
+          <span class="analysis-nav-icon" aria-hidden="true">✦</span> Insights
+        </button>
       </nav>
-      <div class="settings-panels">
-        <section class="settings-panel card is-visible analysis-hero" data-panel="setup">
-        <h2>Business insights &amp; growth</h2>
-        <p class="muted">KPIs, trends, and performance metrics. Select a date range to analyze.</p>
-        <div class="card-head snapshot-head margin-top">
-          <div>
-            <h3>Date range</h3>
-            <p id="analysis-date-label" class="muted">Select a range to analyze.</p>
+
+      <div class="settings-panels analysis-panels">
+        <section class="settings-panel card analysis-hero is-visible" data-panel="setup">
+          <div class="analysis-hero-inner">
+            <p class="analysis-eyebrow">Business intelligence</p>
+            <h2>Performance command center</h2>
+            <p class="analysis-hero-desc">KPIs, trends, and growth metrics across your pump operations. Choose a period, run analysis, then open Metrics, Charts, or Insights for results.</p>
           </div>
-          <form id="analysis-filter-form" class="dsr-filter" autocomplete="off">
-            <div class="form-field">
-              <label for="analysis-range">Range</label>
-              <select id="analysis-range">
-                <option value="this-week">This week</option>
-                <option value="this-month" selected>This month</option>
-                <option value="last-3-months">Last 3 months</option>
-                <option value="custom">Custom dates</option>
-              </select>
+          <div class="analysis-filter-card">
+            <div class="analysis-filter-head">
+              <h3>Analysis period</h3>
+              <p id="analysis-date-label" class="analysis-period-label">Select a range to analyze.</p>
             </div>
-            <div id="analysis-custom-range" class="custom-range hidden">
+            <form id="analysis-filter-form" class="analysis-filter-form dsr-filter" autocomplete="off">
               <div class="form-field">
-                <label for="analysis-start">From</label>
-                <input id="analysis-start" type="date" />
+                <label for="analysis-range">Range</label>
+                <select id="analysis-range">
+                  <option value="this-week">This week</option>
+                  <option value="this-month" selected>This month</option>
+                  <option value="last-3-months">Last 3 months</option>
+                  <option value="custom">Custom dates</option>
+                </select>
               </div>
-              <div class="form-field">
-                <label for="analysis-end">To</label>
-                <input id="analysis-end" type="date" />
+              <div id="analysis-custom-range" class="custom-range hidden">
+                <div class="form-field">
+                  <label for="analysis-start">From</label>
+                  <input id="analysis-start" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="analysis-end">To</label>
+                  <input id="analysis-end" type="date" />
+                </div>
               </div>
-            </div>
-            <div class="filter-actions">
-              <button type="submit" id="analysis-apply">Apply</button>
-            </div>
-          </form>
-        </div>
+              <div class="filter-actions">
+                <button type="button" id="analysis-apply" class="analysis-apply-btn">Run analysis</button>
+              </div>
+            </form>
+          </div>
         </section>
 
-        <section class="settings-panel card" data-panel="metrics" hidden>
-        <h2 class="analysis-section-title">Key metrics</h2>
-        <p class="muted analysis-section-desc">Core financials for the selected period.</p>
-        <div class="analysis-kpi-grid analysis-kpi-grid--primary">
-          <article class="card highlight-card stat-tile analysis-kpi">
-            <h3>Total sales</h3>
-            <p class="stat" id="analysis-total-sales">—</p>
-            <small class="muted">Net sale (₹)</small>
-          </article>
-          <article class="card highlight-card stat-tile analysis-kpi">
-            <h3>Total expenses</h3>
-            <p class="stat" id="analysis-total-expenses">—</p>
-            <small class="muted">Logged expenses (₹)</small>
-          </article>
-          <article class="card highlight-card stat-tile analysis-kpi">
-            <h3>Net profit</h3>
-            <p class="stat" id="analysis-profit">—</p>
-            <small class="muted">Sales − expenses</small>
-          </article>
-          <article class="card highlight-card stat-tile analysis-kpi">
-            <h3>Sales growth</h3>
-            <p class="stat" id="analysis-growth">—</p>
-            <small class="muted" id="analysis-growth-note">vs previous period</small>
-          </article>
-        </div>
-      </section>
+        <section class="settings-panel analysis-metrics-panel" data-panel="metrics" hidden>
+          <header class="analysis-panel-head">
+            <h2 class="analysis-section-title">Key metrics</h2>
+            <p class="analysis-section-desc">Core financials for the selected period.</p>
+          </header>
+          <div class="analysis-kpi-grid analysis-kpi-grid--primary">
+            <article class="analysis-kpi analysis-kpi--featured" data-metric="sales">
+              <div class="analysis-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 17l6-6 4 4 8-10"/><path d="M14 5h7v7"/></svg>
+              </div>
+              <div class="analysis-kpi-body">
+                <h3>Total sales</h3>
+                <p class="stat" id="analysis-total-sales">—</p>
+                <small>Net sale (₹)</small>
+              </div>
+            </article>
+            <article class="analysis-kpi analysis-kpi--featured" data-metric="expenses">
+              <div class="analysis-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h10"/></svg>
+              </div>
+              <div class="analysis-kpi-body">
+                <h3>Total expenses</h3>
+                <p class="stat" id="analysis-total-expenses">—</p>
+                <small>Logged expenses (₹)</small>
+              </div>
+            </article>
+            <article class="analysis-kpi analysis-kpi--featured" data-metric="profit">
+              <div class="analysis-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/></svg>
+              </div>
+              <div class="analysis-kpi-body">
+                <h3>Net profit</h3>
+                <p class="stat" id="analysis-profit">—</p>
+                <small>Sales − cost − expenses</small>
+              </div>
+            </article>
+            <article class="analysis-kpi analysis-kpi--featured" data-metric="growth">
+              <div class="analysis-kpi-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+              </div>
+              <div class="analysis-kpi-body">
+                <h3>Sales growth</h3>
+                <p class="stat" id="analysis-growth">—</p>
+                <small id="analysis-growth-note">vs previous period</small>
+              </div>
+            </article>
+          </div>
 
-      <section class="card">
-        <h2 class="analysis-section-title">Performance indicators</h2>
-        <p class="muted analysis-section-desc">Averages, margins, and operational metrics.</p>
-        <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Avg. daily sales</h3>
-            <p class="stat" id="analysis-avg-daily-sales">—</p>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Profit margin</h3>
-            <p class="stat" id="analysis-profit-margin">—</p>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Total volume</h3>
-            <p class="stat" id="analysis-total-volume">—</p>
-            <small class="muted">Petrol + diesel (L)</small>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Expense ratio</h3>
-            <p class="stat" id="analysis-expense-ratio">—</p>
-            <small class="muted">Expenses ÷ sales</small>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Best day</h3>
-            <p class="stat stat-sub" id="analysis-best-day">—</p>
-            <small class="muted" id="analysis-best-day-date">—</small>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Days profitable</h3>
-            <p class="stat" id="analysis-days-profitable">—</p>
-            <small class="muted" id="analysis-days-profitable-note">of period</small>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Petrol share</h3>
-            <p class="stat" id="analysis-petrol-share">—</p>
-            <small class="muted">% of revenue</small>
-          </article>
-          <article class="card stat-tile analysis-kpi analysis-kpi--compact">
-            <h3>Profit growth</h3>
-            <p class="stat" id="analysis-profit-growth">—</p>
-            <small class="muted">vs previous period</small>
-          </article>
-        </div>
+          <header class="analysis-panel-head analysis-panel-head--sub">
+            <h2 class="analysis-section-title">Profitability &amp; costs</h2>
+            <p class="analysis-section-desc">Fuel purchase cost, gross profit, and per-litre economics.</p>
+          </header>
+          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Fuel purchase cost</h3>
+              <p class="stat" id="analysis-fuel-cost">—</p>
+              <small>Cost of fuel sold (₹)</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Gross profit</h3>
+              <p class="stat" id="analysis-gross-profit">—</p>
+              <small>Sales − fuel cost</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Gross margin</h3>
+              <p class="stat" id="analysis-gross-margin">—</p>
+              <small>Before expenses</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Cost ratio</h3>
+              <p class="stat" id="analysis-cost-ratio">—</p>
+              <small>Fuel cost ÷ sales</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Avg. daily profit</h3>
+              <p class="stat" id="analysis-avg-daily-profit">—</p>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Avg. daily expenses</h3>
+              <p class="stat" id="analysis-avg-daily-expenses">—</p>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Revenue per litre</h3>
+              <p class="stat" id="analysis-revenue-per-litre">—</p>
+              <small>Avg. selling yield</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Profit per litre</h3>
+              <p class="stat" id="analysis-profit-per-litre">—</p>
+              <small>Net margin per L</small>
+            </article>
+          </div>
+
+          <header class="analysis-panel-head analysis-panel-head--sub">
+            <h2 class="analysis-section-title">Fuel volume &amp; mix</h2>
+            <p class="analysis-section-desc">Litres sold and revenue split by product.</p>
+          </header>
+          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Total volume</h3>
+              <p class="stat" id="analysis-total-volume">—</p>
+              <small>Petrol + diesel (L)</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Avg. daily volume</h3>
+              <p class="stat" id="analysis-avg-daily-volume">—</p>
+              <small>Litres per day</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Petrol volume</h3>
+              <p class="stat" id="analysis-petrol-volume">—</p>
+              <small>Litres sold</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Diesel volume</h3>
+              <p class="stat" id="analysis-diesel-volume">—</p>
+              <small>Litres sold</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Petrol share</h3>
+              <p class="stat" id="analysis-petrol-share">—</p>
+              <small>% of revenue</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Diesel share</h3>
+              <p class="stat" id="analysis-diesel-share">—</p>
+              <small>% of revenue</small>
+            </article>
+          </div>
+
+          <header class="analysis-panel-head analysis-panel-head--sub">
+            <h2 class="analysis-section-title">Performance &amp; activity</h2>
+            <p class="analysis-section-desc">Daily averages, growth, and trading-day patterns.</p>
+          </header>
+          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Avg. daily sales</h3>
+              <p class="stat" id="analysis-avg-daily-sales">—</p>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Profit margin</h3>
+              <p class="stat" id="analysis-profit-margin">—</p>
+              <small>Net profit ÷ sales</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Expense ratio</h3>
+              <p class="stat" id="analysis-expense-ratio">—</p>
+              <small>Expenses ÷ sales</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Profit growth</h3>
+              <p class="stat" id="analysis-profit-growth">—</p>
+              <small>vs previous period</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Best sales day</h3>
+              <p class="stat stat-sub" id="analysis-best-day">—</p>
+              <small id="analysis-best-day-date">—</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Worst profit day</h3>
+              <p class="stat stat-sub" id="analysis-worst-profit-day">—</p>
+              <small id="analysis-worst-profit-date">—</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Days with sales</h3>
+              <p class="stat" id="analysis-days-with-sales">—</p>
+              <small id="analysis-days-with-sales-note">active days</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Days profitable</h3>
+              <p class="stat" id="analysis-days-profitable">—</p>
+              <small id="analysis-days-profitable-note">of period</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact">
+              <h3>Loss days</h3>
+              <p class="stat" id="analysis-loss-days">—</p>
+              <small>Negative net profit</small>
+            </article>
+          </div>
         </section>
 
-        <section class="settings-panel card" data-panel="charts" hidden>
-        <h2 class="analysis-section-title">Sales trend</h2>
-        <p class="muted analysis-section-desc">Daily net sale (₹) over the selected range.</p>
-        <div class="chart-wrap">
-          <canvas id="chart-sales" aria-label="Sales over time"></canvas>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2 class="analysis-section-title">Revenue by fuel</h2>
-        <p class="muted analysis-section-desc">Daily petrol vs diesel revenue (₹).</p>
-        <div class="chart-wrap">
-          <canvas id="chart-revenue-mix" aria-label="Petrol vs diesel revenue"></canvas>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2 class="analysis-section-title">Profit & expenses</h2>
-        <p class="muted analysis-section-desc">Daily profit and expenses (₹).</p>
-        <div class="chart-wrap">
-          <canvas id="chart-profit" aria-label="Profit and expenses over time"></canvas>
-        </div>
-      </section>
-
-      <section class="card analysis-chart-row">
-        <h2 class="analysis-section-title">Fuel mix (volume)</h2>
-        <p class="muted analysis-section-desc">Petrol vs diesel net sale (L) in the selected range.</p>
-        <div class="chart-wrap chart-wrap--half">
-          <canvas id="chart-fuel-mix" aria-label="Petrol vs diesel volume"></canvas>
-        </div>
+        <section class="settings-panel analysis-charts-panel" data-panel="charts" hidden>
+          <header class="analysis-panel-head">
+            <h2 class="analysis-section-title">Visual analytics</h2>
+            <p class="analysis-section-desc">Trends and fuel mix for the selected range.</p>
+          </header>
+          <div class="analysis-charts-grid">
+            <article class="card analysis-chart-card analysis-chart-card--wide">
+              <h3 class="analysis-chart-title">Sales trend</h3>
+              <p class="analysis-chart-desc">Daily net sale (₹)</p>
+              <div class="chart-wrap">
+                <canvas id="chart-sales" aria-label="Sales over time"></canvas>
+              </div>
+            </article>
+            <article class="card analysis-chart-card">
+              <h3 class="analysis-chart-title">Revenue by fuel</h3>
+              <p class="analysis-chart-desc">Petrol vs diesel (₹)</p>
+              <div class="chart-wrap">
+                <canvas id="chart-revenue-mix" aria-label="Petrol vs diesel revenue"></canvas>
+              </div>
+            </article>
+            <article class="card analysis-chart-card">
+              <h3 class="analysis-chart-title">Profit &amp; expenses</h3>
+              <p class="analysis-chart-desc">Daily profit vs expenses (₹)</p>
+              <div class="chart-wrap">
+                <canvas id="chart-profit" aria-label="Profit and expenses over time"></canvas>
+              </div>
+            </article>
+            <article class="card analysis-chart-card analysis-chart-card--donut">
+              <h3 class="analysis-chart-title">Fuel mix (volume)</h3>
+              <p class="analysis-chart-desc">Petrol vs diesel (L)</p>
+              <div class="chart-wrap chart-wrap--donut">
+                <canvas id="chart-fuel-mix" aria-label="Petrol vs diesel volume"></canvas>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <section class="settings-panel card analysis-insights-card" data-panel="insights" hidden>
-        <h2 class="analysis-section-title">Insights at a glance</h2>
-        <ul id="analysis-insights-list" class="analysis-insights-list">
-          <li class="muted">Select a range to see insights.</li>
-        </ul>
+        <section class="settings-panel card analysis-insights-panel" data-panel="insights" hidden>
+          <header class="analysis-panel-head">
+            <h2 class="analysis-section-title">Insights at a glance</h2>
+            <p class="analysis-section-desc">Automated takeaways from your data.</p>
+          </header>
+          <div id="analysis-insights-list" class="analysis-insights-grid" role="list">
+            <p class="analysis-insight-empty muted" role="listitem">Select a range to see insights.</p>
+          </div>
         </section>
       </div>
     </main>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>

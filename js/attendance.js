@@ -1,12 +1,12 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
   const start = new Date(year, m, 1);
   const end = new Date(year, m + 1, 0);
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: toLocalDateString(start),
+    end: toLocalDateString(end),
   };
 }
 

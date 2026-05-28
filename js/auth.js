@@ -239,7 +239,7 @@ if (logoutButton) {
     }
     // Clear API-related caches
     if (typeof clearApiCaches === "function") {
-      clearApiCaches();
+      await clearApiCaches();
     }
 
     window.location.href = "index.html";
@@ -337,12 +337,16 @@ async function requireAuth(options = {}) {
   // Server-side verification (if pageName provided)
   if (pageName) {
     const accessCheck = await verifyPageAccess(pageName);
-    if (accessCheck && !accessCheck.allowed) {
+    if (accessCheck === null) {
+      AppError.report(new Error("Page access check unavailable"), {
+        context: "requireAuth",
+        pageName,
+      });
+    } else if (!accessCheck.allowed) {
       console.warn(`Access denied to ${pageName} for role: ${accessCheck.role ?? role}`);
       window.location.href = onDenied;
       return null;
-    }
-    if (accessCheck?.role) {
+    } else if (accessCheck.role) {
       return { session, role: accessCheck.role, display_name };
     }
   }

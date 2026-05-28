@@ -83,7 +83,7 @@ function formatDateRangeLabel(range, modeInfo, opts = {}) {
  * @param {string|HTMLElement} [config.form]
  * @param {string|HTMLElement} [config.applyBtn]
  * @param {string|HTMLElement} [config.labelEl]
- * @param {'auto'|'apply'|'form'} [config.trigger='auto'] - when onApply runs
+ * @param {'auto'|'apply'|'form'|'manual'} [config.trigger='auto'] - when onApply runs
  * @param {boolean} [config.persist=true]
  * @param {boolean} [config.runOnInit=true]
  * @param {boolean} [config.reloadOnCustomInput=true] - auto mode: reload when custom dates change
@@ -219,12 +219,15 @@ function createDateRangeFilter(config) {
       if (!validateCustom()) return;
       await applyRange();
     });
-  } else if (trigger === "apply") {
+  } else if (trigger === "apply" || trigger === "manual") {
     rangeSelect.addEventListener("change", syncCustomVisibility);
-    applyBtn?.addEventListener("click", async () => {
+    const runOnUserAction = async (event) => {
+      event?.preventDefault?.();
       if (!validateCustom()) return;
       await applyRange();
-    });
+    };
+    applyBtn?.addEventListener("click", runOnUserAction);
+    form?.addEventListener("submit", runOnUserAction);
   } else if (trigger === "form") {
     rangeSelect.addEventListener("change", () => {
       syncCustomVisibility();
