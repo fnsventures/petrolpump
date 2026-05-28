@@ -24,6 +24,418 @@ function getCreditSummaryCacheKey(dateStr) {
 let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
+let lastSnapshotPetrolRate = null;
+let lastSnapshotDieselRate = null;
+
+function formatRatePerLitre(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+    return "—";
+  }
+  return Number(value).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function updateDsrQuickLinks(dateStr) {
+  const q = dateStr ? `?date=${encodeURIComponent(dateStr)}` : "";
+  ["hero-petrol-cta", "hero-diesel-cta"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.href = `dsr.html${q}`;
+  });
+}
+
+function parseTankCapacityLiters(capacityStr) {
+  if (!capacityStr) return null;
+  const s = String(capacityStr).trim().toUpperCase().replace(/\s/g, "");
+  const kl = s.match(/^([\d.]+)KL$/);
+  if (kl) return Number(kl[1]) * 1000;
+  const l = s.match(/^([\d.]+)L$/);
+  if (l) return Number(l[1]);
+  const num = Number(s.replace(/[^\d.]/g, ""));
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+function getTankCapacities() {
+  const settings = PumpSettings.getCachedSync();
+  const tanks = settings.reports?.tanks || [];
+  let petrol = 0;
+  let diesel = 0;
+  tanks.forEach((t) => {
+    const cap = parseTankCapacityLiters(t.capacity);
+    if (!cap) return;
+    if (normalizeProduct(t.product) === "petrol") petrol += cap;
+    if (normalizeProduct(t.product) === "diesel") diesel += cap;
+  });
+  const pumps = settings.pumps || {};
+  if (!petrol) petrol = parseTankCapacityLiters(pumps.petrol?.tankCapacity) || 15000;
+  if (!diesel) diesel = parseTankCapacityLiters(pumps.diesel?.tankCapacity) || 20000;
+  return { petrol, diesel };
+}
+
+const tankLevelState = { petrol: 0, diesel: 0 };
+
+function setTankFillLevel(fillEl, level01) {
+  const clamped = Math.min(1, Math.max(0, Number(level01) || 0));
+  const shell = fillEl?.closest(".fuel-tank-shell");
+  const cylinder = fillEl?.closest(".fuel-tank-cylinder");
+  const tankArticle = fillEl?.closest(".fuel-tank");
+  const meter = tankArticle?.querySelector(".fuel-tank-visual[role='meter']");
+  const badge = tankArticle?.querySelector(".fuel-tank-level-badge");
+  if (!fillEl) return;
+
+  const pct = Math.round(clamped * 100);
+
+  const apply = () => {
+    fillEl.style.setProperty("--tank-level", String(clamped));
+    if (cylinder) cylinder.style.setProperty("--tank-level", String(clamped));
+    if (shell) {
+      shell.style.setProperty("--tank-level", String(clamped));
+      shell.setAttribute("data-level", String(pct));
+    }
+    if (badge) {
+      badge.textContent = clamped > 0 ? `${pct}%` : "—";
+      badge.classList.toggle("fuel-tank-level-badge--hidden", clamped <= 0);
+    }
+    if (meter) {
+      meter.setAttribute("aria-valuenow", String(pct));
+    }
+  };
+
+  if (!fillEl.dataset.tankReady) {
+    fillEl.dataset.tankReady = "1";
+    fillEl.style.setProperty("--tank-level", "0");
+    if (cylinder) cylinder.style.setProperty("--tank-level", "0");
+    if (shell) shell.style.setProperty("--tank-level", "0");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(apply);
+    });
+    return;
+  }
+
+  apply();
+}
+
+const DSR_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
+
+/**
+ * Latest non-zero selling rate for a product (same logic as Meter Reading prefill).
+ */
+async function fetchLastDsrRate(product) {
+  const rateField = DSR_RATE_FIELD[product];
+  if (!rateField) return null;
+  const { data, error } = await supabaseClient
+    .from("dsr")
+    .select(`date, ${rateField}`)
+    .eq("product", product)
+    .not(rateField, "is", null)
+    .order("date", { ascending: false })
+    .limit(30);
+
+  if (error) {
+    AppError.report(error, { context: "fetchLastDsrRate", product });
+    return null;
+  }
+  for (const row of data ?? []) {
+    const num = Number(row[rateField]);
+    if (Number.isFinite(num) && num > 0) {
+      return { rate: num, date: row.date ?? null };
+    }
+  }
+  return null;
+}
+
+function rateFromDsrRows(rows, product) {
+  const field = DSR_RATE_FIELD[product];
+  const entry = (rows ?? []).find((row) => normalizeProduct(row.product) === product);
+  const num = Number(entry?.[field] ?? 0);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return { rate: num, date: entry.date ?? null };
+}
+
+function formatRateUnitLabel(isFallback, rateDate) {
+  if (!isFallback) return "per litre";
+  if (rateDate) return `per litre · last entered · ${formatDisplayDate(rateDate)}`;
+  return "per litre · last entered";
+}
+
+/**
+ * Resolve hero/snapshot rates: selected date first, then last entered rate in DSR.
+ */
+async function resolveRatesForDate(selectedDate, rows) {
+  const petrolOnDate = rateFromDsrRows(rows, "petrol");
+  const dieselOnDate = rateFromDsrRows(rows, "diesel");
+  let petrolRate = petrolOnDate?.rate ?? null;
+  let dieselRate = dieselOnDate?.rate ?? null;
+  let petrolRateDate = petrolOnDate?.date ?? null;
+  let dieselRateDate = dieselOnDate?.date ?? null;
+  let petrolFallback = false;
+  let dieselFallback = false;
+
+  const [lastPetrol, lastDiesel] = await Promise.all([
+    !petrolRate ? fetchLastDsrRate("petrol") : Promise.resolve(null),
+    !dieselRate ? fetchLastDsrRate("diesel") : Promise.resolve(null),
+  ]);
+  if (!petrolRate && lastPetrol) {
+    petrolRate = lastPetrol.rate;
+    petrolRateDate = lastPetrol.date;
+    petrolFallback = true;
+  }
+  if (!dieselRate && lastDiesel) {
+    dieselRate = lastDiesel.rate;
+    dieselRateDate = lastDiesel.date;
+    dieselFallback = true;
+  }
+
+  return {
+    petrolRate,
+    dieselRate,
+    petrolRateDate,
+    dieselRateDate,
+    petrolFallback,
+    dieselFallback,
+  };
+}
+
+function findLastDipStockEntry(stockData, dsrData, product, asOfDate) {
+  const prod = normalizeProduct(product);
+  const stockRows = (stockData ?? [])
+    .filter(
+      (row) =>
+        row.date <= asOfDate &&
+        normalizeProduct(row.product) === prod &&
+        row.dip_stock != null &&
+        Number.isFinite(Number(row.dip_stock))
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (stockRows.length) {
+    return { stock: Number(stockRows[0].dip_stock), date: stockRows[0].date, fromDip: true };
+  }
+
+  const dsrRows = (dsrData ?? [])
+    .filter(
+      (row) =>
+        row.date <= asOfDate &&
+        normalizeProduct(row.product) === prod &&
+        row.stock != null &&
+        Number.isFinite(Number(row.stock))
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (dsrRows.length) {
+    return { stock: Number(dsrRows[0].stock), date: dsrRows[0].date, fromDip: false };
+  }
+  return null;
+}
+
+function dipStockOnDate(stockData, dsrData, product, dateStr) {
+  const prod = normalizeProduct(product);
+  const stockRows = (stockData ?? []).filter(
+    (row) => row.date === dateStr && normalizeProduct(row.product) === prod
+  );
+  const hasDipRow = stockRows.some((row) => row.dip_stock != null && Number.isFinite(Number(row.dip_stock)));
+  if (hasDipRow) {
+    return {
+      stock: sumByProduct(stockRows, prod, (row) => Number(row.dip_stock ?? 0)),
+      date: dateStr,
+      fromDip: true,
+      isFallback: false,
+    };
+  }
+  return null;
+}
+
+/**
+ * Dip stock for selected date; if missing, use last entered on or before that date.
+ */
+function resolveDipStockWithFallback(stockData, dsrData, dateStr) {
+  const petrolOnDate = dipStockOnDate(stockData, dsrData, "petrol", dateStr);
+  const dieselOnDate = dipStockOnDate(stockData, dsrData, "diesel", dateStr);
+
+  const petrolLast = petrolOnDate ?? findLastDipStockEntry(stockData, dsrData, "petrol", dateStr);
+  const dieselLast = dieselOnDate ?? findLastDipStockEntry(stockData, dsrData, "diesel", dateStr);
+
+  return {
+    petrolStock: petrolLast?.stock ?? null,
+    dieselStock: dieselLast?.stock ?? null,
+    petrolMeta: petrolLast
+      ? { date: petrolLast.date, isFallback: petrolLast.isFallback ?? petrolOnDate == null }
+      : null,
+    dieselMeta: dieselLast
+      ? { date: dieselLast.date, isFallback: dieselLast.isFallback ?? dieselOnDate == null }
+      : null,
+  };
+}
+
+/** @deprecated Use resolveDipStockWithFallback — kept for DSR summary tiles on exact date only */
+function resolveStockForDate(stockData, dsrData, dateStr) {
+  const lastDayStockRows = (stockData ?? []).filter((row) => row.date === dateStr);
+  const lastDayDsrRows = (dsrData ?? []).filter((row) => row.date === dateStr);
+  const hasPetrolInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "petrol");
+  const hasDieselInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "diesel");
+  const petrolStockFromStock = sumByProduct(lastDayStockRows, "petrol", (row) => Number(row.dip_stock ?? 0));
+  const dieselStockFromStock = sumByProduct(lastDayStockRows, "diesel", (row) => Number(row.dip_stock ?? 0));
+  const petrolStockFromDsr = sumByProduct(lastDayDsrRows, "petrol", (row) => Number(row.stock ?? 0));
+  const dieselStockFromDsr = sumByProduct(lastDayDsrRows, "diesel", (row) => Number(row.stock ?? 0));
+  const petrolStock = hasPetrolInStock ? petrolStockFromStock : petrolStockFromDsr;
+  const dieselStock = hasDieselInStock ? dieselStockFromStock : dieselStockFromDsr;
+  const hasData = lastDayStockRows.length > 0 || lastDayDsrRows.length > 0;
+  return {
+    petrolStock: hasData && Number.isFinite(petrolStock) ? petrolStock : null,
+    dieselStock: hasData && Number.isFinite(dieselStock) ? dieselStock : null,
+  };
+}
+
+function formatLastEnteredHint(dateStr) {
+  if (!dateStr) return "last entered";
+  return `last entered · ${formatDisplayDate(dateStr)}`;
+}
+
+function updateHeroTanks(petrolStock, dieselStock, meta = {}) {
+  const caps = getTankCapacities();
+  const th = getLowStockThresholds();
+
+  const applyTank = (product, stock, capacity, thresholds, stockMeta) => {
+    const fillEl = document.getElementById(`hero-${product}-tank-fill`);
+    const stockEl = document.getElementById(`hero-${product}-stock`);
+    const pctEl = document.getElementById(`hero-${product}-stock-pct`);
+    const tankEl = document.getElementById(`hero-${product}-tank`);
+    if (!fillEl || !stockEl) return;
+
+    if (stock === null || stock === undefined || !Number.isFinite(stock)) {
+      tankLevelState[product] = 0;
+      setTankFillLevel(fillEl, 0);
+      stockEl.textContent = "—";
+      if (pctEl) pctEl.textContent = "No dip reading for this date";
+      if (tankEl) {
+        tankEl.classList.remove("fuel-tank--low", "fuel-tank--ok");
+        tankEl.classList.add("fuel-tank--empty");
+      }
+      return;
+    }
+
+    const level = capacity > 0 ? Math.min(1, Math.max(0, stock / capacity)) : 0;
+    const pctDisplay = level * 100;
+    tankLevelState[product] = level;
+    setTankFillLevel(fillEl, level);
+    stockEl.textContent = `${formatQuantity(stock)} L`;
+    if (pctEl) {
+      const capPart = `${pctDisplay.toFixed(0)}% · capacity ${formatQuantity(capacity)} L`;
+      pctEl.textContent = stockMeta?.isFallback
+        ? `${capPart} · ${formatLastEnteredHint(stockMeta.date)}`
+        : capPart;
+    }
+
+    if (tankEl) {
+      tankEl.classList.remove("fuel-tank--empty");
+      const low = stock < thresholds;
+      tankEl.classList.toggle("fuel-tank--low", low);
+      tankEl.classList.toggle("fuel-tank--ok", !low && stock > 0);
+    }
+  };
+
+  applyTank("petrol", petrolStock, caps.petrol, th.petrol, meta.petrolMeta);
+  applyTank("diesel", dieselStock, caps.diesel, th.diesel, meta.dieselMeta);
+}
+
+async function loadHeroStock(dateStr) {
+  const selectedDate = dateStr || getLocalDateString();
+  const historyStart = PumpSettings.getReceiptHistoryStart();
+  try {
+    const [stockResult, dsrResult] = await Promise.all([
+      supabaseClient.rpc("get_dsr_stock_range", {
+        p_start: historyStart,
+        p_end: selectedDate,
+      }),
+      supabaseClient
+        .from("dsr")
+        .select("date, product, stock, dip_reading")
+        .lte("date", selectedDate)
+        .order("date", { ascending: false }),
+    ]);
+
+    if (stockResult.error) {
+      AppError.report(stockResult.error, { context: "loadHeroStock", type: "stock" });
+    }
+    if (dsrResult.error) {
+      AppError.report(dsrResult.error, { context: "loadHeroStock", type: "dsr" });
+    }
+
+    const resolved = resolveDipStockWithFallback(
+      stockResult.data,
+      dsrResult.data,
+      selectedDate
+    );
+    updateHeroTanks(resolved.petrolStock, resolved.dieselStock, {
+      petrolMeta: resolved.petrolMeta,
+      dieselMeta: resolved.dieselMeta,
+    });
+
+    const todayStr = getLocalDateString();
+    if (selectedDate === todayStr) {
+      updateLowStockAlert(resolved.petrolStock, resolved.dieselStock);
+    }
+  } catch (error) {
+    AppError.report(error, { context: "loadHeroStock" });
+    updateHeroTanks(null, null);
+  }
+}
+
+function updateHeroDate(dateStr) {
+  const dateEl = document.getElementById("dashboard-hero-date");
+  const badgeEl = document.getElementById("dashboard-hero-badge");
+  if (!dateEl || !dateStr) return;
+  updateDsrQuickLinks(dateStr);
+  const labelDate = new Date(`${dateStr}T00:00:00`);
+  dateEl.textContent = labelDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const isToday = dateStr === getLocalDateString();
+  if (badgeEl) badgeEl.classList.toggle("hidden", !isToday);
+}
+
+function updateFuelRateDisplay(petrolRate, dieselRate, options = {}) {
+  const petrolEl = document.getElementById("hero-petrol-rate");
+  const dieselEl = document.getElementById("hero-diesel-rate");
+  const petrolCta = document.getElementById("hero-petrol-cta");
+  const dieselCta = document.getElementById("hero-diesel-cta");
+  const petrolCard = document.querySelector(".fuel-rate-card--petrol");
+  const dieselCard = document.querySelector(".fuel-rate-card--diesel");
+  const petrolUnit = petrolCard?.querySelector(".fuel-rate-unit");
+  const dieselUnit = dieselCard?.querySelector(".fuel-rate-unit");
+
+  const petrolValid = Number.isFinite(petrolRate) && petrolRate > 0;
+  const dieselValid = Number.isFinite(dieselRate) && dieselRate > 0;
+
+  lastSnapshotPetrolRate = petrolValid ? petrolRate : null;
+  lastSnapshotDieselRate = dieselValid ? dieselRate : null;
+
+  if (petrolEl) petrolEl.textContent = formatRatePerLitre(petrolRate);
+  if (dieselEl) dieselEl.textContent = formatRatePerLitre(dieselRate);
+  if (petrolCta) petrolCta.classList.toggle("hidden", petrolValid);
+  if (dieselCta) dieselCta.classList.toggle("hidden", dieselValid);
+  if (petrolCard) petrolCard.classList.toggle("fuel-rate-card--empty", !petrolValid);
+  if (dieselCard) dieselCard.classList.toggle("fuel-rate-card--empty", !dieselValid);
+  if (petrolUnit) {
+    petrolUnit.textContent = formatRateUnitLabel(options.petrolFallback, options.petrolRateDate);
+  }
+  if (dieselUnit) {
+    dieselUnit.textContent = formatRateUnitLabel(options.dieselFallback, options.dieselRateDate);
+  }
+}
+
+function updateFuelVolumeSplit(petrolLiters, dieselLiters) {
+  const petrolChip = document.getElementById("today-petrol-liters");
+  const dieselChip = document.getElementById("today-diesel-liters");
+  if (petrolChip) {
+    petrolChip.textContent = Number.isFinite(petrolLiters) ? `${formatQuantity(petrolLiters)} L` : "—";
+  }
+  if (dieselChip) {
+    dieselChip.textContent = Number.isFinite(dieselLiters) ? `${formatQuantity(dieselLiters)} L` : "—";
+  }
+}
 
 function getLowStockThresholds() {
   const t = PumpSettings.getAlertThresholds();
@@ -165,23 +577,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const snapshotDateInput = document.getElementById("snapshot-date");
-  const petrolRateInput = document.getElementById("snapshot-petrol-rate");
-  const dieselRateInput = document.getElementById("snapshot-diesel-rate");
   const todayStr = getLocalDateString();
-  
-  const enforceRateFieldsReadOnly = () => {
-    if (petrolRateInput) petrolRateInput.readOnly = true;
-    if (dieselRateInput) dieselRateInput.readOnly = true;
-  };
 
   const SNAPSHOT_RANGE = new Set(["date"]);
   const storedSnapshot = typeof window.getValidFilterState === "function"
     ? window.getValidFilterState("dashboard_snapshot", SNAPSHOT_RANGE)
     : null;
   const snapshotDateStr = storedSnapshot?.start || todayStr;
+  updateHeroDate(snapshotDateStr);
+
   if (snapshotDateInput) {
     snapshotDateInput.value = snapshotDateStr;
-    enforceRateFieldsReadOnly();
     window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: snapshotDateStr });
     const updateSalesDailyLink = () => {
       const link = document.getElementById("sales-daily-link");
@@ -198,13 +604,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     snapshotDateInput.addEventListener("change", async () => {
       const dateValue = snapshotDateInput.value || todayStr;
-      enforceRateFieldsReadOnly();
+      updateHeroDate(dateValue);
       window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: dateValue });
       updateSalesDailyLink();
-      await Promise.all([loadTodaySales(dateValue), loadCreditSummary(dateValue)]);
+      await Promise.all([
+        loadTodaySales(dateValue),
+        loadCreditSummary(dateValue),
+        loadHeroStock(dateValue),
+      ]);
     });
   }
-  enforceRateFieldsReadOnly();
 
   const snapshotCard = document.getElementById("snapshot-card");
   const dsrCard = document.getElementById("dsr-dashboard-card");
@@ -214,11 +623,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     await Promise.all([
       loadTodaySales(snapshotDateStr),
       loadCreditSummary(snapshotDateStr),
+      loadHeroStock(snapshotDateStr),
       initializeDsrDashboard(),
       initializeProfitLossFilter(),
     ]);
     if (snapshotCard) snapshotCard.classList.remove("loading");
-    updateAtAGlance(snapshotDateStr);
     if (dsrCard) dsrCard.classList.remove("loading");
     await updateSmartAlerts();
     await loadDayClosingBanners();
@@ -241,33 +650,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof window.hideProgress === "function") window.hideProgress();
   }
 });
-
-function updateAtAGlance(dateStr) {
-  const glance = document.getElementById("at-a-glance");
-  const glanceSale = document.getElementById("glance-sale");
-  const glanceCredit = document.getElementById("glance-credit");
-  const glanceCash = document.getElementById("glance-cash");
-  if (!glance) return;
-  const todayStr = getLocalDateString();
-  const isToday = dateStr === todayStr;
-  if (glanceSale) {
-    const todayTotal = document.getElementById("today-total-rupees");
-    glanceSale.textContent = todayTotal ? todayTotal.textContent : "—";
-  }
-  if (glanceCredit) {
-    const creditEl = document.getElementById("credit-total");
-    glanceCredit.textContent = creditEl ? creditEl.textContent : "—";
-  }
-  if (glanceCash && isToday) {
-    const inHandEl = document.getElementById("dsr-in-hand");
-    glanceCash.textContent = inHandEl ? inHandEl.textContent : "—";
-  } else if (glanceCash) {
-    glanceCash.textContent = "—";
-  }
-  glance.classList.remove("hidden");
-  const statusBar = document.getElementById("dashboard-status-bar");
-  if (statusBar) statusBar.classList.remove("hidden");
-}
 
 function getAlertThresholds() {
   const t = PumpSettings.getAlertThresholds();
@@ -420,8 +802,6 @@ async function loadTodaySales(dateStr) {
   const todayStat = document.getElementById("today-total");
   const todayRupees = document.getElementById("today-total-rupees");
   const todayDate = document.getElementById("today-date");
-  const petrolRateInput = document.getElementById("snapshot-petrol-rate");
-  const dieselRateInput = document.getElementById("snapshot-diesel-rate");
 
   const selectedDate = dateStr || getLocalDateString();
   const cacheKey = getTodaySalesCacheKey(selectedDate);
@@ -440,40 +820,45 @@ async function loadTodaySales(dateStr) {
     return data ?? [];
   };
 
-  // Callback to update UI when fresh data arrives
-  const onUpdate = (freshData) => {
-    renderTodaySales(freshData, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput);
+  const renderSalesBlock = async (rows) => {
+    const rates = await resolveRatesForDate(selectedDate, rows ?? []);
+    renderTodaySales(rows, selectedDate, todayStat, todayRupees, todayDate, rates);
   };
 
-  // Try to get cached data with SWR pattern
+  const onUpdate = (freshData) => {
+    void renderSalesBlock(freshData);
+  };
+
   let data;
   if (AppCache) {
     data = await AppCache.getWithSWR(cacheKey, fetchFn, "today_sales", onUpdate);
+    if (data !== undefined) {
+      await renderSalesBlock(data);
+    }
   } else {
     data = await fetchFn();
+    await renderSalesBlock(data);
   }
-
-  renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput);
 }
 
 /**
  * Render today's sales data to UI
  */
-function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput) {
+function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, rates = {}) {
+  updateHeroDate(selectedDate);
+
   if (!data) {
     snapshotDsrRows = [];
     if (todayStat) todayStat.textContent = "—";
-    if (todayDate) {
-      const labelDate = new Date(`${selectedDate}T00:00:00`);
-      todayDate.textContent = `for ${labelDate.toLocaleDateString("en-IN", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })}`;
-    }
+    if (todayDate) todayDate.textContent = formatSnapshotDatePill(selectedDate);
     if (todayRupees) todayRupees.textContent = "—";
-    if (petrolRateInput) petrolRateInput.value = "";
-    if (dieselRateInput) dieselRateInput.value = "";
+    updateFuelRateDisplay(rates.petrolRate ?? null, rates.dieselRate ?? null, {
+      petrolFallback: rates.petrolFallback,
+      dieselFallback: rates.dieselFallback,
+      petrolRateDate: rates.petrolRateDate,
+      dieselRateDate: rates.dieselRateDate,
+    });
+    updateFuelVolumeSplit(null, null);
     scheduleAutoFitStats();
     return;
   }
@@ -493,70 +878,50 @@ function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate,
   );
   const totalLiters = petrolTotalQty + dieselTotalQty;
 
-  // Fetch and set rates from DSR data (if columns exist)
-  const petrolEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "petrol"
-  );
-  const dieselEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "diesel"
-  );
-
-  if (petrolEntry?.petrol_rate !== undefined && petrolRateInput) {
-    petrolRateInput.value = petrolEntry.petrol_rate;
-  } else if (petrolRateInput) {
-    petrolRateInput.value = "";
-  }
-
-  if (dieselEntry?.diesel_rate !== undefined && dieselRateInput) {
-    dieselRateInput.value = dieselEntry.diesel_rate;
-  } else if (dieselRateInput) {
-    dieselRateInput.value = "";
-  }
+  updateFuelRateDisplay(rates.petrolRate ?? null, rates.dieselRate ?? null, {
+    petrolFallback: rates.petrolFallback,
+    dieselFallback: rates.dieselFallback,
+    petrolRateDate: rates.petrolRateDate,
+    dieselRateDate: rates.dieselRateDate,
+  });
+  updateFuelVolumeSplit(petrolTotalQty, dieselTotalQty);
 
   if (todayStat) {
     todayStat.textContent = formatQuantity(totalLiters);
   }
   updateTotalSaleRupees();
+  if (todayDate) todayDate.textContent = formatSnapshotDatePill(selectedDate);
   scheduleAutoFitStats();
-  if (todayDate) {
-    const labelDate = new Date(`${selectedDate}T00:00:00`);
-    todayDate.textContent = `for ${labelDate.toLocaleDateString("en-IN", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })}`;
-  }
+}
+
+function formatSnapshotDatePill(dateStr) {
+  const labelDate = new Date(`${dateStr}T00:00:00`);
+  const short = labelDate.toLocaleDateString("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return dateStr === getLocalDateString() ? `Today · ${short}` : short;
 }
 
 function updateTotalSaleRupees() {
   const todayRupees = document.getElementById("today-total-rupees");
   if (!todayRupees) return;
 
-  // Get rates from snapshotDsrRows directly, not from input fields
-  const petrolEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "petrol"
-  );
-  const dieselEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "diesel"
-  );
-  
-  // Use rates from DSR if available, otherwise use input fields
-  let petrolRate = Number(petrolEntry?.petrol_rate || 0);
-  let dieselRate = Number(dieselEntry?.diesel_rate || 0);
+  const petrolRateRaw =
+    rateFromDsrRows(snapshotDsrRows, "petrol")?.rate ?? lastSnapshotPetrolRate;
+  const dieselRateRaw =
+    rateFromDsrRows(snapshotDsrRows, "diesel")?.rate ?? lastSnapshotDieselRate;
+  const petrolValid = Number.isFinite(petrolRateRaw) && petrolRateRaw > 0;
+  const dieselValid = Number.isFinite(dieselRateRaw) && dieselRateRaw > 0;
 
-  // If rates are 0 (null/undefined), try to get from input fields
-  if (petrolRate === 0) {
-    petrolRate = Number(document.getElementById("snapshot-petrol-rate")?.value || 0);
-  }
-  if (dieselRate === 0) {
-    dieselRate = Number(document.getElementById("snapshot-diesel-rate")?.value || 0);
-  }
-
-  // Only show currency if at least one rate is available and valid
-  if (!Number.isFinite(petrolRate) && !Number.isFinite(dieselRate)) {
+  if (!petrolValid && !dieselValid) {
     todayRupees.textContent = "—";
     return;
   }
+
+  const petrolRate = petrolValid ? petrolRateRaw : 0;
+  const dieselRate = dieselValid ? dieselRateRaw : 0;
 
   // Total quantity (including testing) × rate for Price (₹)
   const petrolLiters = sumByProduct(
@@ -805,9 +1170,10 @@ async function loadDsrSummary(range) {
   renderDsrSummary(dashboardData, elements, range);
   const todayStr = getLocalDateString();
   if (range.start === todayStr && range.end === todayStr) {
-    const inHandEl = document.getElementById("dsr-in-hand");
-    const glanceCash = document.getElementById("glance-cash");
-    if (glanceCash && inHandEl) glanceCash.textContent = inHandEl.textContent;
+    const snapshotDate = document.getElementById("snapshot-date")?.value || todayStr;
+    if (range.end === snapshotDate) {
+      loadHeroStock(snapshotDate);
+    }
     const lastDayStockForAlert = (dashboardData.stockData || []).filter((row) => row.date === range.end);
     const lastDayDsrForAlert = (dashboardData.dsrData || []).filter((row) => row.date === range.end);
     const hasPetrolStock = lastDayStockForAlert.some((row) => normalizeProduct(row.product) === "petrol");
@@ -1332,11 +1698,7 @@ function refreshCreditSummaryOnVisible() {
   const dateInput = document.getElementById("snapshot-date");
   if (!dateInput) return;
   const date = dateInput.value || getLocalDateString();
-  loadCreditSummary(date).then(() => {
-    const creditTotal = document.getElementById("credit-total");
-    const glanceCredit = document.getElementById("glance-credit");
-    if (glanceCredit && creditTotal) glanceCredit.textContent = creditTotal.textContent;
-  });
+  loadCreditSummary(date);
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.getElementById("snapshot-card")) {

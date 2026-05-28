@@ -5,6 +5,9 @@ const SLIDESHOW_IMAGES = [
   "assets/landing-04.JPG",
 ];
 
+/** Used when slideshow photos are not deployed (e.g. local dev without image assets). */
+const SLIDESHOW_FALLBACK = "assets/bpcl-logo.png";
+
 const SLIDE_INTERVAL_MS = 2500;
 const SLIDE_FADE_MS = 800;
 
@@ -17,14 +20,29 @@ function shuffle(array) {
   return copy;
 }
 
-function startRandomSlideshow() {
+function probeImage(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(src);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function resolveSlideshowImages() {
+  const loaded = await Promise.all(SLIDESHOW_IMAGES.map((src) => probeImage(src)));
+  const available = loaded.filter(Boolean);
+  return available.length > 0 ? available : [SLIDESHOW_FALLBACK];
+}
+
+function startRandomSlideshow(imageList) {
   const slides = [
     document.querySelector(".slideshow .slide-a"),
     document.querySelector(".slideshow .slide-b"),
   ];
-  if (slides.some((el) => !el)) return;
+  if (slides.some((el) => !el) || !imageList.length) return;
 
-  let order = shuffle(SLIDESHOW_IMAGES);
+  let order = shuffle(imageList);
   let index = 0;
   let active = 0;
 
@@ -44,7 +62,7 @@ function startRandomSlideshow() {
     index += 1;
 
     if (index >= order.length) {
-      order = shuffle(SLIDESHOW_IMAGES);
+      order = shuffle(imageList);
       index = 0;
     }
   };
@@ -67,7 +85,8 @@ function initAboutPopupA11y() {
   window.addEventListener("hashchange", sync);
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  startRandomSlideshow();
+document.addEventListener("DOMContentLoaded", async () => {
+  const images = await resolveSlideshowImages();
+  startRandomSlideshow(images);
   initAboutPopupA11y();
 });

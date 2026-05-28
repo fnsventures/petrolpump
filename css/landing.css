@@ -11,6 +11,24 @@
   overflow: hidden;
 }
 
+.landing-hero::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--bpcl-blue) 0%,
+    var(--bpcl-blue) 38%,
+    var(--bpcl-yellow) 38%,
+    var(--bpcl-yellow) 100%
+  );
+  z-index: 3;
+  pointer-events: none;
+}
+
 .slideshow {
   position: absolute;
   inset: 0;
@@ -135,14 +153,14 @@
   justify-content: center;
   padding: 0.55rem 1.2rem;
   border-radius: 999px;
-  background: #2563eb;
+  background: var(--bpcl-blue);
   color: #fff;
   text-decoration: none;
   font-weight: 600;
 }
 
 .about-home:hover {
-  background: #1d4ed8;
+  background: var(--bpcl-blue-dark);
 }
 
 .hero-top {
@@ -183,6 +201,12 @@
   font-size: 2.4rem;
   font-weight: 700;
   letter-spacing: 0.02em;
+  color: #f8fafc;
+}
+
+.brand-title strong,
+.brand-title .brand-highlight {
+  color: var(--bpcl-yellow);
 }
 
 .brand-tagline {
@@ -221,7 +245,7 @@
 }
 
 .nav-button:hover {
-  background: rgba(37, 99, 235, 0.9);
+  background: var(--bpcl-blue);
   border-color: transparent;
 }
 
@@ -252,14 +276,15 @@
   justify-content: center;
   padding: 0.7rem 1.5rem;
   border-radius: 999px;
-  background: #2563eb;
+  background: var(--bpcl-blue);
   color: #fff;
   text-decoration: none;
   font-weight: 600;
+  box-shadow: 0 2px 10px rgba(0, 112, 192, 0.35);
 }
 
 .action-button:hover {
-  background: #1d4ed8;
+  background: var(--bpcl-blue-dark);
 }
 
 .hero-meta {
@@ -330,7 +355,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #dbeafe;
+  color: var(--bpcl-yellow);
   flex-shrink: 0;
   margin-top: 0.1rem;
 }

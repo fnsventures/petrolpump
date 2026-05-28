@@ -10,8 +10,8 @@ This folder contains the technical documentation for the Petrol Pump application
 |----------|---------|
 | [**ARCHITECTURE.md**](ARCHITECTURE.md) | **Tech stack**, **project structure** (folders, pages, scripts, supabase, docs), system diagram, frontend/backend runtime, security model, deployment overview. Single source of truth for how the app is built and organized. |
 | [**DATA_TABLES.md**](DATA_TABLES.md) | **Database reference**: all tables with purpose, main columns, RLS behaviour, and relationships. Canonical schema remains `supabase/schema.sql`. |
-| [**FLOWS.md**](FLOWS.md) | **User and data flows**: authentication, daily operations (DSR → credit → expenses → day closing), credit ledger and settlement, DSR/stock, HR (attendance, salary), admin-only flows. Page → data mapping. |
-| [**DSR_TABLES.md**](DSR_TABLES.md) | **DSR vs dsr_stock**: roles of each table, overlap, when to use which, and optional future merge approach. |
+| [**FLOWS.md**](FLOWS.md) | **User and data flows**: auth, daily ops, credit, DSR/stock, billing, reports, HR, admin/settings. Page → data mapping. |
+| [**DSR_TABLES.md**](DSR_TABLES.md) | **DSR model**: `dsr_petrol` / `dsr_diesel`, union `dsr` view, computed `dsr_stock`, and `get_dsr_stock_range`. |
 | [**DEVELOPMENT.md**](DEVELOPMENT.md) | **Setup and operations**: local development (env, server, first login), deployment (prod/staging, GitHub secrets, deploy flow), supervisor/operator login. |
 
 ---
@@ -21,14 +21,14 @@ This folder contains the technical documentation for the Petrol Pump application
 - **New to the project**  
   Start with [Architecture](ARCHITECTURE.md) (structure and stack) and [Flows](FLOWS.md) (how features connect). Then use [Development guide](DEVELOPMENT.md) to run and deploy.
 
-- **Working on schema, RPCs, or reporting**  
-  Use [Data Tables](DATA_TABLES.md) and [DSR Tables](DSR_TABLES.md) for table and DSR semantics.
+- **Working on schema, RPCs, billing, or reporting**  
+  Use [Data Tables](DATA_TABLES.md) and [DSR Tables](DSR_TABLES.md). Billing uses `products`, `invoices`, `save_invoice`; reports are admin-only on `reports.html`.
 
 - **Setting up locally or deploying**  
   Follow [Development guide](DEVELOPMENT.md) for env config, local server, GitHub Actions, and supervisor setup.
 
 - **Understanding a feature end-to-end**  
-  Use [Flows](FLOWS.md) for daily ops, credit, day closing, HR, and admin flows, plus the page → data table.
+  Use [Flows](FLOWS.md) for daily ops, credit, billing, reports, day closing, HR, and settings — including the page → data table.
 
 ---
 

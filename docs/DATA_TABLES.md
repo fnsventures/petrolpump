@@ -6,12 +6,18 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 
 ## Table Index
 
-| Table | Purpose |
-|-------|---------|
+| Object | Purpose |
+|--------|---------|
 | [audit_log](#audit_log) | Audit trail for sensitive operations (admin-only read) |
 | [users](#users) | App users (login / operator roles) |
-| [dsr](#dsr) | Primary DSR: meter readings and daily sales per (date, product) |
-| [dsr_stock](#dsr_stock) | Optional stock reconciliation per (date, product) |
+| [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
+| [dsr_diesel](#dsr_diesel) | HSD meter readings — one row per date |
+| [dsr](#dsr-view) | **View:** union of petrol + diesel (SELECT only) |
+| [dsr_stock](#dsr_stock-view) | **View:** computed stock reconciliation |
+| [products](#products) | Product master for lube/accessory billing |
+| [invoices](#invoices) | Sales invoices / cash memos |
+| [invoice_items](#invoice_items) | Line items per invoice |
+| [pump_settings](#pump_settings) | Single-row JSON station config |
 | [expenses](#expenses) | Daily operating expenses |
 | [expense_categories](#expense_categories) | User-managed expense categories |
 | [employees](#employees) | Pump employees (for salary and attendance) |
@@ -22,7 +28,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [credit_payments](#credit_payments) | Payments received from credit customers |
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 
-For a detailed comparison of **dsr** vs **dsr_stock**, see [DSR_TABLES.md](DSR_TABLES.md).
+For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
 ---
 
@@ -44,7 +50,7 @@ For a detailed comparison of **dsr** vs **dsr_stock**, see [DSR_TABLES.md](DSR_T
 
 **RLS:** SELECT only for admin; no direct INSERT/UPDATE/DELETE (only via triggers).
 
-**Populated by:** Audit triggers on: users, dsr, dsr_stock, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing.
+**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
 
 ---
 
@@ -64,62 +70,143 @@ For a detailed comparison of **dsr** vs **dsr_stock**, see [DSR_TABLES.md](DSR_T
 
 ---
 
-## dsr
+## dsr_petrol
 
-**Purpose:** Primary Daily Sales Register: one row per (date, product). Filled by **Meter Reading** form (nozzle readings, total_sales, testing, dip_reading, stock, receipts, rates). Used by day-closing (sales), P&L (buying price, receipts), dashboard (net sale, stock fallback), analysis, sales-daily.
+**Purpose:** MS (petrol) meter readings — **one row per date**. Filled by the Meter Reading form (`js/dsr.js` → table `dsr_petrol`). Used for day closing, dashboard, analysis, and reports.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
 | date | date | Business date |
-| product | text | `petrol` \| `diesel` |
+| tank_capacity | text | e.g. `15KL` (from pump settings) |
 | opening_pump*_nozzle* | numeric | Opening meter readings |
 | closing_pump*_nozzle* | numeric | Closing meter readings |
 | sales_pump1, sales_pump2 | numeric | Sales per pump |
-| total_sales | numeric | Manual total for shift (L) |
+| total_sales | numeric | Total sales (L) |
 | testing | numeric | Testing (L) |
 | dip_reading | numeric | Dip reading |
-| stock | numeric | Stock (L); dashboard uses when no dsr_stock |
-| receipts | numeric | Fuel received (L); can be synced from dsr_stock |
-| petrol_rate, diesel_rate | numeric | Selling rate (₹/L) |
-| buying_price_per_litre | numeric | Admin-only; cost for profit calc |
+| stock | numeric | Dip stock (L) — feeds `dsr_stock.dip_stock` |
+| receipts | numeric | Fuel received (L) |
+| petrol_rate, diesel_rate | numeric | Selling rates (₹/L) |
+| buying_price_per_litre | numeric | Admin; cost for P&amp;L |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**Index:** `(date desc, product)`.
+**Index:** `(date desc)`.
 
 **RLS:** SELECT all authenticated; INSERT with `created_by = auth.uid()`; UPDATE own or admin; DELETE admin only.
 
 ---
 
-## dsr_stock
+## dsr_diesel
 
-**Purpose:** Optional stock reconciliation per (date, product). Filled by **Stock** form on Meter Reading page. Used by dashboard (dip_stock, variation), sales-daily, P&L (receipts), and `sync_dsr_receipts_from_stock`.
+**Purpose:** HSD (diesel) meter readings — same column layout as `dsr_petrol`, default `tank_capacity` typically `20KL`. One row per date.
+
+**RLS:** Same as `dsr_petrol`.
+
+**RPC:** `update_dsr_buying_price(uuid, numeric)` updates `buying_price_per_litre` on whichever table contains the row id.
+
+---
+
+## dsr (view)
+
+**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables.
+
+See [DSR_TABLES.md](DSR_TABLES.md).
+
+---
+
+## dsr_stock (view)
+
+**Purpose:** **Computed** stock reconciliation per (date, product): `opening_stock` (LAG of prior dip), `receipts`, `total_stock`, `net_sale`, `closing_stock`, `dip_stock`, `variation`. Not a physical table — derived from meter rows.
+
+**RPC:** `get_dsr_stock_range(start_date, end_date)` — same logic scoped to a date range (preferred for reports).
+
+See [DSR_TABLES.md](DSR_TABLES.md).
+
+---
+
+## products
+
+**Purpose:** Product master for **billing** (lubricants, accessories, etc.).
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| date | date | Business date |
-| product | text | `petrol` \| `diesel` |
-| opening_stock | numeric | Opening stock (L) |
-| receipts | numeric | Receipts (L) |
-| total_stock | numeric | Total stock |
-| sale_from_meter | numeric | Sale from meter |
-| testing | numeric | Testing (L) |
-| net_sale | numeric | Net sale |
-| closing_stock | numeric | Closing stock |
-| dip_stock | numeric | Dip stock (L) |
-| variation | numeric | Variation |
-| remark | text | Optional |
+| name | text | Product name |
+| hsn_code | text | HSN/SAC (optional) |
+| unit | text | e.g. `Pcs`, `Ltr` |
+| default_rate | numeric | Default rate (₹) |
+| gst_percent | numeric | GST % (default 18) |
+| is_active | boolean | Active flag |
+| created_at, updated_at | timestamptz | Timestamps |
+
+**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE **admin only**.
+
+---
+
+## invoices
+
+**Purpose:** Sales invoices / cash memos (lube billing). Header totals and party details.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| invoice_number | text | Unique (from sequence + prefix in settings) |
+| invoice_date | date | Invoice date |
+| invoice_type | text | `CASH` \| `CREDIT` |
+| party_name, party_address, party_gstin | text | Customer |
+| vehicle_no, mobile, km_reading | text | Optional |
+| subtotal, discount, round_off, total_amount | numeric | Amounts |
+| cgst_total, sgst_total, igst_total | numeric | GST breakdown |
+| non_gst_total, nil_rate_total | numeric | Non-GST / nil lines |
+| notes | text | Optional |
 | created_by | uuid | auth.users.id |
+| created_at, updated_at | timestamptz | Timestamps |
+
+**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+
+**RPC:** `save_invoice(...)` — atomic insert of header + line items (`jsonb` array).
+
+**Audit:** `audit_invoices_trigger`.
+
+---
+
+## invoice_items
+
+**Purpose:** Line items for each invoice.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| invoice_id | uuid | FK → invoices.id (cascade delete) |
+| sl_no | int | Line number |
+| product_id | uuid | FK → products.id (optional) |
+| item_name | text | Description |
+| hsn_code, unit | text | Line metadata |
+| quantity, rate | numeric | Qty and rate |
+| gst_percent, amount | numeric | Tax and line total |
 | created_at | timestamptz | Created at |
 
-**Index:** `(date desc, product)`.
+**RLS:** Inherited via invoice policies (read with invoice; writes via `save_invoice` RPC).
 
-**RLS:** Same pattern as dsr: SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+---
 
-**Relationship:** When `dsr_stock` exists for a (date, product), dashboard prefers it for dip_stock/variation; otherwise uses `dsr`. See [DSR_TABLES.md](DSR_TABLES.md).
+## pump_settings
+
+**Purpose:** **Single-row** JSON configuration (`id = 1`): station branding, billing defaults, pump/tank layout, report tanks, purchase VAT %, alerts, attendance shifts. Seeded from `js/appConfig.js` defaults when empty.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | int | Always `1` |
+| config | jsonb | Full settings object |
+| updated_at | timestamptz | Last change |
+| updated_by | uuid | auth.users.id |
+
+**RLS:** SELECT all authenticated; INSERT/UPDATE **admin only**.
+
+**Client:** `js/pumpSettings.js` loads/caches config; Settings page and dashboard/reports consume it.
 
 ---
 
@@ -169,12 +256,17 @@ For a detailed comparison of **dsr** vs **dsr_stock**, see [DSR_TABLES.md](DSR_T
 | name | text | Employee name |
 | role_display | text | Role label (e.g. Supervisor) |
 | monthly_salary | numeric | Monthly salary (₹) |
+| aadhar_number | text | Optional 12-digit Aadhaar |
+| address | text | Optional address (max 500 chars) |
+| phone_number | text | Optional 10-digit mobile |
+| pan_number | text | Optional PAN (`ABCDE1234F`) |
+| pf_number | text | Optional PF / UAN (max 30 chars) |
 | display_order | smallint | Order in lists |
 | is_active | boolean | Active flag |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all; INSERT own or admin; UPDATE own or admin; DELETE admin only.
+**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE **admin only** (supervisors read for salary/attendance pages).
 
 ---
 
@@ -322,16 +414,28 @@ For a detailed comparison of **dsr** vs **dsr_stock**, see [DSR_TABLES.md](DSR_T
 
 ```
 users (app login)
-  └── created_by on: dsr, dsr_stock, expenses, credit_customers, credit_entries,
-                    credit_payments, employees, salary_payments, employee_attendance, day_closing
+  └── created_by on: dsr_petrol, dsr_diesel, expenses, credit_*, employees,
+                    salary_payments, employee_attendance, day_closing, invoices
+
+dsr_petrol / dsr_diesel
+  └── dsr (view), dsr_stock (view)
+
+products
+  └── invoice_items.product_id (optional)
+
+invoices
+  └── invoice_items.invoice_id
+
+pump_settings (id=1)
+  └── config JSON used by UI (station, billing, reports, pumps, alerts)
 
 employees
   ├── salary_payments.employee_id
   └── employee_attendance.employee_id
 
 credit_customers
-  ├── credit_entries.credit_customer_id  → trigger syncs amount_due
-  └── credit_payments.credit_customer_id
+  ├── credit_entries → trigger syncs amount_due
+  └── credit_payments
 
 day_closing
   └── short_previous = prev day’s short_today

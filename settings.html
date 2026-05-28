@@ -53,6 +53,7 @@
           <div class="nav-group" role="menu">
             <a href="attendance.html">Attendance</a>
             <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -74,7 +75,7 @@
         <button type="button" class="settings-nav-item" data-section="billing">Billing</button>
         <button type="button" class="settings-nav-item" data-section="pumps">Pumps &amp; tanks</button>
         <button type="button" class="settings-nav-item" data-section="users">Users &amp; roles</button>
-        <button type="button" class="settings-nav-item" data-section="hr">Staff (HR)</button>
+        <button type="button" class="settings-nav-item" data-section="salaries">Staff salaries</button>
         <button type="button" class="settings-nav-item" data-section="attendance">Attendance shifts</button>
         <button type="button" class="settings-nav-item" data-section="alerts">Alerts &amp; thresholds</button>
         <button type="button" class="settings-nav-item" data-section="expenses">Expense categories</button>
@@ -320,39 +321,22 @@
           </form>
         </section>
 
-        <!-- HR -->
-        <section id="settings-panel-hr" class="settings-panel card" data-panel="hr" hidden>
-          <h2>Staff (HR)</h2>
-          <p class="muted">Roster for salary and attendance. App login roles are configured under Users.</p>
-          <form id="emp-member-form" class="form" autocomplete="off">
-            <input type="hidden" id="emp-member-id" value="" />
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="emp-name">Name</label>
-                <input id="emp-name" type="text" maxlength="120" required />
-              </div>
-              <div class="form-field">
-                <label for="emp-job-role">Job title</label>
-                <input id="emp-job-role" type="text" maxlength="60" />
-              </div>
-              <div class="form-field">
-                <label for="emp-monthly-salary">Monthly salary (₹)</label>
-                <input id="emp-monthly-salary" type="number" min="0" step="0.01" required />
-              </div>
-            </div>
-            <button type="submit" id="emp-submit-btn">Add staff</button>
-            <button type="button" id="emp-cancel-btn" class="button-secondary hidden">Cancel</button>
-            <p id="emp-form-success" class="success hidden">Saved.</p>
-            <p id="emp-form-error" class="error hidden"></p>
-          </form>
-          <table class="margin-top">
-            <thead>
-              <tr><th>Name</th><th>Job title</th><th>Monthly salary</th><th>Action</th></tr>
-            </thead>
-            <tbody id="emp-members-body">
-              <tr><td colspan="4" class="muted">Loading…</td></tr>
-            </tbody>
-          </table>
+        <!-- Staff salaries -->
+        <section id="settings-panel-salaries" class="settings-panel card" data-panel="salaries" hidden>
+          <h2>Staff salaries</h2>
+          <p class="muted">Set monthly salary for each staff member after adding them under <a href="staff.html">HR → Staff</a>.</p>
+          <div class="table-wrap margin-top">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Job title</th><th>Monthly salary (₹)</th><th>Action</th></tr>
+              </thead>
+              <tbody id="emp-salaries-body">
+                <tr><td colspan="4" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="emp-salaries-success" class="success hidden margin-top">Salary saved.</p>
+          <p id="emp-salaries-error" class="error hidden margin-top"></p>
         </section>
 
         <!-- Attendance -->

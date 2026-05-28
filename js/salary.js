@@ -42,12 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   let staffList = [];
 
   async function loadStaffMembers() {
-    const { data, error } = await supabaseClient
-      .from("employees")
-      .select("id, name, role_display, monthly_salary, display_order")
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
+    const { data, error } = await supabaseClient.rpc("list_employees_roster");
 
     if (error) {
       AppError.report(error, { context: "loadStaffMembers" });
@@ -102,7 +97,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!tbody) return;
 
     if (!staffList.length) {
-      tbody.innerHTML = "<tr><td colspan=\"6\" class=\"muted\">Add staff in <a href=\"settings.html#hr\">Settings → Manage staff (HR)</a> first (admin).</td></tr>";
+      tbody.innerHTML = "<tr><td colspan=\"6\" class=\"muted\">Add staff in <a href=\"staff.html\">HR → Staff</a> first (admin).</td></tr>";
       return;
     }
 

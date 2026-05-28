@@ -25,13 +25,31 @@
   width: min(400px, 94vw);
   padding: var(--space-6) var(--space-5);
   text-align: center;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(0, 112, 192, 0.12);
   background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 112, 192, 0.06);
   border-radius: var(--radius-xl);
   color: var(--text);
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--bpcl-blue) 0%,
+    var(--bpcl-blue) 38%,
+    var(--bpcl-yellow) 38%,
+    var(--bpcl-yellow) 100%
+  );
+  pointer-events: none;
 }
 
 .login-brand {
