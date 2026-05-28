@@ -102,6 +102,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "dsr",
   });
   if (!auth) return;
 
@@ -114,20 +115,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (typeof initPageSections === "function") {
     initPageSections({ defaultSection: "petrol", validSections: ["petrol", "diesel"] });
-    document.querySelectorAll(".settings-nav-item[data-section]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const fuel = btn.dataset.section;
-        const sel = document.getElementById("meter-fuel-select");
-        if (sel && (fuel === "petrol" || fuel === "diesel")) sel.value = fuel;
-      });
-    });
   }
 
   PRODUCTS.forEach((product) => {
     initReadingForm(product);
     initDsrPaginationControls(product);
   });
-  initMeterFilter();
   initDsrDeleteHandlers();
   await Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
 });
@@ -979,33 +972,6 @@ function formatQuantity(value) {
   return Number(value).toLocaleString("en-IN", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  });
-}
-
-const METER_FILTER_KEY = "petrolpump_meter_filter";
-
-function initMeterFilter() {
-  const select = document.getElementById("meter-fuel-select");
-  if (!select) return;
-
-  const saved = (() => {
-    try { return localStorage.getItem(METER_FILTER_KEY); } catch (_) { return null; }
-  })();
-  const initial = saved && ["all", "petrol", "diesel"].includes(saved) ? saved : "petrol";
-
-  select.value = initial;
-  applyMeterFilter(initial);
-
-  select.addEventListener("change", () => {
-    applyMeterFilter(select.value);
-    try { localStorage.setItem(METER_FILTER_KEY, select.value); } catch (_) {}
-  });
-}
-
-function applyMeterFilter(filter) {
-  document.querySelectorAll(".dsr-card[data-product]").forEach((card) => {
-    const product = card.dataset.product;
-    card.classList.toggle("filter-hidden", filter !== "all" && product !== filter);
   });
 }
 

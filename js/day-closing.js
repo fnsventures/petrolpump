@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -268,8 +268,8 @@ async function initializeDayClosing() {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
-    registerEnd.value = endDate.toISOString().slice(0, 10);
-    registerStart.value = startDate.toISOString().slice(0, 10);
+    registerEnd.value = toLocalDateString(endDate);
+    registerStart.value = toLocalDateString(startDate);
 
     registerLoadBtn.addEventListener("click", async () => {
       const start = registerStart.value?.trim();

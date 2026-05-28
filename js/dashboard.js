@@ -130,6 +130,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "dashboard",
   });
   if (!auth) return;
 
@@ -787,14 +788,18 @@ async function loadDsrSummary(range) {
   // Use Edge Function for single round-trip (with fallback and caching)
   const dashboardData = await fetchDashboardData(range.start, range.end, onUpdate);
 
-  if (!dashboardData.creditData) {
+  if (dashboardData.creditError) {
     const { data: creditRows, error: creditErr } = await supabaseClient
       .from("credit_entries")
       .select("amount, amount_settled")
       .gte("transaction_date", range.start)
       .lte("transaction_date", range.end);
-    dashboardData.creditData = creditRows ?? [];
-    if (creditErr) dashboardData.creditError = creditErr;
+    if (!creditErr) {
+      dashboardData.creditData = creditRows ?? [];
+      dashboardData.creditError = null;
+    } else {
+      dashboardData.creditError = creditErr;
+    }
   }
 
   renderDsrSummary(dashboardData, elements, range);

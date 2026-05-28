@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -138,7 +138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       btn.addEventListener("click", () => {
         const id = btn.getAttribute("data-staff-id");
         if (paymentStaffSelect) paymentStaffSelect.value = id;
-        if (paymentDateInput) paymentDateInput.value = new Date().toISOString().slice(0, 10);
+        if (paymentDateInput) paymentDateInput.value = getLocalDateString();
         paymentForm?.scrollIntoView({ behavior: "smooth" });
       });
     });

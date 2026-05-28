@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState */
+/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState, AppError, escapeHtml */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const YYYYMMDD = /^\d{4}-\d{2}-\d{2}$/;
@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "sales-daily",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
@@ -136,7 +137,9 @@ async function loadDailySummary(startDate, endDate) {
   ]);
 
   if (dsrError || stockError) {
-    const message = escapeHtml(dsrError?.message ?? stockError?.message ?? "Unable to load.");
+    const err = dsrError || stockError;
+    AppError.report(err, { context: "salesDailyLoad" });
+    const message = escapeHtml(AppError.getUserMessage(err));
     const errRow = `<tr><td colspan="${TABLE_COLS}" class="error">${message}</td></tr>`;
     tbodyPetrol.innerHTML = errRow;
     tbodyDiesel.innerHTML = errRow;

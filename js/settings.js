@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyRoleVisibility(auth.role);
 
   await loadPumpSettings(true);
+  applyStationBranding();
   initSettingsNav();
   populateGstAndUnitSelects();
   bindStationForm(auth);
@@ -28,10 +29,36 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 const VALID_SECTIONS = ["station", "billing", "pumps", "users", "hr", "attendance", "alerts", "expenses", "access"];
 
+function parseOptionalNumber(raw, fallback) {
+  const s = raw === undefined || raw === null ? "" : String(raw).trim();
+  if (s === "") return fallback;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function applyStationBranding() {
+  const name = PumpSettings.getStationDisplayName();
+  document.querySelectorAll("header.topbar .brand a[href='dashboard.html']").forEach((a) => {
+    a.textContent = name;
+  });
+  const subtitle = document.querySelector("header.topbar .page-subtitle")?.textContent?.trim();
+  if (subtitle) document.title = `${subtitle} · ${name}`;
+}
+
+function empSubmitLabel(isEdit) {
+  return isEdit ? "Update" : "Add staff";
+}
+
 function initSettingsNav() {
   if (typeof initPageSections === "function") {
     initPageSections({ defaultSection: "station", validSections: VALID_SECTIONS });
   }
+  const refreshAccessIfNeeded = () => {
+    const section = (location.hash || "").replace(/^#/, "");
+    if (section === "access") void loadStaffList();
+  };
+  window.addEventListener("hashchange", refreshAccessIfNeeded);
+  refreshAccessIfNeeded();
 }
 
 function populateGstAndUnitSelects() {
@@ -97,6 +124,7 @@ function bindStationForm(auth) {
           supportWhatsapp: document.getElementById("st-support-whatsapp")?.value?.trim(),
         },
       }, auth.session?.user?.id);
+      applyStationBranding();
       successEl?.classList.remove("hidden");
     } catch (err) {
       AppError.handle(err, { target: errorEl });
@@ -114,7 +142,7 @@ function bindBillingDefaultsForm(auth) {
   const b = PumpSettings.getCachedSync().billing || {};
   const set = (id, val) => {
     const el = document.getElementById(id);
-    if (el && val != null) el.value = val;
+    if (el) el.value = val ?? "";
   };
   set("bill-invoice-prefix", b.invoicePrefix);
   set("bill-default-party", b.defaultPartyName);
@@ -140,21 +168,27 @@ function bindBillingDefaultsForm(auth) {
     const btn = form.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
+      const fuelGst = parseOptionalNumber(
+        document.getElementById("bill-fuel-gst")?.value,
+        b.defaultFuelGstPct ?? AppConfig.DEFAULT_BILLING.defaultFuelGstPct
+      );
       await PumpSettings.savePumpSettings({
         billing: {
           invoicePrefix: document.getElementById("bill-invoice-prefix")?.value?.trim(),
           defaultPartyName: document.getElementById("bill-default-party")?.value?.trim(),
-          defaultFuelGstPct: Number(document.getElementById("bill-fuel-gst")?.value),
+          defaultFuelGstPct: fuelGst,
           receiptHistoryStart: document.getElementById("bill-receipt-start")?.value,
         },
         reports: {
-          fuelGstPct: Number(document.getElementById("bill-fuel-gst")?.value) || 18,
-          petrolPurchaseVatPct:
-            Number(document.getElementById("bill-petrol-vat")?.value) ||
-            AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct,
-          dieselPurchaseVatPct:
-            Number(document.getElementById("bill-diesel-vat")?.value) ||
-            AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct,
+          fuelGstPct: fuelGst,
+          petrolPurchaseVatPct: parseOptionalNumber(
+            document.getElementById("bill-petrol-vat")?.value,
+            r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct
+          ),
+          dieselPurchaseVatPct: parseOptionalNumber(
+            document.getElementById("bill-diesel-vat")?.value,
+            r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
+          ),
           purchaseTaxInclusive: Boolean(
             document.getElementById("bill-purchase-tax-inclusive")?.checked
           ),
@@ -210,7 +244,7 @@ async function loadProducts() {
       <td>${escapeHtml(p.unit)}</td>
       <td>${formatCurrency(p.default_rate)}</td>
       <td>${escapeHtml(formatGstLabel(p.gst_percent))}</td>
-      <td><button type="button" class="button-secondary delete-product-btn" data-id="${escapeHtml(p.id)}">Delete</button></td>
+      <td><button type="button" class="button-secondary delete-product-btn" data-id="${escapeHtml(p.id)}">Remove</button></td>
     </tr>`
     )
     .join("");
@@ -251,8 +285,8 @@ async function saveProduct(form) {
 }
 
 async function deleteProduct(id) {
-  if (!id || !confirm("Delete this product?")) return;
-  const { error } = await supabaseClient.from("products").delete().eq("id", id);
+  if (!id || !confirm("Remove this product from the billing list?")) return;
+  const { error } = await supabaseClient.from("products").update({ is_active: false }).eq("id", id);
   if (error) {
     alert(AppError.getUserMessage(error));
     return;
@@ -392,12 +426,19 @@ function bindAlertsForm(auth) {
     const btn = form.querySelector('button[type="submit"]');
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
+      const curAlerts = PumpSettings.getCachedSync().alerts || {};
       await PumpSettings.savePumpSettings({
         alerts: {
-          lowStockPetrol: Number(petrolInput?.value),
-          lowStockDiesel: Number(dieselInput?.value),
-          highCredit: Number(highCreditInput?.value) || 0,
-          highVariation: Number(highVariationInput?.value) || 0,
+          lowStockPetrol: parseOptionalNumber(
+            petrolInput?.value,
+            curAlerts.lowStockPetrol ?? AppConfig.DEFAULT_ALERTS.lowStockPetrol
+          ),
+          lowStockDiesel: parseOptionalNumber(
+            dieselInput?.value,
+            curAlerts.lowStockDiesel ?? AppConfig.DEFAULT_ALERTS.lowStockDiesel
+          ),
+          highCredit: parseOptionalNumber(highCreditInput?.value, curAlerts.highCredit ?? 0),
+          highVariation: parseOptionalNumber(highVariationInput?.value, curAlerts.highVariation ?? 0),
           dayClosingReminder: dayClosingCheck?.checked !== false,
         },
       }, auth.session?.user?.id);
@@ -424,6 +465,7 @@ function initUsersForm() {
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Saving…"; }
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
+    if (successEl) successEl.textContent = "Role saved.";
 
     const formData = new FormData(form);
     const email = String(formData.get("email") || "").trim().toLowerCase();
@@ -454,12 +496,25 @@ function initUsersForm() {
       return;
     }
 
+    let passwordNote = "";
     if (password) {
-      const { error: signupError } = await supabaseClient.auth.signUp({ email, password });
-      if (signupError && !isExistingUserError(signupError)) {
-        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-        AppError.handle(signupError, { target: errorEl });
-        return;
+      if (!existingUser) {
+        const { error: signupError } = await supabaseClient.auth.signUp({ email, password });
+        if (signupError && !isExistingUserError(signupError)) {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
+          AppError.handle(signupError, { target: errorEl });
+          return;
+        }
+      } else {
+        const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + "/login.html",
+        });
+        if (resetError) {
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
+          AppError.handle(resetError, { target: errorEl });
+          return;
+        }
+        passwordNote = " Password reset email sent.";
       }
     }
 
@@ -477,7 +532,10 @@ function initUsersForm() {
     }
 
     form.reset();
-    successEl?.classList.remove("hidden");
+    if (successEl) {
+      successEl.textContent = passwordNote ? `Role saved.${passwordNote}` : "Role saved.";
+      successEl.classList.remove("hidden");
+    }
     if (typeof invalidateUserRoleCache === "function") invalidateUserRoleCache(email);
     invalidateEmployeeListCache();
     loadStaffList();
@@ -666,8 +724,10 @@ function initManageEmployees(auth) {
       if (nameInput) nameInput.value = editBtn.getAttribute("data-name") || "";
       if (roleInput) roleInput.value = editBtn.getAttribute("data-role") || "";
       if (salaryInput) salaryInput.value = editBtn.getAttribute("data-salary") || "";
-      if (staffSubmitBtn) staffSubmitBtn.textContent = "Update";
+      if (staffSubmitBtn) staffSubmitBtn.textContent = empSubmitLabel(true);
       staffCancelBtn?.classList.remove("hidden");
+      staffFormSuccess?.classList.add("hidden");
+      staffFormError?.classList.add("hidden");
     }
   });
 
@@ -699,16 +759,29 @@ function initManageEmployees(auth) {
     AppError.handle(delErr, { target: staffFormError });
   }
 
+  function resetEmpFormUi() {
+    staffMemberForm.reset();
+    if (idInput) idInput.value = "";
+    if (staffSubmitBtn) staffSubmitBtn.textContent = empSubmitLabel(false);
+    staffCancelBtn?.classList.add("hidden");
+    if (staffFormSuccess) staffFormSuccess.textContent = "Saved.";
+  }
+
   staffMemberForm.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const isEdit = Boolean(idInput?.value?.trim());
     if (staffSubmitBtn) { staffSubmitBtn.disabled = true; staffSubmitBtn.textContent = "Saving…"; }
     staffFormSuccess?.classList.add("hidden");
     staffFormError?.classList.add("hidden");
+    if (staffFormSuccess) staffFormSuccess.textContent = "Saved.";
     const id = idInput?.value?.trim() || null;
     const name = nameInput?.value?.trim();
     const monthlySalary = Number(salaryInput?.value || 0);
     if (!name) {
-      if (staffSubmitBtn) { staffSubmitBtn.disabled = false; staffSubmitBtn.textContent = "Add staff"; }
+      if (staffSubmitBtn) {
+        staffSubmitBtn.disabled = false;
+        staffSubmitBtn.textContent = empSubmitLabel(isEdit);
+      }
       if (staffFormError) { staffFormError.textContent = "Name is required."; staffFormError.classList.remove("hidden"); }
       return;
     }
@@ -717,14 +790,15 @@ function initManageEmployees(auth) {
     const { error } = id
       ? await supabaseClient.from("employees").update(payload).eq("id", id)
       : await supabaseClient.from("employees").insert(payload);
-    if (staffSubmitBtn) { staffSubmitBtn.disabled = false; staffSubmitBtn.textContent = "Add staff"; }
+    if (staffSubmitBtn) {
+      staffSubmitBtn.disabled = false;
+      staffSubmitBtn.textContent = empSubmitLabel(false);
+    }
     if (error) {
       AppError.handle(error, { target: staffFormError });
       return;
     }
-    staffMemberForm.reset();
-    if (idInput) idInput.value = "";
-    staffCancelBtn?.classList.add("hidden");
+    resetEmpFormUi();
     staffFormSuccess?.classList.remove("hidden");
     invalidateEmployeeListCache();
     await loadStaffMembers();
@@ -732,10 +806,9 @@ function initManageEmployees(auth) {
   });
 
   staffCancelBtn?.addEventListener("click", () => {
-    staffMemberForm.reset();
-    if (idInput) idInput.value = "";
-    if (staffSubmitBtn) staffSubmitBtn.textContent = "Add staff";
-    staffCancelBtn.classList.add("hidden");
+    resetEmpFormUi();
+    staffFormSuccess?.classList.add("hidden");
+    staffFormError?.classList.add("hidden");
   });
 
   void loadStaffMembers().then(renderStaffMembersTable);
