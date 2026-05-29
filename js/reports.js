@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, grossBuyingRatePerLitre */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -62,7 +62,9 @@ const REPORT_CATALOG = [
 let activeReport = "dsr";
 let cachedData = null;
 let cachedRange = null;
-let reportsDataLoaded = false;
+let reportsLoadInFlight = null;
+let reportPrintCssCache = null;
+let reportPrintBusy = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -185,6 +187,7 @@ function initReportsPage() {
 
   renderReportCatalog();
   setActiveReportTab(activeReport);
+  preloadReportPrintCss();
 
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
@@ -193,10 +196,19 @@ function initReportsPage() {
     openGenerateSection();
   }
 
-  document.getElementById("reports-catalog")?.addEventListener("click", (e) => {
+  document.getElementById("reports-catalog")?.addEventListener("click", async (e) => {
     const btn = e.target.closest(".reports-pick");
     if (!btn?.dataset.report) return;
     setActiveReportTab(btn.dataset.report);
+    if (!cachedData) {
+      const preview = document.getElementById("reports-preview");
+      if (preview) preview.innerHTML = "<p class=\"muted\">Loading report data…</p>";
+      try {
+        await ensureReportsDataLoaded();
+      } catch {
+        /* loadAndRenderReports surfaces errors in preview */
+      }
+    }
     renderActiveReport();
   });
 
@@ -206,7 +218,7 @@ function initReportsPage() {
   });
 
   document.getElementById("reports-print-btn")?.addEventListener("click", () => {
-    window.print();
+    handleReportPrintClick();
   });
 
   const initialSection = (location.hash || "").replace(/^#/, "") || "about";
@@ -227,9 +239,12 @@ function initReportsPage() {
 }
 
 function ensureReportsDataLoaded() {
-  if (reportsDataLoaded) return;
-  reportsDataLoaded = true;
-  loadAndRenderReports();
+  if (cachedData) return Promise.resolve();
+  if (reportsLoadInFlight) return reportsLoadInFlight;
+  reportsLoadInFlight = loadAndRenderReports().finally(() => {
+    reportsLoadInFlight = null;
+  });
+  return reportsLoadInFlight;
 }
 
 function openGenerateSection() {
@@ -356,6 +371,7 @@ async function loadAndRenderReports() {
   }
 
   if (preview) preview.textContent = "Loading…";
+  setReportPrintButtonWaiting();
 
   const cacheKey = `reports_${rangeStart}_${rangeEnd}`;
   const fetchFn = () => fetchReportData(rangeStart, rangeEnd);
@@ -544,7 +560,7 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
         <td class="num">${formatQty(closingDip)}</td>
         <td class="num">${formatQty(variance)}</td>
         <td class="num">${formatQty(cumVariance)}</td>
-        <td class="num">${formatQty(rate)}</td>
+        <td class="num">${formatAmt(rate)}</td>
       </tr>`;
     })
     .join("");
@@ -557,18 +573,18 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
       <table class="report-table report-dsr-table">
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Opening dip (L)</th>
-            <th>Purchase (L)</th>
-            <th>Testing (L)</th>
-            <th>Sale by meter (L)</th>
-            <th>Actual sale (L)</th>
-            <th>Cumulative sale (L)</th>
-            <th>Sale by dip (L)</th>
-            <th>Closing dip (L)</th>
-            <th>Variance (L)</th>
-            <th>Cum. variance (L)</th>
-            <th>Rate (₹/L)</th>
+            <th scope="col">Date</th>
+            <th scope="col" class="num" title="Opening dip (L)">Open</th>
+            <th scope="col" class="num" title="Purchase (L)">Buy</th>
+            <th scope="col" class="num" title="Testing (L)">Test</th>
+            <th scope="col" class="num" title="Sale by meter (L)">Meter</th>
+            <th scope="col" class="num" title="Actual sale (L)">Actual</th>
+            <th scope="col" class="num" title="Cumulative sale (L)">Cum</th>
+            <th scope="col" class="num" title="Sale by dip (L)">Dip</th>
+            <th scope="col" class="num" title="Closing dip (L)">Close</th>
+            <th scope="col" class="num" title="Variance (L)">Var</th>
+            <th scope="col" class="num" title="Cumulative variance (L)">CumV</th>
+            <th scope="col" class="num" title="Rate (₹/L)">Rate</th>
           </tr>
         </thead>
         <tbody>${bodyRows || `<tr><td colspan="12" class="muted">No entries</td></tr>`}</tbody>
@@ -625,6 +641,47 @@ function classifyGstSlab(pct) {
   return "r18";
 }
 
+function slabHasActivity(totals) {
+  if (!totals) return false;
+  return (
+    Math.abs(Number(totals.taxable ?? 0)) > 0.005 ||
+    Math.abs(Number(totals.gross ?? 0)) > 0.005
+  );
+}
+
+/** Sum line-item amounts into taxable / non-GST / NIL buckets. */
+function sumInvoiceLineAmounts(items) {
+  let taxable = 0;
+  let nonGst = 0;
+  let nilRate = 0;
+  items.forEach((item) => {
+    const amt = Number(item.amount ?? 0);
+    const pct = Number(item.gst_percent ?? 0);
+    if (pct > 0) {
+      taxable += amt / (1 + pct / 100);
+    } else if (pct === 0) {
+      nilRate += amt;
+    } else {
+      nonGst += amt;
+    }
+  });
+  return { taxable, nonGst, nilRate };
+}
+
+/** Taxable value from invoice header when line items are missing. */
+function invoiceHeaderTaxable(inv) {
+  const cgst = Number(inv.cgst_total ?? 0);
+  const sgst = Number(inv.sgst_total ?? 0);
+  const igst = Number(inv.igst_total ?? 0);
+  const nonGst = Number(inv.non_gst_total ?? 0);
+  const nilRate = Number(inv.nil_rate_total ?? 0);
+  const gross = Number(inv.total_amount ?? 0);
+  const derived = gross - cgst - sgst - igst - nonGst - nilRate;
+  if (Number.isFinite(derived) && derived >= 0) return derived;
+  const sub = Number(inv.subtotal ?? 0) - Number(inv.discount ?? 0);
+  return Number.isFinite(sub) && sub >= 0 ? sub : 0;
+}
+
 function aggregateInvoiceGst(invoices, invoiceItems) {
   const itemsByInvoice = new Map();
   invoiceItems.forEach((item) => {
@@ -660,7 +717,28 @@ function aggregateInvoiceGst(invoices, invoiceItems) {
         }
       });
     } else {
-      slabTotals.non_gst.gross += Number(inv.total_amount ?? 0);
+      const nonGst = Number(inv.non_gst_total ?? 0);
+      const nilRate = Number(inv.nil_rate_total ?? 0);
+      const cgst = Number(inv.cgst_total ?? 0);
+      const sgst = Number(inv.sgst_total ?? 0);
+      const igst = Number(inv.igst_total ?? 0);
+      const taxable = invoiceHeaderTaxable(inv);
+
+      if (cgst > 0 || sgst > 0 || igst > 0) {
+        const key = classifyGstSlab(18);
+        slabTotals[key].taxable += taxable;
+        slabTotals[key].cgst += cgst;
+        slabTotals[key].sgst += sgst;
+        slabTotals[key].gross += taxable + cgst + sgst + igst;
+      } else if (nilRate > 0) {
+        slabTotals.nil.taxable += nilRate;
+        slabTotals.nil.gross += nilRate;
+      } else if (nonGst > 0) {
+        slabTotals.non_gst.taxable += nonGst;
+        slabTotals.non_gst.gross += nonGst;
+      } else if (gross > 0) {
+        slabTotals.non_gst.gross += gross;
+      }
     }
   });
 
@@ -668,17 +746,20 @@ function aggregateInvoiceGst(invoices, invoiceItems) {
 }
 
 function renderGstSummaryTable(slabTotals, title, range, inward) {
-  const rows = GST_SLABS.map((s) => {
-    const t = slabTotals[s.key];
-    const lineTax = t.cgst + t.sgst;
-    return `<tr>
+  const activeSlabs = GST_SLABS.filter((s) => slabHasActivity(slabTotals[s.key]));
+  const rows = activeSlabs
+    .map((s) => {
+      const t = slabTotals[s.key];
+      const lineTax = t.cgst + t.sgst;
+      return `<tr>
       <td>${escapeHtml(s.label)}</td>
       <td class="num">${formatAmt(t.taxable)}</td>
       <td class="num">${inward ? formatAmt(lineTax) : formatAmt(t.cgst)}</td>
       <td class="num">${inward ? "—" : formatAmt(t.sgst)}</td>
       <td class="num">${formatAmt(t.gross)}</td>
     </tr>`;
-  }).join("");
+    })
+    .join("");
 
   const totalTaxable = GST_SLABS.reduce((s, x) => s + slabTotals[x.key].taxable, 0);
   const totalCgst = GST_SLABS.reduce((s, x) => s + slabTotals[x.key].cgst, 0);
@@ -686,8 +767,8 @@ function renderGstSummaryTable(slabTotals, title, range, inward) {
   const totalVat = totalCgst + totalSgst;
   const totalGross = GST_SLABS.reduce((s, x) => s + slabTotals[x.key].gross, 0);
 
-  const taxCol1 = inward ? "VAT/LST (₹)" : "CGST (₹)";
-  const taxCol2 = inward ? "—" : "SGST (₹)";
+  const taxCol1 = inward ? "VAT/LST" : "CGST";
+  const taxCol2 = inward ? "—" : "SGST";
   const subtitle = inward
     ? `Inward supply · ${escapeHtml(getPurchaseTaxPctLabel())} · ${
         isPurchaseTaxInclusive() ? "tax-inclusive rate" : "pre-tax rate (BPCL)"
@@ -697,17 +778,17 @@ function renderGstSummaryTable(slabTotals, title, range, inward) {
   return `
     ${reportHeader(title, range.start, range.end)}
     <p class="report-subtitle">${subtitle}</p>
-    <table class="report-table">
+    <table class="report-table report-gst-summary">
       <thead>
         <tr>
-          <th>${inward ? "VAT/LST slab" : "GST slab"}</th>
-          <th>Taxable value (₹)</th>
-          <th>${taxCol1}</th>
-          <th>${taxCol2}</th>
-          <th>Total (₹)</th>
+          <th>${inward ? "Slab" : "Slab"}</th>
+          <th class="num">Taxable</th>
+          <th class="num">${taxCol1}</th>
+          <th class="num">${taxCol2}</th>
+          <th class="num">Total</th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows || `<tr><td colspan="5" class="muted">No transactions in this period</td></tr>`}</tbody>
       <tfoot>
         <tr class="report-total-row">
           <td><strong>Total</strong></td>
@@ -718,7 +799,7 @@ function renderGstSummaryTable(slabTotals, title, range, inward) {
         </tr>
       </tfoot>
     </table>
-    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} supply: <strong>${formatAmt(totalGross)}</strong></p>`;
+    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} value: <strong>${formatAmt(totalTaxable)}</strong> · Gross: <strong>${formatAmt(totalGross)}</strong></p>`;
 }
 
 function renderGstSalesSummary(data, range) {
@@ -736,38 +817,32 @@ function renderGstSalesDetail(data, range) {
   const rows = data.invoices
     .map((inv) => {
       const items = itemsByInvoice.get(inv.id) || [];
-      let taxable12 = 0;
-      let tax12 = 0;
-      let taxable18 = 0;
-      let tax18 = 0;
+      const cgst = Number(inv.cgst_total ?? 0);
+      const sgst = Number(inv.sgst_total ?? 0);
+      const igst = Number(inv.igst_total ?? 0);
+      const hasGst = cgst + sgst + igst > 0;
+
+      let taxable = 0;
       let nonGst = 0;
       let nilRate = 0;
 
-      items.forEach((item) => {
-        const amt = Number(item.amount ?? 0);
-        const pct = Number(item.gst_percent ?? 0);
-        if (pct === 12) {
-          const tx = amt / 1.12;
-          taxable12 += tx;
-          tax12 += amt - tx;
-        } else if (pct === 18) {
-          const tx = amt / 1.18;
-          taxable18 += tx;
-          tax18 += amt - tx;
-        } else if (pct === 0) nilRate += amt;
-        else if (pct < 0) nonGst += amt;
-      });
-
-      const cgst = Number(inv.cgst_total ?? 0);
-      const sgst = Number(inv.sgst_total ?? 0);
-      const hasGst = cgst + sgst > 0;
+      if (items.length) {
+        const sums = sumInvoiceLineAmounts(items);
+        taxable = sums.taxable;
+        nonGst = sums.nonGst;
+        nilRate = sums.nilRate;
+      } else {
+        nonGst = Number(inv.non_gst_total ?? 0);
+        nilRate = Number(inv.nil_rate_total ?? 0);
+        taxable = invoiceHeaderTaxable(inv);
+      }
 
       return `<tr>
         <td>${formatDisplayDate(inv.invoice_date)}</td>
         <td>${escapeHtml(inv.invoice_number)}</td>
         <td>${escapeHtml(inv.party_name)}</td>
         <td>${escapeHtml(inv.party_gstin || "—")}</td>
-        <td class="num">${hasGst ? formatAmt(taxable18 || taxable12) : "—"}</td>
+        <td class="num">${hasGst || taxable > 0 ? formatAmt(taxable) : "—"}</td>
         <td class="num">${formatAmt(cgst)}</td>
         <td class="num">${formatAmt(sgst)}</td>
         <td class="num">${formatAmt(nonGst + nilRate)}</td>
@@ -782,14 +857,14 @@ function renderGstSalesDetail(data, range) {
       <thead>
         <tr>
           <th>Date</th>
-          <th>Invoice no.</th>
+          <th>Invoice</th>
           <th>Party</th>
           <th>GSTIN</th>
-          <th>Taxable (₹)</th>
-          <th>CGST (₹)</th>
-          <th>SGST (₹)</th>
-          <th>Non-GST / NIL (₹)</th>
-          <th>Gross (₹)</th>
+          <th class="num">Taxable</th>
+          <th class="num">CGST</th>
+          <th class="num">SGST</th>
+          <th class="num">Exempt</th>
+          <th class="num">Gross</th>
         </tr>
       </thead>
       <tbody>${rows || `<tr><td colspan="9" class="muted">No invoices in period</td></tr>`}</tbody>
@@ -882,9 +957,7 @@ function renderGstPurchaseSummary(data, range) {
   const { slabTotals, detailRows, missingBuyingCount } = buildFuelPurchaseRows(data, range);
   const missingNote =
     missingBuyingCount > 0
-      ? `<p class="report-note warning">${
-          missingBuyingCount
-        } receipt(s) in this period have no buying price — excluded. Enter buying price on the <a href="dashboard.html#pl">P&amp;L dashboard</a>.</p>`
+      ? `<p class="report-note warning">${missingBuyingCount} receipt(s) in this period have no buying price — excluded. Enter buying price on the P&amp;L dashboard.</p>`
       : "";
   const emptyNote =
     detailRows.length === 0
@@ -908,9 +981,12 @@ function renderGstPurchaseDetail(data, range) {
 
   const rows = detailRows
     .map(
-      (r) => `<tr>
+      (r) => {
+        const prod = normalizeProduct(r.product);
+        const ref = prod === "petrol" ? "MS" : prod === "diesel" ? "HSD" : String(r.product).toUpperCase();
+        return `<tr>
       <td>${formatDisplayDate(r.date)}</td>
-      <td>${escapeHtml(String(r.product).toUpperCase())} receipt</td>
+      <td>${escapeHtml(ref)}</td>
       <td>${escapeHtml(getFuelSupplierLabel())}</td>
       <td class="num">${formatQty(r.litres)}</td>
       <td class="num">${formatAmt(r.rate)}</td>
@@ -918,24 +994,25 @@ function renderGstPurchaseDetail(data, range) {
       <td class="num">${r.taxPct}%</td>
       <td class="num">${formatAmt(r.tax)}</td>
       <td class="num">${formatAmt(r.gross)}</td>
-    </tr>`
+    </tr>`;
+      }
     )
     .join("");
 
   return `
     ${reportHeader("Inward supply — GST detail (Fuel receipts)", range.start, range.end)}
-    <table class="report-table">
+    <table class="report-table report-gst-detail report-gst-detail--purchase">
       <thead>
         <tr>
           <th>Date</th>
-          <th>Reference</th>
+          <th>Prod</th>
           <th>Party</th>
-          <th>Qty (L)</th>
-          <th>Rate (₹/L)</th>
-          <th>Taxable (₹)</th>
-          <th>VAT/LST %</th>
-          <th>VAT/LST (₹)</th>
-          <th>Gross (₹)</th>
+          <th class="num">Qty (L)</th>
+          <th class="num">Rate</th>
+          <th class="num">Taxable</th>
+          <th class="num">VAT%</th>
+          <th class="num">VAT</th>
+          <th class="num">Gross</th>
         </tr>
       </thead>
       <tbody>${rows || `<tr><td colspan="9" class="muted">No receipts with buying price in period</td></tr>`}</tbody>
@@ -1024,19 +1101,21 @@ function renderTradingAccount(data, range) {
     ["Gross income c/d", t.grossIncome],
   ];
 
-  const renderSide = (title, rows) => {
+  const renderSide = (title, rows, excludeFromTotal = []) => {
     const body = rows
       .map(
         ([label, amt]) =>
           `<tr><td>${escapeHtml(label)}</td><td class="num">${formatAmt(amt)}</td></tr>`
       )
       .join("");
-    const total = rows.reduce((s, [, a]) => s + Number(a), 0);
+    const total = rows
+      .filter(([label]) => !excludeFromTotal.includes(label))
+      .reduce((s, [, a]) => s + Number(a), 0);
     return `
       <div class="report-pl-column">
         <h3>${escapeHtml(title)}</h3>
-        <table class="report-table">
-          <thead><tr><th>Particulars</th><th>Amount (₹)</th></tr></thead>
+        <table class="report-table report-trading-table">
+          <thead><tr><th>Particulars</th><th class="num">Amount (₹)</th></tr></thead>
           <tbody>${body}</tbody>
           <tfoot><tr class="report-total-row"><td><strong>Total</strong></td><td class="num"><strong>${formatAmt(total)}</strong></td></tr></tfoot>
         </table>
@@ -1045,10 +1124,11 @@ function renderTradingAccount(data, range) {
 
   return `
     ${reportHeader("Trading account", range.start, range.end)}
-    <div class="report-pl-grid">
-      ${renderSide("Debit", debitRows)}
+    <div class="report-pl-grid report-trading-grid">
+      ${renderSide("Debit", debitRows, ["Gross income c/d"])}
       ${renderSide("Credit", creditRows)}
     </div>
+    <p class="report-note muted">Debit and credit totals should match; gross income is the balancing figure.</p>
     <p class="report-summary-line">Gross income for period: <strong>${formatCurrency(t.grossIncome)}</strong></p>
     <p class="report-note muted">Stock valued at effective buying price from receipts. Lube sales from billing invoices.</p>`;
 }
@@ -1082,35 +1162,236 @@ function renderProfitLoss(data, range) {
     <p class="report-note muted">Expenses from Expenses page. Gross income matches trading account for the same period.</p>`;
 }
 
-function renderActiveReport() {
-  if (!cachedData || !cachedRange) return;
-  const preview = document.getElementById("reports-preview");
-  const printRoot = document.getElementById("reports-print-root");
-  let html = "";
+const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=3";
 
-  switch (activeReport) {
+function reportsAssetUrl(path) {
+  return new URL(path, window.location.href).href;
+}
+
+function preloadReportPrintCss() {
+  getReportPrintCssText().catch(() => {});
+}
+
+async function getReportPrintCssText() {
+  if (reportPrintCssCache) return reportPrintCssCache;
+  const url = reportsAssetUrl(REPORT_PRINT_CSS_URL);
+  const res = await fetch(url, { cache: "default" });
+  if (!res.ok) {
+    return fetchReportPrintCssViaLink(url);
+  }
+  reportPrintCssCache = await res.text();
+  return reportPrintCssCache;
+}
+
+/** Fallback when fetch() is blocked or fails (e.g. offline file quirks). */
+function fetchReportPrintCssViaLink(url) {
+  return new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = url;
+    const timeout = window.setTimeout(() => {
+      link.remove();
+      reject(new Error("Timed out loading print styles."));
+    }, 8000);
+    link.onload = () => {
+      window.clearTimeout(timeout);
+      let cssText = "";
+      try {
+        cssText = [...link.sheet.cssRules].map((r) => r.cssText).join("\n");
+      } catch {
+        link.remove();
+        reject(new Error("Could not read print styles."));
+        return;
+      }
+      link.remove();
+      reportPrintCssCache = cssText;
+      resolve(cssText);
+    };
+    link.onerror = () => {
+      window.clearTimeout(timeout);
+      link.remove();
+      reject(new Error("Could not load report print styles."));
+    };
+    document.head.appendChild(link);
+  });
+}
+
+/** Render report body HTML for the active type (same output as preview / print). */
+function renderReportHtml(reportId, data, range) {
+  switch (reportId) {
     case "gst-sales-summary":
-      html = renderGstSalesSummary(cachedData, cachedRange);
-      break;
+      return renderGstSalesSummary(data, range);
     case "gst-sales-detail":
-      html = renderGstSalesDetail(cachedData, cachedRange);
-      break;
+      return renderGstSalesDetail(data, range);
     case "gst-purchase-summary":
-      html = renderGstPurchaseSummary(cachedData, cachedRange);
-      break;
+      return renderGstPurchaseSummary(data, range);
     case "gst-purchase-detail":
-      html = renderGstPurchaseDetail(cachedData, cachedRange);
-      break;
+      return renderGstPurchaseDetail(data, range);
     case "trading":
-      html = renderTradingAccount(cachedData, cachedRange);
-      break;
+      return renderTradingAccount(data, range);
     case "pl":
-      html = renderProfitLoss(cachedData, cachedRange);
-      break;
+      return renderProfitLoss(data, range);
     case "dsr":
     default:
-      html = renderTankWiseDsr(cachedData, cachedRange);
+      return renderTankWiseDsr(data, range);
   }
+}
+
+function sanitizeReportHtmlForPrint(html) {
+  return html
+    .replace(/src="[^"]*bpcl-logo[^"]*"/gi, `src="${reportsAssetUrl("assets/bpcl-logo.png")}"`)
+    .replace(/<a\b[^>]*>/gi, "")
+    .replace(/<\/a>/gi, "");
+}
+
+function buildPrintSheetWrapped(reportBodyHtml, reportId, range) {
+  const meta = findReportMeta(reportId);
+  const title = meta?.title || "Report";
+  const periodLabel = range
+    ? range.start === range.end
+      ? formatDisplayDate(range.start)
+      : `${formatDisplayDate(range.start)} – ${formatDisplayDate(range.end)}`
+    : "";
+
+  return `
+    <div class="report-print-sheet" data-report="${escapeHtml(reportId)}">
+      ${reportBodyHtml}
+      <footer class="report-print-foot">
+        <span>${escapeHtml(getStationLegalName())}</span>
+        <span>${escapeHtml(title)}${periodLabel ? ` · ${escapeHtml(periodLabel)}` : ""}</span>
+      </footer>
+    </div>`;
+}
+
+async function waitForPrintFrameReady(doc, win) {
+  await new Promise((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const finish = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    if (win.document.readyState === "complete") {
+      finish();
+    } else {
+      win.addEventListener("load", finish, { once: true });
+    }
+  });
+
+  const logo = doc.querySelector(".report-bpcl-logo");
+  if (logo && !logo.complete) {
+    await new Promise((resolve) => {
+      logo.addEventListener("load", resolve, { once: true });
+      logo.addEventListener("error", resolve, { once: true });
+      window.setTimeout(resolve, 2500);
+    });
+  }
+
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  void doc.body.offsetHeight;
+}
+
+async function handleReportPrintClick() {
+  if (reportPrintBusy) return;
+  const btn = document.getElementById("reports-print-btn");
+  const prevLabel = btn?.textContent || "Print this report";
+
+  reportPrintBusy = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Preparing…";
+  }
+
+  try {
+    await runReportPrint();
+  } catch (err) {
+    AppError?.report?.(err, { context: "runReportPrint" });
+    alert(AppError?.getUserMessage?.(err) || "Could not open the print dialog.");
+  } finally {
+    reportPrintBusy = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prevLabel;
+    }
+  }
+}
+
+async function runReportPrint() {
+  if (!cachedData || !cachedRange) {
+    alert("Load report data first (pick dates and click Load data).");
+    return;
+  }
+
+  const reportBodyHtml = renderReportHtml(activeReport, cachedData, cachedRange);
+  if (!reportBodyHtml?.trim()) {
+    alert("No report content to print.");
+    return;
+  }
+
+  const bodyHtml = sanitizeReportHtmlForPrint(reportBodyHtml);
+  const sheetWrapped = buildPrintSheetWrapped(bodyHtml, activeReport, cachedRange);
+  const cssText = await getReportPrintCssText();
+  const meta = findReportMeta(activeReport);
+  const title = meta?.title || "Report";
+
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Report print");
+  iframe.style.cssText =
+    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
+  if (!doc || !win) {
+    iframe.remove();
+    throw new Error("Print frame unavailable");
+  }
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>${cssText.replace(/<\/style/gi, "<\\/style")}</style>
+</head>
+<body class="report-print-body">
+  <div class="report-print-container">${sheetWrapped}</div>
+</body>
+</html>`);
+  doc.close();
+
+  try {
+    await waitForPrintFrameReady(doc, win);
+    const cleanup = () => iframe.remove();
+    win.addEventListener("afterprint", cleanup, { once: true });
+    win.focus();
+    win.print();
+    window.setTimeout(cleanup, 5000);
+  } catch (err) {
+    iframe.remove();
+    throw err;
+  }
+}
+
+function renderActiveReport() {
+  const preview = document.getElementById("reports-preview");
+  const printRoot = document.getElementById("reports-print-root");
+
+  if (!cachedData || !cachedRange) {
+    if (preview && preview.textContent !== "Loading…") {
+      preview.innerHTML =
+        "<p class=\"muted\">Select dates and click <strong>Load data</strong> to generate this report.</p>";
+      preview.classList.add("muted");
+    }
+    if (printRoot) {
+      printRoot.innerHTML = "";
+      printRoot.setAttribute("aria-hidden", "true");
+    }
+    setReportPrintButtonWaiting();
+    return;
+  }
+
+  const html = renderReportHtml(activeReport, cachedData, cachedRange);
 
   if (preview) {
     preview.innerHTML = `<div class="report-preview-inner">${html}</div>`;
@@ -1119,5 +1400,19 @@ function renderActiveReport() {
   if (printRoot) {
     printRoot.innerHTML = `<div class="report-print-sheet">${html}</div>`;
     printRoot.removeAttribute("aria-hidden");
+  }
+
+  const printBtn = document.getElementById("reports-print-btn");
+  if (printBtn && !reportPrintBusy) {
+    printBtn.disabled = false;
+    printBtn.title = "";
+  }
+}
+
+function setReportPrintButtonWaiting() {
+  const printBtn = document.getElementById("reports-print-btn");
+  if (printBtn && !reportPrintBusy) {
+    printBtn.disabled = true;
+    printBtn.title = "Load report data first";
   }
 }
