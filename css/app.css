@@ -2696,8 +2696,31 @@ table.attendance-matrix {
   gap: var(--space-4);
 }
 
+.reports-generate-panel.is-visible {
+  display: flex;
+}
+
 .reports-generate-panel.settings-panel.card {
   padding: var(--space-5);
+}
+
+body.reports-page main.settings-layout.reports-layout {
+  width: min(98vw, 1680px);
+  max-width: none;
+}
+
+.reports-layout.page-layout-wide .settings-panel.card {
+  margin-bottom: 0;
+}
+
+.page-layout-wide.reports-layout .reports-generate-panel.settings-panel.card {
+  padding: 1.35rem 1.5rem 1.5rem;
+}
+
+.page-layout-wide.reports-layout .reports-generate-layout {
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: stretch;
 }
 
 .reports-generate-intro h2 {
@@ -2803,6 +2826,10 @@ table.attendance-matrix {
   gap: var(--space-3);
 }
 
+.reports-period-fields .filter-actions {
+  align-self: flex-end;
+}
+
 .reports-period-label {
   margin: var(--space-3) 0 0;
   font-size: var(--text-sm);
@@ -2832,7 +2859,7 @@ table.attendance-matrix {
 
 .reports-active-title {
   margin: 0;
-  font-size: var(--heading-lg);
+  font-size: var(--heading-xl);
   font-weight: 700;
   color: var(--text);
 }
@@ -2873,9 +2900,46 @@ table.attendance-matrix {
 .reports-preview {
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md);
-  padding: 1rem;
+  padding: 1.25rem 1.5rem;
   background: #fafafa;
   overflow-x: auto;
+  min-height: 22rem;
+}
+
+/* Screen preview — same width as print (A4 content area) */
+.reports-preview .report-preview-inner {
+  max-width: 186mm;
+  margin: 0 auto;
+  background: #fff;
+  padding: 0.5rem;
+}
+
+.reports-preview .report-table {
+  table-layout: fixed;
+  width: 100%;
+  font-size: 0.75rem;
+}
+
+.reports-preview .report-dsr-table {
+  font-size: 0.65rem;
+}
+
+.reports-preview .report-gst-detail th,
+.reports-preview .report-table th {
+  white-space: nowrap;
+  font-size: 0.65rem;
+}
+
+.reports-preview .report-trading-grid {
+  display: block;
+}
+
+.reports-preview .report-pl-column {
+  margin-bottom: var(--space-4);
+}
+
+.page-layout-wide.reports-layout .report-preview-inner {
+  font-size: var(--text-sm);
 }
 
 .report-preview-inner,
@@ -2943,7 +3007,7 @@ table.attendance-matrix {
   margin: 0;
   color: #475569;
   font-size: 0.85rem;
-  text-align: center;
+  text-align: left;
 }
 
 .report-table {
@@ -2964,6 +3028,13 @@ table.attendance-matrix {
   background: #f1f5f9;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.report-dsr-table th {
+  white-space: nowrap;
+  line-height: 1.2;
+  vertical-align: bottom;
+  font-size: 0.65rem;
 }
 
 .report-table td.num,
@@ -3029,33 +3100,25 @@ table.attendance-matrix {
   display: none;
 }
 
+/* Reports print layout lives in css/reports-print.css (iframe). Fallback if user prints the page directly: */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+
+  body.reports-page {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+  }
+
   body.reports-page .no-print,
   body.reports-page header.topbar,
   body.reports-page footer.app-footer,
-  body.reports-page main.settings-layout {
+  body.reports-page main.settings-layout,
+  body.reports-page .reports-print-root[aria-hidden="true"] {
     display: none !important;
-  }
-
-  body.reports-page .reports-print-root {
-    display: block !important;
-    padding: 0;
-  }
-
-  body.reports-page .report-print-sheet {
-    font-size: 8pt;
-  }
-
-  body.reports-page .report-bpcl-logo {
-    height: 3.5rem;
-  }
-
-  body.reports-page .report-dsr-table {
-    font-size: 6.5pt;
-  }
-
-  body.reports-page .report-tank-section {
-    page-break-inside: avoid;
   }
 }
 
@@ -3783,11 +3846,6 @@ main.settings-layout.dashboard-page-layout {
     var(--bpcl-yellow) 100%
   );
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
-.reports-generate-sidebar {
-  position: relative;
-  overflow: hidden;
 }
 
 .reports-generate-sidebar::before {
