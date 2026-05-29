@@ -221,21 +221,32 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   line-height: 1.2;
 }
 
+.topbar .brand .page-subtitle {
+  display: none;
+}
+
 .topbar .page-subtitle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   color: var(--bpcl-blue);
   font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1.2;
   padding-left: 0;
   opacity: 0.85;
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: min(42vw, 16rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  z-index: 1;
 }
 
 .topbar .page-subtitle::before {
   content: none;
-}
-
-.topbar .brand-text .page-subtitle {
-  display: block;
 }
 
 .topbar .nav-wrap {

@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v53";
+const CACHE_VERSION = "v54";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -32,6 +32,7 @@ const STATIC_ASSETS = [
   "/css/base.css",
   "/css/app.css",
   "/css/staff-id-print.css",
+  "/css/invoice-print.css",
   "/css/landing.css",
   "/css/login.css",
   "/assets/bpcl-logo.png",

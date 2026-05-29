@@ -32,13 +32,23 @@ function resolveLanding(role) {
   return LANDING_BY_ROLE[role] ?? "dashboard.html";
 }
 
+function centerTopbarSubtitle() {
+  const topbar = document.querySelector("header.topbar");
+  if (!topbar) return;
+
+  const subtitle = topbar.querySelector(".page-subtitle");
+  if (!subtitle || subtitle.parentElement === topbar) return;
+
+  const insertBefore = topbar.querySelector(".nav-toggle") ?? topbar.querySelector(".nav-wrap");
+  topbar.insertBefore(subtitle, insertBefore);
+}
+
 function enhanceTopbarBrand() {
   const topbar = document.querySelector("header.topbar");
   const brand = topbar?.querySelector(".brand");
   if (!brand || brand.querySelector(".brand-mark")) return;
 
   const link = brand.querySelector("a");
-  const subtitle = brand.querySelector(".page-subtitle");
   if (!link || typeof AppConfig === "undefined" || !AppConfig.BPCL_LOGO_SRC) return;
 
   topbar?.classList.add("topbar--bpcl");
@@ -64,8 +74,6 @@ function enhanceTopbarBrand() {
     dealer.textContent = "Authorized BPCL Dealer";
     textWrap.appendChild(dealer);
   }
-
-  if (subtitle) textWrap.appendChild(subtitle);
 
   brand.textContent = "";
   brand.appendChild(mark);
@@ -577,6 +585,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
   ensureTopbarUserMenu();
+  centerTopbarSubtitle();
   enhanceTopbarBrand();
   markCurrentNavLink();
   initNavToggle();
