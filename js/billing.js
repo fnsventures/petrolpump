@@ -108,15 +108,76 @@ function normalizeInvoiceItemName(name) {
   return fixes[key] || raw;
 }
 
-function runInvoicePrint(invoiceNumber) {
-  const prevTitle = document.title;
-  document.title = invoiceNumber ? String(invoiceNumber) : "Tax Invoice";
-  const restore = () => {
-    document.title = prevTitle;
-    window.removeEventListener("afterprint", restore);
-  };
-  window.addEventListener("afterprint", restore);
-  window.print();
+function invoiceAssetUrl(path) {
+  return new URL(path, window.location.href).href;
+}
+
+async function waitForInvoicePrintAssets(doc) {
+  const logo = doc.querySelector(".invoice-bpcl-logo");
+  if (logo && !logo.complete) {
+    await new Promise((resolve) => {
+      logo.addEventListener("load", resolve, { once: true });
+      logo.addEventListener("error", resolve, { once: true });
+    });
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+async function runInvoicePrint(invoiceNumber) {
+  const printRoot = document.getElementById("print-invoice");
+  if (!printRoot) {
+    window.print();
+    return;
+  }
+
+  let sheetHtml = printRoot.innerHTML;
+  sheetHtml = sheetHtml.replace(
+    /src="assets\/bpcl-logo\.png"/gi,
+    `src="${invoiceAssetUrl("assets/bpcl-logo.png")}"`
+  );
+
+  const title = invoiceNumber ? String(invoiceNumber) : "Tax Invoice";
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Invoice print");
+  iframe.style.cssText =
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    iframe.remove();
+    window.print();
+    return;
+  }
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <link rel="stylesheet" href="${invoiceAssetUrl("css/invoice-print.css")}" />
+</head>
+<body>
+  <div class="print-invoice-container">${sheetHtml}</div>
+</body>
+</html>`);
+  doc.close();
+
+  try {
+    await waitForInvoicePrintAssets(doc);
+    const win = iframe.contentWindow;
+    if (!win) throw new Error("Print frame unavailable");
+    const cleanup = () => iframe.remove();
+    win.addEventListener("afterprint", cleanup);
+    win.focus();
+    win.print();
+    window.setTimeout(cleanup, 3000);
+  } catch (err) {
+    iframe.remove();
+    AppError?.report?.(err, { context: "runInvoicePrint" });
+    window.print();
+  }
 }
 
 async function populatePartyDatalist() {
@@ -457,7 +518,7 @@ async function showPrintInvoice(invoiceId) {
     .order("sl_no");
 
   populatePrintInvoice(invoice, items || []);
-  runInvoicePrint(invoice.invoice_number);
+  await runInvoicePrint(invoice.invoice_number);
 }
 
 function printField(value) {
