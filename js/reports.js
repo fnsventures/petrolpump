@@ -972,7 +972,7 @@ function renderGstPurchaseSummary(data, range) {
     )}. ${
       isPurchaseTaxInclusive()
         ? "Buying rate treated as tax-inclusive."
-        : "Buying rate treated as pre-tax (BPCL invoice style); VAT/LST added on taxable value."
+        : "Buying rate treated as pre-tax; VAT/LST added on taxable value."
     }</p>`;
 }
 
@@ -1025,7 +1025,7 @@ function renderGstPurchaseDetail(data, range) {
     <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. ${
       isPurchaseTaxInclusive()
         ? "Buying rate is tax-inclusive."
-        : "Buying rate is pre-tax; VAT/LST computed on taxable (BPCL invoice style)."
+        : "Buying rate is pre-tax; VAT/LST computed on taxable."
     }</p>`;
 }
 
