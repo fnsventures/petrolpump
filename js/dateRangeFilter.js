@@ -279,9 +279,9 @@ const DATE_RANGE_PRESETS = {
     { value: "custom", label: "Custom range" },
   ],
   creditCustomer: [
+    { value: "today", label: "Today" },
+    { value: "this-week", label: "This week" },
     { value: "this-month", label: "This month" },
-    { value: "last-30-days", label: "Last 30 days" },
-    { value: "all-time", label: "All time" },
     { value: "custom", label: "Custom dates" },
   ],
 };

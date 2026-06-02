@@ -3341,6 +3341,54 @@ body.reports-page main.settings-layout.reports-layout {
   width: 100%;
 }
 
+.combobox {
+  position: relative;
+}
+
+.combobox-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 11.5rem;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.combobox-list:not(.hidden) {
+  display: block;
+}
+
+.combobox-option {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+}
+
+.combobox-option:hover,
+.combobox-option.is-active {
+  background: rgba(0, 112, 192, 0.08);
+  color: var(--color-primary, #0070c0);
+}
+
+.combobox-option.is-active {
+  font-weight: 500;
+}
+
+.combobox-empty {
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--text-muted, #64748b);
+}
+
 .customer-link {
   font-weight: 600;
   color: var(--color-primary);
@@ -3579,6 +3627,72 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #0c4a6e;
+  transition: color 0.15s ease;
+}
+
+.customer-name-row {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.55rem;
+  max-width: 100%;
+}
+
+.customer-name-row.is-editable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem 0.35rem;
+}
+
+.customer-name-row.is-editable .customer-balance-name {
+  margin-bottom: 0;
+}
+
+.customer-name-row.is-editable .customer-name-edit-hint {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.customer-name-row.is-editable:hover .customer-name-edit-hint,
+.customer-name-row.is-editable:focus-visible .customer-name-edit-hint {
+  opacity: 1;
+}
+
+.customer-name-row.is-editable:hover .customer-balance-name,
+.customer-name-row.is-editable:focus-visible .customer-balance-name {
+  color: var(--color-primary);
+}
+
+.customer-name-row.is-editable:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.customer-edit-card {
+  max-width: 480px;
+}
+
+.customer-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.customer-edit-form #customer-info-msg.success {
+  color: var(--color-success, #0a7a3e);
+}
+
+.customer-edit-form #customer-info-msg.error {
+  color: var(--color-danger, #b91c1c);
+}
+
+body.modal-open {
+  overflow: hidden;
 }
 
 .customer-balance-meta {

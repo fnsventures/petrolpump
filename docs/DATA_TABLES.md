@@ -322,6 +322,8 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | id | uuid | Primary key |
 | customer_name | text | Customer name |
 | vehicle_no | text | Optional |
+| mobile | text | Optional contact number |
+| address | text | Optional address |
 | amount_due | numeric | Current outstanding (synced by trigger) |
 | date | date | Used for day-closing credit_today legacy |
 | last_payment | date | Last payment date |
@@ -329,7 +331,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** SELECT all; INSERT own; UPDATE supervisor or admin; DELETE admin only.
 
 **Trigger:** `credit_entries_sync_trigger` on `credit_entries` updates `credit_customers.amount_due`.
 
