@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -80,7 +80,11 @@ function normalizeEmployeeDetailFields(raw) {
 }
 
 function invalidateEmployeeListCache() {
-  if (typeof AppCache !== "undefined" && AppCache) AppCache.invalidateByType("staff_list");
+  if (typeof StaffEmployees !== "undefined" && StaffEmployees) {
+    StaffEmployees.invalidateActiveEmployeesCache();
+  } else if (typeof AppCache !== "undefined" && AppCache) {
+    AppCache.invalidateByType("staff_list");
+  }
 }
 
 function buildPhotoSlotHtml(employee) {
@@ -396,6 +400,7 @@ function initStaffPage(auth) {
   const profileAadhar = document.getElementById("staff-profile-aadhar");
   const profilePan = document.getElementById("staff-profile-pan");
   const profilePf = document.getElementById("staff-profile-pf");
+  const profilePfContribution = document.getElementById("staff-profile-pf-contribution");
   const profileAddress = document.getElementById("staff-profile-address");
   const idCardPreview = document.getElementById("id-card-preview");
   const idCardHint = document.getElementById("id-card-hint");
@@ -549,6 +554,13 @@ function initStaffPage(auth) {
     if (profileAadhar) profileAadhar.textContent = formatDetail(emp.aadhar_number);
     if (profilePan) profilePan.textContent = formatDetail(emp.pan_number);
     if (profilePf) profilePf.textContent = formatDetail(emp.pf_number);
+    if (profilePfContribution) {
+      const amt = Number(emp.pf_contribution);
+      profilePfContribution.textContent =
+        Number.isFinite(amt) && amt > 0
+          ? `₹ ${amt.toLocaleString("en-IN")} / month`
+          : "Not set — use Settings → Staff salaries";
+    }
     if (profileAddress) profileAddress.textContent = formatDetail(emp.address);
     setProfilePhoto(emp.photo_url, emp.name);
     renderRosterList();
@@ -603,21 +615,17 @@ function initStaffPage(auth) {
   }
 
   async function loadStaffMembers() {
-    const { data, error } = await supabaseClient
-      .from("employees")
-      .select(
-        "id, name, role_display, display_order, phone_number, aadhar_number, address, pan_number, pf_number, blood_group, photo_url, date_of_birth, id_valid_from, id_valid_to"
-      )
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
-    if (error) {
+    try {
+      staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
+        isAdmin: true,
+        useCache: true,
+      });
+      staffListLoadError = null;
+    } catch (error) {
       staffListLoadError = error;
       staffList = [];
-      return [];
+      AppError.report(error, { context: "loadStaffMembers" });
     }
-    staffListLoadError = null;
-    staffList = data ?? [];
     return staffList;
   }
 

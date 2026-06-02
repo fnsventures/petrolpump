@@ -37,6 +37,11 @@
     mobile: "+91 96689 13299",
     gstin: "21BBNPR7397L3ZR",
     license: "P/EC/OR/14/2557 (P459205)",
+    /** EPFO establishment / employer PF registration (shown on salary slips). */
+    pfEstablishmentCode: "",
+    /** Statutory PF rates (% of monthly salary used as PF wage). */
+    pfEmployeeRate: 12,
+    pfEmployerRate: 12,
     supportEmail: "official@fnsventures.in",
     supportWhatsapp: "+91 96689 13299",
   };
