@@ -92,6 +92,7 @@ function bindStationForm(auth) {
   set("st-mobile", s.mobile);
   set("st-gstin", s.gstin);
   set("st-license", s.license);
+  set("st-pf-establishment", s.pfEstablishmentCode);
   set("st-support-email", s.supportEmail);
   set("st-support-whatsapp", s.supportWhatsapp);
 
@@ -116,6 +117,7 @@ function bindStationForm(auth) {
           mobile: document.getElementById("st-mobile")?.value?.trim(),
           gstin: document.getElementById("st-gstin")?.value?.trim(),
           license: document.getElementById("st-license")?.value?.trim(),
+          pfEstablishmentCode: document.getElementById("st-pf-establishment")?.value?.trim() || "",
           supportEmail: document.getElementById("st-support-email")?.value?.trim(),
           supportWhatsapp: document.getElementById("st-support-whatsapp")?.value?.trim(),
         },
@@ -657,22 +659,28 @@ function initStaffSalaries() {
   async function loadSalaries() {
     const { data, error } = await supabaseClient
       .from("employees")
-      .select("id, name, role_display, monthly_salary, display_order")
+      .select("id, name, role_display, monthly_salary, pf_contribution, display_order")
       .eq("is_active", true)
       .order("display_order", { ascending: true })
       .order("name", { ascending: true });
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
       return;
     }
     staffList = data ?? [];
     renderSalariesTable();
   }
 
+  function formatPfContributionValue(value) {
+    if (value == null || value === "") return "";
+    const n = Number(value);
+    return Number.isFinite(n) ? String(n) : "";
+  }
+
   function renderSalariesTable() {
     if (!staffList.length) {
       tbody.innerHTML =
-        '<tr><td colspan="4" class="muted">No staff yet. <a href="staff.html">Add staff in HR → Staff</a> first.</td></tr>';
+        '<tr><td colspan="5" class="muted">No staff yet. <a href="staff.html">Add staff in HR → Staff</a> first.</td></tr>';
       return;
     }
     tbody.innerHTML = staffList
@@ -683,6 +691,9 @@ function initStaffSalaries() {
         <td>${escapeHtml(s.role_display ?? "—")}</td>
         <td>
           <input type="number" class="emp-salary-input" min="0" step="0.01" value="${escapeHtml(String(s.monthly_salary ?? 0))}" aria-label="Monthly salary for ${escapeHtml(s.name)}" />
+        </td>
+        <td>
+          <input type="number" class="emp-pf-input" min="0" step="1" placeholder="e.g. 200 or 150" value="${escapeHtml(formatPfContributionValue(s.pf_contribution))}" aria-label="PF contribution for ${escapeHtml(s.name)}" />
         </td>
         <td>
           <button type="button" class="save-emp-salary-btn button-secondary" data-id="${escapeHtml(s.id)}">Save</button>
@@ -700,11 +711,22 @@ function initStaffSalaries() {
     e.preventDefault();
     const id = btn.getAttribute("data-id");
     const row = tbody.querySelector(`tr[data-employee-id="${id}"]`);
-    const input = row?.querySelector(".emp-salary-input");
-    const monthlySalary = Number(input?.value ?? 0);
+    const salaryInput = row?.querySelector(".emp-salary-input");
+    const pfInput = row?.querySelector(".emp-pf-input");
+    const monthlySalary = Number(salaryInput?.value ?? 0);
+    const pfRaw = pfInput?.value ?? "";
+    const pfContribution = String(pfRaw).trim() === "" ? null : Number(pfRaw);
     if (!Number.isFinite(monthlySalary) || monthlySalary < 0) {
       if (errorEl) {
         errorEl.textContent = "Enter a valid salary (0 or more).";
+        errorEl.classList.remove("hidden");
+      }
+      successEl?.classList.add("hidden");
+      return;
+    }
+    if (pfContribution != null && (!Number.isFinite(pfContribution) || pfContribution < 0)) {
+      if (errorEl) {
+        errorEl.textContent = "Enter a valid PF contribution (0 or more), or leave blank.";
         errorEl.classList.remove("hidden");
       }
       successEl?.classList.add("hidden");
@@ -716,7 +738,7 @@ function initStaffSalaries() {
     errorEl?.classList.add("hidden");
     const { error } = await supabaseClient
       .from("employees")
-      .update({ monthly_salary: monthlySalary })
+      .update({ monthly_salary: monthlySalary, pf_contribution: pfContribution })
       .eq("id", id);
     btn.disabled = false;
     btn.textContent = "Save";
@@ -726,7 +748,10 @@ function initStaffSalaries() {
     }
     invalidateEmployeeListCache();
     const item = staffList.find((s) => s.id === id);
-    if (item) item.monthly_salary = monthlySalary;
+    if (item) {
+      item.monthly_salary = monthlySalary;
+      item.pf_contribution = pfContribution;
+    }
     successEl?.classList.remove("hidden");
   });
 

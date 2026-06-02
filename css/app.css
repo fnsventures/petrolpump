@@ -4891,3 +4891,172 @@ body.dashboard-page .highlight-card.clickable-card:hover {
     margin: 0;
   }
 }
+
+/* ── Salary page ── */
+.month-year-filter {
+  min-width: 0;
+}
+
+.month-year-filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.month-year-filter-controls select {
+  min-width: 0;
+}
+
+.month-year-filter-controls select:first-child {
+  flex: 1 1 8.5rem;
+  min-width: 7.5rem;
+}
+
+.month-year-filter-controls select:last-child {
+  flex: 0 0 5.5rem;
+}
+
+.salary-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.salary-status {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.salary-status--paid {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.salary-status--partial {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.salary-status--unpaid {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.salary-status--none {
+  background: var(--surface-muted, #f1f5f9);
+  color: var(--text-muted);
+}
+
+.salary-status--advance {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.salary-summary-table tbody tr {
+  cursor: pointer;
+}
+
+.salary-summary-table tbody tr:hover td {
+  background: var(--bpcl-blue-soft, #eff6ff);
+}
+
+.salary-summary-table tbody tr.is-selected td {
+  background: var(--bpcl-blue-soft, #eff6ff);
+}
+
+.salary-summary-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-detail-card {
+  max-width: 36rem;
+  width: 100%;
+}
+
+.salary-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted, #f8fafc);
+  border: 1px solid var(--border);
+}
+
+.salary-detail-meta dt {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.salary-detail-meta dd {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-detail-meta dd.salary-detail-balance {
+  color: #b45309;
+}
+
+.salary-detail-meta dd.salary-detail-balance.is-clear {
+  color: #047857;
+}
+
+.salary-detail-section-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.salary-detail-payments {
+  margin-bottom: var(--space-3);
+}
+
+.salary-detail-payments .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.salary-slip-preview-wrap {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.salary-slip-preview-wrap[hidden] {
+  display: none !important;
+}
+
+.salary-slip-preview-wrap .salary-slip-preview-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}

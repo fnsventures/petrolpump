@@ -20,6 +20,7 @@
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/auth.js"></script>
+    <script defer src="js/staffEmployees.js"></script>
     <script defer src="js/staff.js"></script>
   </head>
   <body class="staff-page">
@@ -76,7 +77,7 @@
           </div>
           <button type="button" id="staff-add-btn" class="button-secondary">+ Add</button>
         </div>
-        <p class="muted staff-roster-hint">Set salary in <a href="settings.html#salaries">Settings</a>.</p>
+        <p class="muted staff-roster-hint">Set salary and PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
         <ul id="staff-roster-list" class="staff-roster-list" role="listbox" aria-label="Select staff member">
           <li class="staff-roster-loading muted">Loading…</li>
         </ul>
@@ -158,7 +159,7 @@
                 <input id="emp-pan" type="text" maxlength="10" placeholder="ABCDE1234F" autocapitalize="characters" />
               </div>
               <div class="form-field">
-                <label for="emp-pf">PF number</label>
+                <label for="emp-pf">PF / UAN number</label>
                 <input id="emp-pf" type="text" maxlength="30" />
               </div>
               <div class="form-field form-field-full">
@@ -196,7 +197,8 @@
                 <div><dt>Phone</dt><dd id="staff-profile-phone">—</dd></div>
                 <div><dt>Aadhaar</dt><dd id="staff-profile-aadhar">—</dd></div>
                 <div><dt>PAN</dt><dd id="staff-profile-pan">—</dd></div>
-                <div><dt>PF</dt><dd id="staff-profile-pf">—</dd></div>
+                <div><dt>PF / UAN</dt><dd id="staff-profile-pf">—</dd></div>
+                <div><dt>PF contribution</dt><dd id="staff-profile-pf-contribution">—</dd></div>
                 <div class="staff-profile-address"><dt>Address</dt><dd id="staff-profile-address">—</dd></div>
               </dl>
             </div>

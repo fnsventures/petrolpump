@@ -203,6 +203,51 @@ function getMonthRange(year, monthIndex) {
   return { start: formatDateInput(start), end: formatDateInput(end) };
 }
 
+function getMonthNameOptions() {
+  return Array.from({ length: 12 }, (_, i) => ({
+    value: String(i + 1).padStart(2, "0"),
+    label: new Date(2000, i, 1).toLocaleDateString("en-IN", { month: "long" }),
+  }));
+}
+
+function populateMonthYearSelects(monthSelect, yearSelect, options = {}) {
+  if (!monthSelect || !yearSelect) return;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const minYear = options.minYear ?? currentYear - 5;
+  const maxYear = options.maxYear ?? currentYear + 1;
+
+  monthSelect.innerHTML = getMonthNameOptions()
+    .map(({ value, label }) => `<option value="${value}">${label}</option>`)
+    .join("");
+
+  yearSelect.innerHTML = "";
+  for (let year = maxYear; year >= minYear; year -= 1) {
+    yearSelect.add(new Option(String(year), String(year)));
+  }
+}
+
+function readMonthYearValue(monthSelect, yearSelect) {
+  const year = yearSelect?.value;
+  const month = monthSelect?.value;
+  if (!year || !month) return "";
+  return `${year}-${month}`;
+}
+
+function writeMonthYearValue(monthSelect, yearSelect, monthValue) {
+  if (!monthSelect || !yearSelect || !monthValue) return;
+  const [year, month] = monthValue.split("-");
+  if (!year || !month) return;
+
+  if (![...yearSelect.options].some((opt) => opt.value === year)) {
+    yearSelect.add(new Option(year, year, true, true));
+  }
+
+  monthSelect.value = month.padStart(2, "0");
+  yearSelect.value = year;
+}
+
 function getLast3MonthsRange() {
   const end = new Date();
   const start = new Date(end);
@@ -390,6 +435,10 @@ window.formatQuantity = formatQuantity;
 window.formatGstLabel = formatGstLabel;
 window.getWeekRange = getWeekRange;
 window.getMonthRange = getMonthRange;
+window.getMonthNameOptions = getMonthNameOptions;
+window.populateMonthYearSelects = populateMonthYearSelects;
+window.readMonthYearValue = readMonthYearValue;
+window.writeMonthYearValue = writeMonthYearValue;
 window.getLast3MonthsRange = getLast3MonthsRange;
 window.getCustomRange = getCustomRange;
 /**

@@ -941,6 +941,7 @@ create table if not exists public.employees (
   phone_number text check (phone_number is null or phone_number ~ '^[0-9]{10}$'),
   pan_number text check (pan_number is null or pan_number ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'),
   pf_number text check (pf_number is null or (char_length(trim(pf_number)) > 0 and char_length(pf_number) <= 30)),
+  pf_contribution numeric(14,2) check (pf_contribution is null or pf_contribution >= 0),
   blood_group text check (
     blood_group is null
     or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')
@@ -1006,6 +1007,56 @@ comment on function public.list_employees_roster() is
   'Active employees without PII — for salary and attendance (all authenticated).';
 
 grant execute on function public.list_employees_roster() to authenticated;
+
+create or replace function public.list_employees_salary()
+returns table (
+  id uuid,
+  name text,
+  role_display text,
+  monthly_salary numeric,
+  display_order smallint,
+  phone_number text,
+  aadhar_number text,
+  address text,
+  pan_number text,
+  pf_number text,
+  pf_contribution numeric,
+  blood_group text,
+  photo_url text,
+  date_of_birth date,
+  id_valid_from date,
+  id_valid_to date
+)
+language sql
+security definer
+stable
+as $$
+  select
+    e.id,
+    e.name,
+    e.role_display,
+    e.monthly_salary,
+    e.display_order,
+    e.phone_number,
+    e.aadhar_number,
+    e.address,
+    e.pan_number,
+    e.pf_number,
+    e.pf_contribution,
+    e.blood_group,
+    e.photo_url,
+    e.date_of_birth,
+    e.id_valid_from,
+    e.id_valid_to
+  from public.employees e
+  where e.is_active = true
+  order by e.display_order, e.name;
+$$;
+
+comment on function public.list_employees_salary() is
+  'Active employees with HR Staff page fields for salary slips (supervisors; admins use employees table).';
+
+grant execute on function public.list_employees_salary() to authenticated;
 
 alter table public.employees enable row level security;
 

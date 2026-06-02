@@ -86,7 +86,7 @@
         <!-- Station -->
         <section id="settings-panel-station" class="settings-panel card is-visible" data-panel="station">
           <h2>Station &amp; branding</h2>
-          <p class="muted">Used on invoices, reports, and page titles. Saved to the server for all devices.</p>
+          <p class="muted">Used on invoices, reports, salary slips, and page titles. Saved to the server for all devices.</p>
           <form id="station-form" class="form">
             <div class="form-grid">
               <div class="form-field">
@@ -128,6 +128,10 @@
               <div class="form-field">
                 <label for="st-license">License no.</label>
                 <input id="st-license" type="text" maxlength="80" />
+              </div>
+              <div class="form-field">
+                <label for="st-pf-establishment">PF establishment code</label>
+                <input id="st-pf-establishment" type="text" maxlength="30" placeholder="Employer EPFO registration" />
               </div>
               <div class="form-field">
                 <label for="st-support-email">Support email (footer)</label>
@@ -324,14 +328,14 @@
         <!-- Staff salaries -->
         <section id="settings-panel-salaries" class="settings-panel card" data-panel="salaries" hidden>
           <h2>Staff salaries</h2>
-          <p class="muted">Set monthly salary for each staff member after adding them under <a href="staff.html">HR → Staff</a>.</p>
+          <p class="muted">Set monthly salary and PF contribution (e.g. ₹200 or ₹150 per month) for each staff member after adding them under <a href="staff.html">HR → Staff</a>.</p>
           <div class="table-wrap margin-top">
             <table>
               <thead>
-                <tr><th>Name</th><th>Job title</th><th>Monthly salary (₹)</th><th>Action</th></tr>
+                <tr><th>Name</th><th>Job title</th><th>Monthly salary (₹)</th><th>PF contribution (₹/month)</th><th>Action</th></tr>
               </thead>
               <tbody id="emp-salaries-body">
-                <tr><td colspan="4" class="muted">Loading…</td></tr>
+                <tr><td colspan="5" class="muted">Loading…</td></tr>
               </tbody>
             </table>
           </div>
