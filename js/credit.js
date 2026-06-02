@@ -1,8 +1,10 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState */
 
-const { getMonthStart, filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
+const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
 const PAGE_SIZE = 25;
+
+let customerPeriodFilterApi = null;
 
 let creditPagination = {
   offset: 0,
@@ -17,8 +19,12 @@ let customerName = "";
 let customerId = null;
 let customerIds = [];
 let customerOutstandingDue = 0;
+let customerContact = { mobile: "", address: "" };
 let creditPager = null;
 let paymentPager = null;
+let customerSuggestions = [];
+let customerComboboxActiveIndex = -1;
+let customerComboboxMatches = [];
 
 function isCustomerView() {
   return Boolean(customerName);
@@ -101,6 +107,7 @@ function initListView() {
   }
 
   initPaginationControls();
+  initCustomerCombobox();
   loadCustomerNames();
   loadCreditLedger(true);
 }
@@ -154,10 +161,7 @@ async function initCustomerView() {
   document.title = `${customerName} · Credit · Bishnupriya Fuels`;
 
   const today = getLocalDateString();
-  const throughInput = document.getElementById("filter-through");
   const settleDate = document.getElementById("settle-date");
-
-  if (throughInput) throughInput.value = today;
   if (settleDate) settleDate.value = today;
 
   initCustomerViewFilter();
@@ -183,6 +187,7 @@ async function initCustomerView() {
   if (creditBody) creditBody.dataset.breakdownMode = "credit-rich";
 
   await resolveCustomerIds();
+  initCustomerInfoEdit();
 
   if (typeof initPageSections === "function") {
     initPageSections({
@@ -198,109 +203,74 @@ async function initCustomerView() {
 }
 
 function getCustomerViewFilter() {
-  const rangeSelect = document.getElementById("filter-range");
-  const throughInput = document.getElementById("filter-through");
-  const fromInput = document.getElementById("filter-from");
-  const selection = rangeSelect?.value || "this-month";
-  const asOfDate = throughInput?.value || getLocalDateString();
-
-  if (selection === "this-month") {
-    return { asOfDate, from: getMonthStart(asOfDate), to: asOfDate, selection };
+  const range =
+    customerPeriodFilterApi?.getRange?.() ||
+    readDateRangeFromControls(
+      document.getElementById("filter-range"),
+      document.getElementById("filter-from"),
+      document.getElementById("filter-to")
+    );
+  if (!range) {
+    const today = getLocalDateString();
+    return { asOfDate: today, from: today, to: today, selection: "today" };
   }
-  if (selection === "last-30-days") {
-    const d = new Date(asOfDate + "T00:00:00");
-    d.setDate(d.getDate() - 30);
-    return { asOfDate, from: toLocalDateString(d), to: asOfDate, selection };
-  }
-  if (selection === "all-time") {
-    return { asOfDate, from: "", to: asOfDate, selection };
-  }
-
-  let from = fromInput?.value || getMonthStart(asOfDate);
-  let to = asOfDate;
-  if (from > to) [from, to] = [to, from];
-  return { asOfDate, from, to, selection: "custom" };
+  return {
+    asOfDate: range.end,
+    from: range.start || "",
+    to: range.end,
+    selection: range.modeInfo?.mode || "custom",
+  };
 }
 
-function describeActivityRange(from, to, selection) {
-  const toLabel = formatDisplayDate(to);
-  if (selection === "this-month") {
-    const monthDate = new Date(`${from}T00:00:00`);
-    const monthName = monthDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-    return `${monthName} (through ${toLabel})`;
-  }
-  if (selection === "last-30-days") {
-    return `${formatDisplayDate(from)} – ${toLabel} (30 days)`;
-  }
-  if (selection === "all-time") {
-    return `All history through ${toLabel}`;
-  }
-  const fromLabel = from ? formatDisplayDate(from) : "the beginning";
-  return `${fromLabel} – ${toLabel}`;
-}
-
-function syncCustomerFilterInputs() {
-  const throughInput = document.getElementById("filter-through");
-  const fromInput = document.getElementById("filter-from");
-  const cap = throughInput?.value || getLocalDateString();
-  if (fromInput) fromInput.max = cap;
-}
-
-function updateCustomerFilterSummary(asOfDate, from, to, selection) {
+function updateCustomerFilterSummary() {
   const el = document.getElementById("customer-filter-summary");
-  if (!el) return;
-  const activity = describeActivityRange(from, to, selection);
+  const range =
+    customerPeriodFilterApi?.getRange?.() ||
+    readDateRangeFromControls(
+      document.getElementById("filter-range"),
+      document.getElementById("filter-from"),
+      document.getElementById("filter-to")
+    );
+  if (!el || !range) return;
+  const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
   el.textContent = `Showing ${activity} on Summary, Credit taken, and Settlements.`;
 }
 
 function resetCustomerPeriodFilter() {
-  const today = getLocalDateString();
-  const throughInput = document.getElementById("filter-through");
   const rangeSelect = document.getElementById("filter-range");
   const fromInput = document.getElementById("filter-from");
-  const customRange = document.getElementById("customer-custom-range");
-  if (throughInput) throughInput.value = today;
-  if (rangeSelect) rangeSelect.value = "this-month";
+  const toInput = document.getElementById("filter-to");
+  if (rangeSelect) rangeSelect.value = "today";
   if (fromInput) fromInput.value = "";
-  if (customRange) {
-    customRange.classList.add("hidden");
-    customRange.setAttribute("aria-hidden", "true");
+  if (toInput) toInput.value = "";
+  if (typeof setFilterState === "function") {
+    setFilterState("credit_customer_period", { range: "today" });
   }
-  syncCustomerFilterInputs();
-  loadCustomerDetail();
+  customerPeriodFilterApi?.refresh?.();
 }
 
 function initCustomerViewFilter() {
-  const rangeSelect = document.getElementById("filter-range");
-  const throughInput = document.getElementById("filter-through");
-  const fromInput = document.getElementById("filter-from");
-  const customRange = document.getElementById("customer-custom-range");
-
-  const syncCustomVisibility = () => {
-    const isCustom = rangeSelect?.value === "custom";
-    if (customRange) {
-      customRange.classList.toggle("hidden", !isCustom);
-      customRange.setAttribute("aria-hidden", isCustom ? "false" : "true");
-    }
-    if (isCustom && fromInput && throughInput && !fromInput.value) {
-      fromInput.value = getMonthStart(throughInput.value || getLocalDateString());
-    }
-    syncCustomerFilterInputs();
-  };
-
-  const apply = () => loadCustomerDetail();
-
-  rangeSelect?.addEventListener("change", () => {
-    syncCustomVisibility();
-    if (rangeSelect.value !== "custom") apply();
+  customerPeriodFilterApi = createDateRangeFilter({
+    storageKey: "credit_customer_period",
+    ranges: ["today", "this-week", "this-month", "custom"],
+    defaultRange: "this-month",
+    rangeSelect: "filter-range",
+    startInput: "filter-from",
+    endInput: "filter-to",
+    customRange: "customer-custom-range",
+    form: "customer-view-filter",
+    trigger: "auto",
+    persist: true,
+    runOnInit: false,
+    customDefaults: "month-start",
+    labelStyle: "dashboard",
+    formatLabel: (range) => {
+      const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
+      return `Showing ${activity} on Summary, Credit taken, and Settlements.`;
+    },
+    onApply: () => loadCustomerDetail(),
   });
 
-  throughInput?.addEventListener("change", apply);
-  fromInput?.addEventListener("change", () => {
-    if (rangeSelect?.value === "custom") apply();
-  });
-
-  syncCustomVisibility();
   document.getElementById("reset-period-filter")?.addEventListener("click", resetCustomerPeriodFilter);
 }
 
@@ -314,6 +284,214 @@ function escapeIlikePattern(s) {
   return String(s ?? "").replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
+function pickCustomerContact(rows) {
+  const primary =
+    rows.find((r) => r.id === customerId) ||
+    rows.find((r) => Number(r.amount_due) > 0) ||
+    rows[0];
+  if (!primary) return { mobile: "", address: "" };
+  return {
+    mobile: String(primary.mobile ?? "").trim(),
+    address: String(primary.address ?? "").trim(),
+  };
+}
+
+function renderCustomerMeta(rows) {
+  const vehicles = [...new Set(rows.map((r) => r.vehicle_no).filter(Boolean))];
+  const meta = document.getElementById("customer-meta");
+  if (!meta) return;
+  const parts = [];
+  if (customerContact.mobile) parts.push(`Mobile: ${customerContact.mobile}`);
+  if (customerContact.address) parts.push(customerContact.address);
+  if (vehicles.length) parts.push(`Vehicle: ${vehicles.join(", ")}`);
+  const text = parts.join(" · ");
+  meta.textContent = text;
+  meta.classList.toggle("hidden", !text);
+  meta.hidden = !text;
+}
+
+function setCustomerNameEditable(editable) {
+  const row = document.getElementById("customer-name-row");
+  if (!row) return;
+  row.classList.toggle("is-editable", editable);
+  if (editable) {
+    row.setAttribute("role", "button");
+    row.tabIndex = 0;
+    row.setAttribute(
+      "aria-label",
+      `Edit details for ${customerName || "customer"}`
+    );
+  } else {
+    row.removeAttribute("role");
+    row.tabIndex = -1;
+    row.removeAttribute("aria-label");
+  }
+}
+
+function applyCustomerDisplayName(name) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return;
+  customerName = trimmed;
+  const breadcrumbEl = document.getElementById("breadcrumb-customer");
+  const titleEl = document.getElementById("customer-title");
+  if (breadcrumbEl) breadcrumbEl.textContent = trimmed;
+  if (titleEl) titleEl.textContent = trimmed;
+  document.title = `${trimmed} · Credit · Bishnupriya Fuels`;
+  const params = new URLSearchParams(window.location.search);
+  params.set("name", trimmed);
+  const hash = window.location.hash || "";
+  const url = `${window.location.pathname}?${params.toString()}${hash}`;
+  history.replaceState(null, "", url);
+}
+
+function openCustomerEditModal() {
+  if (customerIds.length === 0 && !customerId) return;
+
+  const overlay = document.getElementById("customer-edit-overlay");
+  const nameInput = document.getElementById("edit-customer-name");
+  const mobileInput = document.getElementById("edit-customer-mobile");
+  const addressInput = document.getElementById("edit-customer-address");
+  const msg = document.getElementById("customer-info-msg");
+
+  if (nameInput) nameInput.value = customerName;
+  if (mobileInput) mobileInput.value = customerContact.mobile;
+  if (addressInput) addressInput.value = customerContact.address;
+  msg?.classList.add("hidden");
+  msg?.classList.remove("success", "error");
+
+  if (overlay) {
+    overlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
+  nameInput?.focus();
+}
+
+function closeCustomerEditModal() {
+  const overlay = document.getElementById("customer-edit-overlay");
+  if (overlay) {
+    overlay.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+  }
+  document.getElementById("customer-name-row")?.focus();
+}
+
+function initCustomerInfoEdit() {
+  const row = document.getElementById("customer-name-row");
+  row?.addEventListener("click", () => {
+    if (!row.classList.contains("is-editable")) return;
+    openCustomerEditModal();
+  });
+  row?.addEventListener("keydown", (e) => {
+    if (!row.classList.contains("is-editable")) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openCustomerEditModal();
+    }
+  });
+
+  document.getElementById("customer-edit-close")?.addEventListener("click", closeCustomerEditModal);
+  document.getElementById("customer-edit-backdrop")?.addEventListener("click", closeCustomerEditModal);
+  document.getElementById("customer-info-cancel-btn")?.addEventListener("click", closeCustomerEditModal);
+  document.getElementById("customer-info-form")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void saveCustomerContact();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    const overlay = document.getElementById("customer-edit-overlay");
+    if (e.key === "Escape" && overlay?.getAttribute("aria-hidden") === "false") {
+      closeCustomerEditModal();
+    }
+  });
+}
+
+async function isCustomerNameTakenByOther(newName, ids) {
+  const trimmed = (newName || "").trim();
+  if (!trimmed) return false;
+  const targetNorm = normCustomerName(trimmed);
+  const pattern = `%${escapeIlikePattern(trimmed)}%`;
+  const { data, error } = await supabaseClient
+    .from("credit_customers")
+    .select("id, customer_name")
+    .ilike("customer_name", pattern);
+  if (error) {
+    AppError.report(error, { context: "isCustomerNameTakenByOther" });
+    return false;
+  }
+  return (data || []).some(
+    (r) => normCustomerName(r.customer_name) === targetNorm && !ids.includes(r.id)
+  );
+}
+
+async function saveCustomerContact() {
+  const msg = document.getElementById("customer-info-msg");
+  const submitBtn = document.querySelector("#customer-info-form button[type='submit']");
+  const ids = customerIds.length > 0 ? customerIds : customerId ? [customerId] : [];
+
+  if (ids.length === 0) {
+    if (msg) {
+      msg.textContent = "No customer record found.";
+      msg.classList.remove("hidden", "success");
+      msg.classList.add("error");
+    }
+    return;
+  }
+
+  const newName = (document.getElementById("edit-customer-name")?.value || "").trim();
+  const mobile = (document.getElementById("edit-customer-mobile")?.value || "").trim();
+  const address = (document.getElementById("edit-customer-address")?.value || "").trim();
+
+  if (!newName) {
+    if (msg) {
+      msg.textContent = "Customer name is required.";
+      msg.classList.remove("hidden", "success");
+      msg.classList.add("error");
+    }
+    return;
+  }
+
+  const nameChanged = normCustomerName(newName) !== normCustomerName(customerName);
+  if (nameChanged && (await isCustomerNameTakenByOther(newName, ids))) {
+    if (msg) {
+      msg.textContent = "Another credit customer already uses this name.";
+      msg.classList.remove("hidden", "success");
+      msg.classList.add("error");
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (msg) msg.classList.add("hidden");
+
+  const { error } = await supabaseClient
+    .from("credit_customers")
+    .update({
+      customer_name: newName,
+      mobile: mobile || null,
+      address: address || null,
+    })
+    .in("id", ids);
+
+  if (submitBtn) submitBtn.disabled = false;
+
+  if (error) {
+    if (msg) {
+      msg.textContent = AppError.getUserMessage(error);
+      msg.classList.remove("hidden", "success");
+      msg.classList.add("error");
+    }
+    AppError.report(error, { context: "saveCustomerContact" });
+    return;
+  }
+
+  customerContact = { mobile, address };
+  if (nameChanged) applyCustomerDisplayName(newName);
+  invalidateCreditCaches();
+  await resolveCustomerIds();
+  await loadCustomerDetail();
+  closeCustomerEditModal();
+}
+
 async function resolveCustomerIds() {
   const needle = (customerName || "").trim();
   if (!needle) {
@@ -324,7 +502,7 @@ async function resolveCustomerIds() {
   const pattern = `%${escapeIlikePattern(needle)}%`;
   const { data: list, error } = await supabaseClient
     .from("credit_customers")
-    .select("id, vehicle_no, amount_due, last_payment, customer_name")
+    .select("id, vehicle_no, amount_due, last_payment, customer_name, mobile, address")
     .ilike("customer_name", pattern);
 
   if (error) {
@@ -343,13 +521,9 @@ async function resolveCustomerIds() {
     else customerId = rows[0]?.id ?? null;
   }
 
-  const vehicles = [...new Set(rows.map((r) => r.vehicle_no).filter(Boolean))];
-  const meta = document.getElementById("customer-meta");
-  if (meta) {
-    const parts = [];
-    if (vehicles.length) parts.push(`Vehicle: ${vehicles.join(", ")}`);
-    meta.textContent = parts.join(" · ") || "Credit customer";
-  }
+  customerContact = pickCustomerContact(rows);
+  renderCustomerMeta(rows);
+  setCustomerNameEditable(rows.length > 0);
 
   const totalDue = rows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
   customerOutstandingDue = totalDue;
@@ -445,8 +619,8 @@ async function loadCustomerDetail() {
   const errorEl = document.getElementById("detail-error");
   errorEl?.classList.add("hidden");
 
-  const { asOfDate, from, to, selection } = getCustomerViewFilter();
-  updateCustomerFilterSummary(asOfDate, from, to, selection);
+  const { asOfDate, from, to } = getCustomerViewFilter();
+  updateCustomerFilterSummary();
 
   if (customerIds.length === 0) await resolveCustomerIds();
 
@@ -640,25 +814,176 @@ function invalidateCreditCaches() {
   }
 }
 
+function pickContactFromRows(rows) {
+  const primary = rows.find((r) => Number(r.amount_due) > 0) || rows[0];
+  if (!primary) return { mobile: "", address: "", vehicleNo: "" };
+  return {
+    mobile: String(primary.mobile ?? "").trim(),
+    address: String(primary.address ?? "").trim(),
+    vehicleNo: String(primary.vehicle_no ?? "").trim(),
+  };
+}
+
+function buildCustomerSuggestions(rows) {
+  const byName = new Map();
+  for (const row of rows || []) {
+    const displayName = String(row.customer_name ?? "").trim();
+    const key = normCustomerName(displayName);
+    if (!key) continue;
+    if (!byName.has(key)) byName.set(key, []);
+    byName.get(key).push(row);
+  }
+
+  const suggestions = [...byName.entries()].map(([key, groupRows]) => {
+    const sorted = [...groupRows].sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || ""))
+    );
+    const contact = pickContactFromRows(sorted);
+    return {
+      name: sorted[0].customer_name.trim(),
+      nameNorm: key,
+      vehicleNo: contact.vehicleNo,
+      mobile: contact.mobile,
+      address: contact.address,
+    };
+  });
+
+  suggestions.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  return suggestions;
+}
+
+function filterCustomerSuggestions(query) {
+  const needle = normCustomerName(query);
+  if (!needle) return customerSuggestions.slice(0, 50);
+  return customerSuggestions.filter((item) => item.nameNorm.includes(needle)).slice(0, 50);
+}
+
+function setComboboxOpen(open) {
+  const input = document.getElementById("customer");
+  const list = document.getElementById("customer-suggestions");
+  if (!input || !list) return;
+  input.setAttribute("aria-expanded", open ? "true" : "false");
+  list.classList.toggle("hidden", !open);
+  list.hidden = !open;
+  if (!open) customerComboboxActiveIndex = -1;
+}
+
+function renderCustomerSuggestions(query) {
+  const list = document.getElementById("customer-suggestions");
+  const input = document.getElementById("customer");
+  if (!list || !input) return;
+
+  const matches = filterCustomerSuggestions(query);
+  customerComboboxActiveIndex = -1;
+  customerComboboxMatches = matches;
+
+  if (matches.length === 0) {
+    list.innerHTML = `<li class="combobox-empty" role="presentation">No matching customers</li>`;
+    setComboboxOpen(Boolean(query.trim()));
+    return;
+  }
+
+  list.innerHTML = matches
+    .map(
+      (item, index) =>
+        `<li class="combobox-option" role="option" data-index="${index}" data-name="${escapeHtml(item.name)}">${escapeHtml(item.name)}</li>`
+    )
+    .join("");
+
+  list.querySelectorAll(".combobox-option").forEach((el, index) => {
+    el.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      selectCustomerSuggestion(matches[index]);
+    });
+  });
+
+  setComboboxOpen(true);
+}
+
+function highlightComboboxOption(index) {
+  const list = document.getElementById("customer-suggestions");
+  if (!list) return;
+  const options = list.querySelectorAll(".combobox-option");
+  options.forEach((el, i) => el.classList.toggle("is-active", i === index));
+  customerComboboxActiveIndex = index;
+  options[index]?.scrollIntoView({ block: "nearest" });
+}
+
+function selectCustomerSuggestion(item) {
+  if (!item) return;
+  const input = document.getElementById("customer");
+  const vehicleInput = document.getElementById("vehicle");
+  const mobileInput = document.getElementById("credit-customer-mobile");
+  const addressInput = document.getElementById("credit-customer-address");
+
+  if (input) input.value = item.name;
+  if (vehicleInput) vehicleInput.value = item.vehicleNo || "";
+  if (mobileInput) mobileInput.value = item.mobile || "";
+  if (addressInput) addressInput.value = item.address || "";
+
+  setComboboxOpen(false);
+  vehicleInput?.focus();
+}
+
+function initCustomerCombobox() {
+  const input = document.getElementById("customer");
+  const list = document.getElementById("customer-suggestions");
+  const combobox = document.getElementById("customer-combobox");
+  if (!input || !list) return;
+
+  const onInput = debounce(() => {
+    renderCustomerSuggestions(input.value);
+  }, 120);
+
+  input.addEventListener("input", onInput);
+
+  input.addEventListener("focus", () => {
+    renderCustomerSuggestions(input.value);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    const options = list.querySelectorAll(".combobox-option");
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (list.hidden) renderCustomerSuggestions(input.value);
+      if (options.length === 0) return;
+      const next = customerComboboxActiveIndex < options.length - 1 ? customerComboboxActiveIndex + 1 : 0;
+      highlightComboboxOption(next);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (options.length === 0) return;
+      const prev = customerComboboxActiveIndex > 0 ? customerComboboxActiveIndex - 1 : options.length - 1;
+      highlightComboboxOption(prev);
+      return;
+    }
+    if (event.key === "Enter" && customerComboboxActiveIndex >= 0 && !list.hidden) {
+      event.preventDefault();
+      selectCustomerSuggestion(customerComboboxMatches[customerComboboxActiveIndex]);
+      return;
+    }
+    if (event.key === "Escape") {
+      setComboboxOpen(false);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!combobox?.contains(event.target)) setComboboxOpen(false);
+  });
+}
+
 async function loadCustomerNames() {
-  const datalist = document.getElementById("customer-list");
-  if (!datalist) return;
   try {
     const { data, error } = await supabaseClient
       .from("credit_customers")
-      .select("customer_name")
+      .select("customer_name, vehicle_no, mobile, address, amount_due, created_at")
       .order("created_at", { ascending: false });
     if (error) {
       AppError.report(error, { context: "loadCustomerNames" });
       return;
     }
-    const names = [...new Set((data || []).map((r) => (r.customer_name || "").trim()).filter(Boolean))];
-    datalist.innerHTML = "";
-    names.forEach((name) => {
-      const opt = document.createElement("option");
-      opt.value = name;
-      datalist.appendChild(opt);
-    });
+    customerSuggestions = buildCustomerSuggestions(data || []);
   } catch (e) {
     AppError.report(e, { context: "loadCustomerNames" });
   }
@@ -689,6 +1014,8 @@ async function handleCreditSubmit(event) {
   const amount = Number(formData.get("amount_due") || 0);
   const notes = (formData.get("notes") || "").trim() || null;
   const vehicleNo = (formData.get("vehicle_no") || "").trim() || null;
+  const mobile = (formData.get("mobile") || "").trim() || null;
+  const address = (formData.get("address") || "").trim() || null;
 
   if (!customerNameInput || amount <= 0) {
     if (submitBtn) {
@@ -717,6 +1044,8 @@ async function handleCreditSubmit(event) {
     p_fuel_type: fuelType || undefined,
     p_quantity: quantity ?? undefined,
     p_notes: notes,
+    p_mobile: mobile,
+    p_address: address,
   });
 
   if (error) {
@@ -729,6 +1058,7 @@ async function handleCreditSubmit(event) {
   }
 
   form.reset();
+  setComboboxOpen(false);
   const transactionDateInput = form.querySelector("#credit-date");
   if (transactionDateInput) {
     transactionDateInput.value =

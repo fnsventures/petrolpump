@@ -1165,6 +1165,8 @@ create table if not exists public.credit_customers (
   id uuid primary key default uuid_generate_v4(),
   customer_name text not null check (char_length(customer_name) <= 120),
   vehicle_no text check (char_length(vehicle_no) <= 32),
+  mobile text check (mobile is null or char_length(trim(mobile)) <= 20),
+  address text check (address is null or char_length(trim(address)) <= 500),
   amount_due numeric(14,2) not null default 0,
   date date not null default current_date,
   last_payment date,
@@ -1180,6 +1182,8 @@ create index if not exists credit_customers_name_norm_idx on public.credit_custo
 
 comment on table public.credit_customers is 'Credit ledger for fleet and institutional customers.';
 comment on column public.credit_customers.date is 'Date for which this credit applies; used for day-closing credit_today sum.';
+comment on column public.credit_customers.mobile is 'Customer mobile / phone (optional)';
+comment on column public.credit_customers.address is 'Customer address (optional)';
 
 alter table public.credit_customers enable row level security;
 
@@ -1201,20 +1205,14 @@ create policy "credit_insert_own" on public.credit_customers
     created_by = auth.uid()
   );
 
--- UPDATE: Users can update their own records (for settlements), admins can update all
+-- UPDATE: Supervisors and admins (contact info; amount_due also updated by payment RPC/triggers)
 drop policy if exists "credit_update_authenticated" on public.credit_customers;
 drop policy if exists "credit_update_by_role" on public.credit_customers;
 create policy "credit_update_by_role" on public.credit_customers
   for update
   to authenticated
-  using (
-    created_by = auth.uid()
-    or public.is_admin()
-  )
-  with check (
-    created_by = auth.uid()
-    or public.is_admin()
-  );
+  using (public.is_supervisor_or_admin())
+  with check (public.is_supervisor_or_admin());
 
 -- DELETE: Only admins can delete credit records (audit trail protection)
 drop policy if exists "credit_delete_authenticated" on public.credit_customers;
@@ -1622,7 +1620,9 @@ create or replace function public.add_credit_entry(
   p_vehicle_no text default null,
   p_fuel_type text default 'HSD',
   p_quantity numeric default 1,
-  p_notes text default null
+  p_notes text default null,
+  p_mobile text default null,
+  p_address text default null
 )
 returns jsonb
 language plpgsql security definer
@@ -1656,16 +1656,27 @@ begin
   order by created_at desc limit 1;
 
   if v_customer_id is null then
-    insert into public.credit_customers (customer_name, vehicle_no, amount_due, date, notes, created_by)
+    insert into public.credit_customers (
+      customer_name, vehicle_no, amount_due, date, notes, mobile, address, created_by
+    )
     values (
       trim(p_customer_name),
       nullif(trim(p_vehicle_no), ''),
       0,
       p_transaction_date,
       nullif(trim(p_notes), ''),
+      nullif(trim(p_mobile), ''),
+      nullif(trim(p_address), ''),
       auth.uid()
     )
     returning id into v_customer_id;
+  elsif nullif(trim(p_mobile), '') is not null
+     or nullif(trim(p_address), '') is not null then
+    update public.credit_customers
+    set
+      mobile = coalesce(nullif(trim(p_mobile), ''), mobile),
+      address = coalesce(nullif(trim(p_address), ''), address)
+    where id = v_customer_id;
   end if;
 
   insert into public.credit_entries (credit_customer_id, transaction_date, fuel_type, quantity, amount, created_by)
@@ -1680,7 +1691,7 @@ begin
   );
 end;
 $$;
-comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text) is 'Add a credit sale. Transaction date = DSR date. Fuel type and quantity optional (default HSD, 1). Rejects future dates.';
+comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) is 'Add a credit sale. Optional mobile/address on new or existing customer. Rejects future dates.';
 
 -- RPC: Record credit payment (FIFO allocation; Settlement Date; payment_mode)
 create or replace function public.record_credit_payment(
@@ -2249,7 +2260,7 @@ grant execute on function public.check_page_access(text) to authenticated;
 grant execute on function public.update_dsr_buying_price(uuid, numeric) to authenticated;
 grant execute on function public.get_day_closing_breakdown(date) to authenticated;
 grant execute on function public.save_day_closing(date, numeric, numeric, text) to authenticated;
-grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text) to authenticated;
+grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) to authenticated;
 grant execute on function public.record_credit_payment(uuid, date, numeric, text, text) to authenticated;
 grant execute on function public.get_credit_ledger_aggregated() to authenticated;
 grant execute on function public.get_open_credit_as_of(date) to authenticated;

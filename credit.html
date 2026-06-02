@@ -116,18 +116,27 @@
           <div class="form-grid">
             <div class="form-field">
               <label for="customer">Customer name</label>
-              <input
-                id="customer"
-                name="customer_name"
-                type="text"
-                list="customer-list"
-                placeholder="Fleet owner or Temp"
-                maxlength="120"
-                required
-              />
-              <datalist id="customer-list">
-                <option value="Temp">
-              </datalist>
+              <div class="combobox" id="customer-combobox">
+                <input
+                  id="customer"
+                  name="customer_name"
+                  type="text"
+                  placeholder="Fleet owner or Temp"
+                  maxlength="120"
+                  required
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="customer-suggestions"
+                />
+                <ul
+                  id="customer-suggestions"
+                  class="combobox-list hidden"
+                  role="listbox"
+                  hidden
+                ></ul>
+              </div>
             </div>
 
             <div class="form-field">
@@ -139,6 +148,29 @@
                 placeholder="WB12AB3456"
                 maxlength="32"
               />
+            </div>
+
+            <div class="form-field">
+              <label for="credit-customer-mobile">Mobile <span class="optional-label">(optional)</span></label>
+              <input
+                id="credit-customer-mobile"
+                name="mobile"
+                type="tel"
+                placeholder="9XXXXXXXXX"
+                maxlength="20"
+                autocomplete="tel"
+              />
+            </div>
+
+            <div class="form-field form-field-span">
+              <label for="credit-customer-address">Address <span class="optional-label">(optional)</span></label>
+              <textarea
+                id="credit-customer-address"
+                name="address"
+                rows="2"
+                placeholder="Customer address"
+                maxlength="500"
+              ></textarea>
             </div>
 
             <div class="form-field">
@@ -251,8 +283,17 @@
 
           <div class="customer-balance-hero-body">
             <div class="customer-balance-hero-intro">
-              <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
-              <p id="customer-meta" class="customer-balance-meta muted"></p>
+              <div
+                class="customer-name-row"
+                id="customer-name-row"
+                role="button"
+                tabindex="-1"
+                aria-label="Edit customer details"
+              >
+                <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
+                <span class="customer-name-edit-hint" aria-hidden="true">Edit</span>
+              </div>
+              <p id="customer-meta" class="customer-balance-meta muted hidden" hidden></p>
             </div>
             <div class="customer-balance-hero-amount" aria-live="polite">
               <span class="customer-balance-label">Outstanding</span>
@@ -281,22 +322,22 @@
 
           <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
             <div class="form-field form-field-inline">
-              <label for="filter-range">Range</label>
+              <label for="filter-range">Period</label>
               <select id="filter-range" aria-describedby="customer-filter-summary">
+                <option value="today">Today</option>
+                <option value="this-week">This week</option>
                 <option value="this-month" selected>This month</option>
-                <option value="last-30-days">Last 30 days</option>
-                <option value="all-time">All history</option>
-                <option value="custom">Custom range</option>
+                <option value="custom">Custom dates</option>
               </select>
             </div>
-            <div class="form-field form-field-inline">
-              <label for="filter-through">Through</label>
-              <input id="filter-through" type="date" aria-describedby="customer-filter-summary" />
-            </div>
-            <div id="customer-custom-range" class="customer-custom-range hidden" aria-hidden="true">
+            <div id="customer-custom-range" class="customer-custom-range custom-range hidden" aria-hidden="true">
               <div class="form-field form-field-inline">
                 <label for="filter-from">From</label>
                 <input id="filter-from" type="date" />
+              </div>
+              <div class="form-field form-field-inline">
+                <label for="filter-to">To</label>
+                <input id="filter-to" type="date" />
               </div>
             </div>
           </form>
@@ -426,6 +467,65 @@
         <p id="detail-error" class="error hidden"></p>
       </div>
     </main>
+
+    <div
+      id="customer-edit-overlay"
+      class="overdue-detail-overlay customer-edit-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="customer-edit-title"
+    >
+      <div class="overdue-detail-backdrop" id="customer-edit-backdrop"></div>
+      <div class="card overdue-detail-card customer-edit-card">
+        <div class="overdue-detail-head">
+          <h2 id="customer-edit-title">Customer details</h2>
+          <button type="button" class="overdue-detail-close" id="customer-edit-close" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <form id="customer-info-form" class="form customer-edit-form">
+          <div class="form-field">
+            <label for="edit-customer-name">Customer name</label>
+            <input
+              id="edit-customer-name"
+              name="customer_name"
+              type="text"
+              maxlength="120"
+              required
+              autocomplete="name"
+            />
+          </div>
+          <div class="form-field">
+            <label for="edit-customer-mobile">Mobile</label>
+            <input
+              id="edit-customer-mobile"
+              name="mobile"
+              type="tel"
+              maxlength="20"
+              placeholder="9XXXXXXXXX"
+              autocomplete="tel"
+            />
+          </div>
+          <div class="form-field">
+            <label for="edit-customer-address">Address</label>
+            <textarea
+              id="edit-customer-address"
+              name="address"
+              rows="3"
+              maxlength="500"
+              placeholder="Customer address"
+            ></textarea>
+          </div>
+          <div class="form-actions customer-edit-actions">
+            <button type="submit">Save details</button>
+            <button type="button" id="customer-info-cancel-btn" class="button-secondary">Cancel</button>
+          </div>
+          <p id="customer-info-msg" class="muted hidden" aria-live="polite"></p>
+        </form>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
