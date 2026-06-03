@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -20,6 +20,12 @@ let customerId = null;
 let customerIds = [];
 let customerOutstandingDue = 0;
 let customerContact = { mobile: "", address: "" };
+let customerVehicleNos = [];
+let lastCustomerSummary = null;
+let lastCustomerSummaryContext = null;
+let creditSummaryPrintBusy = false;
+const CREDIT_SUMMARY_PRINT_CSS = "css/credit-summary-print.css?v=1";
+
 let creditPager = null;
 let paymentPager = null;
 let customerSuggestions = [];
@@ -143,6 +149,10 @@ function setCustomerToolbarVisible(visible) {
 }
 
 async function initCustomerView() {
+  if (typeof loadPumpSettings === "function") {
+    await loadPumpSettings();
+  }
+
   setSidebarMode("customer");
   setCustomerToolbarVisible(true);
 
@@ -199,6 +209,10 @@ async function initCustomerView() {
     });
   }
 
+  document.getElementById("customer-summary-print-btn")?.addEventListener("click", () => {
+    void handleCreditSummaryPrintClick();
+  });
+
   await loadCustomerDetail();
 }
 
@@ -252,7 +266,7 @@ function resetCustomerPeriodFilter() {
 function initCustomerViewFilter() {
   customerPeriodFilterApi = createDateRangeFilter({
     storageKey: "credit_customer_period",
-    ranges: ["today", "this-week", "this-month", "custom"],
+    ranges: ["today", "this-week", "this-month", "all-time", "custom"],
     defaultRange: "this-month",
     rangeSelect: "filter-range",
     startInput: "filter-from",
@@ -268,7 +282,9 @@ function initCustomerViewFilter() {
       const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
       return `Showing ${activity} on Summary, Credit taken, and Settlements.`;
     },
-    onApply: () => loadCustomerDetail(),
+    onApply: () => {
+      void loadCustomerDetail();
+    },
   });
 
   document.getElementById("reset-period-filter")?.addEventListener("click", resetCustomerPeriodFilter);
@@ -298,6 +314,7 @@ function pickCustomerContact(rows) {
 
 function renderCustomerMeta(rows) {
   const vehicles = [...new Set(rows.map((r) => r.vehicle_no).filter(Boolean))];
+  customerVehicleNos = vehicles;
   const meta = document.getElementById("customer-meta");
   if (!meta) return;
   const parts = [];
@@ -528,7 +545,418 @@ async function resolveCustomerIds() {
   const totalDue = rows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
   customerOutstandingDue = totalDue;
   const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
-  if (settleNav) settleNav.classList.toggle("hidden", totalDue <= 0);
+  if (settleNav) {
+    const hide = totalDue <= 0;
+    settleNav.classList.toggle("hidden", hide);
+    settleNav.hidden = hide;
+  }
+}
+
+function creditSummaryAssetUrl(path) {
+  return new URL(path, window.location.href).href;
+}
+
+function getCreditPrintStation() {
+  return PumpSettings?.getCachedSync?.().station || AppConfig.DEFAULT_STATION;
+}
+
+function getCreditPrintStationLegalName() {
+  const s = getCreditPrintStation();
+  return s.legalName || AppConfig.DEFAULT_STATION.legalName;
+}
+
+function getCreditPrintStationTagline() {
+  return getCreditPrintStation().tagline || AppConfig.DEFAULT_STATION.tagline;
+}
+
+function getCreditPrintStationGstin() {
+  return getCreditPrintStation().gstin || AppConfig.DEFAULT_STATION.gstin;
+}
+
+function formatSummaryAmountPlain(value) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return Number(value).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function sortSummaryEntriesByDate(entries) {
+  return [...(entries || [])].sort((a, b) =>
+    String(a.entry_date || "").localeCompare(String(b.entry_date || ""))
+  );
+}
+
+function updateCreditSummaryPrintButton() {
+  const btn = document.getElementById("customer-summary-print-btn");
+  if (!btn) return;
+  const canPrint = Boolean(lastCustomerSummary && lastCustomerSummaryContext?.customerName);
+  btn.disabled = !canPrint;
+}
+
+function buildCreditSummaryLedgerRows(entries, emptyLabel) {
+  const sorted = sortSummaryEntriesByDate(entries);
+  if (!sorted.length) {
+    return `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`;
+  }
+  return sorted
+    .map(
+      (e, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeHtml(formatDisplayDate(e.entry_date))}</td>
+          <td class="num">₹ ${formatSummaryAmountPlain(e.amount)}</td>
+        </tr>`
+    )
+    .join("");
+}
+
+function creditSummaryReportHeader(title, subtitleLines) {
+  const gstin = getCreditPrintStationGstin();
+  const subtitles = (subtitleLines || [])
+    .filter(Boolean)
+    .map((line) => `<p class="report-subtitle">${line}</p>`)
+    .join("");
+  return `
+    <header class="report-print-head">
+      <div class="report-letterhead">
+        <img src="${creditSummaryAssetUrl(AppConfig.BPCL_LOGO_SRC)}" alt="Bharat Petroleum" class="report-bpcl-logo" width="56" height="68" />
+        <div class="report-letterhead-text">
+          <h1 class="report-station">${escapeHtml(getCreditPrintStationLegalName())}</h1>
+          <p class="report-dealer">${escapeHtml(getCreditPrintStationTagline())}</p>
+          ${gstin ? `<p class="report-gstin">GSTIN: ${escapeHtml(gstin)}</p>` : ""}
+          <p class="report-title">${escapeHtml(title)}</p>
+          ${subtitles}
+        </div>
+      </div>
+    </header>`;
+}
+
+function buildCreditSummaryPrintHtml(summary, context) {
+  const outstanding = summary ? Number(summary.remaining) : 0;
+  const creditTaken = summary ? Number(summary.credit_taken) : 0;
+  const settlementDone = summary ? Number(summary.settlement_done) : 0;
+  const periodCredit = context?.periodCredit ?? 0;
+  const periodSettled = context?.periodSettled ?? 0;
+  const name = context?.customerName || customerName || "Customer";
+  const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
+  const generatedOn = formatDisplayDate(getLocalDateString());
+  const periodActivity = context?.periodActivity || "";
+  const periodScopedOutstanding = Boolean(periodActivity);
+  const cleared = outstanding <= 0;
+
+  let creditMeta = "";
+  if (summary) {
+    const first = summary.first_sale_date ? formatDisplayDate(summary.first_sale_date) : null;
+    const last = summary.last_credit_date ? formatDisplayDate(summary.last_credit_date) : null;
+    if (first && last) creditMeta = `First credit: ${first} · Last credit: ${last}`;
+    else if (first) creditMeta = `First credit: ${first}`;
+    else if (last) creditMeta = `Last credit: ${last}`;
+  }
+
+  let settlementMeta = "";
+  if (summary?.last_payment_date) {
+    settlementMeta = `Last settlement: ${formatDisplayDate(summary.last_payment_date)}`;
+  }
+
+  const vehicleLine =
+    context?.vehicles?.length > 0 ? context.vehicles.join(", ") : "—";
+  const mobile = context?.mobile?.trim() || "—";
+  const address = context?.address?.trim() || "—";
+
+  const creditRows = buildCreditSummaryLedgerRows(
+    summary?.credit_entries,
+    "No credit entries through this date"
+  );
+  const paymentRows = buildCreditSummaryLedgerRows(
+    summary?.payment_entries,
+    "No settlements through this date"
+  );
+
+  const creditTotal = sortSummaryEntriesByDate(summary?.credit_entries).reduce(
+    (s, e) => s + Number(e.amount || 0),
+    0
+  );
+  const paymentTotal = sortSummaryEntriesByDate(summary?.payment_entries).reduce(
+    (s, e) => s + Number(e.amount || 0),
+    0
+  );
+
+  return `
+    <article class="credit-summary-sheet report-print-sheet">
+      ${creditSummaryReportHeader("Credit customer — account summary", [
+        `Customer: <strong>${escapeHtml(name)}</strong>`,
+        `Totals through: ${escapeHtml(asOfLabel)} · Generated: ${escapeHtml(generatedOn)}`,
+      ])}
+
+      <div class="credit-summary-title-band">
+        <h2 class="credit-summary-doc-title">Account statement</h2>
+        <p class="credit-summary-doc-meta">
+          ${
+            periodActivity
+              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatSummaryAmountPlain(periodCredit)}, settled ₹ ${formatSummaryAmountPlain(periodSettled)}, outstanding ₹ ${formatSummaryAmountPlain(outstanding)} (net for this period).`
+              : `Figures below are cumulative through ${escapeHtml(asOfLabel)}.`
+          }
+        </p>
+      </div>
+
+      <dl class="credit-summary-party">
+        <dt>Customer</dt>
+        <dd class="credit-summary-party-name">${escapeHtml(name)}</dd>
+        <div>
+          <dt>Mobile</dt>
+          <dd>${escapeHtml(mobile)}</dd>
+        </div>
+        <div>
+          <dt>Vehicle no.</dt>
+          <dd>${escapeHtml(vehicleLine)}</dd>
+        </div>
+        <div style="grid-column:1/-1">
+          <dt>Address</dt>
+          <dd>${escapeHtml(address)}</dd>
+        </div>
+      </dl>
+
+      <div class="credit-summary-kpis">
+        <div class="credit-summary-kpi credit-summary-kpi--outstanding${cleared ? " is-cleared" : ""}">
+          <span class="credit-summary-kpi-label">Outstanding</span>
+          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(outstanding)}</span>
+          <span class="credit-summary-kpi-meta">${
+            cleared
+              ? periodScopedOutstanding
+                ? "No net balance in period"
+                : "Account cleared"
+              : periodScopedOutstanding
+                ? "Net credit minus settlements in period"
+                : "Amount still owed"
+          }</span>
+        </div>
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Credit taken</span>
+          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(creditTaken)}</span>
+          ${creditMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(creditMeta)}</span>` : ""}
+        </div>
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Settlement done</span>
+          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(settlementDone)}</span>
+          ${settlementMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(settlementMeta)}</span>` : ""}
+        </div>
+      </div>
+
+      ${
+        periodActivity
+          ? `<div class="credit-summary-period-box">
+        <strong>Selected period:</strong> ${escapeHtml(periodActivity)}
+        <div class="credit-summary-period-stats">
+          <span>Credit in period: <strong>₹ ${formatSummaryAmountPlain(periodCredit)}</strong></span>
+          <span>Settled in period: <strong>₹ ${formatSummaryAmountPlain(periodSettled)}</strong></span>
+        </div>
+      </div>`
+          : ""
+      }
+
+      <section class="credit-summary-block">
+        <h3 class="credit-summary-block-title">${
+          periodActivity
+            ? `Credit taken (${escapeHtml(periodActivity)})`
+            : `All credit taken (through ${escapeHtml(asOfLabel)})`
+        }</h3>
+        <p class="credit-summary-block-lead">${
+          periodActivity
+            ? "Credit sales in the selected activity period."
+            : "Every credit sale recorded up to the through date."
+        }</p>
+        <table class="report-table credit-summary-table--ledger">
+          <thead>
+            <tr>
+              <th style="width:6%">#</th>
+              <th style="width:28%">Date</th>
+              <th class="num">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>${creditRows}</tbody>
+          <tfoot>
+            <tr class="report-total-row">
+              <td colspan="2">Total credit</td>
+              <td class="num">₹ ${formatSummaryAmountPlain(creditTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <section class="credit-summary-block">
+        <h3 class="credit-summary-block-title">${
+          periodActivity
+            ? `Settlements (${escapeHtml(periodActivity)})`
+            : `All settlements (through ${escapeHtml(asOfLabel)})`
+        }</h3>
+        <p class="credit-summary-block-lead">${
+          periodActivity
+            ? "Payments received in the selected activity period."
+            : "Every payment received up to the through date."
+        }</p>
+        <table class="report-table credit-summary-table--ledger">
+          <thead>
+            <tr>
+              <th style="width:6%">#</th>
+              <th style="width:28%">Date</th>
+              <th class="num">Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody>${paymentRows}</tbody>
+          <tfoot>
+            <tr class="report-total-row">
+              <td colspan="2">Total settled</td>
+              <td class="num">₹ ${formatSummaryAmountPlain(paymentTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <p class="credit-summary-note">
+        Computer-generated credit account summary.
+        ${
+          periodScopedOutstanding
+            ? "Outstanding shown is net credit minus settlements for the selected period only (not the customer&rsquo;s full account balance)."
+            : "Outstanding = credit taken minus settlements (FIFO allocation on payments)."
+        }
+        Hand this copy to the customer or keep for your records.
+      </p>
+
+      <footer class="report-print-foot">
+        <span>${escapeHtml(getCreditPrintStationLegalName())}</span>
+        <span>Credit summary · ${escapeHtml(name)} · ${escapeHtml(asOfLabel)}</span>
+      </footer>
+    </article>`;
+}
+
+async function waitForCreditSummaryPrintAssets(doc) {
+  const logo = doc.querySelector(".report-bpcl-logo");
+  if (logo && !logo.complete) {
+    await new Promise((resolve) => {
+      logo.addEventListener("load", resolve, { once: true });
+      logo.addEventListener("error", resolve, { once: true });
+      window.setTimeout(resolve, 2500);
+    });
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  void doc.body.offsetHeight;
+}
+
+async function runCreditSummaryPrint() {
+  if (!lastCustomerSummary || !lastCustomerSummaryContext?.customerName) {
+    const msg = "Load the customer account first, then print.";
+    if (typeof AppError?.showGlobalBanner === "function") {
+      AppError.showGlobalBanner(msg);
+    } else {
+      alert(msg);
+    }
+    return;
+  }
+
+  const sheetHtml = buildCreditSummaryPrintHtml(lastCustomerSummary, lastCustomerSummaryContext);
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Credit summary print");
+  iframe.style.cssText =
+    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument;
+  const win = iframe.contentWindow;
+  if (!doc || !win) {
+    iframe.remove();
+    throw new Error("Print frame unavailable");
+  }
+
+  const title = `${lastCustomerSummaryContext.customerName} · Credit summary`;
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <link rel="stylesheet" href="${creditSummaryAssetUrl(CREDIT_SUMMARY_PRINT_CSS)}" />
+</head>
+<body class="report-print-body">
+  <div class="report-print-container">${sheetHtml}</div>
+</body>
+</html>`);
+  doc.close();
+
+  try {
+    await waitForCreditSummaryPrintAssets(doc);
+    const cleanup = () => iframe.remove();
+    win.addEventListener("afterprint", cleanup, { once: true });
+    win.focus();
+    win.print();
+    window.setTimeout(cleanup, 5000);
+  } catch (err) {
+    iframe.remove();
+    throw err;
+  }
+}
+
+async function handleCreditSummaryPrintClick() {
+  if (creditSummaryPrintBusy) return;
+  const btn = document.getElementById("customer-summary-print-btn");
+  const prevLabel = btn?.textContent || "Print summary";
+
+  creditSummaryPrintBusy = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Preparing…";
+  }
+
+  try {
+    await runCreditSummaryPrint();
+  } catch (err) {
+    AppError?.report?.(err, { context: "runCreditSummaryPrint" });
+    const msg = AppError?.getUserMessage?.(err) || "Could not open the print dialog.";
+    if (typeof AppError?.showGlobalBanner === "function") {
+      AppError.showGlobalBanner(msg);
+    } else {
+      alert(msg);
+    }
+  } finally {
+    creditSummaryPrintBusy = false;
+    if (btn) btn.textContent = prevLabel;
+    updateCreditSummaryPrintButton();
+  }
+}
+
+/** Summary rows and totals scoped to the active period filter (from/to). */
+function buildPeriodScopedSummary(summary, from, to) {
+  if (!summary) return null;
+
+  const credit_entries = filterEntriesByRange(summary.credit_entries || [], from, to);
+  const payment_entries = filterEntriesByRange(summary.payment_entries || [], from, to);
+  const periodCredit = sumAmount(credit_entries);
+  const periodSettled = sumAmount(payment_entries);
+  const periodNet = Math.max(0, periodCredit - periodSettled);
+  const remaining = from
+    ? periodNet
+    : Math.max(0, Number(summary.remaining) || periodNet);
+
+  const creditDates = credit_entries
+    .map((e) => e.entry_date)
+    .filter(Boolean)
+    .sort();
+  const paymentDates = payment_entries
+    .map((e) => e.entry_date)
+    .filter(Boolean)
+    .sort();
+
+  return {
+    ...summary,
+    credit_entries,
+    payment_entries,
+    credit_taken: periodCredit,
+    settlement_done: periodSettled,
+    remaining,
+    first_sale_date: creditDates[0] || null,
+    last_credit_date: creditDates[creditDates.length - 1] || null,
+    last_payment_date: paymentDates[paymentDates.length - 1] || null,
+  };
 }
 
 function renderLifetimeBreakdowns(summary) {
@@ -564,9 +992,12 @@ function renderLifetimeBreakdowns(summary) {
   payEmpty?.classList.toggle("hidden", pays.length > 0);
 }
 
-function applyLifetimeSummary(row) {
-  const outstanding = row ? Number(row.remaining) : 0;
-  customerOutstandingDue = outstanding;
+function applyLifetimeSummary(row, options = {}) {
+  const summaryOutstanding = row ? Number(row.remaining) : 0;
+  const heroOutstanding =
+    options.heroOutstanding != null ? Number(options.heroOutstanding) : summaryOutstanding;
+
+  customerOutstandingDue = heroOutstanding;
   const creditTaken = row ? Number(row.credit_taken) : 0;
   const settlementDone = row ? Number(row.settlement_done) : 0;
 
@@ -575,18 +1006,18 @@ function applyLifetimeSummary(row) {
     if (el) el.textContent = text;
   };
 
-  set("stat-outstanding", formatCurrency(outstanding));
+  set("stat-outstanding", formatCurrency(heroOutstanding));
   set("stat-lifetime-credit", formatCurrency(creditTaken));
   set("stat-lifetime-settled", formatCurrency(settlementDone));
 
   const outstandingEl = document.getElementById("stat-outstanding");
   const heroAmount = outstandingEl?.closest(".customer-balance-hero-amount");
   if (heroAmount) {
-    heroAmount.classList.toggle("is-cleared", outstanding <= 0);
+    heroAmount.classList.toggle("is-cleared", heroOutstanding <= 0);
   }
 
   const payCta = document.getElementById("customer-record-payment-cta");
-  if (payCta) payCta.classList.toggle("hidden", outstanding <= 0);
+  if (payCta) payCta.classList.toggle("hidden", heroOutstanding <= 0);
 
   const creditWhen = document.getElementById("customer-credit-when");
   if (creditWhen) {
@@ -612,7 +1043,11 @@ function applyLifetimeSummary(row) {
   }
 
   const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
-  if (settleNav) settleNav.classList.toggle("hidden", outstanding <= 0);
+  if (settleNav) {
+    const hide = heroOutstanding <= 0;
+    settleNav.classList.toggle("hidden", hide);
+    settleNav.hidden = hide;
+  }
 }
 
 async function loadCustomerDetail() {
@@ -621,8 +1056,7 @@ async function loadCustomerDetail() {
 
   const { asOfDate, from, to } = getCustomerViewFilter();
   updateCustomerFilterSummary();
-
-  if (customerIds.length === 0) await resolveCustomerIds();
+  await resolveCustomerIds();
 
   try {
     const { data: summaryData, error: summaryErr } = await supabaseClient.rpc(
@@ -634,6 +1068,9 @@ async function loadCustomerDetail() {
     const summary = Array.isArray(summaryData) && summaryData.length > 0 ? summaryData[0] : null;
     const resolvedName = summary?.customer_name != null ? String(summary.customer_name).trim() : "";
     if (!resolvedName) {
+      lastCustomerSummary = null;
+      lastCustomerSummaryContext = null;
+      updateCreditSummaryPrintButton();
       applyLifetimeSummary(null);
       renderLifetimeBreakdowns(null);
       const clearStat = (id) => {
@@ -654,33 +1091,37 @@ async function loadCustomerDetail() {
       return;
     }
 
-    applyLifetimeSummary(summary);
-    renderLifetimeBreakdowns(summary);
+    const range =
+      customerPeriodFilterApi?.getRange?.() ||
+      readDateRangeFromControls(
+        document.getElementById("filter-range"),
+        document.getElementById("filter-from"),
+        document.getElementById("filter-to")
+      );
+    const periodActivity = range
+      ? formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" })
+      : "";
 
-    const creditEntries = filterEntriesByRange(
-      (summary.credit_entries || []).map((e) => ({
-        transaction_date: e.entry_date,
-        amount: e.amount,
-        fuel_type: e.fuel_type ?? null,
-        quantity: e.quantity ?? null,
-        amount_settled: e.amount_settled ?? 0,
-      })),
-      from,
-      to
-    );
-    const paymentEntries = filterEntriesByRange(
-      (summary.payment_entries || []).map((e) => ({
-        date: e.entry_date,
-        amount: e.amount,
-        payment_mode: e.payment_mode ?? null,
-        note: e.note ?? null,
-      })),
-      from,
-      to
-    );
+    const periodSummary = buildPeriodScopedSummary(summary, from, to);
+    applyLifetimeSummary(periodSummary, { heroOutstanding: customerOutstandingDue });
+    renderLifetimeBreakdowns(periodSummary);
 
-    const periodCredit = sumAmount(creditEntries);
-    const periodSettled = sumAmount(paymentEntries);
+    const creditEntries = (periodSummary.credit_entries || []).map((e) => ({
+      transaction_date: e.entry_date,
+      amount: e.amount,
+      fuel_type: e.fuel_type ?? null,
+      quantity: e.quantity ?? null,
+      amount_settled: e.amount_settled ?? 0,
+    }));
+    const paymentEntries = (periodSummary.payment_entries || []).map((e) => ({
+      date: e.entry_date,
+      amount: e.amount,
+      payment_mode: e.payment_mode ?? null,
+      note: e.note ?? null,
+    }));
+
+    const periodCredit = Number(periodSummary.credit_taken) || 0;
+    const periodSettled = Number(periodSummary.settlement_done) || 0;
 
     const set = (id, text) => {
       const el = document.getElementById(id);
@@ -689,9 +1130,25 @@ async function loadCustomerDetail() {
     set("stat-period-credit", formatCurrency(periodCredit));
     set("stat-period-settled", formatCurrency(periodSettled));
 
+    lastCustomerSummary = periodSummary;
+    lastCustomerSummaryContext = {
+      customerName: resolvedName,
+      asOfDate,
+      periodActivity,
+      periodCredit,
+      periodSettled,
+      mobile: customerContact.mobile,
+      address: customerContact.address,
+      vehicles: [...customerVehicleNos],
+    };
+
     creditPager?.setEntries(creditEntries);
     paymentPager?.setEntries(paymentEntries);
+    updateCreditSummaryPrintButton();
   } catch (err) {
+    lastCustomerSummary = null;
+    lastCustomerSummaryContext = null;
+    updateCreditSummaryPrintButton();
     if (errorEl) {
       errorEl.textContent = AppError.getUserMessage(err);
       errorEl.classList.remove("hidden");

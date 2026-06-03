@@ -310,23 +310,35 @@
         <section
           id="customer-period-toolbar"
           class="card customer-filter-card hidden"
-          aria-label="Customer period"
+          aria-label="Activity period and print"
           hidden
         >
           <div class="customer-filter-head">
-            <h2 class="customer-filter-title">Period</h2>
-            <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
-              Reset to today
-            </button>
+            <h2 class="customer-filter-title">Activity period</h2>
+            <div class="customer-filter-actions">
+              <button
+                type="button"
+                id="customer-summary-print-btn"
+                class="button-secondary customer-summary-print-btn"
+                title="Print account summary for this customer"
+                disabled
+              >
+                Print summary
+              </button>
+              <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
+                Reset to today
+              </button>
+            </div>
           </div>
 
           <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
             <div class="form-field form-field-inline">
-              <label for="filter-range">Period</label>
+              <label for="filter-range">Date range</label>
               <select id="filter-range" aria-describedby="customer-filter-summary">
                 <option value="today">Today</option>
                 <option value="this-week">This week</option>
                 <option value="this-month" selected>This month</option>
+                <option value="all-time">All time</option>
                 <option value="custom">Custom dates</option>
               </select>
             </div>
@@ -359,7 +371,7 @@
         <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
           <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
           <p class="muted text-sm customer-summary-lead">
-            Totals through the selected date. Outstanding above is what they still owe.
+            Credit and settlements below match the activity period filter. Outstanding above is the customer&rsquo;s current balance; the printed summary shows net outstanding for the selected period only.
           </p>
 
           <div class="customer-lifetime-stats">
@@ -375,8 +387,8 @@
             </article>
           </div>
 
-          <h3 class="settings-subheading">All credit taken (through selected date)</h3>
-          <p class="muted text-sm">Every credit sale up to the through date in the filter.</p>
+          <h3 class="settings-subheading">Credit taken in period</h3>
+          <p class="muted text-sm">Credit sales in the selected activity period.</p>
           <div class="table-wrap">
             <table class="overdue-detail-table">
               <thead>
@@ -387,8 +399,8 @@
           </div>
           <p id="lifetime-credit-empty" class="muted text-sm hidden">No credit entries.</p>
 
-          <h3 class="settings-subheading">All settlements (through selected date)</h3>
-          <p class="muted text-sm">Every payment received up to the through date in the filter.</p>
+          <h3 class="settings-subheading">Settlements in period</h3>
+          <p class="muted text-sm">Payments received in the selected activity period.</p>
           <div class="table-wrap">
             <table class="overdue-detail-table">
               <thead>

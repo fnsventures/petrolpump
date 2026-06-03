@@ -596,6 +596,16 @@ if (loginForm) {
   loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     loginError?.classList.add("hidden");
+
+    if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
+      if (loginError) {
+        loginError.textContent =
+          "Server configuration is missing. Set up js/env.js (see js/env.example.js) before signing in.";
+        loginError.classList.remove("hidden");
+      }
+      return;
+    }
+
     if (loginButton) loginButton.disabled = true;
 
     const formData = new FormData(loginForm);
@@ -724,6 +734,11 @@ async function requireAuth(options = {}) {
     onDenied = "dashboard.html",
     pageName = null,
   } = options;
+
+  if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
+    window.location.href = redirectTo;
+    return null;
+  }
 
   const {
     data: { session },

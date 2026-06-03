@@ -811,11 +811,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     let totalPending = 0;
 
     staffList.forEach((s) => {
-      const salary = Number(s.monthly_salary ?? 0);
+      const gross = Number(s.monthly_salary ?? 0);
       const paid = paidMap.get(s.id) || 0;
-      totalPayroll += salary;
+      const { salary: payable, pending } = computeSalaryBalance(gross, paid, s);
+      totalPayroll += payable;
       totalPaid += paid;
-      const { pending } = computeSalaryBalance(salary, paid, s);
       totalPending += pending;
     });
 
@@ -827,6 +827,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       .map((s) => {
         const paid = paidMap.get(s.id) || 0;
         const status = salaryStatusInfo(s.monthly_salary, paid, s);
+        const { salary: payable } = computeSalaryBalance(s.monthly_salary, paid, s);
         const remaining =
           status.advance > 0.009
             ? `<span class="muted">Advance ${formatCurrency(status.advance)}</span>`
@@ -837,7 +838,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
-            <td class="num">${formatCurrency(s.monthly_salary)}</td>
+            <td class="num">${formatCurrency(payable)}</td>
             <td class="num">${formatCurrency(paid)}</td>
             <td class="num">${remaining}</td>
             <td><span class="salary-status ${status.className}">${escapeHtml(status.label)}</span></td>
@@ -1037,13 +1038,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
       if (auth.session?.user?.id) payload.created_by = auth.session.user.id;
 
-      const { error } = await supabaseClient.from("salary_payments").insert(payload);
+      const { data: insertedPayment, error } = await supabaseClient
+        .from("salary_payments")
+        .insert(payload)
+        .select("id")
+        .single();
 
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Save payment";
-      }
       if (error) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Save payment";
+        }
         AppError.handle(error, { target: paymentError });
         return;
       }
@@ -1057,7 +1062,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         amount,
       };
       if (auth.session?.user?.id) expensePayload.created_by = auth.session.user.id;
-      await supabaseClient.from("expenses").insert(expensePayload);
+      const { error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload);
+
+      if (expenseError) {
+        if (insertedPayment?.id) {
+          const { error: rollbackError } = await supabaseClient
+            .from("salary_payments")
+            .delete()
+            .eq("id", insertedPayment.id);
+          if (rollbackError) {
+            AppError.report(rollbackError, {
+              context: "rollbackSalaryPaymentAfterExpenseFail",
+              paymentId: insertedPayment.id,
+            });
+          }
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Save payment";
+        }
+        AppError.handle(expenseError, { target: paymentError });
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Save payment";
+      }
 
       paymentForm.reset();
       paymentDateInput.value = getLocalDateString();
@@ -1107,7 +1138,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const headers = [
         "Name",
         "Role",
-        "Monthly salary (₹)",
+        "Net monthly (₹)",
         "Paid this month (₹)",
         "Remaining (₹)",
         "Status",
@@ -1115,13 +1146,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       const rows = staffList.map((s) => {
         const paid = paidMap.get(s.id) || 0;
         const status = salaryStatusInfo(s.monthly_salary, paid, s);
-        const remaining = status.pending;
+        const { salary: payable } = computeSalaryBalance(s.monthly_salary, paid, s);
+        const remaining =
+          status.advance > 0.009 ? `Advance ${status.advance}` : String(status.pending);
         return [
           String(s.name ?? "").replace(/"/g, '""'),
           String(s.role_display ?? "").replace(/"/g, '""'),
-          String(s.monthly_salary ?? 0),
+          String(payable),
           String(paid),
-          String(remaining),
+          remaining,
           status.label,
         ];
       });

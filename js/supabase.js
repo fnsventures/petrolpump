@@ -10,71 +10,171 @@ const isProdHost = PROD_HOSTS.includes(hostname);
 const SUPABASE_URL = runtimeConfig.SUPABASE_URL;
 const SUPABASE_ANON_KEY = runtimeConfig.SUPABASE_ANON_KEY;
 
+function isAppConfigValid() {
+  return Boolean(
+    SUPABASE_URL &&
+      SUPABASE_ANON_KEY &&
+      !String(SUPABASE_URL).includes("YOUR-PROJECT-ID")
+  );
+}
+
+const configValid = isAppConfigValid();
+
 // Validate configuration
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error(
     "Supabase configuration missing. Please ensure js/env.js exists with valid credentials. " +
-    "See js/env.example.js for setup instructions."
+      "See js/env.example.js for setup instructions."
   );
 }
 
 if (runtimeEnv === "prod" && !isProdHost) {
-  console.warn(
-    "APP_ENV is set to 'prod' but running on a non-production host."
-  );
+  console.warn("APP_ENV is set to 'prod' but running on a non-production host.");
 }
 
-if (
-  !SUPABASE_URL ||
-  !SUPABASE_ANON_KEY ||
-  SUPABASE_URL.includes("YOUR-PROJECT-ID")
-) {
-  console.warn(
-    "Supabase config is invalid. Check js/env.js and environment secrets."
-  );
+if (!configValid) {
+  console.warn("Supabase config is invalid. Check js/env.js and environment secrets.");
 }
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = supabase.createClient(
+  SUPABASE_URL || "https://invalid.local",
+  SUPABASE_ANON_KEY || "invalid"
+);
+
+function injectAppMeta() {
+  if (typeof document === "undefined" || !document.head) return;
+
+  if (!document.querySelector('link[rel="manifest"]')) {
+    const manifest = document.createElement("link");
+    manifest.rel = "manifest";
+    manifest.href = new URL("manifest.json", window.location.href).href;
+    document.head.appendChild(manifest);
+  }
+
+  if (!document.querySelector('meta[name="theme-color"]')) {
+    const theme = document.createElement("meta");
+    theme.name = "theme-color";
+    theme.content = "#0070c0";
+    document.head.appendChild(theme);
+  }
+
+  if (!document.querySelector('meta[name="application-name"]')) {
+    const appName = document.createElement("meta");
+    appName.name = "application-name";
+    appName.content = "Bishnupriya Fuels";
+    document.head.appendChild(appName);
+  }
+}
+
+function showConfigBanner() {
+  if (typeof document === "undefined" || !document.body || configValid) return;
+
+  let banner = document.getElementById("app-config-banner");
+  if (banner) return;
+
+  banner = document.createElement("div");
+  banner.id = "app-config-banner";
+  banner.className = "app-config-banner";
+  banner.setAttribute("role", "alert");
+  banner.innerHTML =
+    "<span>Application configuration is missing or invalid. Copy <code>js/env.example.js</code> to <code>js/env.js</code> and add your Supabase credentials.</span>";
+  document.body.insertBefore(banner, document.body.firstChild);
+}
+
+function showAppUpdateBanner(onReload) {
+  if (typeof document === "undefined" || !document.body) return;
+
+  let banner = document.getElementById("app-update-banner");
+  if (banner) return;
+
+  banner = document.createElement("div");
+  banner.id = "app-update-banner";
+  banner.className = "app-update-banner";
+  banner.setAttribute("role", "status");
+
+  const text = document.createElement("span");
+  text.textContent = "A new version is available.";
+
+  const reloadBtn = document.createElement("button");
+  reloadBtn.type = "button";
+  reloadBtn.className = "app-update-banner-action";
+  reloadBtn.textContent = "Reload";
+  reloadBtn.addEventListener("click", () => {
+    if (typeof onReload === "function") onReload();
+  });
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.type = "button";
+  dismissBtn.className = "app-update-banner-close";
+  dismissBtn.setAttribute("aria-label", "Dismiss");
+  dismissBtn.textContent = "×";
+  dismissBtn.addEventListener("click", () => banner.remove());
+
+  banner.append(text, reloadBtn, dismissBtn);
+  document.body.insertBefore(banner, document.body.firstChild);
+}
+
+function initNetworkStatus() {
+  if (typeof document === "undefined" || !document.body) return;
+
+  let status = document.getElementById("app-network-status");
+  if (!status) {
+    status = document.createElement("div");
+    status.id = "app-network-status";
+    status.className = "app-network-status hidden";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    document.body.appendChild(status);
+  }
+
+  const update = () => {
+    if (!navigator.onLine) {
+      status.textContent = "You are offline. Data may be outdated until connection returns.";
+      status.classList.remove("hidden");
+    } else {
+      status.classList.add("hidden");
+    }
+  };
+
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+  update();
+}
 
 /**
  * Register Service Worker for offline capability and caching
  */
 function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", async () => {
-      try {
-        const registration = await navigator.serviceWorker.register("/sw.js", {
-          scope: "/",
-        });
-        console.log("[App] Service Worker registered:", registration.scope);
+  if (!("serviceWorker" in navigator)) return;
 
-        // Handle updates
-        registration.addEventListener("updatefound", () => {
-          const newWorker = registration.installing;
-          if (newWorker) {
-            newWorker.addEventListener("statechange", () => {
-              if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-                // New version available
-                console.log("[App] New Service Worker available");
-                // Optionally notify user about update
-                if (window.confirm("A new version is available. Reload to update?")) {
-                  newWorker.postMessage({ type: "SKIP_WAITING" });
-                  window.location.reload();
-                }
-              }
+  window.addEventListener("load", async () => {
+    try {
+      const swUrl = new URL("sw.js", window.location.href);
+      const registration = await navigator.serviceWorker.register(swUrl.href);
+      console.log("[App] Service Worker registered:", registration.scope);
+
+      registration.addEventListener("updatefound", () => {
+        const newWorker = registration.installing;
+        if (!newWorker) return;
+
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            console.log("[App] New Service Worker available");
+            showAppUpdateBanner(() => {
+              newWorker.postMessage({ type: "SKIP_WAITING" });
+              window.location.reload();
             });
           }
         });
-      } catch (error) {
-        console.warn("[App] Service Worker registration failed:", error);
-      }
-    });
+      });
+    } catch (error) {
+      console.warn("[App] Service Worker registration failed:", error);
+    }
+  });
 
-    // Handle controller change (new SW activated)
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      console.log("[App] Service Worker controller changed");
-    });
-  }
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    console.log("[App] Service Worker controller changed");
+  });
 }
 
 /**
@@ -92,12 +192,8 @@ function sendToServiceWorker(type, payload = {}) {
       resolve(event.data);
     };
 
-    navigator.serviceWorker.controller.postMessage(
-      { type, payload },
-      [messageChannel.port2]
-    );
+    navigator.serviceWorker.controller.postMessage({ type, payload }, [messageChannel.port2]);
 
-    // Timeout fallback
     setTimeout(() => resolve(null), 3000);
   });
 }
@@ -106,12 +202,10 @@ function sendToServiceWorker(type, payload = {}) {
  * Clear all caches (localStorage + Service Worker)
  */
 async function clearAllCaches() {
-  // Clear localStorage cache
   if (window.AppCache) {
     window.AppCache.clearAll();
   }
 
-  // Clear Service Worker caches
   await sendToServiceWorker("CLEAR_CACHE");
 
   console.log("[App] All caches cleared");
@@ -121,7 +215,6 @@ async function clearAllCaches() {
  * Clear API-related caches
  */
 async function clearApiCaches() {
-  // Clear localStorage cache types related to API data
   if (window.AppCache) {
     window.AppCache.invalidateByType("dashboard_data");
     window.AppCache.invalidateByType("credit_summary");
@@ -131,7 +224,6 @@ async function clearApiCaches() {
     window.AppCache.invalidateByType("profit_loss");
   }
 
-  // Clear Service Worker API cache
   await sendToServiceWorker("CLEAR_API_CACHE");
 
   console.log("[App] API caches cleared");
@@ -150,21 +242,31 @@ async function getCacheStats() {
   };
 }
 
-// Initialize Service Worker registration
+function initAppShell() {
+  injectAppMeta();
+  showConfigBanner();
+  initNetworkStatus();
+}
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAppShell);
+  } else {
+    initAppShell();
+  }
+}
+
 registerServiceWorker();
 
-// Clean up old cache entries periodically
 if (window.AppCache) {
-  // Initial cleanup
   window.AppCache.clearOldEntries();
-
-  // Periodic cleanup every 10 minutes
   setInterval(() => {
     window.AppCache.clearOldEntries();
   }, 10 * 60 * 1000);
 }
 
 window.supabaseClient = supabaseClient;
+window.isAppConfigValid = isAppConfigValid;
 window.clearAllCaches = clearAllCaches;
 window.clearApiCaches = clearApiCaches;
 window.getCacheStats = getCacheStats;
