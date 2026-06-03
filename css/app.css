@@ -137,10 +137,22 @@ tbody tr:hover {
 
 .card-head-flex {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-2) var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .card-head-flex {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-head-flex .search-field {
+    width: 100%;
+    min-width: 0;
+  }
 }
 .credit-ledger-summary {
   margin: 0;
@@ -3223,6 +3235,11 @@ body.reports-page main.settings-layout.reports-layout {
 @media (max-width: 768px) {
   .settings-layout {
     grid-template-columns: 1fr;
+    padding: 0.5rem 0;
+  }
+
+  .settings-layout .settings-sidebar {
+    position: static;
   }
 
   .settings-nav {
@@ -3232,7 +3249,13 @@ body.reports-page main.settings-layout.reports-layout {
     gap: 0.35rem;
   }
 
-  .settings-nav-title {
+  /* Many section tabs (e.g. Settings): single column reads better than cramped 2-col cells */
+  .settings-nav:has(.settings-nav-item:nth-child(6)) {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-nav-title,
+  .settings-nav-back {
     grid-column: 1 / -1;
   }
 }
@@ -3444,6 +3467,23 @@ body.reports-page main.settings-layout.reports-layout {
 .settle-inline-page {
   flex-wrap: wrap;
   margin-top: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .settle-inline-page {
+    gap: 0.65rem;
+  }
+
+  .settle-inline-page .settle-date,
+  .settle-inline-page .settle-mode,
+  .settle-inline-page .settle-amount {
+    min-width: 0;
+    flex: 1 1 7.5rem;
+  }
+
+  .settle-inline-page .settle-confirm {
+    width: 100%;
+  }
 }
 
 .link-button {
@@ -3771,9 +3811,22 @@ body.modal-open {
   color: var(--text-muted);
 }
 
+.customer-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
 .customer-filter-reset {
   font-size: var(--text-sm);
   white-space: nowrap;
+}
+
+.customer-summary-print-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .customer-filter-row {
@@ -3879,7 +3932,15 @@ body.modal-open {
 
   .customer-filter-head {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+  }
+
+  .customer-filter-actions {
+    justify-content: flex-start;
+  }
+
+  .customer-filter-actions .customer-summary-print-btn {
+    flex: 1 1 auto;
   }
 }
 
@@ -5039,6 +5100,17 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
+}
+
+@media (max-width: 480px) {
+  .salary-detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .salary-detail-actions button {
+    width: 100%;
+  }
 }
 
 .salary-slip-preview-wrap {

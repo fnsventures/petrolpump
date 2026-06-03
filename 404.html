@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page not found · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <style>
+      .not-found {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        text-align: center;
+      }
+      .not-found-card {
+        max-width: 28rem;
+      }
+      .not-found h1 {
+        margin: 0 0 0.5rem;
+        font-size: var(--heading-2xl);
+        color: var(--bpcl-blue);
+      }
+      .not-found p {
+        margin: 0 0 1.5rem;
+        color: var(--text-muted);
+      }
+      .not-found-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        justify-content: center;
+      }
+      .not-found-actions a {
+        display: inline-block;
+        padding: 0.65rem 1.25rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: var(--text-base);
+      }
+      .not-found-actions .primary {
+        background: var(--bpcl-blue);
+        color: #fff;
+      }
+      .not-found-actions .secondary {
+        background: var(--surface);
+        color: var(--bpcl-blue);
+        border: 1px solid var(--border);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="not-found">
+      <div class="not-found-card">
+        <h1>Page not found</h1>
+        <p>The page you requested does not exist or may have moved.</p>
+        <div class="not-found-actions">
+          <a class="primary" href="dashboard.html">Go to dashboard</a>
+          <a class="secondary" href="index.html">Home</a>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

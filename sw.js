@@ -3,72 +3,88 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v58";
+const CACHE_VERSION = "v61";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
-// Static assets to cache on install
-const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/login.html",
-  "/dashboard.html",
-  "/dsr.html",
-  "/credit.html",
-  "/credit-overdue.html",
-  "/credit-customer.html",
-  "/expenses.html",
-  "/day-closing.html",
-  "/attendance.html",
-  "/staff.html",
-  "/sales-daily.html",
-  "/analysis.html",
-  "/reports.html",
-  "/billing.html",
-  "/settings.html",
-  "/salary.html",
-  "/about.html",
-  "/css/base.css",
-  "/css/app.css",
-  "/css/staff-id-print.css",
-  "/css/invoice-print.css",
-  "/css/salary-slip-print.css",
-  "/css/landing.css",
-  "/css/login.css",
-  "/assets/bpcl-logo.png",
-  "/js/env.js",
-  "/js/errorHandler.js",
-  "/js/cache.js",
-  "/js/appConfig.js",
-  "/js/utils.js",
-  "/js/dateRangeFilter.js",
-  "/js/pumpSettings.js",
-  "/js/purchaseTaxUtils.js",
-  "/js/supabase.js",
-  "/js/auth.js",
-  "/js/pageSections.js",
-  "/js/creditCustomerDetail.js",
-  "/js/dashboard.js",
-  "/js/dsr.js",
-  "/js/credit.js",
-  "/js/expenses.js",
-  "/js/day-closing.js",
-  "/js/attendance.js",
-  "/js/staff.js",
-  "/js/sales-daily.js",
-  "/js/analysis.js",
-  "/js/reports.js",
-  "/js/billing.js",
-  "/js/settings.js",
-  "/js/staffEmployees.js",
-  "/js/salary.js?v=8",
-  "/js/landing.js",
-  "/assets/landing-01.JPG",
-  "/assets/landing-02.JPG",
-  "/assets/landing-03.JPG",
-  "/assets/landing-04.JPG",
+/** Paths relative to the service worker scope (works for prod root and /staging/). */
+const STATIC_ASSET_PATHS = [
+  "index.html",
+  "login.html",
+  "dashboard.html",
+  "dsr.html",
+  "credit.html",
+  "credit-overdue.html",
+  "credit-customer.html",
+  "expenses.html",
+  "day-closing.html",
+  "attendance.html",
+  "staff.html",
+  "sales-daily.html",
+  "analysis.html",
+  "reports.html",
+  "billing.html",
+  "settings.html",
+  "salary.html",
+  "about.html",
+  "404.html",
+  "manifest.json",
+  "css/base.css",
+  "css/app.css",
+  "css/staff-id-print.css",
+  "css/invoice-print.css",
+  "css/salary-slip-print.css",
+  "css/reports-print.css",
+  "css/credit-summary-print.css",
+  "css/landing.css",
+  "css/login.css",
+  "assets/bpcl-logo.png",
+  "js/env.js",
+  "js/errorHandler.js",
+  "js/cache.js",
+  "js/appConfig.js",
+  "js/utils.js",
+  "js/dateRangeFilter.js",
+  "js/pumpSettings.js",
+  "js/purchaseTaxUtils.js",
+  "js/supabase.js",
+  "js/auth.js",
+  "js/pageSections.js",
+  "js/creditCustomerDetail.js",
+  "js/dashboard.js",
+  "js/dsr.js",
+  "js/credit.js",
+  "js/expenses.js",
+  "js/day-closing.js",
+  "js/attendance.js",
+  "js/staff.js",
+  "js/sales-daily.js",
+  "js/analysis.js",
+  "js/reports.js",
+  "js/billing.js",
+  "js/settings.js",
+  "js/staffEmployees.js",
+  "js/salary.js",
+  "js/landing.js",
+  "assets/landing-01.JPG",
+  "assets/landing-02.JPG",
+  "assets/landing-03.JPG",
+  "assets/landing-04.JPG",
 ];
+
+const CACHE_MATCH_OPTS = { ignoreSearch: true };
+
+function getScopeBase() {
+  const scope = self.registration?.scope || new URL("./", self.location.href).href;
+  return scope.endsWith("/") ? scope : `${scope}/`;
+}
+
+function resolveScopedUrl(path) {
+  if (!path || path.startsWith("http")) return path;
+  const clean = String(path).replace(/^\//, "");
+  return new URL(clean, getScopeBase()).href;
+}
 
 // API endpoints to cache with network-first strategy
 const API_PATTERNS = [
@@ -95,9 +111,9 @@ self.addEventListener("install", (event) => {
         console.log("[SW] Caching static assets...");
         // Cache what we can, don't fail on individual asset failures
         return Promise.allSettled(
-          STATIC_ASSETS.map((url) =>
-            cache.add(url).catch((err) => {
-              console.warn(`[SW] Failed to cache: ${url}`, err);
+          STATIC_ASSET_PATHS.map((path) =>
+            cache.add(resolveScopedUrl(path)).catch((err) => {
+              console.warn(`[SW] Failed to cache: ${path}`, err);
             })
           )
         );
@@ -266,7 +282,7 @@ async function networkFirstStrategy(request, cacheName) {
     return networkResponse;
   } catch (error) {
     console.log("[SW] Network failed, trying cache:", request.url);
-    const cachedResponse = await caches.match(request);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
     if (cachedResponse && isApiCacheFresh(cachedResponse)) {
       return cachedResponse;
@@ -292,7 +308,7 @@ async function networkFirstStrategy(request, cacheName) {
  * Best for static assets that rarely change
  */
 async function cacheFirstStrategy(request, cacheName) {
-  const cachedResponse = await caches.match(request);
+  const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
   if (cachedResponse) {
     // Optionally refresh cache in background
@@ -321,7 +337,7 @@ async function cacheFirstStrategy(request, cacheName) {
  */
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request);
+  const cachedResponse = await cache.match(request, CACHE_MATCH_OPTS);
 
   // Fetch from network in background
   const fetchPromise = fetch(request)
@@ -364,7 +380,7 @@ async function networkWithCacheFallback(request, cacheName) {
 
     return networkResponse;
   } catch (error) {
-    const cachedResponse = await caches.match(request);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
     if (cachedResponse) {
       return cachedResponse;
@@ -394,8 +410,7 @@ function refreshCacheInBackground(request, cacheName) {
  * Get offline fallback response
  */
 async function getOfflineFallback() {
-  // Try to return cached index page
-  const cachedIndex = await caches.match("/index.html");
+  const cachedIndex = await caches.match(resolveScopedUrl("index.html"), CACHE_MATCH_OPTS);
   if (cachedIndex) {
     return cachedIndex;
   }

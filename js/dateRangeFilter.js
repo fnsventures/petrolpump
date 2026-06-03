@@ -282,6 +282,7 @@ const DATE_RANGE_PRESETS = {
     { value: "today", label: "Today" },
     { value: "this-week", label: "This week" },
     { value: "this-month", label: "This month" },
+    { value: "all-time", label: "All time" },
     { value: "custom", label: "Custom dates" },
   ],
 };

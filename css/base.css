@@ -39,7 +39,9 @@
   --text-xs: 0.75rem;
   --text-sm: 0.8125rem;
   --text-base: 0.9375rem;
+  --text-md: 1rem;
   --text-lg: 1rem;
+  --surface-muted: #f8fafc;
   --heading-sm: 0.875rem;
   --heading-md: 1rem;
   --heading-lg: 1.125rem;
@@ -659,6 +661,29 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 .snapshot-head {
   align-items: center;
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .card-head.snapshot-head,
+  .snapshot-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .snapshot-head .snapshot-controls,
+  .snapshot-head .filter-actions {
+    width: 100%;
+  }
+
+  .snapshot-head .filter-actions {
+    justify-content: stretch;
+  }
+
+  .snapshot-head .filter-actions .button-secondary {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }
 
 /* Unified filter bar – same look on dashboard, DSR, analysis, expenses */
@@ -1550,6 +1575,11 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
     margin-top: 1rem;
     width: min(100%, 96vw);
   }
+
+  /* Section title is in page content; centered subtitle overlaps brand on narrow screens */
+  .topbar .page-subtitle {
+    display: none;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1743,4 +1773,92 @@ body:has(.meter-toolbar) main.settings-layout {
   .dsr-card .meter-block {
     padding: var(--space-2) var(--space-3);
   }
+}
+
+/* App shell: config, update, network status (injected via js/supabase.js) */
+.app-config-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem clamp(1rem, 4vw, 2rem);
+  background: #fffbeb;
+  color: #92400e;
+  border-bottom: 1px solid #fde68a;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.app-config-banner code {
+  font-size: 0.85em;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+.app-update-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.65rem clamp(1rem, 4vw, 2rem);
+  background: #eff6ff;
+  color: #1e40af;
+  border-bottom: 1px solid #bfdbfe;
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-xs);
+}
+
+.app-update-banner-action {
+  padding: 0.35rem 0.85rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: var(--bpcl-blue);
+  color: #fff;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.app-update-banner-action:hover {
+  background: var(--bpcl-blue-dark);
+}
+
+.app-update-banner-close {
+  margin-left: auto;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.app-update-banner-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.app-network-status {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  font-size: var(--text-sm);
+  background: #1e293b;
+  color: #f8fafc;
+  box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.15);
+}
+
+.app-network-status.hidden {
+  display: none;
+}
+
+body:has(.app-config-banner) .topbar,
+body:has(.app-update-banner) .topbar,
+body:has(.app-error-banner) .topbar {
+  scroll-margin-top: 2.5rem;
 }
