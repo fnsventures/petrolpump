@@ -100,6 +100,29 @@ Use one Supabase project for prod and another for staging.
 2. **Promote to production**  
    Merge `staging` into `main`. The workflow deploys to the root URL.
 
+### 2.4 Database scripts (sync, migrate, backup)
+
+Maintenance scripts live in **`scripts/`**. Full guide: **[scripts/README.md](../scripts/README.md)**.
+
+**Setup once:**
+
+```bash
+cp scripts/db.env.example scripts/db.env
+# PROD_DB_URL + STAGING_DB_URL from Supabase → Connect → Session pooler
+```
+
+**Release order:**
+
+| Step | Command | Prod | Staging |
+|------|---------|------|---------|
+| 1. Copy real data for testing | `./scripts/db.sh sync` | read only | replaced |
+| 2. Test app | push `staging` branch → `/staging/` | — | — |
+| 3. Preflight prod migration | `./scripts/db.sh migrate` | no changes | — |
+| 4. Migrate prod schema | `./scripts/db.sh migrate --apply` | schema upgraded | — |
+| 5. Deploy app | merge `staging` → `main` | site updated | — |
+
+Optional: `./scripts/db.sh backup` before step 4.
+
 ---
 
 ## 3. Supervisor / operator login

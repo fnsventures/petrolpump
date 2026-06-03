@@ -35,6 +35,7 @@ End-to-end flows and page → data mapping: [Flows](docs/FLOWS.md).
 | [**Flows**](docs/FLOWS.md) | User and data flows: auth, daily ops, credit, DSR/stock, billing, reports, HR, settings |
 | [**DSR tables**](docs/DSR_TABLES.md) | DSR model: `dsr_petrol` / `dsr_diesel`, union `dsr` view, computed `dsr_stock`, `get_dsr_stock_range` |
 | [**Development guide**](docs/DEVELOPMENT.md) | Local setup, deployment (prod/staging), supervisor login |
+| [**Database scripts**](scripts/README.md) | Prod → staging sync, prod migration, backup |
 
 Full index and getting started by role: **[docs/README.md](docs/README.md)**.
 
@@ -44,6 +45,7 @@ Full index and getting started by role: **[docs/README.md](docs/README.md)**.
 
 - **Run locally:** [Development guide → Local development](docs/DEVELOPMENT.md#1-local-development) (env setup and local server).
 - **Deploy:** [Development guide → Deployment](docs/DEVELOPMENT.md#2-deployment-prod-and-staging) (GitHub Actions, secrets, branches).
+- **Release (sync / migrate / backup):** [scripts/README.md](scripts/README.md) — `./scripts/db.sh help`
 - **Add an operator (supervisor):** [Development guide → Supervisor login](docs/DEVELOPMENT.md#3-supervisor--operator-login).
 
 Project layout (pages, scripts, supabase): [Architecture → Project structure](docs/ARCHITECTURE.md#3-project-structure).
