@@ -56,20 +56,27 @@ function parseTankCapacityLiters(capacityStr) {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
+/** Physical tank capacities for dip % on the dashboard (one MS tank, one HSD tank). */
 function getTankCapacities() {
   const settings = PumpSettings.getCachedSync();
-  const tanks = settings.reports?.tanks || [];
-  let petrol = 0;
-  let diesel = 0;
-  tanks.forEach((t) => {
-    const cap = parseTankCapacityLiters(t.capacity);
-    if (!cap) return;
-    if (normalizeProduct(t.product) === "petrol") petrol += cap;
-    if (normalizeProduct(t.product) === "diesel") diesel += cap;
-  });
   const pumps = settings.pumps || {};
-  if (!petrol) petrol = parseTankCapacityLiters(pumps.petrol?.tankCapacity) || 15000;
-  if (!diesel) diesel = parseTankCapacityLiters(pumps.diesel?.tankCapacity) || 20000;
+  let petrol = parseTankCapacityLiters(pumps.petrol?.tankCapacity);
+  let diesel = parseTankCapacityLiters(pumps.diesel?.tankCapacity);
+
+  // reports.tanks lists per-pump report sections (e.g. HSD 1 + HSD 2); do not sum those
+  // for dip — both pumps share one physical HSD tank (see Settings → Pump configuration).
+  if (!petrol || !diesel) {
+    const tanks = settings.reports?.tanks || [];
+    tanks.forEach((t) => {
+      const cap = parseTankCapacityLiters(t.capacity);
+      if (!cap) return;
+      if (!petrol && normalizeProduct(t.product) === "petrol") petrol = cap;
+      if (!diesel && normalizeProduct(t.product) === "diesel") diesel = cap;
+    });
+  }
+
+  if (!petrol) petrol = 15000;
+  if (!diesel) diesel = 20000;
   return { petrol, diesel };
 }
 
