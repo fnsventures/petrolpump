@@ -13,6 +13,7 @@ This folder contains the technical documentation for the Petrol Pump application
 | [**FLOWS.md**](FLOWS.md) | **User and data flows**: auth, daily ops, credit, DSR/stock, billing, reports, HR, admin/settings. Page → data mapping. |
 | [**DSR_TABLES.md**](DSR_TABLES.md) | **DSR model**: `dsr_petrol` / `dsr_diesel`, union `dsr` view, computed `dsr_stock`, and `get_dsr_stock_range`. |
 | [**DEVELOPMENT.md**](DEVELOPMENT.md) | **Setup and operations**: local development (env, server, first login), deployment (prod/staging, GitHub secrets, deploy flow), supervisor/operator login. |
+| [**../scripts/README.md**](../scripts/README.md) | **Database scripts**: prod → staging sync, prod migration, backup — which command to run and when. |
 
 ---
 

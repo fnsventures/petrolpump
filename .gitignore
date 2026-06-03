@@ -18,3 +18,10 @@ npm-debug.log*
 # Supabase
 supabase/.temp/
 supabase/.branches/
+
+# Database maintenance (secrets and artifacts)
+scripts/db.env
+scripts/sync-prod-to-staging.env
+scripts/migrate-prod.env
+scripts/.sync-dumps/
+scripts/.prod-backups/
