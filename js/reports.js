@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, grossBuyingRatePerLitre */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -144,17 +144,18 @@ function getPurchaseTaxPctLabel() {
 /**
  * @returns {{ taxable: number, tax: number, gross: number, cgst: number, sgst: number }}
  */
-function calcPurchaseLineTax(litres, ratePerLitre, taxPct) {
+function calcPurchaseLineTax(litres, ratePerLitre, taxPct, options) {
   const base = Number(litres) * Number(ratePerLitre);
   const pct = Number(taxPct);
   if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 0) {
     return { taxable: 0, tax: 0, gross: 0, cgst: 0, sgst: 0 };
   }
 
+  const storedGrossRate = options?.storedGrossRate === true;
   let taxable;
   let tax;
   let gross;
-  if (isPurchaseTaxInclusive()) {
+  if (storedGrossRate || isPurchaseTaxInclusive()) {
     gross = base;
     taxable = gross / (1 + pct / 100);
     tax = gross - taxable;
@@ -934,7 +935,9 @@ function buildFuelPurchaseRows(data, range) {
   const detailRows = purchaseLines.map(({ date, product, litres, rate }) => {
     const taxPct = getPurchaseTaxPct(product);
     const slabKey = classifyGstSlab(taxPct);
-    const { taxable, tax, gross, cgst, sgst } = calcPurchaseLineTax(litres, rate, taxPct);
+    const { taxable, tax, gross, cgst, sgst } = calcPurchaseLineTax(litres, rate, taxPct, {
+      storedGrossRate: true,
+    });
 
     if (slabTotals[slabKey]) {
       slabTotals[slabKey].taxable += taxable;
@@ -967,7 +970,7 @@ function renderGstPurchaseSummary(data, range) {
     ${renderGstSummaryTable(slabTotals, "Inward supply — GST summary (Fuel receipts)", range, true)}
     ${emptyNote}
     ${missingNote}
-    <p class="report-note muted">Based on stock receipts (L) and buying price (₹/L). VAT/LST: ${escapeHtml(
+    <p class="report-note muted">Based on stock receipts (L) and buying price (${escapeHtml(getBuyingPriceUnitLabel())}, ex-VAT on dashboard). VAT/LST: ${escapeHtml(
       getPurchaseTaxPctLabel()
     )}. ${
       isPurchaseTaxInclusive()
@@ -989,7 +992,7 @@ function renderGstPurchaseDetail(data, range) {
       <td>${escapeHtml(ref)}</td>
       <td>${escapeHtml(getFuelSupplierLabel())}</td>
       <td class="num">${formatQty(r.litres)}</td>
-      <td class="num">${formatAmt(r.rate)}</td>
+      <td class="num">${formatBuyingRatePerKl(r.rate)}</td>
       <td class="num">${formatAmt(r.taxable)}</td>
       <td class="num">${r.taxPct}%</td>
       <td class="num">${formatAmt(r.tax)}</td>
@@ -1008,7 +1011,7 @@ function renderGstPurchaseDetail(data, range) {
           <th>Prod</th>
           <th>Party</th>
           <th class="num">Qty (L)</th>
-          <th class="num">Rate</th>
+          <th class="num">Rate (${escapeHtml(getBuyingPriceUnitLabel())})</th>
           <th class="num">Taxable</th>
           <th class="num">VAT%</th>
           <th class="num">VAT</th>
@@ -1022,11 +1025,7 @@ function renderGstPurchaseDetail(data, range) {
         ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on dashboard.</p>`
         : ""
     }
-    <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. ${
-      isPurchaseTaxInclusive()
-        ? "Buying rate is tax-inclusive."
-        : "Buying rate is pre-tax; VAT/LST computed on taxable."
-    }</p>`;
+    <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. Buying rate in database is tax-inclusive (VAT/LST included when saved from P&amp;L).</p>`;
 }
 
 function computeTradingAndPl(data, range) {
@@ -1044,10 +1043,9 @@ function computeTradingAndPl(data, range) {
     if (!products[p]) return;
     const netL = Math.max(Number(row.total_sales ?? 0) - Number(row.testing ?? 0), 0);
     const rate = p === "petrol" ? Number(row.petrol_rate ?? 0) : Number(row.diesel_rate ?? 0);
-    const buyingStored = getBuying(row.product, row.date) ?? Number(row.buying_price_per_litre ?? 0);
-    const buyingGross = grossBuyingRatePerLitre(buyingStored, row.product) ?? buyingStored;
+    const buyingRate = getBuying(row.product, row.date) ?? Number(row.buying_price_per_litre ?? 0);
     products[p].sales += netL * rate;
-    products[p].purchase += Number(row.receipts ?? 0) * buyingGross;
+    products[p].purchase += Number(row.receipts ?? 0) * buyingRate;
   });
 
   ["petrol", "diesel"].forEach((p) => {
@@ -1057,10 +1055,8 @@ function computeTradingAndPl(data, range) {
     const last = prodRows[prodRows.length - 1];
     products[p].openingL = Number(first.opening_stock ?? 0);
     products[p].closingL = Number(last.dip_stock ?? last.stock ?? 0);
-    const openBuyStored = getBuying(p, first.date) ?? 0;
-    const closeBuyStored = getBuying(p, last.date) ?? openBuyStored;
-    const openBuy = grossBuyingRatePerLitre(openBuyStored, p) ?? openBuyStored;
-    const closeBuy = grossBuyingRatePerLitre(closeBuyStored, p) ?? closeBuyStored;
+    const openBuy = getBuying(p, first.date) ?? 0;
+    const closeBuy = getBuying(p, last.date) ?? openBuy;
     products[p].openingStockVal = products[p].openingL * openBuy;
     products[p].closingStockVal = products[p].closingL * closeBuy;
   });
@@ -1130,7 +1126,7 @@ function renderTradingAccount(data, range) {
     </div>
     <p class="report-note muted">Debit and credit totals should match; gross income is the balancing figure.</p>
     <p class="report-summary-line">Gross income for period: <strong>${formatCurrency(t.grossIncome)}</strong></p>
-    <p class="report-note muted">Stock valued at effective buying price from receipts. Lube sales from billing invoices.</p>`;
+    <p class="report-note muted">Stock valued at effective buying price from receipts (${escapeHtml(getBuyingPriceUnitLabel())} on dashboard, stored per litre). Lube sales from billing invoices.</p>`;
 }
 
 function renderProfitLoss(data, range) {

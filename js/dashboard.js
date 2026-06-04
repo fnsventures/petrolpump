@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint */
 
 /**
  * Generate cache key for dashboard data queries
@@ -1022,8 +1022,8 @@ function calculateIncome(rows) {
 
 /**
  * Cost of goods: for each sale day, effective buying price = the buying price from the most recent
- * receipt day (same product) on or before that date. So profit is calculated from each receipt day
- * until the next receipt day using that day's buying price. Sum net_sale * effective_buying.
+ * receipt day (same product) on or before that date. buying_price_per_litre in DB is gross (incl. VAT).
+ * Sum net_sale * effective_buying.
  */
 function calculateCostOfGoods(dsrRows, receiptRows, endDate) {
   const byProduct = new Map();
@@ -1048,10 +1048,9 @@ function calculateCostOfGoods(dsrRows, receiptRows, endDate) {
   (dsrRows ?? []).forEach((row) => {
     const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
     if (!Number.isFinite(netSale) || netSale <= 0) return;
-    const buyingExVat = getEffectiveBuying(row.product, row.date);
-    if (buyingExVat == null) return;
-    const buyingGross = grossBuyingRatePerLitre(buyingExVat, row.product);
-    if (buyingGross != null) cost += netSale * buyingGross;
+    const buyingRate = getEffectiveBuying(row.product, row.date);
+    if (buyingRate == null) return;
+    cost += netSale * buyingRate;
   });
   return cost;
 }
@@ -1414,13 +1413,25 @@ function getCurrentPlRange() {
  */
 async function handleSaveBuyingPrice(dsrId) {
   const input = document.getElementById(`pl-buying-${dsrId}`);
-  const value = Number.parseFloat((input?.value ?? "").trim(), 10);
-  if (!Number.isFinite(value) || value < 0) {
+  const saveBtn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+  const product =
+    saveBtn?.dataset?.product ||
+    document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`)?.dataset?.product;
+  const valueKl = Number.parseFloat((input?.value ?? "").trim(), 10);
+  const parsed = validateBuyingRateKlInput(valueKl);
+  if (!parsed.ok) {
+    showPlBuyingPriceError(
+      parsed.message || `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`
+    );
+    return;
+  }
+  const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
+  if (value == null) {
     showPlBuyingPriceError(`Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
     return;
   }
   document.getElementById("pl-buying-price-error")?.classList.add("hidden");
-  const btn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+  const btn = saveBtn;
   const resetBtn = () => {
     if (btn) {
       btn.disabled = false;
@@ -1539,11 +1550,11 @@ async function loadProfitLossSummary(range) {
             const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
             const rowId = row.id;
             return `
-              <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}">
+              <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">
                 <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
                 <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
-                <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(isPurchaseTaxInclusive() ? "₹/L incl." : "ex-VAT ₹/L")}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
-                <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}">Save</button>
+                <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
+                <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
               </li>`;
           }
         )
@@ -1592,7 +1603,7 @@ async function loadProfitLossSummary(range) {
     } else if (!allBuyingPricesEntered) {
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
-        plProfitHintEl.textContent = "Enter buying price for receipt days above to calculate.";
+        plProfitHintEl.textContent = "Enter ex-VAT ₹/KL for receipt days above to calculate.";
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");

@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, grossBuyingRatePerLitre */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -81,7 +81,7 @@ function normalizeProduct(value) {
 }
 
 /**
- * Build map: for each (product, date) return effective buying price (₹/L) from latest receipt row on or before that date.
+ * Build map: for each (product, date) return effective gross buying price (₹/L in DB, incl. VAT) from latest receipt row on or before that date.
  * receiptRows: { date, product, buying_price_per_litre } sorted by date desc per product.
  */
 function buildEffectiveBuyingMap(receiptRows) {
@@ -136,11 +136,9 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
         ? Number(row.petrol_rate ?? 0)
         : Number(row.diesel_rate ?? 0);
     const revenue = Number.isFinite(rate) && rate > 0 ? netSale * rate : 0;
-    const buyingExVat = getEffectiveBuying(row.product, row.date);
-    const buyingGross =
-      buyingExVat != null ? grossBuyingRatePerLitre(buyingExVat, row.product) : null;
+    const buyingRate = getEffectiveBuying(row.product, row.date);
     const cost =
-      buyingGross != null && Number.isFinite(buyingGross) ? netSale * buyingGross : 0;
+      buyingRate != null && Number.isFinite(buyingRate) ? netSale * buyingRate : 0;
     const entry = byDate.get(key);
     entry.salesRupees += revenue;
     entry.costRupees += cost;
