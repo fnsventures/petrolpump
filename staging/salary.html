@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Salary · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=5"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/staffEmployees.js"></script>
+    <script defer src="js/salary.js?v=9"></script>
+  </head>
+  <body class="salary-page">
+    <header class="topbar">
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">Salary</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" aria-label="Main navigation">
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="dsr.html">Meter Reading</a>
+            <a href="sales-daily.html">DSR</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="credit.html">Credit</a>
+            <a href="expenses.html">Expenses</a>
+            <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="attendance.html">Attendance</a>
+            <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
+            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
+          </div>
+        </div>
+        <button id="logout-button" class="link nav-logout">Logout</button>
+      </nav>
+    </header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Salary sections">
+        <p class="settings-nav-title">Salary</p>
+        <button type="button" class="settings-nav-item is-active" data-section="summary">Monthly summary</button>
+        <button type="button" class="settings-nav-item" data-section="record">Record payment</button>
+        <button type="button" class="settings-nav-item" data-section="recent">Payment history</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card" data-panel="record" hidden>
+          <h2>Record salary payment</h2>
+          <p class="muted">Record each installment when salary is paid. Multiple payments per staff member per month are supported; the monthly summary shows what is still due.</p>
+          <form id="salary-payment-form" class="form" autocomplete="off">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="payment-staff">Staff</label>
+                <select id="payment-staff" name="staff_member_id" required>
+                  <option value="">Select staff</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="payment-date">Payment date</label>
+                <input id="payment-date" name="date" type="date" required />
+              </div>
+              <div class="form-field">
+                <label for="payment-amount">Amount (₹)</label>
+                <input
+                  id="payment-amount"
+                  name="amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0"
+                  required
+                />
+              </div>
+              <div class="form-field">
+                <label for="payment-note">Note</label>
+                <input
+                  id="payment-note"
+                  name="note"
+                  type="text"
+                  maxlength="200"
+                  placeholder="e.g. Advance, January part 1"
+                />
+              </div>
+            </div>
+            <p id="payment-month-hint" class="muted hidden" aria-live="polite"></p>
+            <button type="submit">Save payment</button>
+            <p id="salary-payment-success" class="success hidden">Payment recorded.</p>
+            <p id="salary-payment-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <section class="settings-panel card is-visible" data-panel="summary">
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Monthly salary summary</h2>
+              <p class="muted">Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field month-year-filter">
+                <label id="salary-month-label">Month</label>
+                <div class="month-year-filter-controls">
+                  <select id="salary-month-month" aria-labelledby="salary-month-label"></select>
+                  <select id="salary-month-year" aria-label="Year"></select>
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="salary-download-csv" class="button-secondary">Download CSV</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="salary-kpi-grid stat-grid" aria-label="Month totals">
+            <div class="stat-card">
+              <span class="stat-label">Total payroll</span>
+              <strong id="salary-kpi-payroll" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card stat-card-highlight">
+              <span class="stat-label">Paid this month</span>
+              <strong id="salary-kpi-paid" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Remaining</span>
+              <strong id="salary-kpi-pending" class="stat-value">—</strong>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="salary-summary-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th class="num">Net monthly (₹)</th>
+                  <th class="num">Paid (₹)</th>
+                  <th class="num">Remaining (₹)</th>
+                  <th>Status</th>
+                  <th class="table-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="salary-summary-body">
+                <tr>
+                  <td colspan="7" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="settings-panel card" data-panel="recent" hidden>
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Payment history</h2>
+              <p class="muted">All salary installments recorded for the selected month.</p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field month-year-filter">
+                <label id="salary-history-month-label">Month</label>
+                <div class="month-year-filter-controls">
+                  <select id="salary-history-month-month" aria-labelledby="salary-history-month-label"></select>
+                  <select id="salary-history-month-year" aria-label="Year"></select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Staff</th>
+                  <th class="num">Amount (₹)</th>
+                  <th>Note</th>
+                  <th class="table-actions" id="salary-history-actions-head">Slip</th>
+                </tr>
+              </thead>
+              <tbody id="salary-payments-body">
+                <tr>
+                  <td colspan="5" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div
+      id="salary-detail-overlay"
+      class="overdue-detail-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="salary-detail-title"
+    >
+      <div class="overdue-detail-backdrop" id="salary-detail-backdrop"></div>
+      <div class="card overdue-detail-card salary-detail-card">
+        <div class="overdue-detail-head">
+          <div>
+            <h2 id="salary-detail-title">Staff salary</h2>
+            <p id="salary-detail-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="overdue-detail-close" id="salary-detail-close" aria-label="Close">×</button>
+        </div>
+
+        <dl class="salary-detail-meta" id="salary-detail-stats"></dl>
+
+        <div class="salary-detail-payments">
+          <h3 class="salary-detail-section-title">Payments this month</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="num">Amount (₹)</th>
+                  <th>Note</th>
+                  <th class="table-actions" id="salary-detail-actions-head" hidden>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="salary-detail-payments-body">
+                <tr><td colspan="3" class="muted">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="salary-detail-actions">
+          <button type="button" id="salary-detail-add-payment" class="button-secondary">Add payment</button>
+          <button type="button" id="salary-detail-print-slip">Print salary slip</button>
+          <button type="button" id="salary-detail-dismiss" class="button-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>
