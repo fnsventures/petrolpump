@@ -31,6 +31,8 @@ jobs:
             APP_ENV: "prod",
           };
           EOF
+          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
+          sed -i '/^js\/env\.js$/d' .gitignore
 
       - name: Deploy to gh-pages (prod)
         uses: peaceiris/actions-gh-pages@v4
@@ -59,6 +61,8 @@ jobs:
             APP_ENV: "staging",
           };
           EOF
+          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
+          sed -i '/^js\/env\.js$/d' .gitignore
 
       - name: Remove custom domain for staging
         run: rm -f CNAME
