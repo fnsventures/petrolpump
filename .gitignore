@@ -1,5 +1,4 @@
 # Environment configuration (contains secrets at runtime)
-js/env.js
 
 # OS files
 .DS_Store
