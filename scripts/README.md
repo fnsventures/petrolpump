@@ -116,7 +116,9 @@ Optional before step 4: `./scripts/db.sh backup` or Supabase Dashboard backup.
 
 Run during a **quiet window** (no DSR / day closing entries).
 
-**Do not** run `stamp-staging-migrations.sql` on prod.
+**Do not** run `stamp-staging-migrations.sql` on prod (it marks DSR-split migrations as done without running them).
+
+For **legacy prod** (built before migration tracking: `users` table, legacy `dsr` table), `migrate-prod.sh` auto-runs `stamp-prod-migrations.sql` to mark pre-split migrations as applied, then `db push` runs from `split_dsr_petrol_diesel` onward.
 
 ---
 
@@ -150,6 +152,7 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 | `lib/backup.sh` | Backup helpers |
 | `lib/constants.sh` | Dump exclude lists |
 | `stamp-staging-migrations.sql` | Staging only — marks migrations applied |
+| `stamp-prod-migrations.sql` | Legacy prod only — marks pre-DSR-split migrations applied |
 | `truncate-staging.sql` | Staging only — clear before import |
 | `create-dsr-import-table.sql` | Staging sync — temp legacy dsr import |
 | `dsr-import-from-prod.sql` | Staging sync — split into petrol/diesel |
@@ -181,6 +184,7 @@ Never commit these.
 | `must be owner of sequence` on staging truncate | Fixed in `truncate-staging.sql` (no RESTART IDENTITY on auth) |
 | `permission denied for buckets_vectors` | Internal storage table — excluded from dumps |
 | `column net_sale of relation dsr` | Legacy prod `dsr` → auto-transform on sync |
+| `relation "supabase_migrations.schema_migrations" does not exist` | Prod never used `supabase db push` before — preflight treats count as 0; review dry-run before `--apply` |
 
 ---
 

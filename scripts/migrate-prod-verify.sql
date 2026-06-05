@@ -61,14 +61,27 @@ where n.nspname = 'public'
   )
 order by relname;
 
+select exists (
+  select 1 from information_schema.tables
+  where table_schema = 'supabase_migrations' and table_name = 'schema_migrations'
+) as has_migration_history \gset
+
 \echo ''
 \echo '-- Applied migrations (count) --'
+\if :has_migration_history
 select count(*) as applied_migrations
 from supabase_migrations.schema_migrations;
+\else
+select '0 (migration history missing — unexpected after db push)' as applied_migrations;
+\endif
 
 \echo ''
 \echo '-- Latest applied migration --'
+\if :has_migration_history
 select version, name
 from supabase_migrations.schema_migrations
 order by version desc
 limit 3;
+\else
+select '(migration history missing)' as note;
+\endif

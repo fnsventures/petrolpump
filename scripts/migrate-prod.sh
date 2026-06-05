@@ -23,9 +23,28 @@ LOCAL_MIGRATION_COUNT="$(count_local_migrations)"
 echo "==> 1/5 Preflight"
 run_psql "${PROD_DB_URL}" "${ROOT}/scripts/migrate-prod-preflight.sql"
 
-APPLIED_COUNT="$(run_psql_query "${PROD_DB_URL}" "select count(*) from supabase_migrations.schema_migrations")"
+HAS_MIGRATION_HISTORY="$(run_psql_query "${PROD_DB_URL}" \
+  "select exists (select 1 from information_schema.tables where table_schema = 'supabase_migrations' and table_name = 'schema_migrations')")"
+if [[ "${HAS_MIGRATION_HISTORY}" == "t" ]]; then
+  APPLIED_COUNT="$(run_psql_query "${PROD_DB_URL}" "select count(*) from supabase_migrations.schema_migrations")"
+else
+  APPLIED_COUNT=0
+fi
 PENDING=$((LOCAL_MIGRATION_COUNT - APPLIED_COUNT))
 (( PENDING < 0 )) && PENDING=0
+
+LEGACY_USERS="$(run_psql_query "${PROD_DB_URL}" "select to_regclass('public.users') is not null")"
+LEGACY_STAFF="$(run_psql_query "${PROD_DB_URL}" "select to_regclass('public.staff') is not null")"
+LEGACY_DSR="$(run_psql_query "${PROD_DB_URL}" \
+  "select c.relkind = 'r' from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'dsr'")"
+if [[ "${LEGACY_USERS}" == "t" && "${LEGACY_STAFF}" == "f" && "${LEGACY_DSR}" == "t" && "${APPLIED_COUNT}" -lt 19 ]]; then
+  echo
+  echo "    Legacy prod schema (users table, legacy dsr) — stamping pre-split migrations..."
+  run_psql "${PROD_DB_URL}" "${ROOT}/scripts/stamp-prod-migrations.sql"
+  APPLIED_COUNT="$(run_psql_query "${PROD_DB_URL}" "select count(*) from supabase_migrations.schema_migrations")"
+  PENDING=$((LOCAL_MIGRATION_COUNT - APPLIED_COUNT))
+  (( PENDING < 0 )) && PENDING=0
+fi
 
 echo
 echo "    Repo migrations : ${LOCAL_MIGRATION_COUNT}"

@@ -13,8 +13,23 @@
 -- 1. DROP REDUNDANT STOCK TABLES (backing old dsr_stock view)
 -- ============================================================================
 
--- Drop old dsr_stock view first (depends on the tables)
-drop view if exists public.dsr_stock cascade;
+-- Legacy prod kept dsr_stock as a table; newer installs use a view first.
+do $$
+begin
+  if exists (
+    select 1 from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'dsr_stock' and c.relkind = 'v'
+  ) then
+    execute 'drop view public.dsr_stock cascade';
+  elsif exists (
+    select 1 from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'dsr_stock' and c.relkind = 'r'
+  ) then
+    execute 'drop table public.dsr_stock cascade';
+  end if;
+end $$;
 
 -- Drop the materialized backing tables
 drop table if exists public.petrol_tank_dsr cascade;
