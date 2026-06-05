@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -7,15 +7,6 @@ const LEGACY_CATEGORY_LABELS = {
   mstest: "Miscellaneous",
   hsdtest: "Others",
 };
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function getCategoryLabel(value) {
   return CATEGORY_LABEL_MAP[value] || LEGACY_CATEGORY_LABELS[value] || value || "—";
@@ -34,9 +25,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "expenses",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
+
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "record", validSections: ["record", "history"] });
+  }
 
   await loadAndFillCategorySelect();
 
@@ -46,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateInput = document.getElementById("expense-date");
 
   if (dateInput) {
-    dateInput.value = new Date().toISOString().slice(0, 10);
+    dateInput.value = getLocalDateString();
   }
 
   if (form) {
@@ -98,7 +94,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       form.reset();
       if (dateInput) {
-        dateInput.value = new Date().toISOString().slice(0, 10);
+        dateInput.value = getLocalDateString();
       }
       successEl?.classList.remove("hidden");
       loadExpenses(true);
@@ -149,53 +145,38 @@ async function loadAndFillCategorySelect() {
 }
 
 function getExpenseDateRange() {
-  const rangeSelect = document.getElementById("expense-range");
-  const startInput = document.getElementById("expense-start");
-  const endInput = document.getElementById("expense-end");
-  const val = rangeSelect?.value || "this-month";
-  const now = new Date();
-  if (val === "this-week") {
-    const diffToMonday = (now.getDay() + 6) % 7;
-    const start = new Date(now);
-    start.setDate(now.getDate() - diffToMonday);
-    const end = new Date(start);
-    end.setDate(start.getDate() + 6);
-    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
-  }
-  if (val === "custom" && startInput?.value && endInput?.value) {
-    const s = startInput.value;
-    const e = endInput.value;
-    return { start: s < e ? s : e, end: s < e ? e : s };
-  }
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const start = new Date(y, m, 1);
-  const end = new Date(y, m + 1, 0);
-  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+  const range = readDateRangeFromControls(
+    document.getElementById("expense-range"),
+    document.getElementById("expense-start"),
+    document.getElementById("expense-end")
+  );
+  if (range) return { start: range.start, end: range.end };
+  const today = new Date();
+  return getMonthRange(today.getFullYear(), today.getMonth());
 }
 
 function initExpenseFilter() {
-  const rangeSelect = document.getElementById("expense-range");
-  const customRange = document.getElementById("expense-custom-range");
-  const applyBtn = document.getElementById("expense-apply-filter");
-  if (customRange && rangeSelect) {
-    customRange.classList.toggle("hidden", rangeSelect.value !== "custom");
-  }
-  if (rangeSelect) {
-    rangeSelect.addEventListener("change", () => {
-      if (customRange) customRange.classList.toggle("hidden", rangeSelect.value !== "custom");
-    });
-  }
-  if (applyBtn) {
-    applyBtn.addEventListener("click", () => loadExpenses(true));
-  }
+  createDateRangeFilter({
+    storageKey: "expenses",
+    ranges: ["this-week", "this-month", "custom"],
+    defaultRange: "this-month",
+    rangeSelect: "expense-range",
+    startInput: "expense-start",
+    endInput: "expense-end",
+    customRange: "expense-custom-range",
+    applyBtn: "expense-apply-filter",
+    trigger: "apply",
+    persist: false,
+    runOnInit: false,
+    onApply: () => loadExpenses(true),
+  });
 }
 
 /**
  * Initialize pagination controls for expenses table
  */
 function initExpensesPaginationControls() {
-  const tableSection = document.querySelector("section.card:has(#expense-table-body)");
+  const tableSection = document.getElementById("expense-table-body")?.closest("section.card");
   if (!tableSection) return;
 
   // Check if pagination controls already exist

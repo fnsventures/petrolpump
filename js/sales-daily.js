@@ -1,13 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState */
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState, AppError, escapeHtml */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const YYYYMMDD = /^\d{4}-\d{2}-\d{2}$/;
@@ -30,14 +21,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "sales-daily",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
 
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "filters", validSections: ["filters", "petrol", "diesel"] });
+  }
+
   const startInput = document.getElementById("sales-start-date");
   const endInput = document.getElementById("sales-end-date");
   const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   const curY = now.getFullYear();
   const curM = now.getMonth();
   const pad2 = (n) => String(n).padStart(2, "0");
@@ -137,17 +133,13 @@ async function loadDailySummary(startDate, endDate) {
       .lte("date", endDate)
       .order("date", { ascending: false }),
     supabaseClient
-      .from("dsr_stock")
-      .select(
-        "date, product, opening_stock, receipts, closing_stock, variation"
-      )
-      .gte("date", startDate)
-      .lte("date", endDate)
-      .order("date", { ascending: false }),
+      .rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
   ]);
 
   if (dsrError || stockError) {
-    const message = escapeHtml(dsrError?.message ?? stockError?.message ?? "Unable to load.");
+    const err = dsrError || stockError;
+    AppError.report(err, { context: "salesDailyLoad" });
+    const message = escapeHtml(AppError.getUserMessage(err));
     const errRow = `<tr><td colspan="${TABLE_COLS}" class="error">${message}</td></tr>`;
     tbodyPetrol.innerHTML = errRow;
     tbodyDiesel.innerHTML = errRow;

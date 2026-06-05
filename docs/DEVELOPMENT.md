@@ -33,7 +33,9 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 
    You can find **Project URL** and **anon key** in the Supabase dashboard under **Project Settings → API**.
 
-3. Apply the schema (if not already done) by running the SQL in `supabase/schema.sql` in the Supabase SQL Editor, or apply migrations in order from `supabase/migrations/`.
+3. Apply the schema (if not already done) by running the SQL in `supabase/schema.sql` in the Supabase SQL Editor, or apply migrations **in filename order** from `supabase/migrations/`. After a fresh apply, `pump_settings` row `id = 1` is created with empty `{}` config; open **Settings** as admin to seed station/billing defaults (or rely on `js/appConfig.js` client fallbacks until saved).
+
+4. **Service worker (optional):** The app registers `sw.js` for offline caching. During local dev, hard-refresh or unregister the worker if assets look stale after changes.
 
 ### 1.3 Run a local server
 
@@ -98,11 +100,34 @@ Use one Supabase project for prod and another for staging.
 2. **Promote to production**  
    Merge `staging` into `main`. The workflow deploys to the root URL.
 
+### 2.4 Database scripts (sync, migrate, backup)
+
+Maintenance scripts live in **`scripts/`**. Full guide: **[scripts/README.md](../scripts/README.md)**.
+
+**Setup once:**
+
+```bash
+cp scripts/db.env.example scripts/db.env
+# PROD_DB_URL + STAGING_DB_URL from Supabase → Connect → Session pooler
+```
+
+**Release order:**
+
+| Step | Command | Prod | Staging |
+|------|---------|------|---------|
+| 1. Copy real data for testing | `./scripts/db.sh sync` | read only | replaced |
+| 2. Test app | push `staging` branch → `/staging/` | — | — |
+| 3. Preflight prod migration | `./scripts/db.sh migrate` | no changes | — |
+| 4. Migrate prod schema | `./scripts/db.sh migrate --apply` | schema upgraded | — |
+| 5. Deploy app | merge `staging` → `main` | site updated | — |
+
+Optional: `./scripts/db.sh backup` before step 4.
+
 ---
 
 ## 3. Supervisor / operator login
 
-Operators can log in with a **supervisor** role: they see the same operational pages (dashboard, DSR, credit, expenses, day closing, attendance, salary) but **not** Analysis or Settings. Data access is still enforced by RLS; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
+Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, attendance, salary) but **not** Analysis, **Reports**, or Settings. They cannot edit the employee roster or product catalog (admin-only RLS). Data access is still enforced by RLS; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
 
 ### 3.1 Steps to enable a supervisor
 
@@ -123,7 +148,7 @@ Operators can log in with a **supervisor** role: they see the same operational p
    Emails are stored in lowercase; the app matches login email case-insensitively.
 
 3. **Login**  
-   The user signs in on the login page with the same email and password. They are redirected to the dashboard; Analysis and Settings are hidden from the navigation.
+   The user signs in on the login page with the same email and password. They are redirected to the dashboard; Analysis, Reports, and Settings are hidden from the navigation. Direct navigation to admin URLs is blocked by `check_page_access` when pages use `requireAuth({ pageName: … })`.
 
 ---
 

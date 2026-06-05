@@ -3,52 +3,88 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v63";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
-// Static assets to cache on install
-const STATIC_ASSETS = [
-  "/",
-  "/index.html",
-  "/login.html",
-  "/dashboard.html",
-  "/dsr.html",
-  "/credit.html",
-  "/credit-overdue.html",
-  "/expenses.html",
-  "/day-closing.html",
-  "/attendance.html",
-  "/sales-daily.html",
-  "/analysis.html",
-  "/settings.html",
-  "/about.html",
-  "/css/base.css",
-  "/css/app.css",
-  "/css/landing.css",
-  "/css/login.css",
-  "/js/env.js",
-  "/js/utils.js",
-  "/js/supabase.js",
-  "/js/auth.js",
-  "/js/cache.js",
-  "/js/dashboard.js",
-  "/js/dsr.js",
-  "/js/credit.js",
-  "/js/credit-overdue.js",
-  "/js/expenses.js",
-  "/js/day-closing.js",
-  "/js/attendance.js",
-  "/js/sales-daily.js",
-  "/js/analysis.js",
-  "/js/settings.js",
-  "/js/landing.js",
-  "/assets/landing-01.JPG",
-  "/assets/landing-02.JPG",
-  "/assets/landing-03.JPG",
-  "/assets/landing-04.JPG",
+/** Paths relative to the service worker scope (works for prod root and /staging/). */
+const STATIC_ASSET_PATHS = [
+  "index.html",
+  "login.html",
+  "dashboard.html",
+  "dsr.html",
+  "credit.html",
+  "credit-overdue.html",
+  "credit-customer.html",
+  "expenses.html",
+  "day-closing.html",
+  "attendance.html",
+  "staff.html",
+  "sales-daily.html",
+  "analysis.html",
+  "reports.html",
+  "billing.html",
+  "settings.html",
+  "salary.html",
+  "about.html",
+  "404.html",
+  "manifest.json",
+  "css/base.css",
+  "css/app.css",
+  "css/staff-id-print.css",
+  "css/invoice-print.css",
+  "css/salary-slip-print.css",
+  "css/reports-print.css",
+  "css/credit-summary-print.css",
+  "css/landing.css",
+  "css/login.css",
+  "assets/bpcl-logo.png",
+  "js/env.js",
+  "js/errorHandler.js",
+  "js/cache.js",
+  "js/appConfig.js",
+  "js/utils.js",
+  "js/dateRangeFilter.js",
+  "js/pumpSettings.js",
+  "js/purchaseTaxUtils.js",
+  "js/supabase.js",
+  "js/auth.js",
+  "js/pageSections.js",
+  "js/creditCustomerDetail.js",
+  "js/dashboard.js",
+  "js/dsr.js",
+  "js/credit.js",
+  "js/expenses.js",
+  "js/day-closing.js",
+  "js/attendance.js",
+  "js/staff.js",
+  "js/sales-daily.js",
+  "js/analysis.js",
+  "js/reports.js",
+  "js/billing.js",
+  "js/settings.js",
+  "js/staffEmployees.js",
+  "js/salary.js",
+  "js/landing.js",
+  "assets/landing-01.JPG",
+  "assets/landing-02.JPG",
+  "assets/landing-03.JPG",
+  "assets/landing-04.JPG",
 ];
+
+const CACHE_MATCH_OPTS = { ignoreSearch: true };
+
+function getScopeBase() {
+  const scope = self.registration?.scope || new URL("./", self.location.href).href;
+  return scope.endsWith("/") ? scope : `${scope}/`;
+}
+
+function resolveScopedUrl(path) {
+  if (!path || path.startsWith("http")) return path;
+  const clean = String(path).replace(/^\//, "");
+  return new URL(clean, getScopeBase()).href;
+}
 
 // API endpoints to cache with network-first strategy
 const API_PATTERNS = [
@@ -75,9 +111,9 @@ self.addEventListener("install", (event) => {
         console.log("[SW] Caching static assets...");
         // Cache what we can, don't fail on individual asset failures
         return Promise.allSettled(
-          STATIC_ASSETS.map((url) =>
-            cache.add(url).catch((err) => {
-              console.warn(`[SW] Failed to cache: ${url}`, err);
+          STATIC_ASSET_PATHS.map((path) =>
+            cache.add(resolveScopedUrl(path)).catch((err) => {
+              console.warn(`[SW] Failed to cache: ${path}`, err);
             })
           )
         );
@@ -142,8 +178,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Credit data must always be fresh - skip cache for credit_customers
-  if (isApiRequest(url) && isCreditApiRequest(url)) {
+  // Sensitive / financial data must always be fresh — never cache
+  if (isApiRequest(url) && isNoCacheApiRequest(url)) {
     event.respondWith(fetch(request));
     return;
   }
@@ -177,11 +213,22 @@ function isApiRequest(url) {
   return API_PATTERNS.some((pattern) => pattern.test(url.pathname));
 }
 
-/**
- * Check if request is for credit_customers (open credit) - never cache so dashboard stays current
- */
-function isCreditApiRequest(url) {
-  return url.pathname.includes("credit_customers") || (url.searchParams && url.searchParams.get("table") === "credit_customers");
+/** API paths that must never be cached (PII, credit, staff, auth-related). */
+function isNoCacheApiRequest(url) {
+  const path = url.pathname;
+  const table = url.searchParams?.get("table") ?? "";
+  const noCacheTables = [
+    "credit_customers",
+    "credit_entries",
+    "credit_payments",
+    "employees",
+    "users",
+    "employee_attendance",
+    "salary_payments",
+  ];
+  if (noCacheTables.some((t) => path.includes(t) || table === t)) return true;
+  if (path.includes("/rpc/")) return true;
+  return false;
 }
 
 /**
@@ -203,6 +250,25 @@ function isHtmlPage(url) {
  * Network-first strategy - try network, fall back to cache
  * Best for API requests where fresh data is preferred
  */
+function isApiCacheFresh(response) {
+  const cachedAt = response.headers.get("sw-cached-at");
+  if (!cachedAt) return true;
+  const age = Date.now() - Number(cachedAt);
+  return Number.isFinite(age) && age < CACHE_TTL.api;
+}
+
+async function putApiCacheEntry(cache, request, response) {
+  const headers = new Headers(response.headers);
+  headers.set("sw-cached-at", String(Date.now()));
+  const body = await response.clone().blob();
+  const stamped = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+  await cache.put(request, stamped);
+}
+
 async function networkFirstStrategy(request, cacheName) {
   try {
     const networkResponse = await fetch(request);
@@ -210,16 +276,15 @@ async function networkFirstStrategy(request, cacheName) {
     // Only cache successful responses
     if (networkResponse.ok) {
       const cache = await caches.open(cacheName);
-      // Clone response before caching
-      cache.put(request, networkResponse.clone());
+      await putApiCacheEntry(cache, request, networkResponse);
     }
 
     return networkResponse;
   } catch (error) {
     console.log("[SW] Network failed, trying cache:", request.url);
-    const cachedResponse = await caches.match(request);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
-    if (cachedResponse) {
+    if (cachedResponse && isApiCacheFresh(cachedResponse)) {
       return cachedResponse;
     }
 
@@ -243,7 +308,7 @@ async function networkFirstStrategy(request, cacheName) {
  * Best for static assets that rarely change
  */
 async function cacheFirstStrategy(request, cacheName) {
-  const cachedResponse = await caches.match(request);
+  const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
   if (cachedResponse) {
     // Optionally refresh cache in background
@@ -272,7 +337,7 @@ async function cacheFirstStrategy(request, cacheName) {
  */
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request);
+  const cachedResponse = await cache.match(request, CACHE_MATCH_OPTS);
 
   // Fetch from network in background
   const fetchPromise = fetch(request)
@@ -315,7 +380,7 @@ async function networkWithCacheFallback(request, cacheName) {
 
     return networkResponse;
   } catch (error) {
-    const cachedResponse = await caches.match(request);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
     if (cachedResponse) {
       return cachedResponse;
@@ -345,8 +410,7 @@ function refreshCacheInBackground(request, cacheName) {
  * Get offline fallback response
  */
 async function getOfflineFallback() {
-  // Try to return cached index page
-  const cachedIndex = await caches.match("/index.html");
+  const cachedIndex = await caches.match(resolveScopedUrl("index.html"), CACHE_MATCH_OPTS);
   if (cachedIndex) {
     return cachedIndex;
   }
@@ -388,7 +452,7 @@ async function getOfflineFallback() {
       margin-bottom: 1.5rem;
     }
     button {
-      background: #2563eb;
+      background: #0070c0;
       color: white;
       border: none;
       padding: 0.75rem 1.5rem;
@@ -397,7 +461,7 @@ async function getOfflineFallback() {
       font-size: 1rem;
     }
     button:hover {
-      background: #1d4ed8;
+      background: #005a9c;
     }
   </style>
 </head>

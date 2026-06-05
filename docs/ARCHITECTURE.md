@@ -28,6 +28,7 @@ Data access is **enforced at the database** via Row Level Security (RLS). Client
 | **API** | Supabase client (REST + RPC) | Tables + Row Level Security + server-side RPCs |
 | **Hosting** | GitHub Pages | Static site; custom domain via `CNAME` |
 | **CI/CD** | GitHub Actions | Builds `js/env.js` from secrets per environment |
+| **Offline** | Service worker (`sw.js`) | Caches static assets and API patterns for forecourt use |
 
 ---
 
@@ -39,22 +40,26 @@ All application and documentation files live under the repository root. Below is
 
 ```
 petrolPump/
-├── index.html              # Login entry (redirects to login or dashboard)
-├── login.html              # Login form
-├── dashboard.html          # Authenticated landing (snapshot, quick links)
-├── dsr.html                # Meter Reading + Stock (DSR and dsr_stock)
+├── index.html              # Public landing (hero, about); links to login.html
+├── login.html              # Operator login (Supabase Auth)
+├── dashboard.html          # Authenticated home (snapshot, P&L section, quick links)
+├── dsr.html                # Meter Reading → dsr_petrol / dsr_diesel (stock via dsr_stock view)
 ├── sales-daily.html        # DSR listing / daily report view
-├── credit.html             # Credit ledger (entries, payments, settle)
-├── credit-overdue.html     # Overdue credit list and customer detail
+├── credit.html             # Credit ledger, customer detail, overdue tabs
+├── credit-overdue.html     # Legacy URL → redirects to credit.html#outstanding
+├── credit-customer.html    # Legacy URL → redirects to credit.html (preserves query/hash)
 ├── expenses.html           # Daily expenses by category
 ├── day-closing.html        # Day closing & short (night cash, phone pay, snapshot)
+├── billing.html            # Lube/accessory invoicing (cash memos)
 ├── attendance.html         # Employee attendance (status, check-in/out)
 ├── salary.html             # Salary payments (installments per employee)
 ├── analysis.html           # P&L / Analysis (admin only)
-├── settings.html           # Users, expense categories, employees (admin only)
+├── reports.html            # Printable reports: DSR, GST, trading/P&L (admin only)
+├── settings.html           # Station config, users, HR, categories (admin only)
 ├── about.html              # About / info page
+├── assets/                 # BPCL logo, landing images
 ├── CNAME                   # GitHub Pages custom domain
-├── sw.js                   # Service worker (if PWA enabled)
+├── sw.js                   # Service worker (PWA / offline caching)
 └── README.md               # Project overview and doc links
 ```
 
@@ -65,33 +70,40 @@ css/
 ├── base.css    # Layout, typography, shared components
 ├── app.css     # App shell, dashboard, forms, tables
 ├── login.css   # Login page
-├── style.css   # Legacy / additional styles
-└── landing.css # Landing (if used)
+├── landing.css # Public landing (index.html)
+└── style.css   # Legacy / additional styles
 ```
 
 ### 3.3 Scripts
 
 ```
 js/
-├── env.js         # Runtime config (SUPABASE_URL, SUPABASE_ANON_KEY, APP_ENV) — gitignored; generated in CI
-├── env.example.js # Template for local env.js
-├── supabase.js    # Supabase client bootstrap from window.__APP_CONFIG__
-├── auth.js        # Session guard, role resolution, redirect, nav highlighting
-├── utils.js       # Shared utilities
-├── errorHandler.js# Centralized error reporting
-├── cache.js       # Client cache (e.g. role) — AppCache
-├── landing.js     # Landing page logic (if used)
-├── dashboard.js   # Dashboard data and UI
-├── dsr.js         # Meter Reading + Stock forms and listing
-├── sales-daily.js # DSR report view
-├── credit.js      # Credit ledger and payments
-├── credit-overdue.js # Overdue list and customer detail
-├── expenses.js    # Expenses form and listing
-├── day-closing.js # Day closing breakdown and save
-├── attendance.js  # Attendance grid and save
-├── salary.js      # Salary payments per employee
-├── analysis.js    # P&L / analysis (admin)
-└── settings.js    # Users, categories, employees (admin)
+├── env.js              # Runtime config — gitignored; generated in CI
+├── env.example.js      # Template for local env.js
+├── appConfig.js        # Default pump settings, GST slabs, branding constants
+├── supabase.js         # Supabase client from window.__APP_CONFIG__
+├── auth.js             # Session guard, role, check_page_access, nav
+├── pumpSettings.js     # Load/cache pump_settings.config
+├── utils.js            # Shared utilities (formatting, debounce, …)
+├── errorHandler.js     # Centralized error reporting
+├── cache.js            # AppCache (role, reports, settings, …)
+├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
+├── pageSections.js     # Settings-style section tabs
+├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
+├── landing.js          # Landing page
+├── dashboard.js        # Dashboard snapshot, P&L, context rail (rates/tanks)
+├── dsr.js              # Meter Reading → dsr_petrol / dsr_diesel
+├── sales-daily.js      # DSR listing view
+├── credit.js           # Credit ledger, customer detail, overdue, payments
+├── creditCustomerDetail.js # Shared customer credit helpers (used by credit.js)
+├── expenses.js         # Expenses
+├── day-closing.js      # Day closing
+├── billing.js          # Invoices → save_invoice RPC
+├── attendance.js       # Attendance batch save
+├── salary.js           # Salary payments
+├── analysis.js         # P&L (admin)
+├── reports.js          # Report catalog and print views (admin)
+└── settings.js         # pump_settings, users, HR, categories (admin)
 ```
 
 **Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `errorHandler.js`, `cache.js`.
@@ -100,12 +112,17 @@ js/
 
 ```
 supabase/
-├── schema.sql     # Full schema (tables, RLS, functions, triggers) — source of truth
-└── migrations/    # Incremental migrations (timestamped)
-    ├── 20250129000000_add_dsr_receipts_buying_price.sql
-    ├── 20250130100000_day_closing_and_credit_payments.sql
-    ├── ...
-    └── 20250220100000_employee_attendance_shift.sql
+├── schema.sql     # Full schema (tables, views, RLS, RPCs) — source of truth
+├── migrations/    # Incremental migrations (apply in filename order)
+│   ├── 20250129*_dsr_*.sql
+│   ├── 202502*_credit_*.sql
+│   ├── 20250526*_split_dsr_petrol_diesel.sql
+│   ├── 20250526*_billing_system.sql
+│   ├── 20250527*_pump_settings.sql
+│   ├── 20260528100000_employee_personal_details.sql
+│   └── …
+└── functions/
+    └── get-dashboard-data/   # Edge function: batched dashboard payload (optional)
 ```
 
 ### 3.5 Documentation
@@ -116,7 +133,7 @@ docs/
 ├── ARCHITECTURE.md # This file — structure, stack, security, deployment
 ├── DATA_TABLES.md  # Database tables: purpose, columns, RLS
 ├── FLOWS.md        # User and data flows
-├── DSR_TABLES.md   # DSR vs dsr_stock in detail
+├── DSR_TABLES.md   # DSR petrol/diesel tables and computed stock
 └── DEVELOPMENT.md  # Local setup, deployment, supervisor login
 ```
 
@@ -132,10 +149,11 @@ docs/
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Frontend (Static)                                                        │
-│  • HTML pages (dashboard, dsr, credit, expenses, day-closing, …)          │
+│  • HTML pages (landing, dashboard, dsr, credit, billing, reports, …)      │
 │  • js/env.js → window.__APP_CONFIG__ (Supabase URL, anon key)             │
-│  • js/supabase.js, js/auth.js, js/*.js per feature                       │
-│  • css/base.css, css/app.css, css/login.css                               │
+│  • js/supabase.js (client + SW register), js/auth.js, js/*.js per page   │
+│  • sw.js — static + API cache; AppCache in js/cache.js (localStorage)     │
+│  • css/base.css, css/app.css, css/login.css, css/landing.css              │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │  Supabase JS client (anon key)
@@ -160,11 +178,13 @@ docs/
 
 ## 5. Frontend (runtime)
 
-- **Entry:** `index.html` or `login.html`; after auth, redirect to `dashboard.html`.
-- **Config:** `js/env.js` exposes `window.__APP_CONFIG__` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV`). In CI this file is generated from GitHub environment secrets; locally it is created from `env.example.js`.
-- **Auth:** `js/auth.js` handles session guard, role resolution from `public.users` (and JWT metadata), redirect to login when unauthenticated, and role-based nav (e.g. Analysis/Settings for admin only). Role is cached (e.g. via `AppCache`) for performance.
-- **Supabase client:** `js/supabase.js` initializes the Supabase client from `window.__APP_CONFIG__`.
-- **Pages:** Each feature has its own HTML and JS; navigation is role-aware and documented in [Flows](FLOWS.md).
+- **Entry:** Public users open `index.html` (landing); operators use `login.html` → Supabase Auth → `dashboard.html`. Legacy bookmarks (`credit-customer.html`, `credit-overdue.html`) redirect into `credit.html` with hash/query preserved.
+- **Config:** `js/env.js` exposes `window.__APP_CONFIG__` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV`). In CI this file is generated from GitHub environment secrets; locally it is created from `env.example.js`. Station defaults and GST slabs live in `js/appConfig.js`; live values are merged from `pump_settings` via `js/pumpSettings.js`.
+- **Auth:** `js/auth.js` handles session guard, role resolution from `public.users`, redirect to login when unauthenticated, and role-based nav. `requireAuth({ pageName })` calls RPC `check_page_access` for defense-in-depth (e.g. `reports`, `analysis`, `settings`). Role is cached via `AppCache`.
+- **Supabase client:** `js/supabase.js` creates the client, registers `sw.js` on load, and exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker.
+- **Pages:** Each feature has its own HTML and JS; navigation is grouped (Operations, Finance, HR, Admin) and role-aware. Supervisors get operational pages including **billing**; **reports**, **analysis**, and **settings** are admin-only.
+- **Dashboard:** Section nav (snapshot, DSR summary, P&amp;L, notifications) plus **At a glance** (selling rates, tank fill from dip vs `pump_settings.reports.tanks`). May call edge function `get-dashboard-data` for a batched payload.
+- **Caching:** `sw.js` precaches HTML/CSS/JS (versioned `CACHE_VERSION`) and applies network-first caching for Supabase REST/Functions URLs; `js/cache.js` (`AppCache`) holds short-lived API snapshots in `localStorage`.
 
 ---
 
@@ -184,8 +204,9 @@ docs/
 
 ### 6.3 Key server-side constructs
 
-- **RPCs (examples):** `get_day_closing_breakdown(date)`, `save_day_closing(...)`, `add_credit_entry(...)`, `record_credit_payment(...)`, `get_open_credit_as_of(date)`, `get_credit_ledger_aggregated()`, `update_dsr_buying_price(...)`, `sync_dsr_receipts_from_stock(...)`, `upsert_staff(...)`, `delete_staff(...)`, `check_page_access(page)`.
-- **Triggers:** `credit_entries_sync_trigger` keeps `credit_customers.amount_due` in sync with `credit_entries`; `day_closing_updated_at_trigger` maintains `updated_at`; audit triggers on users, dsr, dsr_stock, expenses, credit_customers, credit_entries, credit_payments, employees, salary_payments, employee_attendance, day_closing.
+- **DSR storage:** Physical tables `dsr_petrol` and `dsr_diesel`; views `dsr` (union) and `dsr_stock` (computed reconciliation); RPC `get_dsr_stock_range(start, end)`.
+- **RPCs (examples):** `check_page_access(page)`, `get_day_closing_breakdown(date)`, `save_day_closing(...)`, `compute_day_closing_components(date)`, `add_credit_entry(...)`, `record_credit_payment(...)`, `get_credit_ledger_aggregated()`, `get_open_credit_as_of(date)`, `get_customer_credit_detail_as_of(name, date)`, `update_dsr_buying_price(uuid, value)`, `save_invoice(...)`, `save_employee_attendance_batch(date, jsonb)`, `upsert_staff(...)`, `delete_staff(...)`.
+- **Triggers:** `credit_entries_sync_trigger` on `credit_entries`; audit triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
 
 Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 
@@ -195,8 +216,8 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 
 - **Enforcement:** RLS is the primary authorization layer. Client-side checks only affect the UI.
 - **Roles:**
-  - **admin:** Full access (including delete and staff/category management).
-  - **supervisor:** Read all; insert/update own records; no delete.
+  - **admin:** Full access (settings, reports, analysis, employee HR mutations, product catalog, delete).
+  - **supervisor:** Operational pages including **billing**; no settings, reports, or analysis; insert/update own records; no delete.
 - **Policies:** Typically SELECT for all authenticated; INSERT with `created_by = auth.uid()`; UPDATE for own row or admin; DELETE only for admin. Exceptions (e.g. `expense_categories`, `users`) are documented in [Data Tables](DATA_TABLES.md).
 
 ---
@@ -207,7 +228,7 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 - **Environments:**
   - **Prod:** `main` branch → root URL (e.g. `https://bishnupriyafuels.fnsventures.in/`).
   - **Staging:** `staging` branch → `/staging/` path.
-- **CI:** GitHub Actions generates `js/env.js` from environment secrets (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) so each environment uses its own Supabase project.
+- **CI:** `.github/workflows/deploy-pages.yml` builds `js/env.js` from environment secrets (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) so prod and staging each use their own Supabase project, then deploys static assets to GitHub Pages.
 - **Details:** Step-by-step local setup, deploy flow, and supervisor login are in [Development guide](DEVELOPMENT.md).
 
 ---
@@ -218,5 +239,5 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 |----------|-------------|
 | [Data Tables](DATA_TABLES.md) | Tables, columns, relationships, RLS |
 | [Flows](FLOWS.md) | User and data flows (auth, daily ops, credit, HR, admin) |
-| [DSR Tables](DSR_TABLES.md) | `dsr` vs `dsr_stock`: roles and when to use which |
+| [DSR Tables](DSR_TABLES.md) | `dsr_petrol` / `dsr_diesel`, views, stock reconciliation |
 | [Development guide](DEVELOPMENT.md) | Local development, deployment, supervisor login |

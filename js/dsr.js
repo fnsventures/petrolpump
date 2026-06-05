@@ -1,29 +1,33 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError */
-
-// Simple HTML escape for XSS prevention
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
 
-/**
- * Pump/nozzle configuration per product. Change here when adding pumps or nozzles;
- * keep in sync with database schema and HTML form (or generate forms from this).
- */
-const PUMP_CONFIG = {
+/** Pump/nozzle layout; loaded from Settings (pump_settings). */
+let PUMP_CONFIG = {
   petrol: { pumps: 2, nozzlesPerPump: 2 },
   diesel: { pumps: 2, nozzlesPerPump: 2 },
 };
 
+function applyPumpConfigFromSettings() {
+  const pumps = PumpSettings.getPumpConfig();
+  PUMP_CONFIG = {
+    petrol: {
+      pumps: Number(pumps.petrol?.pumps) || 2,
+      nozzlesPerPump: Number(pumps.petrol?.nozzlesPerPump) || 2,
+    },
+    diesel: {
+      pumps: Number(pumps.diesel?.pumps) || 2,
+      nozzlesPerPump: Number(pumps.diesel?.nozzlesPerPump) || 2,
+    },
+  };
+}
+
 /** Rate column name per product (dsr table). */
 const RATE_FIELD_BY_PRODUCT = { petrol: "petrol_rate", diesel: "diesel_rate" };
+
+/** Maps product to its dedicated database table name (writes go here). */
+const DSR_TABLE = { petrol: "dsr_petrol", diesel: "dsr_diesel" };
 
 /** Shown when a supervisor picks a date that already has a meter entry (read-only view). */
 const MSG_SUPERVISOR_METER_DAY_LOCKED =
@@ -55,7 +59,7 @@ function getClosingMeterFields(config) {
 function getPreviousDateStr(dateStr) {
   const d = new Date(dateStr + "T12:00:00");
   d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 /** Build list of DSR reading number field names from config (uses petrol shape for table). */
@@ -97,20 +101,79 @@ const meterRefreshGeneration = { petrol: 0, diesel: 0 };
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
-    onDenied: "credit.html",
+    onDenied: "dashboard.html",
+    pageName: "dsr",
   });
   if (!auth) return;
+
+  await loadPumpSettings();
+  applyPumpConfigFromSettings();
 
   currentUserId = auth.session?.user?.id ?? null;
   currentUserRole = auth.role ?? "supervisor";
   applyRoleVisibility(auth.role);
 
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "petrol", validSections: ["petrol", "diesel"] });
+  }
+
   PRODUCTS.forEach((product) => {
     initReadingForm(product);
     initDsrPaginationControls(product);
   });
+  initDsrDeleteHandlers();
   await Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
 });
+
+/** Column count for recent-entries table (includes Actions for admin). */
+function getHistoryColCount(product) {
+  const pumps = (PUMP_CONFIG[product] || PUMP_CONFIG.petrol).pumps;
+  const base = 7 + pumps;
+  return currentUserRole === "admin" ? base + 1 : base;
+}
+
+/** Delete meter history rows — admin only (RLS also enforces on server). */
+function initDsrDeleteHandlers() {
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest?.(".dsr-delete-entry");
+    if (!btn) return;
+
+    if (currentUserRole !== "admin") {
+      alert("Only an admin can delete meter entries.");
+      return;
+    }
+
+    const id = btn.dataset.id;
+    const product = btn.dataset.product;
+    const dateStr = btn.dataset.date;
+    if (!id || !product) return;
+
+    const fuelLabel = product === "petrol" ? "MS (Petrol)" : "HSD (Diesel)";
+    const confirmed = confirm(
+      `Delete the ${fuelLabel} meter entry for ${dateStr || "this date"}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    const table = DSR_TABLE[product] || "dsr_petrol";
+    const { error } = await supabaseClient.from(table).delete().eq("id", id);
+
+    if (error) {
+      btn.disabled = false;
+      alert(AppError.getUserMessage(error));
+      AppError.report(error, { context: "deleteMeterEntry", product, id });
+      return;
+    }
+
+    const form = document.getElementById(`dsr-form-${product}`);
+    const dateInput = form?.querySelector('input[name="date"]');
+    if (form && dateInput?.value === dateStr) {
+      await refreshMeterFormForSelectedDate(product, form);
+    }
+
+    await loadReadingHistory(product, true);
+  });
+}
 
 /**
  * @param {string} product
@@ -119,10 +182,10 @@ document.addEventListener("DOMContentLoaded", async () => {
  */
 async function fetchDsrEntryIdForDate(product, dateStr) {
   if (!dateStr || !product) return null;
+  const table = DSR_TABLE[product] || "dsr_petrol";
   const { data, error } = await supabaseClient
-    .from("dsr")
+    .from(table)
     .select("id")
-    .eq("product", product)
     .eq("date", dateStr)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -136,10 +199,10 @@ async function fetchDsrEntryIdForDate(product, dateStr) {
  */
 async function fetchDsrFullRowForDate(product, dateStr) {
   if (!dateStr || !product) return null;
+  const table = DSR_TABLE[product] || "dsr_petrol";
   const { data, error } = await supabaseClient
-    .from("dsr")
+    .from(table)
     .select("*")
-    .eq("product", product)
     .eq("date", dateStr)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -151,7 +214,7 @@ async function fetchDsrFullRowForDate(product, dateStr) {
  * @param {HTMLFormElement} form
  * @param {object} row - dsr row
  * @param {string} product
- * @param {number | null | undefined} openingStockHint - from dsr_stock or previous-day logic
+ * @param {number | null | undefined} openingStockHint - previous day's stock value
  */
 function applyDsrRowFieldsToMeterForm(form, row, product, openingStockHint) {
   const skip = new Set(["id", "created_at", "created_by", "product", "date"]);
@@ -178,22 +241,12 @@ function applyDsrRowFieldsToMeterForm(form, row, product, openingStockHint) {
 }
 
 /**
- * Hydrate meter form from an already-fetched DSR row (opening stock from dsr_stock or previous day).
+ * Hydrate meter form from an already-fetched DSR row (opening stock from previous day).
  */
 async function applyExistingDsrRowToMeterForm(product, form, row) {
   if (!row) return;
 
-  const { data: stockRows } = await supabaseClient
-    .from("dsr_stock")
-    .select("opening_stock")
-    .eq("date", row.date)
-    .eq("product", product)
-    .limit(1);
-
-  let openingHint = stockRows?.[0]?.opening_stock;
-  if (openingHint == null || !Number.isFinite(Number(openingHint))) {
-    openingHint = await getPreviousDayDipStock(product, row.date);
-  }
+  const openingHint = await getPreviousDayDipStock(product, row.date);
 
   applyDsrRowFieldsToMeterForm(form, row, product, openingHint);
   updateDerivedFields(form);
@@ -293,10 +346,11 @@ function initReadingForm(product) {
     updateDerivedFields(form);
   }
 
-  form.addEventListener("input", () => {
+  const debouncedUpdateDerived = debounce(() => {
     if (form.classList.contains("dsr-meter-supervisor-locked")) return;
     updateDerivedFields(form);
-  });
+  }, 120);
+  form.addEventListener("input", debouncedUpdateDerived);
 
   const copyPrevBtn = form.querySelector(".dsr-copy-prev[data-product]");
   if (copyPrevBtn && copyPrevBtn.dataset.product === product) {
@@ -379,6 +433,7 @@ function initReadingForm(product) {
       return;
     }
 
+    const table = DSR_TABLE[product] || "dsr_petrol";
     const existingId = await fetchDsrEntryIdForDate(product, payload.date);
     let saveError = null;
 
@@ -398,17 +453,14 @@ function initReadingForm(product) {
 
       const updatePayload = { ...payload };
       delete updatePayload.created_by;
-      const { error } = await supabaseClient.from("dsr").update(updatePayload).eq("id", existingId);
+      delete updatePayload.product;
+      const { error } = await supabaseClient.from(table).update(updatePayload).eq("id", existingId);
       saveError = error;
-      if (!error) {
-        await syncDsrStockAfterDsrUpdate(payload);
-      }
     } else {
-      const { error } = await supabaseClient.from("dsr").insert(payload);
+      const insertPayload = { ...payload };
+      delete insertPayload.product;
+      const { error } = await supabaseClient.from(table).insert(insertPayload);
       saveError = error;
-      if (!error) {
-        await syncDsrStockFromMeterEntry(payload);
-      }
     }
 
     if (saveError) {
@@ -435,9 +487,12 @@ function initReadingForm(product) {
     await refreshMeterFormForSelectedDate(product, form);
     successEl?.classList.remove("hidden");
     if (successEl) {
-      if (hasReceipts) {
+      if (hasReceipts && currentUserRole === "admin") {
         successEl.innerHTML =
-          'Entry saved. Receipts recorded — <a href="dashboard.html#pl">Enter buying price on P&L dashboard</a> to calculate profit from this day until the next receipt.';
+          'Entry saved. Receipts recorded — <a href="dashboard.html#pl">Enter ex-VAT ₹/KL on P&amp;L</a> to calculate profit from this day until the next receipt.';
+      } else if (hasReceipts) {
+        successEl.textContent =
+          "Entry saved. Receipts recorded — an admin can enter ex-VAT ₹/KL on the P&L dashboard to calculate profit.";
       } else {
         successEl.textContent = "Entry saved successfully.";
       }
@@ -449,122 +504,23 @@ function initReadingForm(product) {
       AppCache.invalidateByType("today_sales");
       AppCache.invalidateByType("dsr_summary");
       AppCache.invalidateByType("profit_loss");
+      AppCache.invalidateByType("reports_data");
     }
   });
 }
 
-/**
- * If no dsr_stock row exists for this (date, product), insert one from the meter payload
- * so the dashboard shows stock/variation without requiring a separate Stock form entry.
- * opening_stock = previous day's dip_stock (from dsr_stock or dsr.stock).
- */
-async function syncDsrStockFromMeterEntry(payload) {
-  const date = payload.date;
-  const product = payload.product;
-  if (!date || !product) return;
-
-  const { data: existing } = await supabaseClient
-    .from("dsr_stock")
-    .select("id")
-    .eq("date", date)
-    .eq("product", product)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) return;
-
-  const openingStock = await getPreviousDayDipStock(product, date);
-  const receipts = toNumber(payload.receipts);
-  const totalSales = toNumber(payload.total_sales);
-  const testing = toNumber(payload.testing);
-  const netSale = Math.max(0, totalSales - testing);
-  const dipStock = toNumber(payload.stock);
-  const closingStock = (openingStock + receipts) - netSale;
-  const stockRow = {
-    date,
-    product,
-    opening_stock: openingStock,
-    receipts,
-    total_stock: openingStock + receipts,
-    sale_from_meter: totalSales,
-    testing,
-    net_sale: netSale,
-    closing_stock: closingStock,
-    dip_stock: dipStock,
-    variation: closingStock - dipStock,
-    remark: payload.remarks || null,
-  };
-  if (currentUserId) stockRow.created_by = currentUserId;
-
-  await supabaseClient.from("dsr_stock").insert(stockRow);
-}
-
-/**
- * When dsr_stock already exists for this (date, product), refresh figures from an updated DSR meter payload.
- */
-async function syncDsrStockAfterDsrUpdate(payload) {
-  const date = payload.date;
-  const product = payload.product;
-  if (!date || !product) return;
-
-  const { data: rows, error: selErr } = await supabaseClient
-    .from("dsr_stock")
-    .select("id, opening_stock")
-    .eq("date", date)
-    .eq("product", product)
-    .limit(1);
-  if (selErr || !rows?.length) return;
-
-  const row = rows[0];
-  const openingStock = Number(row.opening_stock);
-  const receipts = toNumber(payload.receipts);
-  const totalSales = toNumber(payload.total_sales);
-  const testing = toNumber(payload.testing);
-  const netSale = Math.max(0, totalSales - testing);
-  const dipStock = toNumber(payload.stock);
-  const totalStock = (Number.isFinite(openingStock) ? openingStock : 0) + receipts;
-  const closingStock = totalStock - netSale;
-  const variation = closingStock - dipStock;
-
-  await supabaseClient
-    .from("dsr_stock")
-    .update({
-      receipts,
-      total_stock: totalStock,
-      sale_from_meter: totalSales,
-      testing,
-      net_sale: netSale,
-      closing_stock: closingStock,
-      dip_stock: dipStock,
-      variation,
-      remark: payload.remarks ?? null,
-    })
-    .eq("id", row.id);
-}
-
-/** Fetch previous day's dip_stock for a product (from dsr_stock or dsr.stock). Returns a number. */
+/** Fetch previous day's stock (dip reading) for a product. Returns a number. */
 async function getPreviousDayDipStock(product, dateStr) {
   if (!dateStr || !product) return 0;
   const prevDateStr = getPreviousDateStr(dateStr);
-  const [{ data: fromStock, error: stockErr }, { data: fromDsr, error: dsrErr }] = await Promise.all([
-    supabaseClient
-      .from("dsr_stock")
-      .select("dip_stock")
-      .eq("date", prevDateStr)
-      .eq("product", product)
-      .maybeSingle(),
-    supabaseClient
-      .from("dsr")
-      .select("stock")
-      .eq("date", prevDateStr)
-      .eq("product", product)
-      .maybeSingle(),
-  ]);
-  if (!stockErr && fromStock != null && Number.isFinite(Number(fromStock.dip_stock))) {
-    return Number(fromStock.dip_stock);
-  }
-  if (!dsrErr && fromDsr != null && Number.isFinite(Number(fromDsr.stock))) {
-    return Number(fromDsr.stock);
+  const table = DSR_TABLE[product] || "dsr_petrol";
+  const { data, error } = await supabaseClient
+    .from(table)
+    .select("stock")
+    .eq("date", prevDateStr)
+    .maybeSingle();
+  if (!error && data != null && Number.isFinite(Number(data.stock))) {
+    return Number(data.stock);
   }
   return 0;
 }
@@ -631,9 +587,7 @@ async function loadReadingHistory(product, reset = false) {
   if (pagination.isLoading) return;
   pagination.isLoading = true;
 
-  // Reset pagination state if needed
-  const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
-  const colCount = 7 + config.pumps; // date + pump sales + total_sales, testing, dip_reading, stock, rate, remarks
+  const colCount = getHistoryColCount(product);
 
   if (reset) {
     pagination.currentPage = 0;
@@ -648,24 +602,24 @@ async function loadReadingHistory(product, reset = false) {
   }
 
   try {
+    const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
     const pumpCols = Array.from({ length: config.pumps }, (_, i) => `sales_pump${i + 1}`).join(", ");
-    const selectCols = `date, ${pumpCols}, total_sales, testing, dip_reading, stock, petrol_rate, diesel_rate, remarks`;
+    const selectCols = `id, date, ${pumpCols}, total_sales, testing, dip_reading, stock, petrol_rate, diesel_rate, remarks`;
     const rangeStart = pagination.currentPage * DSR_RECENT_PAGE_SIZE;
     const rangeEnd = rangeStart + DSR_RECENT_PAGE_SIZE - 1;
 
     let data;
     let error;
 
+    const table = DSR_TABLE[product] || "dsr_petrol";
     if (reset) {
       const [countRes, pageRes] = await Promise.all([
         supabaseClient
-          .from("dsr")
-          .select("*", { count: "exact", head: true })
-          .eq("product", product),
+          .from(table)
+          .select("*", { count: "exact", head: true }),
         supabaseClient
-          .from("dsr")
+          .from(table)
           .select(selectCols)
-          .eq("product", product)
           .order("date", { ascending: false })
           .range(rangeStart, rangeEnd),
       ]);
@@ -677,9 +631,8 @@ async function loadReadingHistory(product, reset = false) {
       error = pageRes.error;
     } else {
       const pageRes = await supabaseClient
-        .from("dsr")
+        .from(table)
         .select(selectCols)
-        .eq("product", product)
         .order("date", { ascending: false })
         .range(rangeStart, rangeEnd);
       data = pageRes.data;
@@ -708,10 +661,14 @@ async function loadReadingHistory(product, reset = false) {
 
     // Replace tbody with current page rows
     const pumpColNames = Array.from({ length: config.pumps }, (_, i) => `sales_pump${i + 1}`);
+    const isAdmin = currentUserRole === "admin";
     tbody.innerHTML = dataRows
       .map((row) => {
         const rate = product === "petrol" ? row.petrol_rate : row.diesel_rate;
         const pumpCells = pumpColNames.map((col) => `<td>${formatQuantity(row[col])}</td>`).join("");
+        const actionsCell = isAdmin
+          ? `<td><button type="button" class="dsr-delete-entry button-secondary" data-id="${escapeHtml(row.id)}" data-product="${escapeHtml(product)}" data-date="${escapeHtml(row.date)}" title="Delete meter entry (admin only)">Delete</button></td>`
+          : "";
         return `<tr>
           <td>${row.date}</td>
           ${pumpCells}
@@ -721,13 +678,14 @@ async function loadReadingHistory(product, reset = false) {
           <td>${formatQuantity(row.stock)}</td>
           <td>${rate ? formatCurrency(rate) : "—"}</td>
           <td>${escapeHtml(row.remarks ?? "—")}</td>
+          ${actionsCell}
         </tr>`;
       })
       .join("");
 
   } catch (err) {
     if (reset) {
-      const errColCount = 7 + (PUMP_CONFIG[product] || PUMP_CONFIG.petrol).pumps;
+      const errColCount = getHistoryColCount(product);
       tbody.innerHTML = `<tr><td colspan="${errColCount}" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
     }
     AppError.report(err, { context: "loadReadingHistory", product });
@@ -790,11 +748,11 @@ function updateDsrPaginationUI(product) {
  */
 async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
   const prevDateStr = getPreviousDateStr(selectedDateStr);
+  const table = DSR_TABLE[product] || "dsr_petrol";
 
   const { data: prevDayData, error: prevError } = await supabaseClient
-    .from("dsr")
+    .from(table)
     .select(selectCols)
-    .eq("product", product)
     .eq("date", prevDateStr)
     .maybeSingle();
 
@@ -805,9 +763,8 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
   if (prevDayData) return { row: prevDayData, error: null };
 
   const { data: lastData, error: lastError } = await supabaseClient
-    .from("dsr")
+    .from(table)
     .select(selectCols)
-    .eq("product", product)
     .lt("date", selectedDateStr)
     .order("date", { ascending: false })
     .limit(1)
@@ -828,11 +785,11 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
 async function fetchLastDsrRate(product) {
   const rateField = RATE_FIELD_BY_PRODUCT[product];
   if (!rateField) return null;
+  const table = DSR_TABLE[product] || "dsr_petrol";
 
   const { data, error } = await supabaseClient
-    .from("dsr")
+    .from(table)
     .select(rateField)
-    .eq("product", product)
     .not(rateField, "is", null)
     .order("date", { ascending: false })
     .limit(1)
@@ -926,7 +883,7 @@ async function prefillOpeningFromPreviousDay(product, form) {
 function setDefaultDate(form) {
   const dateInput = form.querySelector("input[type='date']");
   if (dateInput && !dateInput.value) {
-    dateInput.value = new Date().toISOString().slice(0, 10);
+    dateInput.value = getLocalDateString();
   }
 }
 

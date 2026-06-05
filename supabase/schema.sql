@@ -17,22 +17,21 @@ create extension if not exists "uuid-ossp";
 -- ROLE HELPER FUNCTIONS (Security Definer - bypasses RLS for internal checks)
 -- ============================================================================
 
--- Get the current user's role from users table or JWT metadata
--- Returns 'admin', 'supervisor', or null if not found
+-- Get the current user's role from public.users only (no JWT metadata fallback).
+-- Returns 'admin', 'supervisor', or null if not provisioned.
 create or replace function public.get_user_role()
 returns text
 language sql
 security definer
 stable
 as $$
-  select coalesce(
-    (select role from public.users where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email')) limit 1),
-    (auth.jwt() -> 'user_metadata' ->> 'role'),
-    (auth.jwt() -> 'app_metadata' ->> 'role')
-  );
+  select role
+  from public.users
+  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'))
+  limit 1;
 $$;
 
-comment on function public.get_user_role() is 'Returns the role of the current authenticated user (admin/supervisor/null).';
+comment on function public.get_user_role() is 'Returns admin/supervisor from public.users only. Null if not provisioned.';
 
 -- Helper function to check if current user is admin
 -- This centralizes the admin check logic and improves performance
@@ -48,6 +47,7 @@ $$;
 comment on function public.is_admin() is 'Returns true if the current authenticated user has admin role.';
 
 -- RPC to update DSR buying price (used from P&L dashboard); bypasses RLS so admin update always succeeds.
+-- Checks both dsr_petrol and dsr_diesel since caller only has the row UUID.
 create or replace function public.update_dsr_buying_price(p_dsr_id uuid, p_value numeric)
 returns void
 language plpgsql
@@ -57,7 +57,9 @@ begin
   if not public.is_admin() then
     raise exception 'Admin access required to set buying price';
   end if;
-  update public.dsr set buying_price_per_litre = p_value where id = p_dsr_id;
+  update public.dsr_petrol set buying_price_per_litre = p_value where id = p_dsr_id;
+  if found then return; end if;
+  update public.dsr_diesel set buying_price_per_litre = p_value where id = p_dsr_id;
   if not found then
     raise exception 'DSR record not found';
   end if;
@@ -65,21 +67,6 @@ end;
 $$;
 comment on function public.update_dsr_buying_price(uuid, numeric) is 'Admin-only: set buying_price_per_litre for a DSR row (used from P&L dashboard).';
 
--- One-shot sync of receipts from dsr_stock into dsr (matching date, product) where dsr.receipts = 0.
-create or replace function public.sync_dsr_receipts_from_stock(p_start date, p_end date)
-returns void
-language sql
-security definer
-as $$
-  update public.dsr d
-  set receipts = s.receipts
-  from public.dsr_stock s
-  where d.date = s.date and d.product = s.product
-    and s.receipts > 0 and coalesce(d.receipts, 0) = 0
-    and d.date >= p_start and d.date <= p_end
-    and s.date >= p_start and s.date <= p_end;
-$$;
-comment on function public.sync_dsr_receipts_from_stock(date, date) is 'Sync receipts from dsr_stock into dsr for matching (date, product) where dsr.receipts is 0.';
 
 -- Helper function to check if current user is supervisor or admin
 -- Supervisors have read access and can manage their own records
@@ -208,14 +195,19 @@ begin
   -- Define page access rules
   v_allowed := case p_page
     when 'settings' then v_role = 'admin'
+    when 'staff' then v_role = 'admin'
     when 'analysis' then v_role = 'admin'
+    when 'reports' then v_role = 'admin'
     when 'dashboard' then v_role in ('admin', 'supervisor')
     when 'dsr' then v_role in ('admin', 'supervisor')
+    when 'day-closing' then v_role in ('admin', 'supervisor')
     when 'expenses' then v_role in ('admin', 'supervisor')
+    when 'credit-overdue' then v_role in ('admin', 'supervisor')
     when 'credit' then v_role in ('admin', 'supervisor')
     when 'sales-daily' then v_role in ('admin', 'supervisor')
     when 'attendance' then v_role in ('admin', 'supervisor')
     when 'salary' then v_role in ('admin', 'supervisor')
+    when 'billing' then v_role in ('admin', 'supervisor')
     else false
   end;
 
@@ -229,14 +221,18 @@ $$;
 
 comment on function public.check_page_access(text) is 'Server-side page access validation. Returns allowed status and user role.';
 
--- DSR (Daily Sales Register): primary daily record per (date, product).
+-- ============================================================================
+-- DSR TABLES: Separate tables for petrol (MS) and diesel (HSD) meter readings
+-- ============================================================================
 -- Filled by Meter Reading form: nozzle readings, total_sales, testing, dip_reading, stock (L), receipts, rates.
 -- Used by: day-closing (sales), P&L (buying price, receipts), dashboard (net sale, stock fallback), analysis.
--- See also: dsr_stock for optional stock-reconciliation fields (dip_stock, variation); dashboard prefers dsr_stock when present.
-create table if not exists public.dsr (
+-- See also: dsr_stock for optional stock-reconciliation fields (dip_stock, variation).
+
+-- PETROL (MS) meter readings
+create table if not exists public.dsr_petrol (
   id uuid primary key default uuid_generate_v4(),
   date date not null,
-  product text not null check (product in ('petrol', 'diesel')),
+  tank_capacity text not null default '15KL',
   opening_pump1_nozzle1 numeric(14,2) not null default 0,
   opening_pump1_nozzle2 numeric(14,2) not null default 0,
   opening_pump2_nozzle1 numeric(14,2) not null default 0,
@@ -260,125 +256,235 @@ create table if not exists public.dsr (
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
-create index if not exists dsr_date_idx on public.dsr (date desc, product);
+create index if not exists dsr_petrol_date_idx on public.dsr_petrol (date desc);
 
-comment on table public.dsr is 'Primary DSR: nozzle readings and daily sales per (date, product). One row per day per product from Meter Reading form.';
-comment on column public.dsr.total_sales is 'Manual total for shift (sales_pump1 + sales_pump2 minus testing, etc.).';
-comment on column public.dsr.stock is 'Stock (L) from meter form; dashboard uses this when dsr_stock has no row for that day.';
-comment on column public.dsr.receipts is 'Fuel received (L) on this date. When > 0, admin can set buying_price_per_litre for profit calculation until next receipt. Synced from dsr_stock when 0 (sync_dsr_receipts_from_stock).';
-comment on column public.dsr.buying_price_per_litre is 'Admin-only: cost per litre for fuel received on this date; used for profit from this date until next DSR with receipts > 0.';
+comment on table public.dsr_petrol is 'Petrol (MS) meter readings. One row per day per tank from Meter Reading form.';
 
-alter table public.dsr enable row level security;
+alter table public.dsr_petrol enable row level security;
 
--- SELECT: All authenticated users can view all records
-drop policy if exists "dsr_select_authenticated" on public.dsr;
-drop policy if exists "dsr_select_by_role" on public.dsr;
-create policy "dsr_select_authenticated" on public.dsr
-  for select
-  to authenticated
-  using (true);
+drop policy if exists "dsr_petrol_select_authenticated" on public.dsr_petrol;
+create policy "dsr_petrol_select_authenticated" on public.dsr_petrol
+  for select to authenticated using (true);
 
--- INSERT: Users can only insert records owned by themselves
-drop policy if exists "dsr_insert_authenticated" on public.dsr;
-drop policy if exists "dsr_insert_own" on public.dsr;
-create policy "dsr_insert_own" on public.dsr
-  for insert
-  to authenticated
-  with check (
-    created_by = auth.uid()
-  );
+drop policy if exists "dsr_petrol_insert_own" on public.dsr_petrol;
+create policy "dsr_petrol_insert_own" on public.dsr_petrol
+  for insert to authenticated
+  with check (created_by = auth.uid());
 
--- UPDATE: Users can update their own records, admins can update all
-drop policy if exists "dsr_update_by_role" on public.dsr;
-create policy "dsr_update_by_role" on public.dsr
-  for update
-  to authenticated
-  using (
-    created_by = auth.uid()
-    or public.is_admin()
-  )
-  with check (
-    created_by = auth.uid()
-    or public.is_admin()
-  );
+drop policy if exists "dsr_petrol_update_by_role" on public.dsr_petrol;
+create policy "dsr_petrol_update_by_role" on public.dsr_petrol
+  for update to authenticated
+  using (created_by = auth.uid() or public.is_admin())
+  with check (created_by = auth.uid() or public.is_admin());
 
--- DELETE: Only admins can delete DSR records (audit trail protection)
-drop policy if exists "dsr_delete_admin" on public.dsr;
-create policy "dsr_delete_admin" on public.dsr
-  for delete
-  to authenticated
-  using (
-    public.is_admin()
-  );
+drop policy if exists "dsr_petrol_delete_admin" on public.dsr_petrol;
+create policy "dsr_petrol_delete_admin" on public.dsr_petrol
+  for delete to authenticated using (public.is_admin());
 
--- Stock register: optional detailed stock reconciliation per (date, product).
--- Filled by Stock form on Meter Reading page (separate from main meter form).
--- Used by: dashboard (dip_stock, variation; preferred over dsr.stock when present), sales-daily (opening/closing/variation), P&L (receipts source), sync_dsr_receipts_from_stock (source for dsr.receipts).
--- When absent for a day, dashboard and sales-daily fall back to dsr (stock, etc.).
-create table if not exists public.dsr_stock (
+-- DIESEL (HSD) meter readings
+create table if not exists public.dsr_diesel (
   id uuid primary key default uuid_generate_v4(),
   date date not null,
-  product text not null check (product in ('petrol', 'diesel')),
-  opening_stock numeric(14,2) not null default 0,
-  receipts numeric(14,2) not null default 0,
-  total_stock numeric(14,2) not null default 0,
-  sale_from_meter numeric(14,2) not null default 0,
+  tank_capacity text not null default '20KL',
+  opening_pump1_nozzle1 numeric(14,2) not null default 0,
+  opening_pump1_nozzle2 numeric(14,2) not null default 0,
+  opening_pump2_nozzle1 numeric(14,2) not null default 0,
+  opening_pump2_nozzle2 numeric(14,2) not null default 0,
+  closing_pump1_nozzle1 numeric(14,2) not null default 0,
+  closing_pump1_nozzle2 numeric(14,2) not null default 0,
+  closing_pump2_nozzle1 numeric(14,2) not null default 0,
+  closing_pump2_nozzle2 numeric(14,2) not null default 0,
+  sales_pump1 numeric(14,2) not null default 0,
+  sales_pump2 numeric(14,2) not null default 0,
+  total_sales numeric(14,2) not null default 0,
   testing numeric(14,2) not null default 0,
-  net_sale numeric(14,2) not null default 0,
-  closing_stock numeric(14,2) not null default 0,
-  dip_stock numeric(14,2) not null default 0,
-  variation numeric(14,2) not null default 0,
-  remark text,
+  dip_reading numeric(14,2) not null default 0,
+  stock numeric(14,2) not null default 0,
+  receipts numeric(14,2) not null default 0,
+  petrol_rate numeric(10,2),
+  diesel_rate numeric(10,2),
+  buying_price_per_litre numeric(10,2),
+  remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
-create index if not exists dsr_stock_date_idx on public.dsr_stock (date desc, product);
+create index if not exists dsr_diesel_date_idx on public.dsr_diesel (date desc);
 
-comment on table public.dsr_stock is 'Optional stock reconciliation per (date, product). Filled by Stock form; dashboard prefers dip_stock/variation here over dsr when present.';
+create index if not exists dsr_petrol_receipts_buying_idx
+  on public.dsr_petrol (date desc)
+  where receipts > 0 and buying_price_per_litre is not null;
 
-alter table public.dsr_stock enable row level security;
+create index if not exists dsr_diesel_receipts_buying_idx
+  on public.dsr_diesel (date desc)
+  where receipts > 0 and buying_price_per_litre is not null;
 
--- SELECT: All authenticated users can view all records
-drop policy if exists "dsr_stock_select_authenticated" on public.dsr_stock;
-drop policy if exists "dsr_stock_select_by_role" on public.dsr_stock;
-create policy "dsr_stock_select_authenticated" on public.dsr_stock
-  for select
-  to authenticated
-  using (true);
+comment on table public.dsr_diesel is 'Diesel (HSD) meter readings. One row per day per tank from Meter Reading form.';
 
--- INSERT: Users can only insert records owned by themselves
-drop policy if exists "dsr_stock_insert_authenticated" on public.dsr_stock;
-drop policy if exists "dsr_stock_insert_own" on public.dsr_stock;
-create policy "dsr_stock_insert_own" on public.dsr_stock
-  for insert
-  to authenticated
-  with check (
-    created_by = auth.uid()
-  );
+alter table public.dsr_diesel enable row level security;
 
--- UPDATE: Users can update their own records, admins can update all
-drop policy if exists "dsr_stock_update_by_role" on public.dsr_stock;
-create policy "dsr_stock_update_by_role" on public.dsr_stock
-  for update
-  to authenticated
-  using (
-    created_by = auth.uid()
-    or public.is_admin()
+drop policy if exists "dsr_diesel_select_authenticated" on public.dsr_diesel;
+create policy "dsr_diesel_select_authenticated" on public.dsr_diesel
+  for select to authenticated using (true);
+
+drop policy if exists "dsr_diesel_insert_own" on public.dsr_diesel;
+create policy "dsr_diesel_insert_own" on public.dsr_diesel
+  for insert to authenticated
+  with check (created_by = auth.uid());
+
+drop policy if exists "dsr_diesel_update_by_role" on public.dsr_diesel;
+create policy "dsr_diesel_update_by_role" on public.dsr_diesel
+  for update to authenticated
+  using (created_by = auth.uid() or public.is_admin())
+  with check (created_by = auth.uid() or public.is_admin());
+
+drop policy if exists "dsr_diesel_delete_admin" on public.dsr_diesel;
+create policy "dsr_diesel_delete_admin" on public.dsr_diesel
+  for delete to authenticated using (public.is_admin());
+
+-- Backward-compatible union view (used by dashboard, sales-daily, analysis, day-closing)
+create or replace view public.dsr as
+  select id, date, 'petrol'::text as product, tank_capacity,
+    opening_pump1_nozzle1, opening_pump1_nozzle2,
+    opening_pump2_nozzle1, opening_pump2_nozzle2,
+    closing_pump1_nozzle1, closing_pump1_nozzle2,
+    closing_pump2_nozzle1, closing_pump2_nozzle2,
+    sales_pump1, sales_pump2, total_sales, testing,
+    dip_reading, stock, receipts,
+    petrol_rate, diesel_rate, buying_price_per_litre,
+    remarks, created_by, created_at
+  from public.dsr_petrol
+  union all
+  select id, date, 'diesel'::text as product, tank_capacity,
+    opening_pump1_nozzle1, opening_pump1_nozzle2,
+    opening_pump2_nozzle1, opening_pump2_nozzle2,
+    closing_pump1_nozzle1, closing_pump1_nozzle2,
+    closing_pump2_nozzle1, closing_pump2_nozzle2,
+    sales_pump1, sales_pump2, total_sales, testing,
+    dip_reading, stock, receipts,
+    petrol_rate, diesel_rate, buying_price_per_litre,
+    remarks, created_by, created_at
+  from public.dsr_diesel;
+
+comment on view public.dsr is 'Backward-compatible union view. SELECT only; writes go to dsr_petrol / dsr_diesel.';
+
+-- ============================================================================
+-- DSR STOCK: computed stock reconciliation view (derived from dsr_petrol/dsr_diesel)
+-- ============================================================================
+-- All stock values are derived on-the-fly: opening_stock = previous day's
+-- dip_stock (LAG window), closing_stock = total_stock - net_sale, etc.
+-- No separate tables needed; always consistent with meter readings.
+-- At ~730 rows/year the window function is trivial.
+
+create or replace view public.dsr_stock as
+with base as (
+  select
+    date,
+    'petrol'::text as product,
+    stock as dip_stock,
+    receipts,
+    total_sales as sale_from_meter,
+    testing,
+    greatest(total_sales - testing, 0) as net_sale,
+    remarks as remark,
+    created_by,
+    created_at
+  from public.dsr_petrol
+  union all
+  select
+    date,
+    'diesel'::text as product,
+    stock as dip_stock,
+    receipts,
+    total_sales as sale_from_meter,
+    testing,
+    greatest(total_sales - testing, 0) as net_sale,
+    remarks as remark,
+    created_by,
+    created_at
+  from public.dsr_diesel
+),
+with_opening as (
+  select *,
+    coalesce(
+      lag(dip_stock) over (partition by product order by date),
+      0
+    ) as opening_stock
+  from base
+)
+select
+  date,
+  product,
+  opening_stock,
+  receipts,
+  (opening_stock + receipts) as total_stock,
+  sale_from_meter,
+  testing,
+  net_sale,
+  ((opening_stock + receipts) - net_sale) as closing_stock,
+  dip_stock,
+  (((opening_stock + receipts) - net_sale) - dip_stock) as variation,
+  remark,
+  created_by,
+  created_at
+from with_opening;
+
+comment on view public.dsr_stock is 'Computed stock reconciliation. Derived from dsr_petrol/dsr_diesel; no sync needed.';
+
+-- Range-scoped stock (LAG over range + 1 prior day; prefer over full view for filtered queries)
+create or replace function public.get_dsr_stock_range(p_start date, p_end date)
+returns table (
+  date date,
+  product text,
+  opening_stock numeric,
+  receipts numeric,
+  total_stock numeric,
+  sale_from_meter numeric,
+  testing numeric,
+  net_sale numeric,
+  closing_stock numeric,
+  dip_stock numeric,
+  variation numeric,
+  remark text,
+  created_by uuid,
+  created_at timestamptz
+)
+language sql stable security definer
+as $$
+  with bounds as (
+    select (p_start - interval '1 day')::date as lookback_start
+  ),
+  base as (
+    select d.date, 'petrol'::text as product, d.stock as dip_stock, d.receipts,
+      d.total_sales as sale_from_meter, d.testing,
+      greatest(d.total_sales - d.testing, 0) as net_sale,
+      d.remarks as remark, d.created_by, d.created_at
+    from public.dsr_petrol d, bounds b
+    where d.date >= b.lookback_start and d.date <= p_end
+    union all
+    select d.date, 'diesel'::text, d.stock, d.receipts, d.total_sales, d.testing,
+      greatest(d.total_sales - d.testing, 0), d.remarks, d.created_by, d.created_at
+    from public.dsr_diesel d, bounds b
+    where d.date >= b.lookback_start and d.date <= p_end
+  ),
+  with_opening as (
+    select *,
+      coalesce(lag(dip_stock) over (partition by product order by date), 0) as opening_stock
+    from base
   )
-  with check (
-    created_by = auth.uid()
-    or public.is_admin()
-  );
+  select w.date, w.product, w.opening_stock, w.receipts,
+    (w.opening_stock + w.receipts) as total_stock, w.sale_from_meter, w.testing, w.net_sale,
+    ((w.opening_stock + w.receipts) - w.net_sale) as closing_stock, w.dip_stock,
+    (((w.opening_stock + w.receipts) - w.net_sale) - w.dip_stock) as variation,
+    w.remark, w.created_by, w.created_at
+  from with_opening w
+  where w.date >= p_start and w.date <= p_end;
+$$;
 
--- DELETE: Only admins can delete stock records (audit trail protection)
-drop policy if exists "dsr_stock_delete_admin" on public.dsr_stock;
-create policy "dsr_stock_delete_admin" on public.dsr_stock
-  for delete
-  to authenticated
-  using (
-    public.is_admin()
-  );
+comment on function public.get_dsr_stock_range(date, date) is
+  'DSR stock reconciliation for a date range; LAG scoped to range + 1 prior day per product.';
+
+grant execute on function public.get_dsr_stock_range(date, date) to authenticated;
 
 -- Operating expenses
 create table if not exists public.expenses (
@@ -393,6 +499,7 @@ create table if not exists public.expenses (
 
 create index if not exists expenses_date_idx on public.expenses (date desc);
 create index if not exists expenses_created_at_idx on public.expenses (created_at desc);
+create index if not exists expenses_category_idx on public.expenses (category);
 
 comment on table public.expenses is 'Daily operating expenses for profit/loss.';
 
@@ -470,12 +577,298 @@ drop policy if exists "expense_categories_delete_admin" on public.expense_catego
 create policy "expense_categories_delete_admin" on public.expense_categories
   for delete to authenticated using (public.is_admin());
 
+-- ============================================================================
+-- BILLING: Products, Invoices, Invoice Items
+-- Generalized billing for lube sales, accessories, and any product sales
+-- ============================================================================
+
+-- Products master table
+create table if not exists public.products (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  hsn_code text,
+  unit text not null default 'Pcs',
+  default_rate numeric(12,2) not null default 0,
+  gst_percent numeric(5,2) not null default 18,
+  is_active boolean not null default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists products_active_idx on public.products (is_active, name);
+
+comment on table public.products is 'Product master for billing — lubricants, accessories, etc.';
+
+alter table public.products enable row level security;
+
+drop policy if exists "products_select_authenticated" on public.products;
+create policy "products_select_authenticated" on public.products
+  for select to authenticated using (true);
+
+drop policy if exists "products_insert_admin" on public.products;
+create policy "products_insert_admin" on public.products
+  for insert to authenticated with check (public.is_admin());
+
+drop policy if exists "products_update_admin" on public.products;
+create policy "products_update_admin" on public.products
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "products_delete_admin" on public.products;
+create policy "products_delete_admin" on public.products
+  for delete to authenticated using (public.is_admin());
+
+
+-- Invoice number sequence
+create sequence if not exists public.invoice_number_seq start with 1 increment by 1;
+
+-- Invoices table
+create table if not exists public.invoices (
+  id uuid primary key default uuid_generate_v4(),
+  invoice_number text not null unique,
+  invoice_date date not null default current_date,
+  invoice_type text not null default 'CASH' check (invoice_type in ('CASH', 'CREDIT')),
+  party_name text not null default 'Cash A/c',
+  party_address text,
+  party_gstin text,
+  vehicle_no text,
+  mobile text,
+  km_reading text,
+  subtotal numeric(12,2) not null default 0,
+  discount numeric(12,2) not null default 0,
+  round_off numeric(12,2) not null default 0,
+  total_amount numeric(12,2) not null default 0,
+  cgst_total numeric(12,2) not null default 0,
+  sgst_total numeric(12,2) not null default 0,
+  igst_total numeric(12,2) not null default 0,
+  non_gst_total numeric(12,2) not null default 0,
+  nil_rate_total numeric(12,2) not null default 0,
+  notes text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index if not exists invoices_date_idx on public.invoices (invoice_date desc);
+create index if not exists invoices_party_idx on public.invoices (party_name);
+create index if not exists invoices_number_idx on public.invoices (invoice_number);
+create index if not exists invoices_list_order_idx on public.invoices (invoice_date desc, created_at desc);
+
+comment on table public.invoices is 'Sales invoices / cash memos for products (lubricants, accessories, etc).';
+
+alter table public.invoices enable row level security;
+
+drop policy if exists "invoices_select_authenticated" on public.invoices;
+create policy "invoices_select_authenticated" on public.invoices
+  for select to authenticated using (true);
+
+drop policy if exists "invoices_insert_own" on public.invoices;
+create policy "invoices_insert_own" on public.invoices
+  for insert to authenticated
+  with check (created_by = auth.uid());
+
+drop policy if exists "invoices_update_by_role" on public.invoices;
+create policy "invoices_update_by_role" on public.invoices
+  for update to authenticated
+  using (created_by = auth.uid() or public.is_admin())
+  with check (created_by = auth.uid() or public.is_admin());
+
+drop policy if exists "invoices_delete_admin" on public.invoices;
+create policy "invoices_delete_admin" on public.invoices
+  for delete to authenticated using (public.is_admin());
+
+
+-- Invoice line items
+create table if not exists public.invoice_items (
+  id uuid primary key default uuid_generate_v4(),
+  invoice_id uuid not null references public.invoices(id) on delete cascade,
+  sl_no integer not null,
+  product_id uuid references public.products(id) on delete set null,
+  item_name text not null,
+  hsn_code text,
+  quantity numeric(12,3) not null default 1,
+  unit text not null default 'Pcs',
+  rate numeric(12,2) not null default 0,
+  gst_percent numeric(5,2) not null default 18,
+  amount numeric(12,2) not null default 0,
+  created_at timestamptz default now()
+);
+
+create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id);
+
+comment on table public.invoice_items is 'Line items for each invoice — product, qty, rate, GST.';
+
+alter table public.invoice_items enable row level security;
+
+drop policy if exists "invoice_items_select_authenticated" on public.invoice_items;
+create policy "invoice_items_select_authenticated" on public.invoice_items
+  for select to authenticated using (true);
+
+drop policy if exists "invoice_items_insert_own" on public.invoice_items;
+create policy "invoice_items_insert_own" on public.invoice_items
+  for insert to authenticated with check (true);
+
+drop policy if exists "invoice_items_update_by_role" on public.invoice_items;
+create policy "invoice_items_update_by_role" on public.invoice_items
+  for update to authenticated using (true) with check (true);
+
+drop policy if exists "invoice_items_delete_authenticated" on public.invoice_items;
+create policy "invoice_items_delete_authenticated" on public.invoice_items
+  for delete to authenticated using (true);
+
+
+-- Generate next invoice number (CRI/NNNN)
+create or replace function public.generate_invoice_number()
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  v_seq integer;
+begin
+  v_seq := nextval('public.invoice_number_seq');
+  return 'CRI/' || lpad(v_seq::text, 4, '0');
+end;
+$$;
+
+comment on function public.generate_invoice_number() is 'Generate next sequential invoice number in CRI/NNNN format.';
+
+
+-- Save a complete invoice with items in a single transaction
+create or replace function public.save_invoice(
+  p_invoice_date date,
+  p_invoice_type text,
+  p_party_name text,
+  p_party_address text default null,
+  p_party_gstin text default null,
+  p_vehicle_no text default null,
+  p_mobile text default null,
+  p_km_reading text default null,
+  p_discount numeric default 0,
+  p_notes text default null,
+  p_items jsonb default '[]'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+as $$
+declare
+  v_invoice_id uuid;
+  v_invoice_number text;
+  v_subtotal numeric := 0;
+  v_cgst numeric := 0;
+  v_sgst numeric := 0;
+  v_non_gst numeric := 0;
+  v_nil_rate numeric := 0;
+  v_gross numeric := 0;
+  v_round_off numeric := 0;
+  v_total numeric := 0;
+  v_item jsonb;
+  v_line_amount numeric;
+  v_line_taxable numeric;
+  v_line_gst numeric;
+  v_line_cgst numeric;
+  v_line_sgst numeric;
+  v_gst_pct numeric;
+  v_qty numeric;
+  v_rate numeric;
+begin
+  v_invoice_number := public.generate_invoice_number();
+  v_invoice_id := uuid_generate_v4();
+
+  -- Pass 1: compute totals (invoice row must exist before line items — FK on invoice_id)
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    v_qty := coalesce((v_item->>'quantity')::numeric, 1);
+    v_rate := coalesce((v_item->>'rate')::numeric, 0);
+    v_gst_pct := coalesce((v_item->>'gst_percent')::numeric, 0);
+    v_line_amount := round(v_qty * v_rate, 2);
+
+    if v_gst_pct > 0 then
+      v_line_taxable := round(v_line_amount / (1 + v_gst_pct / 100), 2);
+      v_line_gst := v_line_amount - v_line_taxable;
+      v_line_cgst := round(v_line_gst / 2, 2);
+      v_line_sgst := v_line_gst - v_line_cgst;
+      v_cgst := v_cgst + v_line_cgst;
+      v_sgst := v_sgst + v_line_sgst;
+    elsif v_gst_pct = 0 then
+      v_nil_rate := v_nil_rate + v_line_amount;
+    else
+      v_non_gst := v_non_gst + v_line_amount;
+    end if;
+
+    v_subtotal := v_subtotal + v_line_amount;
+  end loop;
+
+  v_gross := v_subtotal - p_discount;
+  v_round_off := round(v_gross) - v_gross;
+  v_total := round(v_gross);
+
+  insert into public.invoices (
+    id, invoice_number, invoice_date, invoice_type,
+    party_name, party_address, party_gstin,
+    vehicle_no, mobile, km_reading,
+    subtotal, discount, round_off, total_amount,
+    cgst_total, sgst_total, igst_total, non_gst_total, nil_rate_total,
+    notes, created_by
+  ) values (
+    v_invoice_id, v_invoice_number, p_invoice_date, p_invoice_type,
+    p_party_name, p_party_address, p_party_gstin,
+    p_vehicle_no, p_mobile, p_km_reading,
+    v_subtotal, p_discount, v_round_off, v_total,
+    v_cgst, v_sgst, 0, v_non_gst, v_nil_rate,
+    p_notes, auth.uid()
+  );
+
+  -- Pass 2: insert line items after parent invoice exists
+  for v_item in select * from jsonb_array_elements(p_items)
+  loop
+    v_qty := coalesce((v_item->>'quantity')::numeric, 1);
+    v_rate := coalesce((v_item->>'rate')::numeric, 0);
+    v_gst_pct := coalesce((v_item->>'gst_percent')::numeric, 0);
+    v_line_amount := round(v_qty * v_rate, 2);
+
+    insert into public.invoice_items (
+      invoice_id, sl_no, product_id, item_name, hsn_code,
+      quantity, unit, rate, gst_percent, amount
+    ) values (
+      v_invoice_id,
+      coalesce((v_item->>'sl_no')::integer, 1),
+      case when v_item->>'product_id' is not null and v_item->>'product_id' != ''
+        then (v_item->>'product_id')::uuid else null end,
+      coalesce(v_item->>'item_name', 'Item'),
+      v_item->>'hsn_code',
+      v_qty,
+      coalesce(v_item->>'unit', 'Pcs'),
+      v_rate,
+      v_gst_pct,
+      v_line_amount
+    );
+  end loop;
+
+  return jsonb_build_object(
+    'id', v_invoice_id,
+    'invoice_number', v_invoice_number,
+    'total_amount', v_total,
+    'subtotal', v_subtotal,
+    'cgst', v_cgst,
+    'sgst', v_sgst,
+    'discount', p_discount,
+    'round_off', v_round_off
+  );
+end;
+$$;
+
+comment on function public.save_invoice(date, text, text, text, text, text, text, text, numeric, text, jsonb)
+  is 'Save a complete invoice with line items in a single transaction. Returns invoice details.';
+
+
 -- App users (login / operator roles; display_name shown in UI)
 create table if not exists public.users (
   id uuid primary key default uuid_generate_v4(),
   email text not null unique,
   role text not null check (role in ('admin', 'supervisor')),
   display_name text check (display_name is null or (char_length(trim(display_name)) <= 120)),
+  avatar_url text,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
@@ -483,6 +876,40 @@ create index if not exists users_email_idx on public.users (email);
 
 comment on table public.users is 'App users (login / operator roles). Display name shown in UI.';
 comment on column public.users.display_name is 'Name shown in the app (e.g. welcome message). Optional; falls back to email if empty.';
+comment on column public.users.avatar_url is 'Public URL of operator profile photo (Supabase Storage user-avatars bucket).';
+
+create or replace function public.my_avatar_storage_folder()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select lower(regexp_replace(trim(coalesce(auth.jwt() ->> 'email', '')), '[^a-z0-9._-]', '_', 'g'));
+$$;
+
+grant execute on function public.my_avatar_storage_folder() to authenticated;
+
+create or replace function public.update_my_avatar(p_avatar_url text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.jwt() ->> 'email' is null or trim(auth.jwt() ->> 'email') = '' then
+    raise exception 'Not authenticated';
+  end if;
+  update public.users
+  set avatar_url = nullif(trim(p_avatar_url), '')
+  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'));
+  if not found then
+    raise exception 'User not provisioned';
+  end if;
+end;
+$$;
+
+grant execute on function public.update_my_avatar(text) to authenticated;
 
 alter table public.users enable row level security;
 
@@ -509,6 +936,20 @@ create table if not exists public.employees (
   name text not null check (char_length(trim(name)) > 0 and char_length(name) <= 120),
   role_display text check (char_length(role_display) <= 60),
   monthly_salary numeric(14,2) not null default 0 check (monthly_salary >= 0),
+  aadhar_number text check (aadhar_number is null or aadhar_number ~ '^[0-9]{12}$'),
+  address text check (address is null or char_length(trim(address)) <= 500),
+  phone_number text check (phone_number is null or phone_number ~ '^[0-9]{10}$'),
+  pan_number text check (pan_number is null or pan_number ~ '^[A-Z]{5}[0-9]{4}[A-Z]$'),
+  pf_number text check (pf_number is null or (char_length(trim(pf_number)) > 0 and char_length(pf_number) <= 30)),
+  pf_contribution numeric(14,2) check (pf_contribution is null or pf_contribution >= 0),
+  blood_group text check (
+    blood_group is null
+    or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')
+  ),
+  photo_url text,
+  date_of_birth date,
+  id_valid_from date,
+  id_valid_to date,
   display_order smallint not null default 0,
   is_active boolean not null default true,
   created_by uuid references auth.users (id) on delete set null,
@@ -518,12 +959,111 @@ create table if not exists public.employees (
 create index if not exists employees_display_order_idx on public.employees (display_order, name);
 
 comment on table public.employees is 'Pump employees who receive salary (e.g. supervisor + operators). Used for salary and attendance.';
+comment on column public.employees.photo_url is 'Public URL of staff photo for ID card (staff-photos bucket).';
+comment on column public.employees.date_of_birth is 'Date of birth (shown on staff ID card).';
+comment on column public.employees.id_valid_from is 'ID card valid from (back of card).';
+comment on column public.employees.id_valid_to is 'ID card valid until (back of card).';
+
+create or replace function public.set_employee_photo(p_employee_id uuid, p_photo_url text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin only';
+  end if;
+  update public.employees
+  set photo_url = nullif(trim(p_photo_url), '')
+  where id = p_employee_id and is_active = true;
+  if not found then
+    raise exception 'Employee not found';
+  end if;
+end;
+$$;
+
+grant execute on function public.set_employee_photo(uuid, text) to authenticated;
+
+create or replace function public.list_employees_roster()
+returns table (
+  id uuid,
+  name text,
+  role_display text,
+  monthly_salary numeric,
+  display_order smallint
+)
+language sql
+security definer
+stable
+as $$
+  select e.id, e.name, e.role_display, e.monthly_salary, e.display_order
+  from public.employees e
+  where e.is_active = true
+  order by e.display_order, e.name;
+$$;
+
+comment on function public.list_employees_roster() is
+  'Active employees without PII — for salary and attendance (all authenticated).';
+
+grant execute on function public.list_employees_roster() to authenticated;
+
+create or replace function public.list_employees_salary()
+returns table (
+  id uuid,
+  name text,
+  role_display text,
+  monthly_salary numeric,
+  display_order smallint,
+  phone_number text,
+  aadhar_number text,
+  address text,
+  pan_number text,
+  pf_number text,
+  pf_contribution numeric,
+  blood_group text,
+  photo_url text,
+  date_of_birth date,
+  id_valid_from date,
+  id_valid_to date
+)
+language sql
+security definer
+stable
+as $$
+  select
+    e.id,
+    e.name,
+    e.role_display,
+    e.monthly_salary,
+    e.display_order,
+    e.phone_number,
+    e.aadhar_number,
+    e.address,
+    e.pan_number,
+    e.pf_number,
+    e.pf_contribution,
+    e.blood_group,
+    e.photo_url,
+    e.date_of_birth,
+    e.id_valid_from,
+    e.id_valid_to
+  from public.employees e
+  where e.is_active = true
+  order by e.display_order, e.name;
+$$;
+
+comment on function public.list_employees_salary() is
+  'Active employees with HR Staff page fields for salary slips (supervisors; admins use employees table).';
+
+grant execute on function public.list_employees_salary() to authenticated;
 
 alter table public.employees enable row level security;
 
 drop policy if exists "employees_select_authenticated" on public.employees;
-create policy "employees_select_authenticated" on public.employees
-  for select to authenticated using (true);
+drop policy if exists "employees_select_admin" on public.employees;
+create policy "employees_select_admin" on public.employees
+  for select to authenticated using (public.is_admin());
 
 drop policy if exists "employees_insert_own_or_admin" on public.employees;
 drop policy if exists "employees_insert_admin" on public.employees;
@@ -618,11 +1158,66 @@ drop policy if exists "employee_attendance_delete_admin" on public.employee_atte
 create policy "employee_attendance_delete_admin" on public.employee_attendance
   for delete to authenticated using (public.is_admin());
 
+create or replace function public.save_employee_attendance_batch(
+  p_date date,
+  p_rows jsonb
+)
+returns jsonb
+language plpgsql security definer
+as $$
+declare
+  v_row jsonb;
+  v_count int := 0;
+begin
+  if not public.is_supervisor_or_admin() then
+    raise exception 'Supervisor or admin access required';
+  end if;
+
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
+    return jsonb_build_object('saved', 0);
+  end if;
+
+  for v_row in select value from jsonb_array_elements(p_rows) as t(value)
+  loop
+    if v_row->>'employee_id' is null then
+      continue;
+    end if;
+    insert into public.employee_attendance (
+      employee_id, date, status, shift, note, created_by, updated_at
+    )
+    values (
+      (v_row->>'employee_id')::uuid,
+      p_date,
+      coalesce(nullif(trim(v_row->>'status'), ''), 'present'),
+      nullif(trim(v_row->>'shift'), ''),
+      nullif(trim(v_row->>'note'), ''),
+      auth.uid(),
+      timezone('utc'::text, now())
+    )
+    on conflict (employee_id, date) do update set
+      status = excluded.status,
+      shift = excluded.shift,
+      note = excluded.note,
+      updated_at = excluded.updated_at;
+    v_count := v_count + 1;
+  end loop;
+
+  return jsonb_build_object('saved', v_count);
+end;
+$$;
+
+comment on function public.save_employee_attendance_batch(date, jsonb) is
+  'Upsert attendance rows for one date. Supervisor or admin only.';
+
+grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
+
 -- Credit customers ledger
 create table if not exists public.credit_customers (
   id uuid primary key default uuid_generate_v4(),
   customer_name text not null check (char_length(customer_name) <= 120),
   vehicle_no text check (char_length(vehicle_no) <= 32),
+  mobile text check (mobile is null or char_length(trim(mobile)) <= 20),
+  address text check (address is null or char_length(trim(address)) <= 500),
   amount_due numeric(14,2) not null default 0,
   date date not null default current_date,
   last_payment date,
@@ -634,9 +1229,12 @@ create table if not exists public.credit_customers (
 create index if not exists credit_amount_idx on public.credit_customers (amount_due desc);
 create index if not exists credit_customers_created_at_idx on public.credit_customers (created_at desc);
 create index if not exists credit_customers_date_idx on public.credit_customers (date desc);
+create index if not exists credit_customers_name_norm_idx on public.credit_customers (lower(trim(customer_name)));
 
 comment on table public.credit_customers is 'Credit ledger for fleet and institutional customers.';
 comment on column public.credit_customers.date is 'Date for which this credit applies; used for day-closing credit_today sum.';
+comment on column public.credit_customers.mobile is 'Customer mobile / phone (optional)';
+comment on column public.credit_customers.address is 'Customer address (optional)';
 
 alter table public.credit_customers enable row level security;
 
@@ -658,20 +1256,14 @@ create policy "credit_insert_own" on public.credit_customers
     created_by = auth.uid()
   );
 
--- UPDATE: Users can update their own records (for settlements), admins can update all
+-- UPDATE: Supervisors and admins (contact info; amount_due also updated by payment RPC/triggers)
 drop policy if exists "credit_update_authenticated" on public.credit_customers;
 drop policy if exists "credit_update_by_role" on public.credit_customers;
 create policy "credit_update_by_role" on public.credit_customers
   for update
   to authenticated
-  using (
-    created_by = auth.uid()
-    or public.is_admin()
-  )
-  with check (
-    created_by = auth.uid()
-    or public.is_admin()
-  );
+  using (public.is_supervisor_or_admin())
+  with check (public.is_supervisor_or_admin());
 
 -- DELETE: Only admins can delete credit records (audit trail protection)
 drop policy if exists "credit_delete_authenticated" on public.credit_customers;
@@ -701,6 +1293,9 @@ create table if not exists public.credit_entries (
 
 create index if not exists credit_entries_customer_date_idx on public.credit_entries (credit_customer_id, transaction_date);
 create index if not exists credit_entries_transaction_date_idx on public.credit_entries (transaction_date desc);
+create index if not exists credit_entries_open_fifo_idx
+  on public.credit_entries (credit_customer_id, transaction_date, id)
+  where amount_settled < amount;
 
 comment on table public.credit_entries is 'One row per credit sale. Transaction date = DSR date (business date of fuel delivery).';
 comment on column public.credit_entries.transaction_date is 'Business date when fuel was dispensed on credit; drives DSR credit_today.';
@@ -731,6 +1326,9 @@ returns trigger language plpgsql security definer as $$
 declare
   v_customer_id uuid;
 begin
+  if coalesce(current_setting('app.skip_credit_sync', true), '') = 'true' then
+    if tg_op = 'DELETE' then return old; else return new; end if;
+  end if;
   if tg_op = 'DELETE' then
     v_customer_id := old.credit_customer_id;
   else
@@ -863,12 +1461,10 @@ create trigger day_closing_updated_at_trigger
   before update on public.day_closing
   for each row execute function public.day_closing_updated_at();
 
--- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
-create or replace function public.get_day_closing_breakdown(p_date date)
+-- Shared day-closing totals (used by get_day_closing_breakdown and save_day_closing)
+create or replace function public.compute_day_closing_components(p_date date)
 returns jsonb
-language plpgsql
-security definer
-stable
+language plpgsql stable security definer
 as $$
 declare
   v_total_sale numeric := 0;
@@ -876,11 +1472,55 @@ declare
   v_short_previous numeric := 0;
   v_credit_today numeric := 0;
   v_expenses_today numeric := 0;
-  v_row record;
-  v_petrol_net numeric;
-  v_diesel_net numeric;
-  v_petrol_rate numeric;
-  v_diesel_rate numeric;
+begin
+  select coalesce(sum(
+    (coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0))
+    * case
+        when v_row.product = 'petrol' then coalesce(v_row.petrol_rate, 0)
+        when v_row.product = 'diesel' then coalesce(v_row.diesel_rate, 0)
+        else 0
+      end
+  ), 0) into v_total_sale
+  from public.dsr v_row
+  where v_row.date = p_date;
+
+  select coalesce(sum(amount), 0) into v_collection
+  from public.credit_payments where date = p_date;
+
+  select short_today into v_short_previous
+  from public.day_closing where date = p_date - interval '1 day' limit 1;
+  v_short_previous := coalesce(v_short_previous, 0);
+
+  select coalesce(sum(amount), 0) into v_credit_today
+  from public.credit_entries where transaction_date = p_date;
+  select v_credit_today + coalesce((
+    select sum(c.amount_due) from public.credit_customers c
+    where c.date = p_date
+      and not exists (select 1 from public.credit_entries e where e.credit_customer_id = c.id)
+  ), 0) into v_credit_today;
+
+  select coalesce(sum(amount), 0) into v_expenses_today
+  from public.expenses where date = p_date;
+
+  return jsonb_build_object(
+    'total_sale', coalesce(v_total_sale, 0),
+    'collection', coalesce(v_collection, 0),
+    'short_previous', coalesce(v_short_previous, 0),
+    'credit_today', coalesce(v_credit_today, 0),
+    'expenses_today', coalesce(v_expenses_today, 0)
+  );
+end;
+$$;
+
+grant execute on function public.compute_day_closing_components(date) to authenticated;
+
+-- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
+create or replace function public.get_day_closing_breakdown(p_date date)
+returns jsonb
+language plpgsql security definer
+as $$
+declare
+  v_components jsonb;
   v_existing record;
   v_already_saved boolean := false;
 begin
@@ -907,48 +1547,16 @@ begin
     );
   end if;
 
-  for v_row in
-    select product, total_sales, testing, petrol_rate, diesel_rate
-    from public.dsr where date = p_date
-  loop
-    if v_row.product = 'petrol' then
-      v_petrol_net := coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0);
-      v_petrol_rate := coalesce(v_row.petrol_rate, 0);
-      v_total_sale := v_total_sale + v_petrol_net * v_petrol_rate;
-    elsif v_row.product = 'diesel' then
-      v_diesel_net := coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0);
-      v_diesel_rate := coalesce(v_row.diesel_rate, 0);
-      v_total_sale := v_total_sale + v_diesel_net * v_diesel_rate;
-    end if;
-  end loop;
-
-  select coalesce(sum(amount), 0) into v_collection
-  from public.credit_payments where date = p_date;
-
-  select short_today into v_short_previous
-  from public.day_closing where date = p_date - interval '1 day' limit 1;
-  v_short_previous := coalesce(v_short_previous, 0);
-
-  -- Credit today: credit_entries.amount for transaction_date + legacy credit_customers.amount_due (no entries yet)
-  select coalesce(sum(amount), 0) into v_credit_today
-  from public.credit_entries where transaction_date = p_date;
-  select v_credit_today + coalesce((
-    select sum(c.amount_due) from public.credit_customers c
-    where c.date = p_date
-      and not exists (select 1 from public.credit_entries e where e.credit_customer_id = c.id)
-  ), 0) into v_credit_today;
-
-  select coalesce(sum(amount), 0) into v_expenses_today
-  from public.expenses where date = p_date;
+  v_components := public.compute_day_closing_components(p_date);
 
   if v_already_saved then
     return jsonb_build_object(
       'date', p_date,
-      'total_sale', coalesce(v_total_sale, 0),
-      'collection', coalesce(v_collection, 0),
-      'short_previous', coalesce(v_short_previous, 0),
-      'credit_today', coalesce(v_credit_today, 0),
-      'expenses_today', coalesce(v_expenses_today, 0),
+      'total_sale', coalesce((v_components->>'total_sale')::numeric, 0),
+      'collection', coalesce((v_components->>'collection')::numeric, 0),
+      'short_previous', coalesce((v_components->>'short_previous')::numeric, 0),
+      'credit_today', coalesce((v_components->>'credit_today')::numeric, 0),
+      'expenses_today', coalesce((v_components->>'expenses_today')::numeric, 0),
       'night_cash', coalesce(v_existing.night_cash, 0),
       'phone_pay', coalesce(v_existing.phone_pay, 0),
       'short_today', coalesce(v_existing.short_today, 0),
@@ -960,11 +1568,11 @@ begin
 
   return jsonb_build_object(
     'date', p_date,
-    'total_sale', coalesce(v_total_sale, 0),
-    'collection', coalesce(v_collection, 0),
-    'short_previous', coalesce(v_short_previous, 0),
-    'credit_today', coalesce(v_credit_today, 0),
-    'expenses_today', coalesce(v_expenses_today, 0),
+    'total_sale', coalesce((v_components->>'total_sale')::numeric, 0),
+    'collection', coalesce((v_components->>'collection')::numeric, 0),
+    'short_previous', coalesce((v_components->>'short_previous')::numeric, 0),
+    'credit_today', coalesce((v_components->>'credit_today')::numeric, 0),
+    'expenses_today', coalesce((v_components->>'expenses_today')::numeric, 0),
     'night_cash', null,
     'phone_pay', null,
     'short_today', null,
@@ -984,21 +1592,16 @@ create or replace function public.save_day_closing(
   p_remarks text default null
 )
 returns jsonb
-language plpgsql
-security definer
+language plpgsql security definer
 as $$
 declare
-  v_total_sale numeric := 0;
-  v_collection numeric := 0;
-  v_short_previous numeric := 0;
-  v_credit_today numeric := 0;
-  v_expenses_today numeric := 0;
+  v_components jsonb;
+  v_total_sale numeric;
+  v_collection numeric;
+  v_short_previous numeric;
+  v_credit_today numeric;
+  v_expenses_today numeric;
   v_short_today numeric;
-  v_petrol_net numeric;
-  v_diesel_net numeric;
-  v_petrol_rate numeric;
-  v_diesel_rate numeric;
-  v_row record;
   v_ref text;
   v_seq bigint;
 begin
@@ -1013,39 +1616,12 @@ begin
     raise exception 'Day closing already saved for this date.';
   end if;
 
-  for v_row in
-    select product, total_sales, testing, petrol_rate, diesel_rate
-    from public.dsr where date = p_date
-  loop
-    if v_row.product = 'petrol' then
-      v_petrol_net := coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0);
-      v_petrol_rate := coalesce(v_row.petrol_rate, 0);
-      v_total_sale := v_total_sale + v_petrol_net * v_petrol_rate;
-    elsif v_row.product = 'diesel' then
-      v_diesel_net := coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0);
-      v_diesel_rate := coalesce(v_row.diesel_rate, 0);
-      v_total_sale := v_total_sale + v_diesel_net * v_diesel_rate;
-    end if;
-  end loop;
-
-  select coalesce(sum(amount), 0) into v_collection
-  from public.credit_payments where date = p_date;
-
-  select short_today into v_short_previous
-  from public.day_closing where date = p_date - interval '1 day' limit 1;
-  v_short_previous := coalesce(v_short_previous, 0);
-
-  -- Credit today: credit_entries.amount + legacy credit_customers.amount_due (no entries yet)
-  select coalesce(sum(amount), 0) into v_credit_today
-  from public.credit_entries where transaction_date = p_date;
-  select v_credit_today + coalesce((
-    select sum(c.amount_due) from public.credit_customers c
-    where c.date = p_date
-      and not exists (select 1 from public.credit_entries e where e.credit_customer_id = c.id)
-  ), 0) into v_credit_today;
-
-  select coalesce(sum(amount), 0) into v_expenses_today
-  from public.expenses where date = p_date;
+  v_components := public.compute_day_closing_components(p_date);
+  v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
+  v_collection := coalesce((v_components->>'collection')::numeric, 0);
+  v_short_previous := coalesce((v_components->>'short_previous')::numeric, 0);
+  v_credit_today := coalesce((v_components->>'credit_today')::numeric, 0);
+  v_expenses_today := coalesce((v_components->>'expenses_today')::numeric, 0);
 
   v_short_today := (v_total_sale + v_collection + v_short_previous)
     - (p_night_cash + p_phone_pay + v_credit_today + v_expenses_today);
@@ -1095,7 +1671,9 @@ create or replace function public.add_credit_entry(
   p_vehicle_no text default null,
   p_fuel_type text default 'HSD',
   p_quantity numeric default 1,
-  p_notes text default null
+  p_notes text default null,
+  p_mobile text default null,
+  p_address text default null
 )
 returns jsonb
 language plpgsql security definer
@@ -1108,6 +1686,9 @@ declare
 begin
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
+  end if;
+  if p_transaction_date > current_date then
+    raise exception 'transaction date cannot be in the future';
   end if;
 
   v_fuel_type := coalesce(nullif(trim(p_fuel_type), ''), 'HSD');
@@ -1126,16 +1707,27 @@ begin
   order by created_at desc limit 1;
 
   if v_customer_id is null then
-    insert into public.credit_customers (customer_name, vehicle_no, amount_due, date, notes, created_by)
+    insert into public.credit_customers (
+      customer_name, vehicle_no, amount_due, date, notes, mobile, address, created_by
+    )
     values (
       trim(p_customer_name),
       nullif(trim(p_vehicle_no), ''),
       0,
       p_transaction_date,
       nullif(trim(p_notes), ''),
+      nullif(trim(p_mobile), ''),
+      nullif(trim(p_address), ''),
       auth.uid()
     )
     returning id into v_customer_id;
+  elsif nullif(trim(p_mobile), '') is not null
+     or nullif(trim(p_address), '') is not null then
+    update public.credit_customers
+    set
+      mobile = coalesce(nullif(trim(p_mobile), ''), mobile),
+      address = coalesce(nullif(trim(p_address), ''), address)
+    where id = v_customer_id;
   end if;
 
   insert into public.credit_entries (credit_customer_id, transaction_date, fuel_type, quantity, amount, created_by)
@@ -1150,7 +1742,7 @@ begin
   );
 end;
 $$;
-comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text) is 'Add a credit sale. Transaction date = DSR date. Fuel type and quantity optional (default HSD, 1).';
+comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) is 'Add a credit sale. Optional mobile/address on new or existing customer. Rejects future dates.';
 
 -- RPC: Record credit payment (FIFO allocation; Settlement Date; payment_mode)
 create or replace function public.record_credit_payment(
@@ -1172,6 +1764,9 @@ begin
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
+  if p_date > current_date then
+    raise exception 'payment date cannot be in the future';
+  end if;
   if p_payment_mode is not null and p_payment_mode not in ('Cash', 'UPI', 'Bank') then
     raise exception 'payment_mode must be Cash, UPI, or Bank';
   end if;
@@ -1180,24 +1775,38 @@ begin
     raise exception 'Credit customer not found';
   end if;
 
-  for v_entry in
-    select id, amount, amount_settled
-    from public.credit_entries
-    where credit_customer_id = p_credit_customer_id
-      and amount_settled < amount
-    order by transaction_date asc, id asc
-    for update
-  loop
-    exit when v_remaining <= 0;
-    v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
-    update public.credit_entries
-    set amount_settled = amount_settled + v_alloc
-    where id = v_entry.id;
-    v_remaining := v_remaining - v_alloc;
-  end loop;
+  perform set_config('app.skip_credit_sync', 'true', true);
+
+  begin
+    for v_entry in
+      select id, amount, amount_settled
+      from public.credit_entries
+      where credit_customer_id = p_credit_customer_id
+        and amount_settled < amount
+      order by transaction_date asc, id asc
+      for update
+    loop
+      exit when v_remaining <= 0;
+      v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
+      update public.credit_entries
+      set amount_settled = amount_settled + v_alloc
+      where id = v_entry.id;
+      v_remaining := v_remaining - v_alloc;
+    end loop;
+  exception
+    when others then
+      perform set_config('app.skip_credit_sync', '', true);
+      raise;
+  end;
+
+  perform set_config('app.skip_credit_sync', '', true);
 
   if v_remaining >= p_amount then
     raise exception 'No outstanding balance to apply payment to';
+  end if;
+
+  if v_remaining > 0 then
+    raise exception 'Payment amount exceeds outstanding balance';
   end if;
 
   insert into public.credit_payments (credit_customer_id, date, amount, note, payment_mode, created_by)
@@ -1219,7 +1828,7 @@ begin
   );
 end;
 $$;
-comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO by transaction date. Settlement date = p_date.';
+comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Rejects future settlement dates.';
 
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)
@@ -1241,14 +1850,17 @@ begin
     where date <= p_date
     group by credit_customer_id
   )
-  select coalesce(sum(greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)), 0)
+  select coalesce(sum(
+    greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)
+  ), 0)
   into v_total
-  from bal b
-  left join pay p on p.credit_customer_id = b.credit_customer_id;
+  from public.credit_customers c
+  left join bal b on b.credit_customer_id = c.id
+  left join pay p on p.credit_customer_id = c.id;
   return v_total;
 end;
 $$;
-comment on function public.get_open_credit_as_of(date) is 'Total outstanding credit as of date D (entries with transaction_date <= D minus payments with date <= D).';
+comment on function public.get_open_credit_as_of(date) is 'Total outstanding credit as of date D; all customers, clamped >= 0 (matches overdue list).';
 
 create or replace function public.get_outstanding_credit_list_as_of(p_date date)
 returns table (
@@ -1281,13 +1893,13 @@ begin
   per_customer as (
     select c.customer_name,
            c.vehicle_no,
-           (coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0))::numeric as amt,
+           greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric as amt,
            p.last_pay_date as last_pay,
            b.last_txn_date as last_txn
     from public.credit_customers c
     left join bal b on b.credit_customer_id = c.id
     left join pay p on p.credit_customer_id = c.id
-    where coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0) > 0
+    where greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0) > 0
   )
   select (max(pc.customer_name))::text as customer_name,
          (max(pc.vehicle_no))::text as vehicle_no,
@@ -1352,7 +1964,7 @@ begin
            nm.vehicle_no,
            coalesce(b.credit_tot, 0) as credit_taken,
            coalesce(p.payment_tot, 0) as settlement_done,
-           (coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0))::numeric as remaining,
+           greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric as remaining,
            p.last_pay_date as last_payment_date,
            b.min_txn_date as first_sale_date,
            b.max_txn_date as last_credit_date
@@ -1371,7 +1983,7 @@ begin
   from per_customer pc;
 end;
 $$;
-comment on function public.get_customer_credit_summary_as_of(text, date) is 'Credit summary for one customer (by name) as of date: credit_taken, settlement_done, remaining.';
+comment on function public.get_customer_credit_summary_as_of(text, date) is 'Credit summary for one customer (by name) as of date: credit_taken, settlement_done, remaining (clamped >= 0).';
 
 -- Per-entry breakdown of credit and settlement for a customer (by name) as of a date
 create or replace function public.get_customer_credit_breakdown_as_of(
@@ -1464,7 +2076,7 @@ begin
   per_customer as (
     select nm.customer_name, nm.vehicle_no, coalesce(b.credit_tot, 0) as credit_taken,
            coalesce(p.payment_tot, 0) as settlement_done,
-           (coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0))::numeric as remaining,
+           greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric as remaining,
            p.last_pay_date as last_payment_date, b.min_txn_date as first_sale_date, b.max_txn_date as last_credit_date
     from name_match nm
     left join bal b on b.credit_customer_id = nm.credit_customer_id
@@ -1479,7 +2091,15 @@ begin
   ),
   credits_json as (
     select coalesce(
-      (select jsonb_agg(jsonb_build_object('entry_date', e.transaction_date, 'amount', e.amount) order by e.transaction_date)
+      (select jsonb_agg(
+        jsonb_build_object(
+          'entry_date', e.transaction_date,
+          'amount', e.amount,
+          'fuel_type', e.fuel_type,
+          'quantity', e.quantity,
+          'amount_settled', e.amount_settled
+        ) order by e.transaction_date desc
+      )
        from public.credit_entries e
        where e.credit_customer_id in (select credit_customer_id from customer_ids) and e.transaction_date <= p_date),
       '[]'::jsonb
@@ -1487,7 +2107,14 @@ begin
   ),
   payments_json as (
     select coalesce(
-      (select jsonb_agg(jsonb_build_object('entry_date', p.date, 'amount', p.amount) order by p.date)
+      (select jsonb_agg(
+        jsonb_build_object(
+          'entry_date', p.date,
+          'amount', p.amount,
+          'payment_mode', p.payment_mode,
+          'note', p.note
+        ) order by p.date desc
+      )
        from public.credit_payments p
        where p.credit_customer_id in (select credit_customer_id from customer_ids) and p.date <= p_date),
       '[]'::jsonb
@@ -1581,19 +2208,20 @@ create trigger audit_users_trigger
   after insert or update or delete on public.users
   for each row execute function public.audit_trigger_fn();
 
--- DSR: full audit (insert, update, delete) - who changed what and when
-drop trigger if exists audit_dsr_delete_trigger on public.dsr;
-drop trigger if exists audit_dsr_trigger on public.dsr;
-create trigger audit_dsr_trigger
-  after insert or update or delete on public.dsr
+-- DSR petrol: full audit
+drop trigger if exists audit_dsr_petrol_trigger on public.dsr_petrol;
+create trigger audit_dsr_petrol_trigger
+  after insert or update or delete on public.dsr_petrol
   for each row execute function public.audit_trigger_fn();
 
--- DSR stock: full audit
-drop trigger if exists audit_dsr_stock_delete_trigger on public.dsr_stock;
-drop trigger if exists audit_dsr_stock_trigger on public.dsr_stock;
-create trigger audit_dsr_stock_trigger
-  after insert or update or delete on public.dsr_stock
+-- DSR diesel: full audit
+drop trigger if exists audit_dsr_diesel_trigger on public.dsr_diesel;
+create trigger audit_dsr_diesel_trigger
+  after insert or update or delete on public.dsr_diesel
   for each row execute function public.audit_trigger_fn();
+
+-- DSR stock: audit triggers live on the underlying per-product tables (applied by prior migration).
+-- No trigger needed on the dsr_stock view itself.
 
 -- Expenses: full audit
 drop trigger if exists audit_expenses_delete_trigger on public.expenses;
@@ -1640,3 +2268,59 @@ drop trigger if exists audit_day_closing_trigger on public.day_closing;
 create trigger audit_day_closing_trigger
   after insert or update or delete on public.day_closing
   for each row execute function public.audit_trigger_fn();
+
+-- Invoices: full audit
+drop trigger if exists audit_invoices_trigger on public.invoices;
+create trigger audit_invoices_trigger
+  after insert or update or delete on public.invoices
+  for each row execute function public.audit_trigger_fn();
+
+-- ─── Pump settings (centralized configuration) ───────────────────────────────
+
+create table if not exists public.pump_settings (
+  id int primary key default 1 check (id = 1),
+  config jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users (id) on delete set null
+);
+
+comment on table public.pump_settings is 'Single-row JSON config for station branding, alerts, shifts, pump layout, billing defaults.';
+
+insert into public.pump_settings (id, config)
+values (1, '{}'::jsonb)
+on conflict (id) do nothing;
+
+alter table public.pump_settings enable row level security;
+
+drop policy if exists pump_settings_select_authenticated on public.pump_settings;
+create policy pump_settings_select_authenticated
+  on public.pump_settings for select to authenticated
+  using (true);
+
+drop policy if exists pump_settings_upsert_admin on public.pump_settings;
+create policy pump_settings_upsert_admin
+  on public.pump_settings for all to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+grant select on public.pump_settings to authenticated;
+grant insert, update on public.pump_settings to authenticated;
+
+-- RPC execute grants for authenticated clients
+grant execute on function public.check_page_access(text) to authenticated;
+grant execute on function public.update_dsr_buying_price(uuid, numeric) to authenticated;
+grant execute on function public.get_day_closing_breakdown(date) to authenticated;
+grant execute on function public.save_day_closing(date, numeric, numeric, text) to authenticated;
+grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) to authenticated;
+grant execute on function public.record_credit_payment(uuid, date, numeric, text, text) to authenticated;
+grant execute on function public.get_credit_ledger_aggregated() to authenticated;
+grant execute on function public.get_open_credit_as_of(date) to authenticated;
+grant execute on function public.get_outstanding_credit_list_as_of(date) to authenticated;
+grant execute on function public.get_customer_credit_summary_as_of(text, date) to authenticated;
+grant execute on function public.get_customer_credit_detail_as_of(text, date) to authenticated;
+grant execute on function public.upsert_staff(text, text, text) to authenticated;
+grant execute on function public.delete_staff(text) to authenticated;
+grant execute on function public.save_invoice(date, text, text, text, text, text, text, text, numeric, text, jsonb) to authenticated;
+grant execute on function public.get_dsr_stock_range(date, date) to authenticated;
+grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
+grant execute on function public.compute_day_closing_components(date) to authenticated;

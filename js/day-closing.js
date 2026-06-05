@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -147,12 +147,13 @@ async function initializeDayClosing() {
     loadDayClosingBreakdown(dateInput.value || todayStr);
   });
 
+  const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
   if (nightCashInput) {
-    nightCashInput.addEventListener("input", updateDayClosingShortLive);
+    nightCashInput.addEventListener("input", debouncedShortUpdate);
     nightCashInput.addEventListener("change", updateDayClosingShortLive);
   }
   if (phonePayInput) {
-    phonePayInput.addEventListener("input", updateDayClosingShortLive);
+    phonePayInput.addEventListener("input", debouncedShortUpdate);
     phonePayInput.addEventListener("change", updateDayClosingShortLive);
   }
 
@@ -267,8 +268,8 @@ async function initializeDayClosing() {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
-    registerEnd.value = endDate.toISOString().slice(0, 10);
-    registerStart.value = startDate.toISOString().slice(0, 10);
+    registerEnd.value = toLocalDateString(endDate);
+    registerStart.value = toLocalDateString(startDate);
 
     registerLoadBtn.addEventListener("click", async () => {
       const start = registerStart.value?.trim();
@@ -316,22 +317,18 @@ async function initializeDayClosing() {
   }
 }
 
-function escapeHtml(str) {
-  if (str == null) return "";
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
+    pageName: "day-closing",
   });
   if (!auth) return;
   applyRoleVisibility(auth.role);
+
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "close", validSections: ["close", "register"] });
+  }
 
   await initializeDayClosing();
 });

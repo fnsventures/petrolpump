@@ -4,19 +4,28 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Credit · Bishnupriya Fuels</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M19 5v2h-4V5h4m-6 0v2H9V5h4m-6 0v2H5V5h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4m15 6v2h-4v-2h4m-6 0v2H9v-2h4m-6 0v2H5v-2h4'/></svg>" type="image/svg+xml" />
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/app.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
-    <script defer src="js/utils.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=5"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/auth.js?v=2"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/creditCustomerDetail.js"></script>
     <script defer src="js/credit.js"></script>
   </head>
-  <body>
+  <body class="credit-list-view">
     <header class="topbar">
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
@@ -36,9 +45,9 @@
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="credit.html">Credit</a>
-            <a href="credit-overdue.html">Overdue</a>
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -46,12 +55,14 @@
           <div class="nav-group" role="menu">
             <a href="attendance.html">Attendance</a>
             <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
           </div>
         </div>
         <div class="nav-group-block">
           <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
           <div class="nav-group" role="menu">
             <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
             <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
           </div>
         </div>
@@ -59,39 +70,73 @@
       </nav>
     </header>
 
-    <main class="stack">
-      <section class="card credit-intro">
-        <h2>Credit ledger</h2>
-        <p class="muted">Record credit sales (with Transaction Date = DSR date) and settle payments (with Settlement Date). Backdated entries are supported; DSR and outstanding use business dates only.</p>
-        <div class="credit-date-glossary" role="region" aria-label="Date fields explained">
-          <strong>DSR-specific dates</strong>
-          <ul>
-            <li><strong>Transaction date</strong> — Business date when fuel was dispensed on credit. Drives DSR and outstanding.</li>
-            <li><strong>Settlement date</strong> — Business date when the customer paid (in the Action column).</li>
-            <li><strong>Last paid</strong> — Most recent settlement date for this customer (updated when you Settle).</li>
-          </ul>
-        </div>
-      </section>
+    <main class="settings-layout">
+      <div class="settings-sidebar">
+        <nav id="credit-list-nav" class="settings-nav card" aria-label="Credit sections">
+          <p class="settings-nav-title">Credit</p>
+          <button type="button" class="settings-nav-item is-active" data-section="overview">Overview</button>
+          <button type="button" class="settings-nav-item" data-section="record">Record sale</button>
+          <button type="button" class="settings-nav-item" data-section="outstanding">Outstanding list</button>
+        </nav>
 
-      <section class="card">
+        <nav id="credit-customer-nav" class="settings-nav card hidden" aria-label="Customer sections" hidden>
+          <p class="settings-nav-title">Customer</p>
+          <a class="settings-nav-back" href="credit.html#outstanding">← Back to list</a>
+          <button type="button" class="settings-nav-item is-active" data-section="summary">Summary</button>
+          <button type="button" class="settings-nav-item" data-section="settle">Record payment</button>
+          <button type="button" class="settings-nav-item" data-section="credit">Credit taken</button>
+          <button type="button" class="settings-nav-item" data-section="payments">Settlements</button>
+        </nav>
+      </div>
+
+      <div class="settings-panels">
+        <section id="credit-panel-overview" class="settings-panel card is-visible" data-panel="overview">
+          <h2>Overview</h2>
+          <p class="muted">Record credit sales and manage outstanding balances. Settlement and full history are on each customer’s detail page.</p>
+          <div class="stat-grid">
+            <div class="stat-card stat-card-highlight">
+              <span class="stat-label">Total outstanding</span>
+              <strong id="credit-total-outstanding" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Customers with balance</span>
+              <strong id="credit-customer-count" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Quick link</span>
+              <a href="#outstanding" class="stat-link">View outstanding list →</a>
+            </div>
+          </div>
+        </section>
+
+        <section id="credit-panel-record" class="settings-panel card" data-panel="record" hidden>
         <h2>Record credit sale</h2>
-        <p class="muted">Each entry is attached to a Transaction Date. Credit for a past date will appear in that day’s DSR.</p>
+        <p class="muted">Transaction date is the DSR business date when fuel was dispensed on credit.</p>
         <form id="credit-form" class="form">
           <div class="form-grid">
             <div class="form-field">
               <label for="customer">Customer name</label>
-              <input
-                id="customer"
-                name="customer_name"
-                type="text"
-                list="customer-list"
-                placeholder="Fleet owner or Temp"
-                maxlength="120"
-                required
-              />
-              <datalist id="customer-list">
-                <option value="Temp">
-              </datalist>
+              <div class="combobox" id="customer-combobox">
+                <input
+                  id="customer"
+                  name="customer_name"
+                  type="text"
+                  placeholder="Fleet owner or Temp"
+                  maxlength="120"
+                  required
+                  autocomplete="off"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-expanded="false"
+                  aria-controls="customer-suggestions"
+                />
+                <ul
+                  id="customer-suggestions"
+                  class="combobox-list hidden"
+                  role="listbox"
+                  hidden
+                ></ul>
+              </div>
             </div>
 
             <div class="form-field">
@@ -103,6 +148,29 @@
                 placeholder="WB12AB3456"
                 maxlength="32"
               />
+            </div>
+
+            <div class="form-field">
+              <label for="credit-customer-mobile">Mobile <span class="optional-label">(optional)</span></label>
+              <input
+                id="credit-customer-mobile"
+                name="mobile"
+                type="tel"
+                placeholder="9XXXXXXXXX"
+                maxlength="20"
+                autocomplete="tel"
+              />
+            </div>
+
+            <div class="form-field form-field-span">
+              <label for="credit-customer-address">Address <span class="optional-label">(optional)</span></label>
+              <textarea
+                id="credit-customer-address"
+                name="address"
+                rows="2"
+                placeholder="Customer address"
+                maxlength="500"
+              ></textarea>
             </div>
 
             <div class="form-field">
@@ -148,9 +216,7 @@
                 name="credit_date"
                 type="date"
                 title="Business date when fuel was dispensed (DSR date)"
-                aria-describedby="credit-date-hint"
               />
-              <span id="credit-date-hint" class="field-hint">DSR date for this credit</span>
             </div>
 
             <div class="form-field">
@@ -168,12 +234,18 @@
           <p id="credit-success" class="success hidden">Credit entry saved.</p>
           <p id="credit-error" class="error hidden"></p>
         </form>
-      </section>
+        </section>
 
-      <section class="card">
+        <section id="credit-panel-outstanding" class="settings-panel card" data-panel="outstanding" hidden>
         <div class="card-head card-head-flex">
-          <h2>Outstanding balances</h2>
-          <p id="credit-ledger-summary" class="credit-ledger-summary muted" aria-live="polite"></p>
+          <div>
+            <h2>Outstanding balances</h2>
+            <p id="credit-ledger-summary" class="muted" aria-live="polite"></p>
+          </div>
+          <div class="form-field search-field">
+            <label for="credit-search">Search customer</label>
+            <input id="credit-search" type="search" placeholder="Name or vehicle…" autocomplete="off" />
+          </div>
         </div>
         <div class="table-wrap">
           <table class="credit-ledger-table">
@@ -182,21 +254,290 @@
                 <th>Customer</th>
                 <th>Vehicle</th>
                 <th>Outstanding (₹)</th>
-                <th>Transaction date</th>
                 <th>Last paid</th>
-                <th>Notes</th>
-                <th>Action</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="credit-table-body">
               <tr>
-                <td colspan="7" class="muted">Loading…</td>
+                <td colspan="5" class="muted">Loading…</td>
               </tr>
             </tbody>
           </table>
         </div>
-      </section>
+        </section>
+
+        <section
+          id="customer-balance-hero"
+          class="card customer-balance-hero hidden"
+          aria-label="Customer balance"
+          hidden
+        >
+          <nav class="breadcrumb customer-balance-breadcrumb" aria-label="Breadcrumb">
+            <a href="credit.html">Credit</a>
+            <span aria-hidden="true">/</span>
+            <a href="credit.html#outstanding">Outstanding</a>
+            <span aria-hidden="true">/</span>
+            <span id="breadcrumb-customer">Customer</span>
+          </nav>
+
+          <div class="customer-balance-hero-body">
+            <div class="customer-balance-hero-intro">
+              <div
+                class="customer-name-row"
+                id="customer-name-row"
+                role="button"
+                tabindex="-1"
+                aria-label="Edit customer details"
+              >
+                <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
+                <span class="customer-name-edit-hint" aria-hidden="true">Edit</span>
+              </div>
+              <p id="customer-meta" class="customer-balance-meta muted hidden" hidden></p>
+            </div>
+            <div class="customer-balance-hero-amount" aria-live="polite">
+              <span class="customer-balance-label">Outstanding</span>
+              <strong id="stat-outstanding" class="customer-balance-value">—</strong>
+              <a
+                href="#settle"
+                id="customer-record-payment-cta"
+                class="customer-balance-cta hidden"
+              >Record payment</a>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="customer-period-toolbar"
+          class="card customer-filter-card hidden"
+          aria-label="Activity period and print"
+          hidden
+        >
+          <div class="customer-filter-head">
+            <h2 class="customer-filter-title">Activity period</h2>
+            <div class="customer-filter-actions">
+              <button
+                type="button"
+                id="customer-summary-print-btn"
+                class="button-secondary customer-summary-print-btn"
+                title="Print account summary for this customer"
+                disabled
+              >
+                Print summary
+              </button>
+              <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
+                Reset to today
+              </button>
+            </div>
+          </div>
+
+          <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
+            <div class="form-field form-field-inline">
+              <label for="filter-range">Date range</label>
+              <select id="filter-range" aria-describedby="customer-filter-summary">
+                <option value="today">Today</option>
+                <option value="this-week">This week</option>
+                <option value="this-month" selected>This month</option>
+                <option value="all-time">All time</option>
+                <option value="custom">Custom dates</option>
+              </select>
+            </div>
+            <div id="customer-custom-range" class="customer-custom-range custom-range hidden" aria-hidden="true">
+              <div class="form-field form-field-inline">
+                <label for="filter-from">From</label>
+                <input id="filter-from" type="date" />
+              </div>
+              <div class="form-field form-field-inline">
+                <label for="filter-to">To</label>
+                <input id="filter-to" type="date" />
+              </div>
+            </div>
+          </form>
+
+          <p id="customer-filter-summary" class="customer-filter-summary muted text-sm" aria-live="polite"></p>
+
+          <div class="stat-grid stat-grid-inline customer-toolbar-stats">
+            <div class="stat-card stat-card-compact">
+              <span class="stat-label">Credit in range</span>
+              <strong id="stat-period-credit" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card stat-card-compact">
+              <span class="stat-label">Settled in range</span>
+              <strong id="stat-period-settled" class="stat-value">—</strong>
+            </div>
+          </div>
+        </section>
+
+        <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
+          <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
+          <p class="muted text-sm customer-summary-lead">
+            Credit and settlements below match the activity period filter. Outstanding above is the customer&rsquo;s current balance; the printed summary shows net outstanding for the selected period only.
+          </p>
+
+          <div class="customer-lifetime-stats">
+            <article class="customer-lifetime-stat">
+              <span class="customer-lifetime-stat-label">Credit taken</span>
+              <strong id="stat-lifetime-credit" class="customer-lifetime-stat-value">—</strong>
+              <p id="customer-credit-when" class="customer-lifetime-stat-meta muted text-sm"></p>
+            </article>
+            <article class="customer-lifetime-stat">
+              <span class="customer-lifetime-stat-label">Settlement done</span>
+              <strong id="stat-lifetime-settled" class="customer-lifetime-stat-value">—</strong>
+              <p id="customer-settlement-when" class="customer-lifetime-stat-meta muted text-sm"></p>
+            </article>
+          </div>
+
+          <h3 class="settings-subheading">Credit taken in period</h3>
+          <p class="muted text-sm">Credit sales in the selected activity period.</p>
+          <div class="table-wrap">
+            <table class="overdue-detail-table">
+              <thead>
+                <tr><th>Date</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody id="lifetime-credit-body"></tbody>
+            </table>
+          </div>
+          <p id="lifetime-credit-empty" class="muted text-sm hidden">No credit entries.</p>
+
+          <h3 class="settings-subheading">Settlements in period</h3>
+          <p class="muted text-sm">Payments received in the selected activity period.</p>
+          <div class="table-wrap">
+            <table class="overdue-detail-table">
+              <thead>
+                <tr><th>Date</th><th>Amount (₹)</th></tr>
+              </thead>
+              <tbody id="lifetime-payment-body"></tbody>
+            </table>
+          </div>
+          <p id="lifetime-payment-empty" class="muted text-sm hidden">No settlements.</p>
+        </section>
+
+        <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
+          <h2>Record payment</h2>
+          <p class="muted">Payment is allocated to oldest credit first (FIFO).</p>
+          <div class="settle-inline settle-inline-page">
+            <label class="settle-date-label" for="settle-date">Payment date</label>
+            <input type="date" class="settle-date" id="settle-date" />
+            <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="Bank">Bank</option>
+            </select>
+            <input type="number" min="0" step="0.01" class="settle-amount" id="settle-amount" placeholder="Amount (₹)" />
+            <button type="button" class="settle-confirm" id="settle-btn">Record payment</button>
+          </div>
+          <p id="settle-msg" class="muted" aria-live="polite"></p>
+        </section>
+
+        <section class="settings-panel card" data-panel="credit" hidden>
+          <h2>Credit taken</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Fuel</th>
+                  <th>Qty (L)</th>
+                  <th>Amount</th>
+                  <th>Open</th>
+                </tr>
+              </thead>
+              <tbody id="credit-entries-body"></tbody>
+            </table>
+          </div>
+          <p id="credit-entries-empty" class="muted hidden">No credit in this period.</p>
+          <div id="credit-entries-pagination" class="pagination-controls hidden">
+            <span id="credit-entries-info" class="muted"></span>
+            <button type="button" id="credit-entries-back" class="button-secondary">Back</button>
+            <button type="button" id="credit-entries-more" class="button-secondary">Show more</button>
+          </div>
+        </section>
+
+        <section class="settings-panel card" data-panel="payments" hidden>
+          <h2>Settlements</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount</th>
+                  <th>Mode</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody id="payment-entries-body" data-breakdown-mode="payment-rich"></tbody>
+            </table>
+          </div>
+          <p id="payment-entries-empty" class="muted hidden">No settlements in this period.</p>
+          <div id="payment-entries-pagination" class="pagination-controls hidden">
+            <span id="payment-entries-info" class="muted"></span>
+            <button type="button" id="payment-entries-back" class="button-secondary">Back</button>
+            <button type="button" id="payment-entries-more" class="button-secondary">Show more</button>
+          </div>
+        </section>
+
+        <p id="detail-error" class="error hidden"></p>
+      </div>
     </main>
+
+    <div
+      id="customer-edit-overlay"
+      class="overdue-detail-overlay customer-edit-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="customer-edit-title"
+    >
+      <div class="overdue-detail-backdrop" id="customer-edit-backdrop"></div>
+      <div class="card overdue-detail-card customer-edit-card">
+        <div class="overdue-detail-head">
+          <h2 id="customer-edit-title">Customer details</h2>
+          <button type="button" class="overdue-detail-close" id="customer-edit-close" aria-label="Close">
+            ×
+          </button>
+        </div>
+        <form id="customer-info-form" class="form customer-edit-form">
+          <div class="form-field">
+            <label for="edit-customer-name">Customer name</label>
+            <input
+              id="edit-customer-name"
+              name="customer_name"
+              type="text"
+              maxlength="120"
+              required
+              autocomplete="name"
+            />
+          </div>
+          <div class="form-field">
+            <label for="edit-customer-mobile">Mobile</label>
+            <input
+              id="edit-customer-mobile"
+              name="mobile"
+              type="tel"
+              maxlength="20"
+              placeholder="9XXXXXXXXX"
+              autocomplete="tel"
+            />
+          </div>
+          <div class="form-field">
+            <label for="edit-customer-address">Address</label>
+            <textarea
+              id="edit-customer-address"
+              name="address"
+              rows="3"
+              maxlength="500"
+              placeholder="Customer address"
+            ></textarea>
+          </div>
+          <div class="form-actions customer-edit-actions">
+            <button type="submit">Save details</button>
+            <button type="button" id="customer-info-cancel-btn" class="button-secondary">Cancel</button>
+          </div>
+          <p id="customer-info-msg" class="muted hidden" aria-live="polite"></p>
+        </form>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>

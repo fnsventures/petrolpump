@@ -1,14 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState */
-
-// Simple HTML escape for XSS prevention
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint */
 
 /**
  * Generate cache key for dashboard data queries
@@ -31,28 +21,432 @@ function getCreditSummaryCacheKey(dateStr) {
   return `credit_summary_${dateStr}`;
 }
 
-const LOW_STOCK_KEYS = { petrol: "petrolpump_low_stock_threshold_petrol", diesel: "petrolpump_low_stock_threshold_diesel" };
-const DEFAULT_LOW_STOCK_THRESHOLD = 5000;
-
-const ALERT_KEYS = {
-  highCredit: "petrolpump_alert_high_credit",
-  highVariation: "petrolpump_alert_high_variation",
-  dayClosingReminder: "petrolpump_alert_day_closing_reminder",
-};
 let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
+let lastSnapshotPetrolRate = null;
+let lastSnapshotDieselRate = null;
+
+function formatRatePerLitre(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) {
+    return "—";
+  }
+  return Number(value).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function updateDsrQuickLinks(dateStr) {
+  const q = dateStr ? `?date=${encodeURIComponent(dateStr)}` : "";
+  ["hero-petrol-cta", "hero-diesel-cta"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.href = `dsr.html${q}`;
+  });
+}
+
+function parseTankCapacityLiters(capacityStr) {
+  if (!capacityStr) return null;
+  const s = String(capacityStr).trim().toUpperCase().replace(/\s/g, "");
+  const kl = s.match(/^([\d.]+)KL$/);
+  if (kl) return Number(kl[1]) * 1000;
+  const l = s.match(/^([\d.]+)L$/);
+  if (l) return Number(l[1]);
+  const num = Number(s.replace(/[^\d.]/g, ""));
+  return Number.isFinite(num) && num > 0 ? num : null;
+}
+
+/** Physical tank capacities for dip % on the dashboard (one MS tank, one HSD tank). */
+function getTankCapacities() {
+  const settings = PumpSettings.getCachedSync();
+  const pumps = settings.pumps || {};
+  let petrol = parseTankCapacityLiters(pumps.petrol?.tankCapacity);
+  let diesel = parseTankCapacityLiters(pumps.diesel?.tankCapacity);
+
+  // reports.tanks lists per-pump report sections (e.g. HSD 1 + HSD 2); do not sum those
+  // for dip — both pumps share one physical HSD tank (see Settings → Pump configuration).
+  if (!petrol || !diesel) {
+    const tanks = settings.reports?.tanks || [];
+    tanks.forEach((t) => {
+      const cap = parseTankCapacityLiters(t.capacity);
+      if (!cap) return;
+      if (!petrol && normalizeProduct(t.product) === "petrol") petrol = cap;
+      if (!diesel && normalizeProduct(t.product) === "diesel") diesel = cap;
+    });
+  }
+
+  if (!petrol) petrol = 15000;
+  if (!diesel) diesel = 20000;
+  return { petrol, diesel };
+}
+
+const tankLevelState = { petrol: 0, diesel: 0 };
+
+function setTankFillLevel(fillEl, level01) {
+  const clamped = Math.min(1, Math.max(0, Number(level01) || 0));
+  const shell = fillEl?.closest(".fuel-tank-shell");
+  const cylinder = fillEl?.closest(".fuel-tank-cylinder");
+  const tankArticle = fillEl?.closest(".fuel-tank");
+  const meter = tankArticle?.querySelector(".fuel-tank-visual[role='meter']");
+  const badge = tankArticle?.querySelector(".fuel-tank-level-badge");
+  if (!fillEl) return;
+
+  const pct = Math.round(clamped * 100);
+
+  const apply = () => {
+    fillEl.style.setProperty("--tank-level", String(clamped));
+    if (cylinder) cylinder.style.setProperty("--tank-level", String(clamped));
+    if (shell) {
+      shell.style.setProperty("--tank-level", String(clamped));
+      shell.setAttribute("data-level", String(pct));
+    }
+    if (badge) {
+      badge.textContent = clamped > 0 ? `${pct}%` : "—";
+      badge.classList.toggle("fuel-tank-level-badge--hidden", clamped <= 0);
+    }
+    if (meter) {
+      meter.setAttribute("aria-valuenow", String(pct));
+    }
+  };
+
+  if (!fillEl.dataset.tankReady) {
+    fillEl.dataset.tankReady = "1";
+    fillEl.style.setProperty("--tank-level", "0");
+    if (cylinder) cylinder.style.setProperty("--tank-level", "0");
+    if (shell) shell.style.setProperty("--tank-level", "0");
+    requestAnimationFrame(() => {
+      requestAnimationFrame(apply);
+    });
+    return;
+  }
+
+  apply();
+}
+
+const DSR_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
+
+/**
+ * Latest non-zero selling rate for a product (same logic as Meter Reading prefill).
+ */
+async function fetchLastDsrRate(product) {
+  const rateField = DSR_RATE_FIELD[product];
+  if (!rateField) return null;
+  const { data, error } = await supabaseClient
+    .from("dsr")
+    .select(`date, ${rateField}`)
+    .eq("product", product)
+    .not(rateField, "is", null)
+    .order("date", { ascending: false })
+    .limit(30);
+
+  if (error) {
+    AppError.report(error, { context: "fetchLastDsrRate", product });
+    return null;
+  }
+  for (const row of data ?? []) {
+    const num = Number(row[rateField]);
+    if (Number.isFinite(num) && num > 0) {
+      return { rate: num, date: row.date ?? null };
+    }
+  }
+  return null;
+}
+
+function rateFromDsrRows(rows, product) {
+  const field = DSR_RATE_FIELD[product];
+  const entry = (rows ?? []).find((row) => normalizeProduct(row.product) === product);
+  const num = Number(entry?.[field] ?? 0);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return { rate: num, date: entry.date ?? null };
+}
+
+function formatRateUnitLabel(isFallback, rateDate) {
+  if (!isFallback) return "per litre";
+  if (rateDate) return `per litre · last entered · ${formatDisplayDate(rateDate)}`;
+  return "per litre · last entered";
+}
+
+/**
+ * Resolve hero/snapshot rates: selected date first, then last entered rate in DSR.
+ */
+async function resolveRatesForDate(selectedDate, rows) {
+  const petrolOnDate = rateFromDsrRows(rows, "petrol");
+  const dieselOnDate = rateFromDsrRows(rows, "diesel");
+  let petrolRate = petrolOnDate?.rate ?? null;
+  let dieselRate = dieselOnDate?.rate ?? null;
+  let petrolRateDate = petrolOnDate?.date ?? null;
+  let dieselRateDate = dieselOnDate?.date ?? null;
+  let petrolFallback = false;
+  let dieselFallback = false;
+
+  const [lastPetrol, lastDiesel] = await Promise.all([
+    !petrolRate ? fetchLastDsrRate("petrol") : Promise.resolve(null),
+    !dieselRate ? fetchLastDsrRate("diesel") : Promise.resolve(null),
+  ]);
+  if (!petrolRate && lastPetrol) {
+    petrolRate = lastPetrol.rate;
+    petrolRateDate = lastPetrol.date;
+    petrolFallback = true;
+  }
+  if (!dieselRate && lastDiesel) {
+    dieselRate = lastDiesel.rate;
+    dieselRateDate = lastDiesel.date;
+    dieselFallback = true;
+  }
+
+  return {
+    petrolRate,
+    dieselRate,
+    petrolRateDate,
+    dieselRateDate,
+    petrolFallback,
+    dieselFallback,
+  };
+}
+
+function findLastDipStockEntry(stockData, dsrData, product, asOfDate) {
+  const prod = normalizeProduct(product);
+  const stockRows = (stockData ?? [])
+    .filter(
+      (row) =>
+        row.date <= asOfDate &&
+        normalizeProduct(row.product) === prod &&
+        row.dip_stock != null &&
+        Number.isFinite(Number(row.dip_stock))
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (stockRows.length) {
+    return { stock: Number(stockRows[0].dip_stock), date: stockRows[0].date, fromDip: true };
+  }
+
+  const dsrRows = (dsrData ?? [])
+    .filter(
+      (row) =>
+        row.date <= asOfDate &&
+        normalizeProduct(row.product) === prod &&
+        row.stock != null &&
+        Number.isFinite(Number(row.stock))
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (dsrRows.length) {
+    return { stock: Number(dsrRows[0].stock), date: dsrRows[0].date, fromDip: false };
+  }
+  return null;
+}
+
+function dipStockOnDate(stockData, dsrData, product, dateStr) {
+  const prod = normalizeProduct(product);
+  const stockRows = (stockData ?? []).filter(
+    (row) => row.date === dateStr && normalizeProduct(row.product) === prod
+  );
+  const hasDipRow = stockRows.some((row) => row.dip_stock != null && Number.isFinite(Number(row.dip_stock)));
+  if (hasDipRow) {
+    return {
+      stock: sumByProduct(stockRows, prod, (row) => Number(row.dip_stock ?? 0)),
+      date: dateStr,
+      fromDip: true,
+      isFallback: false,
+    };
+  }
+  return null;
+}
+
+/**
+ * Dip stock for selected date; if missing, use last entered on or before that date.
+ */
+function resolveDipStockWithFallback(stockData, dsrData, dateStr) {
+  const petrolOnDate = dipStockOnDate(stockData, dsrData, "petrol", dateStr);
+  const dieselOnDate = dipStockOnDate(stockData, dsrData, "diesel", dateStr);
+
+  const petrolLast = petrolOnDate ?? findLastDipStockEntry(stockData, dsrData, "petrol", dateStr);
+  const dieselLast = dieselOnDate ?? findLastDipStockEntry(stockData, dsrData, "diesel", dateStr);
+
+  return {
+    petrolStock: petrolLast?.stock ?? null,
+    dieselStock: dieselLast?.stock ?? null,
+    petrolMeta: petrolLast
+      ? { date: petrolLast.date, isFallback: petrolLast.isFallback ?? petrolOnDate == null }
+      : null,
+    dieselMeta: dieselLast
+      ? { date: dieselLast.date, isFallback: dieselLast.isFallback ?? dieselOnDate == null }
+      : null,
+  };
+}
+
+/** @deprecated Use resolveDipStockWithFallback — kept for DSR summary tiles on exact date only */
+function resolveStockForDate(stockData, dsrData, dateStr) {
+  const lastDayStockRows = (stockData ?? []).filter((row) => row.date === dateStr);
+  const lastDayDsrRows = (dsrData ?? []).filter((row) => row.date === dateStr);
+  const hasPetrolInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "petrol");
+  const hasDieselInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "diesel");
+  const petrolStockFromStock = sumByProduct(lastDayStockRows, "petrol", (row) => Number(row.dip_stock ?? 0));
+  const dieselStockFromStock = sumByProduct(lastDayStockRows, "diesel", (row) => Number(row.dip_stock ?? 0));
+  const petrolStockFromDsr = sumByProduct(lastDayDsrRows, "petrol", (row) => Number(row.stock ?? 0));
+  const dieselStockFromDsr = sumByProduct(lastDayDsrRows, "diesel", (row) => Number(row.stock ?? 0));
+  const petrolStock = hasPetrolInStock ? petrolStockFromStock : petrolStockFromDsr;
+  const dieselStock = hasDieselInStock ? dieselStockFromStock : dieselStockFromDsr;
+  const hasData = lastDayStockRows.length > 0 || lastDayDsrRows.length > 0;
+  return {
+    petrolStock: hasData && Number.isFinite(petrolStock) ? petrolStock : null,
+    dieselStock: hasData && Number.isFinite(dieselStock) ? dieselStock : null,
+  };
+}
+
+function formatLastEnteredHint(dateStr) {
+  if (!dateStr) return "last entered";
+  return `last entered · ${formatDisplayDate(dateStr)}`;
+}
+
+function updateHeroTanks(petrolStock, dieselStock, meta = {}) {
+  const caps = getTankCapacities();
+  const th = getLowStockThresholds();
+
+  const applyTank = (product, stock, capacity, thresholds, stockMeta) => {
+    const fillEl = document.getElementById(`hero-${product}-tank-fill`);
+    const stockEl = document.getElementById(`hero-${product}-stock`);
+    const pctEl = document.getElementById(`hero-${product}-stock-pct`);
+    const tankEl = document.getElementById(`hero-${product}-tank`);
+    if (!fillEl || !stockEl) return;
+
+    if (stock === null || stock === undefined || !Number.isFinite(stock)) {
+      tankLevelState[product] = 0;
+      setTankFillLevel(fillEl, 0);
+      stockEl.textContent = "—";
+      if (pctEl) pctEl.textContent = "No dip reading for this date";
+      if (tankEl) {
+        tankEl.classList.remove("fuel-tank--low", "fuel-tank--ok");
+        tankEl.classList.add("fuel-tank--empty");
+      }
+      return;
+    }
+
+    const level = capacity > 0 ? Math.min(1, Math.max(0, stock / capacity)) : 0;
+    const pctDisplay = level * 100;
+    tankLevelState[product] = level;
+    setTankFillLevel(fillEl, level);
+    stockEl.textContent = `${formatQuantity(stock)} L`;
+    if (pctEl) {
+      const capPart = `${pctDisplay.toFixed(0)}% · capacity ${formatQuantity(capacity)} L`;
+      pctEl.textContent = stockMeta?.isFallback
+        ? `${capPart} · ${formatLastEnteredHint(stockMeta.date)}`
+        : capPart;
+    }
+
+    if (tankEl) {
+      tankEl.classList.remove("fuel-tank--empty");
+      const low = stock < thresholds;
+      tankEl.classList.toggle("fuel-tank--low", low);
+      tankEl.classList.toggle("fuel-tank--ok", !low && stock > 0);
+    }
+  };
+
+  applyTank("petrol", petrolStock, caps.petrol, th.petrol, meta.petrolMeta);
+  applyTank("diesel", dieselStock, caps.diesel, th.diesel, meta.dieselMeta);
+}
+
+async function loadHeroStock(dateStr) {
+  const selectedDate = dateStr || getLocalDateString();
+  const historyStart = PumpSettings.getReceiptHistoryStart();
+  try {
+    const [stockResult, dsrResult] = await Promise.all([
+      supabaseClient.rpc("get_dsr_stock_range", {
+        p_start: historyStart,
+        p_end: selectedDate,
+      }),
+      supabaseClient
+        .from("dsr")
+        .select("date, product, stock, dip_reading")
+        .lte("date", selectedDate)
+        .order("date", { ascending: false }),
+    ]);
+
+    if (stockResult.error) {
+      AppError.report(stockResult.error, { context: "loadHeroStock", type: "stock" });
+    }
+    if (dsrResult.error) {
+      AppError.report(dsrResult.error, { context: "loadHeroStock", type: "dsr" });
+    }
+
+    const resolved = resolveDipStockWithFallback(
+      stockResult.data,
+      dsrResult.data,
+      selectedDate
+    );
+    updateHeroTanks(resolved.petrolStock, resolved.dieselStock, {
+      petrolMeta: resolved.petrolMeta,
+      dieselMeta: resolved.dieselMeta,
+    });
+
+    const todayStr = getLocalDateString();
+    if (selectedDate === todayStr) {
+      updateLowStockAlert(resolved.petrolStock, resolved.dieselStock);
+    }
+  } catch (error) {
+    AppError.report(error, { context: "loadHeroStock" });
+    updateHeroTanks(null, null);
+  }
+}
+
+function updateHeroDate(dateStr) {
+  const dateEl = document.getElementById("dashboard-hero-date");
+  const badgeEl = document.getElementById("dashboard-hero-badge");
+  if (!dateEl || !dateStr) return;
+  updateDsrQuickLinks(dateStr);
+  const labelDate = new Date(`${dateStr}T00:00:00`);
+  dateEl.textContent = labelDate.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const isToday = dateStr === getLocalDateString();
+  if (badgeEl) badgeEl.classList.toggle("hidden", !isToday);
+}
+
+function updateFuelRateDisplay(petrolRate, dieselRate, options = {}) {
+  const petrolEl = document.getElementById("hero-petrol-rate");
+  const dieselEl = document.getElementById("hero-diesel-rate");
+  const petrolCta = document.getElementById("hero-petrol-cta");
+  const dieselCta = document.getElementById("hero-diesel-cta");
+  const petrolCard = document.querySelector(".fuel-rate-card--petrol");
+  const dieselCard = document.querySelector(".fuel-rate-card--diesel");
+  const petrolUnit = petrolCard?.querySelector(".fuel-rate-unit");
+  const dieselUnit = dieselCard?.querySelector(".fuel-rate-unit");
+
+  const petrolValid = Number.isFinite(petrolRate) && petrolRate > 0;
+  const dieselValid = Number.isFinite(dieselRate) && dieselRate > 0;
+
+  lastSnapshotPetrolRate = petrolValid ? petrolRate : null;
+  lastSnapshotDieselRate = dieselValid ? dieselRate : null;
+
+  if (petrolEl) petrolEl.textContent = formatRatePerLitre(petrolRate);
+  if (dieselEl) dieselEl.textContent = formatRatePerLitre(dieselRate);
+  if (petrolCta) petrolCta.classList.toggle("hidden", petrolValid);
+  if (dieselCta) dieselCta.classList.toggle("hidden", dieselValid);
+  if (petrolCard) petrolCard.classList.toggle("fuel-rate-card--empty", !petrolValid);
+  if (dieselCard) dieselCard.classList.toggle("fuel-rate-card--empty", !dieselValid);
+  if (petrolUnit) {
+    petrolUnit.textContent = formatRateUnitLabel(options.petrolFallback, options.petrolRateDate);
+  }
+  if (dieselUnit) {
+    dieselUnit.textContent = formatRateUnitLabel(options.dieselFallback, options.dieselRateDate);
+  }
+}
+
+function updateFuelVolumeSplit(petrolLiters, dieselLiters) {
+  const petrolChip = document.getElementById("today-petrol-liters");
+  const dieselChip = document.getElementById("today-diesel-liters");
+  if (petrolChip) {
+    petrolChip.textContent = Number.isFinite(petrolLiters) ? `${formatQuantity(petrolLiters)} L` : "—";
+  }
+  if (dieselChip) {
+    dieselChip.textContent = Number.isFinite(dieselLiters) ? `${formatQuantity(dieselLiters)} L` : "—";
+  }
+}
 
 function getLowStockThresholds() {
-  let petrol, diesel;
-  try {
-    petrol = Number(localStorage.getItem(LOW_STOCK_KEYS.petrol));
-    diesel = Number(localStorage.getItem(LOW_STOCK_KEYS.diesel));
-  } catch (_) {}
-  return {
-    petrol: Number.isFinite(petrol) && petrol >= 0 ? petrol : DEFAULT_LOW_STOCK_THRESHOLD,
-    diesel: Number.isFinite(diesel) && diesel >= 0 ? diesel : DEFAULT_LOW_STOCK_THRESHOLD,
-  };
+  const t = PumpSettings.getAlertThresholds();
+  return { petrol: t.petrol, diesel: t.diesel };
 }
 
 function updateLowStockAlert(petrolStock, dieselStock) {
@@ -154,12 +548,26 @@ function scheduleAutoFitStats() {
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
-    onDenied: "credit.html",
+    onDenied: "dashboard.html",
+    pageName: "dashboard",
   });
   if (!auth) return;
 
+  await loadPumpSettings();
+
   const { session, role } = auth;
   applyRoleVisibility(role);
+
+  if (typeof initPageSections === "function") {
+    const dashboardSections =
+      role === "admin"
+        ? ["snapshot", "dsr", "pl", "notifications"]
+        : ["snapshot", "dsr", "notifications"];
+    initPageSections({
+      defaultSection: "snapshot",
+      validSections: dashboardSections,
+    });
+  }
 
   const operatorNameEl = document.getElementById("operator-name");
   const operatorRoleEl = document.getElementById("operator-role");
@@ -175,29 +583,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     operatorRoleEl.textContent = `(${roleLabel})`;
   }
 
-  // Ensure open credit is never served from cache on dashboard load
-  if (typeof AppCache !== "undefined" && AppCache) {
-    AppCache.invalidateByType("credit_summary");
-  }
-
   const snapshotDateInput = document.getElementById("snapshot-date");
-  const petrolRateInput = document.getElementById("snapshot-petrol-rate");
-  const dieselRateInput = document.getElementById("snapshot-diesel-rate");
-  const todayStr = new Date().toISOString().slice(0, 10);
-  
-  const enforceRateFieldsReadOnly = () => {
-    if (petrolRateInput) petrolRateInput.readOnly = true;
-    if (dieselRateInput) dieselRateInput.readOnly = true;
-  };
+  const todayStr = getLocalDateString();
 
   const SNAPSHOT_RANGE = new Set(["date"]);
   const storedSnapshot = typeof window.getValidFilterState === "function"
     ? window.getValidFilterState("dashboard_snapshot", SNAPSHOT_RANGE)
     : null;
   const snapshotDateStr = storedSnapshot?.start || todayStr;
+  updateHeroDate(snapshotDateStr);
+
   if (snapshotDateInput) {
     snapshotDateInput.value = snapshotDateStr;
-    enforceRateFieldsReadOnly();
     window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: snapshotDateStr });
     const updateSalesDailyLink = () => {
       const link = document.getElementById("sales-daily-link");
@@ -214,13 +611,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     snapshotDateInput.addEventListener("change", async () => {
       const dateValue = snapshotDateInput.value || todayStr;
-      enforceRateFieldsReadOnly();
+      updateHeroDate(dateValue);
       window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: dateValue });
       updateSalesDailyLink();
-      await Promise.all([loadTodaySales(dateValue), loadCreditSummary(dateValue)]);
+      await Promise.all([
+        loadTodaySales(dateValue),
+        loadCreditSummary(dateValue),
+        loadHeroStock(dateValue),
+      ]);
     });
   }
-  enforceRateFieldsReadOnly();
 
   const snapshotCard = document.getElementById("snapshot-card");
   const dsrCard = document.getElementById("dsr-dashboard-card");
@@ -230,11 +630,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     await Promise.all([
       loadTodaySales(snapshotDateStr),
       loadCreditSummary(snapshotDateStr),
+      loadHeroStock(snapshotDateStr),
       initializeDsrDashboard(),
       initializeProfitLossFilter(),
     ]);
     if (snapshotCard) snapshotCard.classList.remove("loading");
-    updateAtAGlance(snapshotDateStr);
     if (dsrCard) dsrCard.classList.remove("loading");
     await updateSmartAlerts();
     await loadDayClosingBanners();
@@ -258,49 +658,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-function updateAtAGlance(dateStr) {
-  const glance = document.getElementById("at-a-glance");
-  const glanceSale = document.getElementById("glance-sale");
-  const glanceCredit = document.getElementById("glance-credit");
-  const glanceCash = document.getElementById("glance-cash");
-  if (!glance) return;
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const isToday = dateStr === todayStr;
-  if (glanceSale) {
-    const todayTotal = document.getElementById("today-total-rupees");
-    glanceSale.textContent = todayTotal ? todayTotal.textContent : "—";
-  }
-  if (glanceCredit) {
-    const creditEl = document.getElementById("credit-total");
-    glanceCredit.textContent = creditEl ? creditEl.textContent : "—";
-  }
-  if (glanceCash && isToday) {
-    const inHandEl = document.getElementById("dsr-in-hand");
-    glanceCash.textContent = inHandEl ? inHandEl.textContent : "—";
-  } else if (glanceCash) {
-    glanceCash.textContent = "—";
-  }
-  glance.classList.remove("hidden");
-  const statusBar = document.getElementById("dashboard-status-bar");
-  if (statusBar) statusBar.classList.remove("hidden");
-}
-
 function getAlertThresholds() {
-  let highCredit = 0;
-  let highVariation = 0;
-  let dayClosingReminder = true;
-  try {
-    const hc = localStorage.getItem(ALERT_KEYS.highCredit);
-    const hv = localStorage.getItem(ALERT_KEYS.highVariation);
-    const dc = localStorage.getItem(ALERT_KEYS.dayClosingReminder);
-    if (hc != null && hc !== "") highCredit = Number(hc);
-    if (hv != null && hv !== "") highVariation = Number(hv);
-    if (dc === "false") dayClosingReminder = false;
-  } catch (_) {}
+  const t = PumpSettings.getAlertThresholds();
   return {
-    highCredit: Number.isFinite(highCredit) && highCredit > 0 ? highCredit : 0,
-    highVariation: Number.isFinite(highVariation) && highVariation > 0 ? highVariation : 0,
-    dayClosingReminder,
+    highCredit: t.highCredit > 0 ? t.highCredit : 0,
+    highVariation: t.highVariation > 0 ? t.highVariation : 0,
+    dayClosingReminder: t.dayClosingReminder,
   };
 }
 
@@ -427,128 +790,27 @@ async function loadDayClosingBanners() {
 }
 
 async function initializeDsrDashboard() {
-  const rangeSelect = document.getElementById("dsr-range");
-  const startInput = document.getElementById("dsr-start");
-  const endInput = document.getElementById("dsr-end");
-  const form = document.getElementById("dsr-filter-form");
-  const customRange = document.getElementById("dsr-custom-range");
-  const label = document.getElementById("dsr-date-label");
-
-  if (!rangeSelect || !startInput || !endInput || !form || !customRange) {
-    return;
-  }
-
-  const DASHBOARD_RANGES = new Set(["today", "this-week", "this-month", "custom"]);
-  const stored = typeof window.getValidFilterState === "function"
-    ? window.getValidFilterState("dashboard_dsr", DASHBOARD_RANGES)
-    : null;
-  if (stored) {
-    rangeSelect.value = stored.range;
-    if (stored.range === "custom" && stored.start && stored.end) {
-      startInput.value = stored.start;
-      endInput.value = stored.end;
-    }
-  } else {
-    rangeSelect.value = "today";
-  }
-
-  const isCustomInitial = rangeSelect.value === "custom";
-  setCustomRangeVisibility(customRange, startInput, endInput, isCustomInitial);
-  
-  if (isCustomInitial && !startInput.value && !endInput.value) {
-    const today = new Date();
-    startInput.value = formatDateInput(today);
-    endInput.value = formatDateInput(today);
-  }
-  
-  const initialRange = getRangeForSelection(
-    rangeSelect.value,
-    startInput,
-    endInput
-  );
-  if (initialRange) {
-    updateDsrLabel(initialRange, initialRange.modeInfo);
-    await loadDsrSummary(initialRange);
-  }
-
-  const saveDsrFilter = () => {
-    window.setFilterState && window.setFilterState("dashboard_dsr", {
-      range: rangeSelect.value,
-      start: startInput.value || undefined,
-      end: endInput.value || undefined,
-    });
-  };
-
-  rangeSelect.addEventListener("change", async () => {
-    const isCustom = rangeSelect.value === "custom";
-    setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-    if (isCustom && !startInput.value && !endInput.value) {
-      const today = new Date();
-      startInput.value = formatDateInput(today);
-      endInput.value = formatDateInput(today);
-    }
-    saveDsrFilter();
-    const range = getRangeForSelection(rangeSelect.value, startInput, endInput);
-    if (!range) return;
-    updateDsrLabel(range, range.modeInfo);
-    await loadDsrSummary(range);
-    if (isCustom) saveDsrFilter();
+  if (!document.getElementById("dsr-range")) return;
+  createDateRangeFilter({
+    storageKey: "dashboard_dsr",
+    ranges: ["today", "this-week", "this-month", "custom"],
+    defaultRange: "today",
+    rangeSelect: "dsr-range",
+    startInput: "dsr-start",
+    endInput: "dsr-end",
+    customRange: "dsr-custom-range",
+    form: "dsr-filter-form",
+    labelEl: "dsr-date-label",
+    onApply: (range) => loadDsrSummary(range),
   });
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    
-    // Validate custom date range
-    if (rangeSelect.value === "custom") {
-      if (startInput.value && endInput.value && startInput.value > endInput.value) {
-        alert("Start date cannot be after end date. Please select valid dates.");
-        return;
-      }
-    }
-    
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startInput,
-      endInput
-    );
-    if (!range) return;
-    updateDsrLabel(range, range.modeInfo);
-    await loadDsrSummary(range);
-    saveDsrFilter();
-  });
-
-  const handleCustomChange = async () => {
-    if (rangeSelect.value !== "custom") return;
-    
-    // Validate custom date range
-    if (startInput.value && endInput.value && startInput.value > endInput.value) {
-      console.warn("Start date is after end date, skipping load");
-      return;
-    }
-    
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startInput,
-      endInput
-    );
-    if (!range) return;
-    updateDsrLabel(range, range.modeInfo);
-    await loadDsrSummary(range);
-    saveDsrFilter();
-  };
-
-  startInput.addEventListener("change", handleCustomChange);
-  endInput.addEventListener("change", handleCustomChange);
 }
 
 async function loadTodaySales(dateStr) {
   const todayStat = document.getElementById("today-total");
   const todayRupees = document.getElementById("today-total-rupees");
   const todayDate = document.getElementById("today-date");
-  const petrolRateInput = document.getElementById("snapshot-petrol-rate");
-  const dieselRateInput = document.getElementById("snapshot-diesel-rate");
 
-  const selectedDate = dateStr || new Date().toISOString().slice(0, 10);
+  const selectedDate = dateStr || getLocalDateString();
   const cacheKey = getTodaySalesCacheKey(selectedDate);
 
   // Use stale-while-revalidate pattern for cached data
@@ -565,40 +827,45 @@ async function loadTodaySales(dateStr) {
     return data ?? [];
   };
 
-  // Callback to update UI when fresh data arrives
-  const onUpdate = (freshData) => {
-    renderTodaySales(freshData, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput);
+  const renderSalesBlock = async (rows) => {
+    const rates = await resolveRatesForDate(selectedDate, rows ?? []);
+    renderTodaySales(rows, selectedDate, todayStat, todayRupees, todayDate, rates);
   };
 
-  // Try to get cached data with SWR pattern
+  const onUpdate = (freshData) => {
+    void renderSalesBlock(freshData);
+  };
+
   let data;
   if (AppCache) {
     data = await AppCache.getWithSWR(cacheKey, fetchFn, "today_sales", onUpdate);
+    if (data !== undefined) {
+      await renderSalesBlock(data);
+    }
   } else {
     data = await fetchFn();
+    await renderSalesBlock(data);
   }
-
-  renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput);
 }
 
 /**
  * Render today's sales data to UI
  */
-function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, petrolRateInput, dieselRateInput) {
+function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, rates = {}) {
+  updateHeroDate(selectedDate);
+
   if (!data) {
     snapshotDsrRows = [];
     if (todayStat) todayStat.textContent = "—";
-    if (todayDate) {
-      const labelDate = new Date(`${selectedDate}T00:00:00`);
-      todayDate.textContent = `for ${labelDate.toLocaleDateString("en-IN", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })}`;
-    }
+    if (todayDate) todayDate.textContent = formatSnapshotDatePill(selectedDate);
     if (todayRupees) todayRupees.textContent = "—";
-    if (petrolRateInput) petrolRateInput.value = "";
-    if (dieselRateInput) dieselRateInput.value = "";
+    updateFuelRateDisplay(rates.petrolRate ?? null, rates.dieselRate ?? null, {
+      petrolFallback: rates.petrolFallback,
+      dieselFallback: rates.dieselFallback,
+      petrolRateDate: rates.petrolRateDate,
+      dieselRateDate: rates.dieselRateDate,
+    });
+    updateFuelVolumeSplit(null, null);
     scheduleAutoFitStats();
     return;
   }
@@ -618,70 +885,50 @@ function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate,
   );
   const totalLiters = petrolTotalQty + dieselTotalQty;
 
-  // Fetch and set rates from DSR data (if columns exist)
-  const petrolEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "petrol"
-  );
-  const dieselEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "diesel"
-  );
-
-  if (petrolEntry?.petrol_rate !== undefined && petrolRateInput) {
-    petrolRateInput.value = petrolEntry.petrol_rate;
-  } else if (petrolRateInput) {
-    petrolRateInput.value = "";
-  }
-
-  if (dieselEntry?.diesel_rate !== undefined && dieselRateInput) {
-    dieselRateInput.value = dieselEntry.diesel_rate;
-  } else if (dieselRateInput) {
-    dieselRateInput.value = "";
-  }
+  updateFuelRateDisplay(rates.petrolRate ?? null, rates.dieselRate ?? null, {
+    petrolFallback: rates.petrolFallback,
+    dieselFallback: rates.dieselFallback,
+    petrolRateDate: rates.petrolRateDate,
+    dieselRateDate: rates.dieselRateDate,
+  });
+  updateFuelVolumeSplit(petrolTotalQty, dieselTotalQty);
 
   if (todayStat) {
     todayStat.textContent = formatQuantity(totalLiters);
   }
   updateTotalSaleRupees();
+  if (todayDate) todayDate.textContent = formatSnapshotDatePill(selectedDate);
   scheduleAutoFitStats();
-  if (todayDate) {
-    const labelDate = new Date(`${selectedDate}T00:00:00`);
-    todayDate.textContent = `for ${labelDate.toLocaleDateString("en-IN", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-    })}`;
-  }
+}
+
+function formatSnapshotDatePill(dateStr) {
+  const labelDate = new Date(`${dateStr}T00:00:00`);
+  const short = labelDate.toLocaleDateString("en-IN", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return dateStr === getLocalDateString() ? `Today · ${short}` : short;
 }
 
 function updateTotalSaleRupees() {
   const todayRupees = document.getElementById("today-total-rupees");
   if (!todayRupees) return;
 
-  // Get rates from snapshotDsrRows directly, not from input fields
-  const petrolEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "petrol"
-  );
-  const dieselEntry = snapshotDsrRows.find(
-    (row) => normalizeProduct(row.product) === "diesel"
-  );
-  
-  // Use rates from DSR if available, otherwise use input fields
-  let petrolRate = Number(petrolEntry?.petrol_rate || 0);
-  let dieselRate = Number(dieselEntry?.diesel_rate || 0);
+  const petrolRateRaw =
+    rateFromDsrRows(snapshotDsrRows, "petrol")?.rate ?? lastSnapshotPetrolRate;
+  const dieselRateRaw =
+    rateFromDsrRows(snapshotDsrRows, "diesel")?.rate ?? lastSnapshotDieselRate;
+  const petrolValid = Number.isFinite(petrolRateRaw) && petrolRateRaw > 0;
+  const dieselValid = Number.isFinite(dieselRateRaw) && dieselRateRaw > 0;
 
-  // If rates are 0 (null/undefined), try to get from input fields
-  if (petrolRate === 0) {
-    petrolRate = Number(document.getElementById("snapshot-petrol-rate")?.value || 0);
-  }
-  if (dieselRate === 0) {
-    dieselRate = Number(document.getElementById("snapshot-diesel-rate")?.value || 0);
-  }
-
-  // Only show currency if at least one rate is available and valid
-  if (!Number.isFinite(petrolRate) && !Number.isFinite(dieselRate)) {
+  if (!petrolValid && !dieselValid) {
     todayRupees.textContent = "—";
     return;
   }
+
+  const petrolRate = petrolValid ? petrolRateRaw : 0;
+  const dieselRate = dieselValid ? dieselRateRaw : 0;
 
   // Total quantity (including testing) × rate for Price (₹)
   const petrolLiters = sumByProduct(
@@ -707,11 +954,10 @@ function updateTotalSaleRupees() {
 
 async function loadCreditSummary(dateStr) {
   const creditTotal = document.getElementById("credit-total");
-  const selectedDate = dateStr || new Date().toISOString().slice(0, 10);
+  const selectedDate = dateStr || getLocalDateString();
   const cacheKey = getCreditSummaryCacheKey(selectedDate);
 
   const fetchFn = async () => {
-    // Outstanding as of date = sum(entries with transaction_date <= D) - sum(payments with date <= D)
     const { data, error } = await supabaseClient.rpc("get_open_credit_as_of", {
       p_date: selectedDate,
     });
@@ -723,9 +969,13 @@ async function loadCreditSummary(dateStr) {
     return data;
   };
 
-  const total = await fetchFn();
-  if (AppCache && total !== null && total !== undefined) {
-    AppCache.set(cacheKey, total, "credit_summary");
+  let total;
+  if (typeof AppCache !== "undefined" && AppCache) {
+    total = await AppCache.getWithSWR(cacheKey, fetchFn, "credit_summary", (fresh) => {
+      renderCreditSummary(fresh, creditTotal);
+    });
+  } else {
+    total = await fetchFn();
   }
   renderCreditSummary(total, creditTotal);
 }
@@ -772,8 +1022,8 @@ function calculateIncome(rows) {
 
 /**
  * Cost of goods: for each sale day, effective buying price = the buying price from the most recent
- * receipt day (same product) on or before that date. So profit is calculated from each receipt day
- * until the next receipt day using that day's buying price. Sum net_sale * effective_buying.
+ * receipt day (same product) on or before that date. buying_price_per_litre in DB is gross (incl. VAT).
+ * Sum net_sale * effective_buying.
  */
 function calculateCostOfGoods(dsrRows, receiptRows, endDate) {
   const byProduct = new Map();
@@ -798,8 +1048,9 @@ function calculateCostOfGoods(dsrRows, receiptRows, endDate) {
   (dsrRows ?? []).forEach((row) => {
     const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
     if (!Number.isFinite(netSale) || netSale <= 0) return;
-    const buying = getEffectiveBuying(row.product, row.date);
-    if (buying != null) cost += netSale * buying;
+    const buyingRate = getEffectiveBuying(row.product, row.date);
+    if (buyingRate == null) return;
+    cost += netSale * buyingRate;
   });
   return cost;
 }
@@ -831,37 +1082,42 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
         dsrData: data.dsrData,
         stockData: data.stockData,
         expenseData: data.expenseData,
+        creditData: data.creditData ?? [],
         dsrError: data.errors?.dsr ? new Error(data.errors.dsr) : null,
         stockError: data.errors?.stock ? new Error(data.errors.stock) : null,
         expenseError: data.errors?.expense ? new Error(data.errors.expense) : null,
+        creditError: data.errors?.credit ? new Error(data.errors.credit) : null,
       };
     } catch {
       // Fallback: use parallel client-side queries
-      const [dsrResult, stockResult, expenseResult] = await Promise.all([
+      const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
         supabaseClient
           .from("dsr")
           .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
           .gte("date", startDate)
           .lte("date", endDate),
-        supabaseClient
-          .from("dsr_stock")
-          .select("date, product, variation, dip_stock")
-          .gte("date", startDate)
-          .lte("date", endDate),
+        supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
         supabaseClient
           .from("expenses")
-          .select("*")
+          .select("date, amount, category, description")
           .gte("date", startDate)
           .lte("date", endDate),
+        supabaseClient
+          .from("credit_entries")
+          .select("amount, amount_settled")
+          .gte("transaction_date", startDate)
+          .lte("transaction_date", endDate),
       ]);
 
       return {
         dsrData: dsrResult.data,
         stockData: stockResult.data,
         expenseData: expenseResult.data,
+        creditData: creditResult.data ?? [],
         dsrError: dsrResult.error,
         stockError: stockResult.error,
         expenseError: expenseResult.error,
+        creditError: creditResult.error,
       };
     }
   };
@@ -903,20 +1159,27 @@ async function loadDsrSummary(range) {
   // Use Edge Function for single round-trip (with fallback and caching)
   const dashboardData = await fetchDashboardData(range.start, range.end, onUpdate);
 
-  // Credit in range: outstanding on sales booked in period (amount − FIFO settlements)
-  const { data: creditRows } = await supabaseClient
-    .from("credit_entries")
-    .select("amount, amount_settled")
-    .gte("transaction_date", range.start)
-    .lte("transaction_date", range.end);
-  dashboardData.creditData = creditRows ?? [];
+  if (dashboardData.creditError) {
+    const { data: creditRows, error: creditErr } = await supabaseClient
+      .from("credit_entries")
+      .select("amount, amount_settled")
+      .gte("transaction_date", range.start)
+      .lte("transaction_date", range.end);
+    if (!creditErr) {
+      dashboardData.creditData = creditRows ?? [];
+      dashboardData.creditError = null;
+    } else {
+      dashboardData.creditError = creditErr;
+    }
+  }
 
   renderDsrSummary(dashboardData, elements, range);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   if (range.start === todayStr && range.end === todayStr) {
-    const inHandEl = document.getElementById("dsr-in-hand");
-    const glanceCash = document.getElementById("glance-cash");
-    if (glanceCash && inHandEl) glanceCash.textContent = inHandEl.textContent;
+    const snapshotDate = document.getElementById("snapshot-date")?.value || todayStr;
+    if (range.end === snapshotDate) {
+      loadHeroStock(snapshotDate);
+    }
     const lastDayStockForAlert = (dashboardData.stockData || []).filter((row) => row.date === range.end);
     const lastDayDsrForAlert = (dashboardData.dsrData || []).filter((row) => row.date === range.end);
     const hasPetrolStock = lastDayStockForAlert.some((row) => normalizeProduct(row.product) === "petrol");
@@ -1081,166 +1344,24 @@ function renderDsrSummary(data, elements, range) {
 }
 
 async function initializeProfitLossFilter() {
-  const rangeSelect = document.getElementById("pl-range");
-  const startInput = document.getElementById("pl-start");
-  const endInput = document.getElementById("pl-end");
-  const form = document.getElementById("pl-filter-form");
-  const customRange = document.getElementById("pl-custom-range");
-  const label = document.getElementById("pl-date-label");
-
-  if (!rangeSelect || !startInput || !endInput || !form || !customRange || !label) {
-    return;
-  }
-
-  const DASHBOARD_RANGES = new Set(["today", "this-week", "this-month", "custom"]);
-  const storedPl = typeof window.getValidFilterState === "function"
-    ? window.getValidFilterState("dashboard_pl", DASHBOARD_RANGES)
-    : null;
-  if (storedPl) {
-    rangeSelect.value = storedPl.range;
-    if (storedPl.range === "custom" && storedPl.start && storedPl.end) {
-      startInput.value = storedPl.start;
-      endInput.value = storedPl.end;
-    }
-  } else {
-    rangeSelect.value = "today";
-  }
-
-  const isCustom = rangeSelect.value === "custom";
-  setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-  
-  if (isCustom && !startInput.value && !endInput.value) {
-    const today = new Date();
-    startInput.value = formatDateInput(today);
-    endInput.value = formatDateInput(today);
-  }
-  
-  const initialRange = getRangeForSelection(
-    rangeSelect.value,
-    startInput,
-    endInput
-  );
-  if (initialRange) {
-    updatePlLabel(initialRange, initialRange.modeInfo, label);
-    await loadProfitLossSummary(initialRange);
-  }
-
-  const savePlFilter = () => {
-    window.setFilterState && window.setFilterState("dashboard_pl", {
-      range: rangeSelect.value,
-      start: startInput.value || undefined,
-      end: endInput.value || undefined,
-    });
-  };
-
-  rangeSelect.addEventListener("change", async () => {
-    const isCustom = rangeSelect.value === "custom";
-    const customRangeEl = document.getElementById("pl-custom-range");
-    const startEl = document.getElementById("pl-start");
-    const endEl = document.getElementById("pl-end");
-    const labelEl = document.getElementById("pl-date-label");
-
-    if (customRangeEl && startEl && endEl) {
-      setCustomRangeVisibility(customRangeEl, startEl, endEl, isCustom);
-    }
-    if (isCustom && startEl && endEl && !startEl.value && !endEl.value) {
-      const today = new Date();
-      startEl.value = formatDateInput(today);
-      endEl.value = formatDateInput(today);
-    }
-    savePlFilter();
-    const range = getRangeForSelection(rangeSelect.value, startEl, endEl);
-    if (!range) return;
-    if (labelEl) updatePlLabel(range, range.modeInfo, labelEl);
-    await loadProfitLossSummary(range);
-    if (isCustom) savePlFilter();
+  if (!document.getElementById("pl-range")) return;
+  createDateRangeFilter({
+    storageKey: "dashboard_pl",
+    ranges: ["today", "this-week", "this-month", "custom"],
+    defaultRange: "today",
+    rangeSelect: "pl-range",
+    startInput: "pl-start",
+    endInput: "pl-end",
+    customRange: "pl-custom-range",
+    form: "pl-filter-form",
+    labelEl: "pl-date-label",
+    onApply: (range) => loadProfitLossSummary(range),
   });
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    
-    const startEl = document.getElementById("pl-start");
-    const endEl = document.getElementById("pl-end");
-    const labelEl = document.getElementById("pl-date-label");
-
-    if (rangeSelect.value === "custom") {
-      if (startEl?.value && endEl?.value && startEl.value > endEl.value) {
-        alert("Start date cannot be after end date. Please select valid dates.");
-        return;
-      }
-    }
-
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startEl,
-      endEl
-    );
-    if (!range) return;
-    if (labelEl) {
-      updatePlLabel(range, range.modeInfo, labelEl);
-    }
-    await loadProfitLossSummary(range);
-    savePlFilter();
-  });
-
-  const handleCustomChange = async () => {
-    if (rangeSelect.value !== "custom") return;
-    
-    const startEl = document.getElementById("pl-start");
-    const endEl = document.getElementById("pl-end");
-    const labelEl = document.getElementById("pl-date-label");
-
-    if (startEl?.value && endEl?.value && startEl.value > endEl.value) {
-      return;
-    }
-
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startEl,
-      endEl
-    );
-    if (!range) return;
-    if (labelEl) {
-      updatePlLabel(range, range.modeInfo, labelEl);
-    }
-    await loadProfitLossSummary(range);
-    savePlFilter();
-  };
-
-  startInput.addEventListener("change", handleCustomChange);
-  endInput.addEventListener("change", handleCustomChange);
 }
 
-/**
- * Sync receipts from dsr_stock into dsr for matching (date, product) where dsr.receipts is 0.
- * Uses RPC when available (one round-trip); otherwise client-side updates. Optional pre-fetched
- * { dsrRows, stockRows } avoid duplicate fetches when called from loadProfitLossSummary.
- */
-async function syncReceiptsFromDsrStock(startStr, endStr, { dsrRows: preDsr, stockRows: preStock } = {}) {
-  const rpc = await supabaseClient.rpc("sync_dsr_receipts_from_stock", {
-    p_start: startStr,
-    p_end: endStr,
-  });
-  if (!rpc.error) return;
-
-  const stockRows = preStock ?? (await supabaseClient.from("dsr_stock").select("date, product, receipts").gte("date", startStr).lte("date", endStr).gt("receipts", 0)).data;
-  if (!stockRows?.length) return;
-
-  const dsrRows = preDsr ?? (await supabaseClient.from("dsr").select("id, date, product, receipts").gte("date", startStr).lte("date", endStr)).data;
-  const dsrByKey = new Map((dsrRows ?? []).map((r) => [`${r.date}:${r.product}`, r]));
-
-  const updates = [];
-  for (const row of stockRows) {
-    const dsr = dsrByKey.get(`${row.date}:${row.product}`);
-    const val = Number(row.receipts ?? 0);
-    if (dsr && val > 0 && Number(dsr.receipts ?? 0) === 0) updates.push(supabaseClient.from("dsr").update({ receipts: val }).eq("id", dsr.id));
-  }
-  if (updates.length) await Promise.all(updates);
-}
 
 /**
  * Fetch count of DSR rows with receipts > 0 and no buying price (all history / old data included).
- * Syncs receipts from dsr_stock into dsr first (RPC when available).
  */
 async function loadPlTodoBanner() {
   const bannerEl = document.getElementById("pl-todo-banner");
@@ -1252,8 +1373,6 @@ async function loadPlTodoBanner() {
   const start = new Date(end);
   start.setFullYear(start.getFullYear() - 10);
   const startStr = formatDateInput(start);
-
-  await syncReceiptsFromDsrStock(startStr, endStr);
 
   const { count, error } = await supabaseClient
     .from("dsr")
@@ -1294,13 +1413,25 @@ function getCurrentPlRange() {
  */
 async function handleSaveBuyingPrice(dsrId) {
   const input = document.getElementById(`pl-buying-${dsrId}`);
-  const value = Number.parseFloat((input?.value ?? "").trim(), 10);
-  if (!Number.isFinite(value) || value < 0) {
-    showPlBuyingPriceError("Enter a valid buying price (₹/L).");
+  const saveBtn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+  const product =
+    saveBtn?.dataset?.product ||
+    document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`)?.dataset?.product;
+  const valueKl = Number.parseFloat((input?.value ?? "").trim(), 10);
+  const parsed = validateBuyingRateKlInput(valueKl);
+  if (!parsed.ok) {
+    showPlBuyingPriceError(
+      parsed.message || `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`
+    );
+    return;
+  }
+  const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
+  if (value == null) {
+    showPlBuyingPriceError(`Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
     return;
   }
   document.getElementById("pl-buying-price-error")?.classList.add("hidden");
-  const btn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+  const btn = saveBtn;
   const resetBtn = () => {
     if (btn) {
       btn.disabled = false;
@@ -1313,7 +1444,11 @@ async function handleSaveBuyingPrice(dsrId) {
     btn.textContent = "Saving…";
   }
   const rpc = await supabaseClient.rpc("update_dsr_buying_price", { p_dsr_id: dsrId, p_value: value });
-  const fallback = rpc.error ? await supabaseClient.from("dsr").update({ buying_price_per_litre: value }).eq("id", dsrId).select("id").maybeSingle() : { data: true };
+  let fallback = { data: true };
+  if (rpc.error) {
+    const fb1 = await supabaseClient.from("dsr_petrol").update({ buying_price_per_litre: value }).eq("id", dsrId).select("id").maybeSingle();
+    fallback = (fb1.data) ? fb1 : await supabaseClient.from("dsr_diesel").update({ buying_price_per_litre: value }).eq("id", dsrId).select("id").maybeSingle();
+  }
   if (rpc.error && (fallback.error || !fallback.data)) {
     AppError.report(rpc.error || fallback.error, { context: "handleSaveBuyingPrice", type: "dsr" });
     showPlBuyingPriceError((rpc.error?.message || fallback.error?.message) || "Could not save. Ensure you are logged in as admin.");
@@ -1328,6 +1463,7 @@ async function handleSaveBuyingPrice(dsrId) {
   if (typeof AppCache !== "undefined" && AppCache) {
     AppCache.invalidateByType("profit_loss");
     AppCache.invalidateByType("dashboard_data");
+    AppCache.invalidateByType("reports_data");
   }
   const range = getCurrentPlRange();
   if (range) await loadProfitLossSummary(range);
@@ -1357,31 +1493,36 @@ async function loadProfitLossSummary(range) {
   if (incomeNoteEl) incomeNoteEl.textContent = "";
   const plBuyingErrorEl = document.getElementById("pl-buying-price-error");
   if (plBuyingErrorEl) plBuyingErrorEl.classList.add("hidden");
+  const plBuyingHintEl = document.getElementById("pl-buying-hint");
+  if (plBuyingHintEl && typeof getPlBuyingPriceHint === "function") {
+    plBuyingHintEl.textContent = getPlBuyingPriceHint();
+  }
 
-  const RECEIPT_HISTORY_START = "2000-01-01";
+  const RECEIPT_HISTORY_START = PumpSettings.getReceiptHistoryStart();
 
   const [
-    { data: dsrData, error: dsrError },
+    { data: allDsrData, error: dsrError },
     { data: expenseData, error: expenseError },
-    { data: receiptRows, error: receiptError },
-    { data: stockRows, error: stockError },
   ] = await Promise.all([
-    supabaseClient.from("dsr").select("id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre").gte("date", range.start).lte("date", range.end),
+    supabaseClient
+      .from("dsr")
+      .select("id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre")
+      .gte("date", RECEIPT_HISTORY_START)
+      .lte("date", range.end),
     supabaseClient.from("expenses").select("*").gte("date", range.start).lte("date", range.end),
-    supabaseClient.from("dsr").select("date, product, buying_price_per_litre").gte("date", RECEIPT_HISTORY_START).lte("date", range.end).gt("receipts", 0).not("buying_price_per_litre", "is", null).order("date", { ascending: false }),
-    supabaseClient.from("dsr_stock").select("date, product, receipts").gte("date", range.start).lte("date", range.end).gt("receipts", 0),
   ]);
-  if (receiptError) AppError.report(receiptError, { context: "profitLossSummary", type: "receipt" });
   if (dsrError) AppError.report(dsrError, { context: "profitLossSummary", type: "dsr" });
   if (expenseError) AppError.report(expenseError, { context: "profitLossSummary", type: "expense" });
 
-  await syncReceiptsFromDsrStock(range.start, range.end, { dsrRows: dsrData ?? [], stockRows: stockRows ?? [] });
-  const stockByKey = new Map((stockRows ?? []).map((r) => [`${r.date}:${r.product}`, Number(r.receipts)]));
-  const dsrRows = (dsrData ?? []).map((row) => {
-    const fromStock = stockByKey.get(`${row.date}:${row.product}`);
-    if (fromStock != null && Number(row.receipts ?? 0) === 0) return { ...row, receipts: fromStock };
-    return row;
-  });
+  const allDsr = allDsrData ?? [];
+  const dsrRows = allDsr.filter((row) => row.date >= range.start && row.date <= range.end);
+  const receiptRows = allDsr
+    .filter(
+      (row) =>
+        Number(row.receipts ?? 0) > 0 &&
+        row.buying_price_per_litre != null
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   const hasDsr = !dsrError;
   const hasExpense = !expenseError;
@@ -1409,11 +1550,11 @@ async function loadProfitLossSummary(range) {
             const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
             const rowId = row.id;
             return `
-              <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}">
+              <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">
                 <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
-                <label for="pl-buying-${rowId}" class="sr-only">Buying price (₹/L)</label>
-                <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="₹/L" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
-                <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}">Save</button>
+                <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
+                <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
+                <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
               </li>`;
           }
         )
@@ -1428,12 +1569,12 @@ async function loadProfitLossSummary(range) {
   }
 
   const petrolNetSale = sumByProduct(
-    dsrData,
+    dsrRows,
     "petrol",
     (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
   );
   const dieselNetSale = sumByProduct(
-    dsrData,
+    dsrRows,
     "diesel",
     (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
   );
@@ -1444,7 +1585,7 @@ async function loadProfitLossSummary(range) {
   );
 
   if (plNetSaleEl) {
-    plNetSaleEl.textContent = hasDsr && (dsrData ?? []).length ? formatCurrency(income.total) : "—";
+    plNetSaleEl.textContent = hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
   }
   if (plExpenseEl) {
     plExpenseEl.textContent = hasExpense ? formatCurrency(expenseTotal) : "—";
@@ -1462,7 +1603,7 @@ async function loadProfitLossSummary(range) {
     } else if (!allBuyingPricesEntered) {
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
-        plProfitHintEl.textContent = "Enter buying price for receipt days above to calculate.";
+        plProfitHintEl.textContent = "Enter ex-VAT ₹/KL for receipt days above to calculate.";
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");
@@ -1477,7 +1618,7 @@ async function loadProfitLossSummary(range) {
 
   if (incomeEl) {
     incomeEl.textContent =
-      hasDsr && (dsrData ?? []).length ? formatCurrency(income.total) : "—";
+      hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
   }
   if (incomeNoteEl) {
     incomeNoteEl.textContent =
@@ -1492,74 +1633,6 @@ window.addEventListener("resize", () => {
   scheduleAutoFitStats();
 });
 
-function updatePlLabel(range, modeInfo, label) {
-  if (!label) return;
-
-  if (modeInfo?.mode === "today") {
-    const dateLabel = formatDisplayDate(range.start);
-    label.textContent = `Today · ${dateLabel}`;
-    return;
-  }
-
-  if (modeInfo?.mode === "this-month") {
-    const monthDate = new Date(`${range.start}T00:00:00`);
-    const monthLabel = monthDate.toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
-    label.textContent = `This month · ${monthLabel}`;
-    return;
-  }
-
-  if (modeInfo?.mode === "this-week") {
-    const startLabel = formatDisplayDate(range.start);
-    const endLabel = formatDisplayDate(range.end);
-    label.textContent = `This week · ${startLabel} – ${endLabel}`;
-    return;
-  }
-
-  const startLabel = formatDisplayDate(range.start);
-  const endLabel = formatDisplayDate(range.end);
-  label.textContent =
-    startLabel === endLabel
-      ? `Date: ${startLabel}`
-      : `Custom range: ${startLabel} – ${endLabel}`;
-}
-
-function getRangeForSelection(selection, startInput, endInput) {
-  const today = new Date();
-  const todayStr = formatDateInput(today);
-
-  if (selection === "today") {
-    return {
-      start: todayStr,
-      end: todayStr,
-      modeInfo: { mode: "today" },
-    };
-  }
-
-  if (selection === "this-week") {
-    return {
-      ...getWeekRange(today),
-      modeInfo: { mode: "this-week" },
-    };
-  }
-
-  if (selection === "this-month") {
-    return {
-      ...getMonthRange(today.getFullYear(), today.getMonth()),
-      modeInfo: { mode: "this-month" },
-    };
-  }
-
-  if (selection === "custom") {
-    const range = getCustomRange(startInput.value, endInput.value);
-    if (!range) return null;
-    return { ...range, modeInfo: { mode: "custom" } };
-  }
-
-  return null;
-}
 
 function getCustomRange(startValue, endValue) {
   if (!startValue && !endValue) return null;
@@ -1591,41 +1664,6 @@ function getWeekRange(date) {
     start: formatDateInput(start),
     end: formatDateInput(end),
   };
-}
-
-function updateDsrLabel(range, modeInfo) {
-  const label = document.getElementById("dsr-date-label");
-  if (!label) return;
-
-  if (modeInfo?.mode === "today") {
-    const dateLabel = formatDisplayDate(range.start);
-    label.textContent = `Today · ${dateLabel}`;
-    return;
-  }
-
-  if (modeInfo?.mode === "this-month") {
-    const monthDate = new Date(`${range.start}T00:00:00`);
-    const monthLabel = monthDate.toLocaleDateString("en-IN", {
-      month: "long",
-      year: "numeric",
-    });
-    label.textContent = `This month · ${monthLabel}`;
-    return;
-  }
-
-  if (modeInfo?.mode === "this-week") {
-    const startLabel = formatDisplayDate(range.start);
-    const endLabel = formatDisplayDate(range.end);
-    label.textContent = `This week · ${startLabel} – ${endLabel}`;
-    return;
-  }
-
-  const startLabel = formatDisplayDate(range.start);
-  const endLabel = formatDisplayDate(range.end);
-  label.textContent =
-    startLabel === endLabel
-      ? `Date: ${startLabel}`
-      : `Custom range: ${startLabel} – ${endLabel}`;
 }
 
 function setCustomRangeVisibility(container, startInput, endInput, isVisible) {
@@ -1669,7 +1707,7 @@ function formatQuantity(value) {
 window.addEventListener("storage", (e) => {
   if (e.key !== "credit-updated") return;
   const dateInput = document.getElementById("snapshot-date");
-  const date = dateInput?.value || (typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10));
+  const date = dateInput?.value || getLocalDateString();
   loadCreditSummary(date);
 });
 
@@ -1677,12 +1715,8 @@ window.addEventListener("storage", (e) => {
 function refreshCreditSummaryOnVisible() {
   const dateInput = document.getElementById("snapshot-date");
   if (!dateInput) return;
-  const date = dateInput.value || new Date().toISOString().slice(0, 10);
-  loadCreditSummary(date).then(() => {
-    const creditTotal = document.getElementById("credit-total");
-    const glanceCredit = document.getElementById("glance-credit");
-    if (glanceCredit && creditTotal) glanceCredit.textContent = creditTotal.textContent;
-  });
+  const date = dateInput.value || getLocalDateString();
+  loadCreditSummary(date);
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.getElementById("snapshot-card")) {

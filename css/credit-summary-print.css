@@ -1,0 +1,182 @@
+/* Credit customer account summary — A4 portrait (iframe print; extends reports letterhead) */
+
+@import url("reports-print.css");
+
+.credit-summary-sheet {
+  display: block;
+}
+
+.credit-summary-title-band {
+  margin: 0 0 6pt;
+  padding: 4pt 0 5pt;
+  border-bottom: 0.75pt solid #e2e8f0;
+}
+
+.credit-summary-doc-title {
+  margin: 0 0 2pt;
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--report-text);
+}
+
+.credit-summary-doc-meta {
+  margin: 0;
+  font-size: 7.5pt;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.credit-summary-party {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3pt 10pt;
+  margin: 0 0 6pt;
+  padding: 4pt 5pt;
+  border: 0.5pt solid var(--report-border);
+  background: #f8fafc;
+  font-size: 7.5pt;
+}
+
+.credit-summary-party dt {
+  margin: 0;
+  font-weight: 600;
+  color: var(--report-muted);
+  font-size: 6.5pt;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.credit-summary-party dd {
+  margin: 0 0 3pt;
+  font-weight: 600;
+  color: var(--report-text);
+}
+
+.credit-summary-party dd.credit-summary-party-name {
+  grid-column: 1 / -1;
+  font-size: 9.5pt;
+  font-weight: 800;
+  color: var(--report-blue);
+  margin-bottom: 4pt;
+}
+
+.credit-summary-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5pt;
+  margin: 0 0 6pt;
+}
+
+.credit-summary-kpi {
+  border: 0.5pt solid var(--report-border);
+  padding: 4pt 5pt;
+  background: #fff;
+  page-break-inside: avoid;
+}
+
+.credit-summary-kpi-label {
+  display: block;
+  margin: 0 0 2pt;
+  font-size: 6.5pt;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--report-muted);
+}
+
+.credit-summary-kpi-value {
+  display: block;
+  font-size: 10pt;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--report-text);
+}
+
+.credit-summary-kpi--outstanding {
+  border-color: #0070c0;
+  background: #f0f9ff;
+}
+
+.credit-summary-kpi--outstanding .credit-summary-kpi-value {
+  color: var(--report-blue);
+}
+
+.credit-summary-kpi--outstanding.is-cleared {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.credit-summary-kpi--outstanding.is-cleared .credit-summary-kpi-value {
+  color: #15803d;
+}
+
+.credit-summary-kpi-meta {
+  display: block;
+  margin: 2pt 0 0;
+  font-size: 6.5pt;
+  font-weight: 400;
+  color: var(--report-muted);
+  line-height: 1.3;
+}
+
+.credit-summary-period-box {
+  margin: 0 0 6pt;
+  padding: 3pt 5pt;
+  border-left: 2.5pt solid #ffcc00;
+  background: #fffbeb;
+  font-size: 7.5pt;
+}
+
+.credit-summary-period-box strong {
+  font-weight: 700;
+}
+
+.credit-summary-period-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3pt 10pt;
+  margin-top: 3pt;
+}
+
+.credit-summary-block {
+  margin: 0 0 7pt;
+  page-break-inside: avoid;
+}
+
+.credit-summary-block-title {
+  margin: 0 0 2pt;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: var(--report-text);
+}
+
+.credit-summary-block-lead {
+  margin: 0 0 3pt;
+  font-size: 7pt;
+  color: var(--report-muted);
+}
+
+.credit-summary-table--ledger th:nth-child(1),
+.credit-summary-table--ledger td:nth-child(1) {
+  width: 38%;
+}
+
+.credit-summary-table--ledger th:nth-child(2),
+.credit-summary-table--ledger td:nth-child(2) {
+  width: 62%;
+}
+
+.credit-summary-note {
+  margin: 6pt 0 0;
+  font-size: 6.5pt;
+  color: var(--report-muted);
+  line-height: 1.35;
+}
+
+@media print {
+  .credit-summary-kpis,
+  .credit-summary-block {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, getValidFilterState, setFilterState */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -9,6 +9,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   applyRoleVisibility(auth.role);
 
+  if (typeof initPageSections === "function") {
+    initPageSections({ defaultSection: "setup", validSections: ["setup", "metrics", "charts", "insights"] });
+  }
+
+  await loadPumpSettings();
   await initAnalysisPage();
 });
 
@@ -25,97 +30,16 @@ function formatPercent(value) {
   return sign + n.toFixed(1) + "%";
 }
 
-// --- Date range helpers (aligned with dashboard) ---
-
-function formatDateInput(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function formatDisplayDate(dateStr) {
-  const date = new Date(`${dateStr}T00:00:00`);
-  return date.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function getWeekRange(date) {
-  const diffToMonday = (date.getDay() + 6) % 7;
-  const start = new Date(date);
-  start.setDate(date.getDate() - diffToMonday);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return { start: formatDateInput(start), end: formatDateInput(end) };
-}
-
-function getMonthRange(year, monthIndex) {
-  const start = new Date(year, monthIndex, 1);
-  const end = new Date(year, monthIndex + 1, 0);
-  return { start: formatDateInput(start), end: formatDateInput(end) };
-}
-
-function getLast3MonthsRange() {
-  const end = new Date();
-  const start = new Date(end);
-  start.setMonth(start.getMonth() - 2);
-  start.setDate(1);
-  const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0);
-  return { start: formatDateInput(start), end: formatDateInput(lastDay) };
-}
-
-function getCustomRange(startValue, endValue) {
-  if (!startValue && !endValue) return null;
-  let start = startValue || endValue;
-  let end = endValue || startValue;
-  if (end < start) [start, end] = [end, start];
-  return { start, end };
-}
-
-function getRangeForSelection(selection, startInput, endInput) {
-  const today = new Date();
-  if (selection === "this-week") {
-    return { ...getWeekRange(today), modeInfo: { mode: "this-week" } };
-  }
-  if (selection === "this-month") {
-    return {
-      ...getMonthRange(today.getFullYear(), today.getMonth()),
-      modeInfo: { mode: "this-month" },
-    };
-  }
-  if (selection === "last-3-months") {
-    return { ...getLast3MonthsRange(), modeInfo: { mode: "last-3-months" } };
-  }
-  if (selection === "custom") {
-    const range = getCustomRange(startInput?.value, endInput?.value);
-    if (!range) return null;
-    return { ...range, modeInfo: { mode: "custom" } };
-  }
-  return null;
-}
-
-function setCustomRangeVisibility(container, startInput, endInput, isVisible) {
-  if (!container) return;
-  if (isVisible) container.classList.remove("hidden");
-  else container.classList.add("hidden");
-  if (startInput) startInput.disabled = !isVisible;
-  if (endInput) endInput.disabled = !isVisible;
-}
-
 // --- Data fetch ---
 
-const RECEIPT_HISTORY_START = "2000-01-01";
 
 async function fetchAnalysisData(startDate, endDate) {
-  const [dsrResult, expenseResult, receiptResult] = await Promise.all([
+  const receiptHistoryStart = PumpSettings.getReceiptHistoryStart();
+  const [dsrResult, expenseResult] = await Promise.all([
     supabaseClient
       .from("dsr")
       .select("date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre")
-      .gte("date", startDate)
+      .gte("date", receiptHistoryStart)
       .lte("date", endDate)
       .order("date", { ascending: true }),
     supabaseClient
@@ -123,24 +47,32 @@ async function fetchAnalysisData(startDate, endDate) {
       .select("date, amount")
       .gte("date", startDate)
       .lte("date", endDate),
-    supabaseClient
-      .from("dsr")
-      .select("date, product, buying_price_per_litre")
-      .gte("date", RECEIPT_HISTORY_START)
-      .lte("date", endDate)
-      .gt("receipts", 0)
-      .not("buying_price_per_litre", "is", null)
-      .order("date", { ascending: false }),
   ]);
 
-  if (dsrResult.error) AppError.report(dsrResult.error, { context: "fetchAnalysisData", type: "dsr" });
-  if (expenseResult.error) AppError.report(expenseResult.error, { context: "fetchAnalysisData", type: "expenses" });
-  if (receiptResult.error) AppError.report(receiptResult.error, { context: "fetchAnalysisData", type: "receipt" });
+  if (dsrResult.error) {
+    AppError.report(dsrResult.error, { context: "fetchAnalysisData", type: "dsr" });
+    throw dsrResult.error;
+  }
+  if (expenseResult.error) {
+    AppError.report(expenseResult.error, { context: "fetchAnalysisData", type: "expenses" });
+    throw expenseResult.error;
+  }
+
+  const allDsr = dsrResult.data ?? [];
+  const dsrData = allDsr.filter((row) => row.date >= startDate && row.date <= endDate);
+  const receiptRows = allDsr
+    .filter(
+      (row) =>
+        Number(row.receipts ?? 0) > 0 &&
+        row.buying_price_per_litre != null &&
+        row.date <= endDate
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   return {
-    dsrData: dsrResult.data ?? [],
+    dsrData,
     expenseData: expenseResult.data ?? [],
-    receiptRows: receiptResult.data ?? [],
+    receiptRows,
   };
 }
 
@@ -149,7 +81,7 @@ function normalizeProduct(value) {
 }
 
 /**
- * Build map: for each (product, date) return effective buying price (₹/L) from latest receipt row on or before that date.
+ * Build map: for each (product, date) return effective gross buying price (₹/L in DB, incl. VAT) from latest receipt row on or before that date.
  * receiptRows: { date, product, buying_price_per_litre } sorted by date desc per product.
  */
 function buildEffectiveBuyingMap(receiptRows) {
@@ -204,8 +136,9 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
         ? Number(row.petrol_rate ?? 0)
         : Number(row.diesel_rate ?? 0);
     const revenue = Number.isFinite(rate) && rate > 0 ? netSale * rate : 0;
-    const buyingPrice = getEffectiveBuying(row.product, row.date);
-    const cost = buyingPrice != null && Number.isFinite(buyingPrice) ? netSale * buyingPrice : 0;
+    const buyingRate = getEffectiveBuying(row.product, row.date);
+    const cost =
+      buyingRate != null && Number.isFinite(buyingRate) ? netSale * buyingRate : 0;
     const entry = byDate.get(key);
     entry.salesRupees += revenue;
     entry.costRupees += cost;
@@ -259,24 +192,6 @@ function computeGrowthPercent(currentTotal, previousTotal) {
 
 // --- UI: label, KPIs, charts ---
 
-function updateAnalysisDateLabel(range, modeInfo) {
-  const label = document.getElementById("analysis-date-label");
-  if (!label) return;
-  if (modeInfo?.mode === "this-month") {
-    const d = new Date(`${range.start}T00:00:00`);
-    label.textContent = `This month · ${d.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}`;
-    return;
-  }
-  if (modeInfo?.mode === "last-3-months") {
-    label.textContent = `Last 3 months · ${formatDisplayDate(range.start)} – ${formatDisplayDate(range.end)}`;
-    return;
-  }
-  const startLabel = formatDisplayDate(range.start);
-  const endLabel = formatDisplayDate(range.end);
-  label.textContent =
-    startLabel === endLabel ? `Date: ${startLabel}` : `${startLabel} – ${endLabel}`;
-}
-
 function setStatTone(el, value, isPercent) {
   if (!el) return;
   el.classList.remove("stat-positive", "stat-negative");
@@ -285,62 +200,120 @@ function setStatTone(el, value, isPercent) {
   else if (Number(value) < 0) el.classList.add("stat-negative");
 }
 
+function formatGrowthPercent(value) {
+  if (value === null || value === undefined) return "—";
+  return (value >= 0 ? "+" : "") + value.toFixed(1) + "%";
+}
+
+function formatDayLabel(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function setKpiCurrency(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value != null ? formatCurrency(value) : "—";
+}
+
+function setKpiPercent(id, value, withTone) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value != null ? formatPercent(value) : "—";
+  if (withTone) setStatTone(el, value, true);
+}
+
+function setKpiQuantity(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value != null ? formatQuantity(value) : "—";
+}
+
+function setKpiGrowth(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (value === null) {
+    el.textContent = "—";
+    el.classList.remove("stat-positive", "stat-negative");
+    return;
+  }
+  el.textContent = formatGrowthPercent(value);
+  setStatTone(el, value, true);
+}
+
 function renderKPIs(totals, growthPercent, insights) {
-  const salesEl = document.getElementById("analysis-total-sales");
-  const expensesEl = document.getElementById("analysis-total-expenses");
-  const profitEl = document.getElementById("analysis-profit");
-  const growthEl = document.getElementById("analysis-growth");
   const growthNoteEl = document.getElementById("analysis-growth-note");
 
-  if (salesEl) salesEl.textContent = formatCurrency(totals.salesRupees);
-  if (expensesEl) expensesEl.textContent = formatCurrency(totals.expenseRupees);
-  if (profitEl) {
-    profitEl.textContent = formatCurrency(totals.profitRupees);
-    setStatTone(profitEl, totals.profitRupees, false);
-  }
+  setKpiCurrency("analysis-total-sales", totals.salesRupees);
+  setKpiCurrency("analysis-total-expenses", totals.expenseRupees);
+  setKpiCurrency("analysis-profit", totals.profitRupees);
+  setStatTone(document.getElementById("analysis-profit"), totals.profitRupees, false);
+
+  const growthEl = document.getElementById("analysis-growth");
   if (growthEl) {
     if (growthPercent === null) {
       growthEl.textContent = "—";
+      growthEl.classList.remove("stat-positive", "stat-negative");
       if (growthNoteEl) growthNoteEl.textContent = "vs previous period (no prior data)";
     } else {
-      growthEl.textContent = (growthPercent >= 0 ? "+" : "") + growthPercent.toFixed(1) + "%";
+      growthEl.textContent = formatGrowthPercent(growthPercent);
       setStatTone(growthEl, growthPercent, true);
       if (growthNoteEl) growthNoteEl.textContent = "vs previous period";
     }
   }
 
-  // Performance indicators
-  const avgDailyEl = document.getElementById("analysis-avg-daily-sales");
-  const marginEl = document.getElementById("analysis-profit-margin");
-  const volumeEl = document.getElementById("analysis-total-volume");
-  const expenseRatioEl = document.getElementById("analysis-expense-ratio");
+  setKpiCurrency("analysis-fuel-cost", insights.fuelCostRupees);
+  setKpiCurrency("analysis-gross-profit", insights.grossProfitRupees);
+  setStatTone(document.getElementById("analysis-gross-profit"), insights.grossProfitRupees, false);
+  setKpiPercent("analysis-gross-margin", insights.grossMarginPct, true);
+  setKpiPercent("analysis-cost-ratio", insights.costRatioPct, false);
+  setKpiCurrency("analysis-avg-daily-profit", insights.avgDailyProfit);
+  setKpiCurrency("analysis-avg-daily-expenses", insights.avgDailyExpenses);
+  setKpiCurrency("analysis-revenue-per-litre", insights.revenuePerLitre);
+  setKpiCurrency("analysis-profit-per-litre", insights.profitPerLitre);
+  setStatTone(document.getElementById("analysis-profit-per-litre"), insights.profitPerLitre, false);
+
+  setKpiQuantity("analysis-total-volume", insights.totalVolumeL);
+  setKpiQuantity("analysis-avg-daily-volume", insights.avgDailyVolume);
+  setKpiQuantity("analysis-petrol-volume", insights.petrolVolumeL);
+  setKpiQuantity("analysis-diesel-volume", insights.dieselVolumeL);
+  setKpiPercent("analysis-petrol-share", insights.petrolSharePct, false);
+  setKpiPercent("analysis-diesel-share", insights.dieselSharePct, false);
+
+  setKpiCurrency("analysis-avg-daily-sales", insights.avgDailySales);
+  setKpiPercent("analysis-profit-margin", insights.profitMarginPct, true);
+  setKpiPercent("analysis-expense-ratio", insights.expenseRatioPct, false);
+  setKpiGrowth("analysis-profit-growth", insights.profitGrowthPercent);
+
   const bestDayEl = document.getElementById("analysis-best-day");
   const bestDayDateEl = document.getElementById("analysis-best-day-date");
+  if (bestDayEl) bestDayEl.textContent = insights.bestDayAmount != null ? formatCurrency(insights.bestDayAmount) : "—";
+  if (bestDayDateEl) bestDayDateEl.textContent = insights.bestDayDate ?? "—";
+
+  const worstProfitEl = document.getElementById("analysis-worst-profit-day");
+  const worstProfitDateEl = document.getElementById("analysis-worst-profit-date");
+  if (worstProfitEl) worstProfitEl.textContent = insights.worstProfitAmount != null ? formatCurrency(insights.worstProfitAmount) : "—";
+  if (worstProfitDateEl) worstProfitDateEl.textContent = insights.worstProfitDate ?? "—";
+  setStatTone(worstProfitEl, insights.worstProfitAmount, false);
+
+  const daysWithSalesEl = document.getElementById("analysis-days-with-sales");
+  const daysWithSalesNoteEl = document.getElementById("analysis-days-with-sales-note");
+  if (daysWithSalesEl) daysWithSalesEl.textContent = insights.daysWithSales != null ? String(insights.daysWithSales) : "—";
+  if (daysWithSalesNoteEl) {
+    daysWithSalesNoteEl.textContent =
+      insights.totalDays != null ? `of ${insights.totalDays} calendar days` : "active days";
+  }
+
   const daysProfitableEl = document.getElementById("analysis-days-profitable");
   const daysProfitableNoteEl = document.getElementById("analysis-days-profitable-note");
-  const petrolShareEl = document.getElementById("analysis-petrol-share");
-  const profitGrowthEl = document.getElementById("analysis-profit-growth");
-
-  if (avgDailyEl) avgDailyEl.textContent = insights.avgDailySales != null ? formatCurrency(insights.avgDailySales) : "—";
-  if (marginEl) {
-    marginEl.textContent = insights.profitMarginPct != null ? formatPercent(insights.profitMarginPct) : "—";
-    setStatTone(marginEl, insights.profitMarginPct, true);
-  }
-  if (volumeEl) volumeEl.textContent = insights.totalVolumeL != null ? formatQuantity(insights.totalVolumeL) : "—";
-  if (expenseRatioEl) expenseRatioEl.textContent = insights.expenseRatioPct != null ? formatPercent(insights.expenseRatioPct) : "—";
-  if (bestDayEl) bestDayEl.textContent = insights.bestDayAmount != null ? formatCurrency(insights.bestDayAmount) : "—";
-  if (bestDayDateEl) bestDayDateEl.textContent = insights.bestDayDate != null ? insights.bestDayDate : "—";
   if (daysProfitableEl) daysProfitableEl.textContent = insights.daysProfitable != null ? String(insights.daysProfitable) : "—";
-  if (daysProfitableNoteEl) daysProfitableNoteEl.textContent = insights.totalDays != null ? `of ${insights.totalDays} days` : "of period";
-  if (petrolShareEl) petrolShareEl.textContent = insights.petrolSharePct != null ? formatPercent(insights.petrolSharePct) : "—";
-  if (profitGrowthEl) {
-    if (insights.profitGrowthPercent === null) {
-      profitGrowthEl.textContent = "—";
-    } else {
-      profitGrowthEl.textContent = (insights.profitGrowthPercent >= 0 ? "+" : "") + insights.profitGrowthPercent.toFixed(1) + "%";
-      setStatTone(profitGrowthEl, insights.profitGrowthPercent, true);
-    }
+  if (daysProfitableNoteEl) {
+    daysProfitableNoteEl.textContent = insights.totalDays != null ? `of ${insights.totalDays} days` : "of period";
   }
+
+  const lossDaysEl = document.getElementById("analysis-loss-days");
+  if (lossDaysEl) lossDaysEl.textContent = insights.lossDays != null ? String(insights.lossDays) : "—";
+  if (insights.lossDays > 0) lossDaysEl?.classList.add("stat-negative");
+  else lossDaysEl?.classList.remove("stat-negative");
 }
 
 function renderInsights(series, totals, insights) {
@@ -351,11 +324,23 @@ function renderInsights(series, totals, insights) {
   if (insights.bestDayDate && insights.bestDayAmount != null) {
     items.push(`Best sales day: ${insights.bestDayDate} — ${formatCurrency(insights.bestDayAmount)}`);
   }
-  const worstDay = series.length ? series.reduce((a, b) => (a.profitRupees < b.profitRupees ? a : b)) : null;
-  if (worstDay && worstDay.date) {
-    const d = new Date(`${worstDay.date}T00:00:00`);
-    const label = d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-    items.push(`Lowest profit day: ${label} — ${formatCurrency(worstDay.profitRupees)}`);
+  if (insights.worstProfitDate && insights.worstProfitAmount != null) {
+    items.push(`Lowest profit day: ${insights.worstProfitDate} — ${formatCurrency(insights.worstProfitAmount)}`);
+  }
+  if (insights.grossMarginPct != null && Number.isFinite(insights.grossMarginPct)) {
+    items.push(`Gross margin (before expenses): ${formatPercent(insights.grossMarginPct)}`);
+  }
+  if (insights.profitPerLitre != null && insights.totalVolumeL > 0) {
+    items.push(`Net profit per litre: ${formatCurrency(insights.profitPerLitre)}/L across ${formatQuantity(insights.totalVolumeL)} L sold`);
+  }
+  if (insights.lossDays != null && insights.lossDays > 0 && insights.totalDays != null) {
+    items.push(`${insights.lossDays} loss day(s) in the period — review fuel cost and expenses on those dates.`);
+  }
+  if (insights.daysWithSales != null && insights.totalDays != null && insights.daysWithSales < insights.totalDays) {
+    const idle = insights.totalDays - insights.daysWithSales;
+    if (idle > 0) {
+      items.push(`${idle} calendar day(s) had no recorded sales in DSR.`);
+    }
   }
   if (insights.expenseRatioPct != null && totals.salesRupees > 0) {
     items.push(`Expense ratio: ${formatPercent(insights.expenseRatioPct)} of sales`);
@@ -378,16 +363,51 @@ function renderInsights(series, totals, insights) {
   }
 
   if (items.length === 0) {
-    list.innerHTML = "<li class=\"muted\">No insights for this range. Add DSR and expense data to see trends.</li>";
+    list.innerHTML = "<p class=\"analysis-insight-empty muted\" role=\"listitem\">No insights for this range. Add DSR and expense data to see trends.</p>";
     return;
   }
-  list.innerHTML = items.map((text) => `<li>${text}</li>`).join("");
+  list.innerHTML = items
+    .map((text) => `<div class="analysis-insight-card" role="listitem">${text}</div>`)
+    .join("");
 }
 
 let chartSales = null;
 let chartProfit = null;
 let chartFuelMix = null;
 let chartRevenueMix = null;
+
+function updateAnalysisPeriodLabel(range) {
+  const label = document.getElementById("analysis-date-label");
+  if (!label || !range) return;
+  if (typeof formatDateRangeLabel === "function") {
+    label.textContent = formatDateRangeLabel(range, range.modeInfo, { style: "compact" });
+  }
+}
+
+function goToAnalysisSection(sectionId) {
+  const btn = document.querySelector(`.settings-nav-item[data-section="${sectionId}"]`);
+  if (btn) btn.click();
+}
+
+function resizeAnalysisCharts() {
+  [chartSales, chartProfit, chartFuelMix, chartRevenueMix].forEach((chart) => {
+    try {
+      chart?.resize();
+    } catch {
+      /* chart may not be initialised yet */
+    }
+  });
+}
+
+function wireChartsSectionResize() {
+  document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.section === "charts") {
+        requestAnimationFrame(() => resizeAnalysisCharts());
+      }
+    });
+  });
+}
 
 function destroyCharts() {
   if (chartSales) { chartSales.destroy(); chartSales = null; }
@@ -409,9 +429,16 @@ function renderCharts(series, totals) {
   const petrolRevenueData = series.map((d) => d.petrolRupees ?? 0);
   const dieselRevenueData = series.map((d) => d.dieselRupees ?? 0);
 
-  const grid = { color: "rgba(0,0,0,0.06)" };
+  const grid = { color: "rgba(15, 23, 42, 0.06)" };
   const fontFamily = "inherit";
   const rupeeTick = (value) => "₹" + (value >= 1000 ? value / 1000 + "k" : value);
+  const legendLabels = { color: "#334155", font: { family: fontFamily, size: 12 } };
+  const scaleTicks = { color: "#64748b", font: { family: fontFamily, size: 11 } };
+  const bpclBlue = "#0070c0";
+  const bpclBlueSoft = "rgba(0, 112, 192, 0.12)";
+  const bpclYellow = "#ffcc00";
+  const bpclGreen = "#007a33";
+  const bpclRed = "#e60012";
 
   const salesCtx = document.getElementById("chart-sales")?.getContext("2d");
   if (salesCtx) {
@@ -423,10 +450,12 @@ function renderCharts(series, totals) {
           {
             label: "Net sale (₹)",
             data: salesData,
-            borderColor: "#2563eb",
-            backgroundColor: "rgba(37, 99, 235, 0.1)",
+            borderColor: bpclBlue,
+            backgroundColor: bpclBlueSoft,
             fill: true,
-            tension: 0.2,
+            tension: 0.25,
+            pointRadius: 2,
+            pointHoverRadius: 5,
           },
         ],
       },
@@ -435,8 +464,8 @@ function renderCharts(series, totals) {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { grid, ticks: { font: { family: fontFamily }, maxRotation: 45 } },
-          y: { grid, ticks: { font: { family: fontFamily }, callback: (v) => rupeeTick(v) } },
+          x: { grid, ticks: { ...scaleTicks, maxRotation: 45 } },
+          y: { grid, ticks: { ...scaleTicks, callback: (v) => rupeeTick(v) } },
         },
       },
     });
@@ -449,17 +478,17 @@ function renderCharts(series, totals) {
       data: {
         labels,
         datasets: [
-          { label: "Petrol (₹)", data: petrolRevenueData, backgroundColor: "rgba(59, 130, 246, 0.8)", borderColor: "#2563eb", borderWidth: 1 },
-          { label: "Diesel (₹)", data: dieselRevenueData, backgroundColor: "rgba(245, 158, 11, 0.8)", borderColor: "#d97706", borderWidth: 1 },
+          { label: "Petrol (₹)", data: petrolRevenueData, backgroundColor: "rgba(0, 112, 192, 0.85)", borderColor: bpclBlue, borderWidth: 1, borderRadius: 4 },
+          { label: "Diesel (₹)", data: dieselRevenueData, backgroundColor: "rgba(255, 204, 0, 0.9)", borderColor: "#e6b800", borderWidth: 1, borderRadius: 4 },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "top" } },
+        plugins: { legend: { position: "top", labels: legendLabels } },
         scales: {
-          x: { grid, stacked: true, ticks: { font: { family: fontFamily }, maxRotation: 45 } },
-          y: { grid, stacked: true, ticks: { font: { family: fontFamily }, callback: (v) => rupeeTick(v) } },
+          x: { grid, stacked: true, ticks: { ...scaleTicks, maxRotation: 45 } },
+          y: { grid, stacked: true, ticks: { ...scaleTicks, callback: (v) => rupeeTick(v) } },
         },
       },
     });
@@ -472,17 +501,17 @@ function renderCharts(series, totals) {
       data: {
         labels,
         datasets: [
-          { label: "Profit (₹)", data: profitData, backgroundColor: "rgba(34, 197, 94, 0.6)", borderColor: "#16a34a", borderWidth: 1 },
-          { label: "Expenses (₹)", data: expenseData, backgroundColor: "rgba(239, 68, 68, 0.5)", borderColor: "#dc2626", borderWidth: 1 },
+          { label: "Profit (₹)", data: profitData, backgroundColor: "rgba(0, 122, 51, 0.65)", borderColor: bpclGreen, borderWidth: 1, borderRadius: 4 },
+          { label: "Expenses (₹)", data: expenseData, backgroundColor: "rgba(230, 0, 18, 0.55)", borderColor: bpclRed, borderWidth: 1, borderRadius: 4 },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "top" } },
+        plugins: { legend: { position: "top", labels: legendLabels } },
         scales: {
-          x: { grid, ticks: { font: { family: fontFamily }, maxRotation: 45 } },
-          y: { grid, ticks: { font: { family: fontFamily }, callback: (v) => rupeeTick(v) } },
+          x: { grid, ticks: { ...scaleTicks, maxRotation: 45 } },
+          y: { grid, ticks: { ...scaleTicks, callback: (v) => rupeeTick(v) } },
         },
       },
     });
@@ -499,7 +528,7 @@ function renderCharts(series, totals) {
         datasets: [
           {
             data: [petrolL, dieselL],
-            backgroundColor: ["#3b82f6", "#f59e0b"],
+            backgroundColor: [bpclBlue, bpclYellow],
             borderWidth: 2,
             borderColor: "#fff",
           },
@@ -509,7 +538,7 @@ function renderCharts(series, totals) {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom" },
+          legend: { position: "bottom", labels: legendLabels },
         },
       },
     });
@@ -524,7 +553,9 @@ function computeInsights(series, totals, profitGrowthPercent) {
     totals.salesRupees > 0
       ? (totals.profitRupees / totals.salesRupees) * 100
       : null;
-  const totalVolumeL = series.reduce((s, d) => s + d.petrolL + d.dieselL, 0);
+  const petrolL = series.reduce((s, d) => s + d.petrolL, 0);
+  const dieselL = series.reduce((s, d) => s + d.dieselL, 0);
+  const totalVolumeL = petrolL + dieselL;
   const expenseRatioPct =
     totals.salesRupees > 0
       ? (totals.expenseRupees / totals.salesRupees) * 100
@@ -533,31 +564,57 @@ function computeInsights(series, totals, profitGrowthPercent) {
     series.length > 0
       ? series.reduce((a, b) => (b.salesRupees > a.salesRupees ? b : a), series[0])
       : null;
+  const worstProfitDay =
+    series.length > 0
+      ? series.reduce((a, b) => (b.profitRupees < a.profitRupees ? b : a), series[0])
+      : null;
   const daysProfitable = series.filter((d) => d.profitRupees > 0).length;
+  const lossDays = series.filter((d) => d.profitRupees < 0).length;
   const petrolRevenue = series.reduce((s, d) => s + (d.petrolRupees ?? 0), 0);
   const dieselRevenue = series.reduce((s, d) => s + (d.dieselRupees ?? 0), 0);
   const totalRevenue = petrolRevenue + dieselRevenue;
   const petrolSharePct = totalRevenue > 0 ? (petrolRevenue / totalRevenue) * 100 : null;
+  const dieselSharePct = totalRevenue > 0 ? (dieselRevenue / totalRevenue) * 100 : null;
 
-  const bestDayDate =
-    bestDay && bestDay.date
-      ? (() => {
-          const d = new Date(`${bestDay.date}T00:00:00`);
-          return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-        })()
-      : null;
+  const fuelCostRupees = totals.costRupees;
+  const grossProfitRupees = totals.salesRupees - fuelCostRupees;
+  const grossMarginPct =
+    totals.salesRupees > 0 ? (grossProfitRupees / totals.salesRupees) * 100 : null;
+  const costRatioPct =
+    totals.salesRupees > 0 ? (fuelCostRupees / totals.salesRupees) * 100 : null;
+  const avgDailyProfit = numDays > 0 ? totals.profitRupees / numDays : null;
+  const avgDailyExpenses = numDays > 0 ? totals.expenseRupees / numDays : null;
+  const avgDailyVolume = numDays > 0 && totalVolumeL > 0 ? totalVolumeL / numDays : null;
+  const revenuePerLitre = totalVolumeL > 0 ? totals.salesRupees / totalVolumeL : null;
+  const profitPerLitre = totalVolumeL > 0 ? totals.profitRupees / totalVolumeL : null;
 
   return {
     numDays,
     avgDailySales,
     profitMarginPct,
     totalVolumeL: totalVolumeL > 0 ? totalVolumeL : null,
+    petrolVolumeL: petrolL > 0 ? petrolL : null,
+    dieselVolumeL: dieselL > 0 ? dieselL : null,
+    avgDailyVolume: avgDailyVolume != null && avgDailyVolume > 0 ? avgDailyVolume : null,
     expenseRatioPct,
+    fuelCostRupees,
+    grossProfitRupees,
+    grossMarginPct,
+    costRatioPct,
+    avgDailyProfit,
+    avgDailyExpenses,
+    revenuePerLitre,
+    profitPerLitre,
     bestDayAmount: bestDay ? bestDay.salesRupees : null,
-    bestDayDate,
+    bestDayDate: bestDay?.date ? formatDayLabel(bestDay.date) : null,
+    worstProfitAmount: worstProfitDay ? worstProfitDay.profitRupees : null,
+    worstProfitDate: worstProfitDay?.date ? formatDayLabel(worstProfitDay.date) : null,
+    daysWithSales,
     daysProfitable,
+    lossDays,
     totalDays: numDays,
     petrolSharePct,
+    dieselSharePct,
     profitGrowthPercent: profitGrowthPercent ?? null,
   };
 }
@@ -565,46 +622,58 @@ function computeInsights(series, totals, profitGrowthPercent) {
 async function loadAndRender(range) {
   const label = document.getElementById("analysis-date-label");
   const salesEl = document.getElementById("analysis-total-sales");
+  const applyBtn = document.getElementById("analysis-apply");
   if (label) label.textContent = "Loading…";
   if (salesEl) salesEl.textContent = "…";
+  if (applyBtn) applyBtn.disabled = true;
 
-  const { dsrData, expenseData, receiptRows } = await fetchAnalysisData(range.start, range.end);
-  const series = buildDailySeries(dsrData, expenseData, receiptRows, range.start, range.end);
-
-  const totals = {
-    salesRupees: series.reduce((s, d) => s + d.salesRupees, 0),
-    costRupees: series.reduce((s, d) => s + (d.costRupees ?? 0), 0),
-    expenseRupees: series.reduce((s, d) => s + d.expenseRupees, 0),
-    profitRupees: 0,
-  };
-  totals.profitRupees = totals.salesRupees - totals.costRupees - totals.expenseRupees;
-
-  let growthPercent = null;
-  let profitGrowthPercent = null;
   try {
-    const prev = getPreviousPeriodStartEnd(range.start, range.end);
-    const prevData = await fetchAnalysisData(prev.start, prev.end);
-    const prevSeries = buildDailySeries(
-      prevData.dsrData,
-      prevData.expenseData,
-      prevData.receiptRows,
-      prev.start,
-      prev.end
-    );
-    const prevSales = prevSeries.reduce((s, d) => s + d.salesRupees, 0);
-    const prevProfit = prevSeries.reduce((s, d) => s + (d.profitRupees ?? 0), 0);
-    growthPercent = computeGrowthPercent(totals.salesRupees, prevSales);
-    profitGrowthPercent = computeGrowthPercent(totals.profitRupees, prevProfit);
-  } catch {
-    // no prior data or error
+    await loadChartJs();
+
+    const { dsrData, expenseData, receiptRows } = await fetchAnalysisData(range.start, range.end);
+    const series = buildDailySeries(dsrData, expenseData, receiptRows, range.start, range.end);
+
+    const totals = {
+      salesRupees: series.reduce((s, d) => s + d.salesRupees, 0),
+      costRupees: series.reduce((s, d) => s + (d.costRupees ?? 0), 0),
+      expenseRupees: series.reduce((s, d) => s + d.expenseRupees, 0),
+      profitRupees: 0,
+    };
+    totals.profitRupees = totals.salesRupees - totals.costRupees - totals.expenseRupees;
+
+    let growthPercent = null;
+    let profitGrowthPercent = null;
+    try {
+      const prev = getPreviousPeriodStartEnd(range.start, range.end);
+      const prevData = await fetchAnalysisData(prev.start, prev.end);
+      const prevSeries = buildDailySeries(
+        prevData.dsrData,
+        prevData.expenseData,
+        prevData.receiptRows,
+        prev.start,
+        prev.end
+      );
+      const prevSales = prevSeries.reduce((s, d) => s + d.salesRupees, 0);
+      const prevProfit = prevSeries.reduce((s, d) => s + (d.profitRupees ?? 0), 0);
+      growthPercent = computeGrowthPercent(totals.salesRupees, prevSales);
+      profitGrowthPercent = computeGrowthPercent(totals.profitRupees, prevProfit);
+    } catch {
+      // no prior data or error
+    }
+
+    const insights = computeInsights(series, totals, profitGrowthPercent);
+
+    renderKPIs(totals, growthPercent, insights);
+    renderInsights(series, totals, insights);
+    renderCharts(series, totals);
+    goToAnalysisSection("metrics");
+  } catch (err) {
+    AppError.report(err, { context: "loadAndRender" });
+    if (label) label.textContent = "Could not load analysis. Check connection and try again.";
+  } finally {
+    updateAnalysisPeriodLabel(range);
+    if (applyBtn) applyBtn.disabled = false;
   }
-
-  const insights = computeInsights(series, totals, profitGrowthPercent);
-
-  updateAnalysisDateLabel(range, range.modeInfo);
-  renderKPIs(totals, growthPercent, insights);
-  renderInsights(series, totals, insights);
-  renderCharts(series, totals);
 }
 
 function loadChartJs() {
@@ -620,99 +689,39 @@ function loadChartJs() {
 }
 
 async function initAnalysisPage() {
-  const rangeSelect = document.getElementById("analysis-range");
-  const startInput = document.getElementById("analysis-start");
-  const endInput = document.getElementById("analysis-end");
-  const form = document.getElementById("analysis-filter-form");
-  const customRange = document.getElementById("analysis-custom-range");
+  if (!document.getElementById("analysis-range")) return;
 
-  if (!rangeSelect || !form || !customRange) return;
+  const filterApi = createDateRangeFilter({
+    storageKey: "analysis",
+    ranges: ["this-week", "this-month", "last-3-months", "custom"],
+    defaultRange: "this-month",
+    rangeSelect: "analysis-range",
+    startInput: "analysis-start",
+    endInput: "analysis-end",
+    customRange: "analysis-custom-range",
+    form: "analysis-filter-form",
+    applyBtn: "analysis-apply",
+    labelEl: "analysis-date-label",
+    labelStyle: "compact",
+    trigger: "manual",
+    runOnInit: false,
+    onApply: (range) => loadAndRender(range),
+  });
 
-  await loadChartJs();
-
-  const ANALYSIS_RANGES = new Set(["this-week", "this-month", "last-3-months", "custom"]);
-  const stored = typeof window.getValidFilterState === "function"
-    ? window.getValidFilterState("analysis", ANALYSIS_RANGES)
-    : null;
-  if (stored) {
-    rangeSelect.value = stored.range;
-    if (stored.range === "custom" && stored.start && stored.end && startInput && endInput) {
-      startInput.value = stored.start;
-      endInput.value = stored.end;
-    }
-  } else if (!ANALYSIS_RANGES.has(rangeSelect.value)) {
-    rangeSelect.value = "this-month";
-  }
-
-  const isCustom = rangeSelect.value === "custom";
-  setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-  if (isCustom && (!startInput?.value || !endInput?.value)) {
-    const today = new Date();
-    if (startInput) startInput.value = formatDateInput(today);
-    if (endInput) endInput.value = formatDateInput(today);
-  }
-
-  const initialRange = getRangeForSelection(
-    rangeSelect.value,
-    startInput,
-    endInput
-  );
-  if (initialRange) await loadAndRender(initialRange);
-
-  const saveAnalysisFilter = () => {
-    window.setFilterState && window.setFilterState("analysis", {
-      range: rangeSelect.value,
-      start: startInput?.value || undefined,
-      end: endInput?.value || undefined,
-    });
+  const previewPeriodLabel = () => {
+    const range = filterApi?.getRange();
+    if (range) updateAnalysisPeriodLabel(range);
   };
+  document.getElementById("analysis-range")?.addEventListener("change", previewPeriodLabel);
+  document.getElementById("analysis-start")?.addEventListener("change", previewPeriodLabel);
+  document.getElementById("analysis-end")?.addEventListener("change", previewPeriodLabel);
+  previewPeriodLabel();
 
-  rangeSelect.addEventListener("change", async () => {
-    const isCustom = rangeSelect.value === "custom";
-    setCustomRangeVisibility(customRange, startInput, endInput, isCustom);
-    if (isCustom && (!startInput?.value || !endInput?.value)) {
-      const today = new Date();
-      if (startInput) startInput.value = formatDateInput(today);
-      if (endInput) endInput.value = formatDateInput(today);
-    }
-    saveAnalysisFilter();
-    const range = getRangeForSelection(rangeSelect.value, startInput, endInput);
-    if (!range) return;
-    updateAnalysisDateLabel(range, range.modeInfo);
-    await loadAndRender(range);
-    if (isCustom) saveAnalysisFilter();
-  });
+  wireChartsSectionResize();
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (rangeSelect.value === "custom" && startInput?.value && endInput?.value && startInput.value > endInput.value) {
-      alert("Start date cannot be after end date.");
-      return;
-    }
-    const range = getRangeForSelection(
-      rangeSelect.value,
-      startInput,
-      endInput
-    );
-    if (!range) return;
-    await loadAndRender(range);
-    saveAnalysisFilter();
-  });
-
-  if (startInput && endInput) {
-    const onCustomChange = async () => {
-      if (rangeSelect.value !== "custom") return;
-      if (startInput.value && endInput.value && startInput.value > endInput.value) return;
-      const range = getRangeForSelection(
-        rangeSelect.value,
-        startInput,
-        endInput
-      );
-      if (!range) return;
-      await loadAndRender(range);
-      saveAnalysisFilter();
-    };
-    startInput.addEventListener("change", onCustomChange);
-    endInput.addEventListener("change", onCustomChange);
+  try {
+    await loadChartJs();
+  } catch (err) {
+    AppError.report(err, { context: "initAnalysisPage", type: "chartjs" });
   }
 }
