@@ -273,13 +273,15 @@ body.report-print-body {
   white-space: nowrap;
 }
 
-.report-tank-section {
+.report-tank-section,
+.report-gst-section {
   margin-bottom: 8pt;
   page-break-inside: avoid;
   break-inside: avoid;
 }
 
-.report-tank-title {
+.report-tank-title,
+.report-section-title {
   margin: 0 0 3pt;
   font-size: 8pt;
   font-weight: 700;

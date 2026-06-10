@@ -155,6 +155,17 @@ function bindBillingDefaultsForm(auth) {
         ? r.purchaseTaxInclusive
         : AppConfig.DEFAULT_REPORTS.purchaseTaxInclusive === true;
   }
+  const gstReportsEl = document.getElementById("bill-include-in-gst-reports");
+  if (gstReportsEl) {
+    const fromBilling = b.includeInGstReports;
+    const fromReports = r.includeBillingInGst;
+    gstReportsEl.checked =
+      typeof fromBilling === "boolean"
+        ? fromBilling
+        : typeof fromReports === "boolean"
+          ? fromReports
+          : AppConfig.DEFAULT_BILLING.includeInGstReports !== false;
+  }
   set("bill-receipt-start", b.receiptHistoryStart);
 
   form.addEventListener("submit", async (e) => {
@@ -170,12 +181,16 @@ function bindBillingDefaultsForm(auth) {
         document.getElementById("bill-fuel-gst")?.value,
         b.defaultFuelGstPct ?? AppConfig.DEFAULT_BILLING.defaultFuelGstPct
       );
+      const includeInGstReports = Boolean(
+        document.getElementById("bill-include-in-gst-reports")?.checked
+      );
       await PumpSettings.savePumpSettings({
         billing: {
           invoicePrefix: document.getElementById("bill-invoice-prefix")?.value?.trim(),
           defaultPartyName: document.getElementById("bill-default-party")?.value?.trim(),
           defaultFuelGstPct: fuelGst,
           receiptHistoryStart: document.getElementById("bill-receipt-start")?.value,
+          includeInGstReports,
         },
         reports: {
           fuelGstPct: fuelGst,
@@ -190,6 +205,7 @@ function bindBillingDefaultsForm(auth) {
           purchaseTaxInclusive: Boolean(
             document.getElementById("bill-purchase-tax-inclusive")?.checked
           ),
+          includeBillingInGst: includeInGstReports,
         },
       }, auth.session?.user?.id);
       successEl?.classList.remove("hidden");
