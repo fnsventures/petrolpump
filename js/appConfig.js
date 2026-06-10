@@ -51,6 +51,8 @@
     defaultPartyName: "Cash A/c",
     defaultFuelGstPct: 18,
     receiptHistoryStart: "2000-01-01",
+    /** When true, lube/billing invoices appear in GST sales summary & detail reports. */
+    includeInGstReports: true,
   };
 
   const DEFAULT_ALERTS = {
@@ -75,6 +77,8 @@
     /** false = rate is pre-tax (BPCL invoice); true = rate includes tax. */
     purchaseTaxInclusive: false,
     fuelSupplierLabel: "BPCL / Fuel supplier",
+    /** @deprecated use billing.includeInGstReports */
+    includeBillingInGst: true,
   };
 
   /** Full default settings object (DB seed + client fallback). */
