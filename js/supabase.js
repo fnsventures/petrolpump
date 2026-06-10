@@ -36,6 +36,12 @@ if (!configValid) {
   console.warn("Supabase config is invalid. Check js/env.js and environment secrets.");
 }
 
+if (typeof supabase === "undefined") {
+  throw new Error(
+    "Supabase library failed to load. Refresh the page or clear your browser cache."
+  );
+}
+
 const supabaseClient = supabase.createClient(
   SUPABASE_URL || "https://invalid.local",
   SUPABASE_ANON_KEY || "invalid"
