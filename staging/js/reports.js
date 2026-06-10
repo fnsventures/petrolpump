@@ -13,17 +13,17 @@ const REPORT_CATALOG = [
     ],
   },
   {
-    group: "GST — Sales (Lube billing)",
+    group: "GST — Sales",
     reports: [
       {
         id: "gst-sales-summary",
         title: "GST Sales Summary",
-        description: "Outward supply totals by GST rate slab.",
+        description: "Month-wise nil-rated petrol and diesel (qty × daily selling price); billing when enabled.",
       },
       {
         id: "gst-sales-detail",
         title: "GST Sales Detail",
-        description: "Invoice-wise outward supply register.",
+        description: "Month-wise nil-rated fuel register; billing invoices when enabled in Settings.",
       },
     ],
   },
@@ -111,6 +111,149 @@ function findReportMeta(reportId) {
 
 function getFuelGstPct() {
   return Number(PumpSettings.getCachedSync().reports?.fuelGstPct) || AppConfig.DEFAULT_REPORTS.fuelGstPct;
+}
+
+function isBillingIncludedInGstReports() {
+  const billing = PumpSettings.getCachedSync().billing || {};
+  const reports = PumpSettings.getCachedSync().reports || {};
+  if (typeof billing.includeInGstReports === "boolean") return billing.includeInGstReports;
+  if (typeof reports.includeBillingInGst === "boolean") return reports.includeBillingInGst;
+  return AppConfig.DEFAULT_BILLING.includeInGstReports !== false;
+}
+
+function formatMonthLabel(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return monthKey;
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+}
+
+/** Outward supply of MS/HSD is nil-rated (no CGST/SGST on fuel sales). */
+const FUEL_OUTWARD_GST_PCT = 0;
+
+/**
+ * Daily fuel sale value: net litres × that day's selling rate (petrol_rate / diesel_rate).
+ * @returns {{ litres: number, gross: number }}
+ */
+function calcDailyFuelSale(row) {
+  const product = normalizeProduct(row.product);
+  if (product !== "petrol" && product !== "diesel") return { litres: 0, gross: 0 };
+  const litres = Math.max(Number(row.total_sales ?? 0) - Number(row.testing ?? 0), 0);
+  const rate = product === "petrol" ? Number(row.petrol_rate ?? 0) : Number(row.diesel_rate ?? 0);
+  if (!Number.isFinite(litres) || litres <= 0 || !Number.isFinite(rate) || rate <= 0) {
+    return { litres: 0, gross: 0 };
+  }
+  return { litres, gross: litres * rate };
+}
+
+/**
+ * Aggregate net fuel sales by calendar month and product.
+ * Each DSR day uses its own selling price before rolling up to the month.
+ * @returns {Map<string, { petrol: { litres: number, gross: number }, diesel: { litres: number, gross: number } }>}
+ */
+function aggregateFuelSalesByMonth(dsrRows, range) {
+  const months = new Map();
+  (dsrRows ?? []).forEach((row) => {
+    if (row.date < range.start || row.date > range.end) return;
+    const product = normalizeProduct(row.product);
+    if (product !== "petrol" && product !== "diesel") return;
+
+    const { litres, gross } = calcDailyFuelSale(row);
+    if (litres <= 0 && gross <= 0) return;
+
+    const monthKey = row.date.slice(0, 7);
+    if (!months.has(monthKey)) {
+      months.set(monthKey, {
+        petrol: { litres: 0, gross: 0 },
+        diesel: { litres: 0, gross: 0 },
+      });
+    }
+    const bucket = months.get(monthKey)[product];
+    bucket.litres += litres;
+    bucket.gross += gross;
+  });
+  return months;
+}
+
+/** Flat month × product lines (nil GST), sorted by month then product. */
+function buildFuelSalesMonthLines(dsrRows, range) {
+  const gstPct = FUEL_OUTWARD_GST_PCT;
+  const slabKey = classifyGstSlab(gstPct);
+  const lines = [];
+
+  [...aggregateFuelSalesByMonth(dsrRows, range).entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([monthKey, data]) => {
+      ["petrol", "diesel"].forEach((product) => {
+        const { litres, gross } = data[product];
+        if (litres <= 0 && gross <= 0) return;
+        lines.push({
+          monthKey,
+          monthLabel: formatMonthLabel(monthKey),
+          product,
+          productLabel: product === "petrol" ? "Petrol (MS)" : "Diesel (HSD)",
+          litres,
+          gstPct,
+          slabKey,
+          taxable: 0,
+          cgst: 0,
+          sgst: 0,
+          gross,
+          nilValue: gross,
+        });
+      });
+    });
+
+  return lines;
+}
+
+function sumFuelSalesLines(lines) {
+  return lines.reduce(
+    (acc, line) => ({
+      litres: acc.litres + line.litres,
+      taxable: acc.taxable + line.taxable,
+      cgst: acc.cgst + line.cgst,
+      sgst: acc.sgst + line.sgst,
+      gross: acc.gross + line.gross,
+    }),
+    { litres: 0, taxable: 0, cgst: 0, sgst: 0, gross: 0 }
+  );
+}
+
+function mergeSlabTotals(base, addition) {
+  const out = {};
+  GST_SLABS.forEach((s) => {
+    const b = base[s.key] || { taxable: 0, cgst: 0, sgst: 0, gross: 0 };
+    const a = addition[s.key] || { taxable: 0, cgst: 0, sgst: 0, gross: 0 };
+    out[s.key] = {
+      taxable: b.taxable + a.taxable,
+      cgst: b.cgst + a.cgst,
+      sgst: b.sgst + a.sgst,
+      gross: b.gross + a.gross,
+    };
+  });
+  return out;
+}
+
+function fuelSalesToSlabTotals(lines) {
+  const slabTotals = {};
+  GST_SLABS.forEach((s) => {
+    slabTotals[s.key] = { taxable: 0, cgst: 0, sgst: 0, gross: 0 };
+  });
+  lines.forEach((line) => {
+    const key = line.slabKey || classifyGstSlab(line.gstPct);
+    if (!slabTotals[key]) return;
+    const nilValue = Number(line.nilValue ?? line.gross ?? 0);
+    if (key === "nil") {
+      slabTotals[key].taxable += nilValue;
+      slabTotals[key].gross += nilValue;
+    } else {
+      slabTotals[key].taxable += line.taxable;
+      slabTotals[key].cgst += line.cgst;
+      slabTotals[key].sgst += line.sgst;
+      slabTotals[key].gross += line.gross;
+    }
+  });
+  return slabTotals;
 }
 
 function getPetrolPurchaseVatPct() {
@@ -746,7 +889,8 @@ function aggregateInvoiceGst(invoices, invoiceItems) {
   return slabTotals;
 }
 
-function renderGstSummaryTable(slabTotals, title, range, inward) {
+function renderGstSummaryTable(slabTotals, title, range, inward, options = {}) {
+  const { sectionOnly = false, sectionTitle = title } = options;
   const activeSlabs = GST_SLABS.filter((s) => slabHasActivity(slabTotals[s.key]));
   const rows = activeSlabs
     .map((s) => {
@@ -776,13 +920,18 @@ function renderGstSummaryTable(slabTotals, title, range, inward) {
       }`
     : "Outward supply · Inside state (CGST + SGST)";
 
+  const lead = sectionOnly
+    ? `<section class="report-gst-section"><h3 class="report-section-title">${escapeHtml(sectionTitle)}</h3>`
+    : reportHeader(title, range.start, range.end);
+  const tail = sectionOnly ? "</section>" : "";
+
   return `
-    ${reportHeader(title, range.start, range.end)}
-    <p class="report-subtitle">${subtitle}</p>
+    ${lead}
+    <p class="report-subtitle${sectionOnly ? " muted" : ""}">${subtitle}</p>
     <table class="report-table report-gst-summary">
       <thead>
         <tr>
-          <th>${inward ? "Slab" : "Slab"}</th>
+          <th>Slab</th>
           <th class="num">Taxable</th>
           <th class="num">${taxCol1}</th>
           <th class="num">${taxCol2}</th>
@@ -800,67 +949,178 @@ function renderGstSummaryTable(slabTotals, title, range, inward) {
         </tr>
       </tfoot>
     </table>
-    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} value: <strong>${formatAmt(totalTaxable)}</strong> · Gross: <strong>${formatAmt(totalGross)}</strong></p>`;
+    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} value: <strong>${formatAmt(totalTaxable)}</strong> · Gross: <strong>${formatAmt(totalGross)}</strong></p>${tail}`;
+}
+
+function renderFuelSalesMonthTable(lines, title) {
+  const rows = lines
+    .map(
+      (line) => `<tr>
+        <td>${escapeHtml(line.monthLabel)}</td>
+        <td>${escapeHtml(line.productLabel)}</td>
+        <td class="num">${formatQty(line.litres)}</td>
+        <td class="num">${formatAmt(line.nilValue ?? line.gross)}</td>
+        <td class="num">—</td>
+        <td class="num">—</td>
+        <td class="num">${formatAmt(line.gross)}</td>
+      </tr>`
+    )
+    .join("");
+  const totals = sumFuelSalesLines(lines);
+
+  return `
+    <section class="report-gst-section">
+      <h3 class="report-section-title">${escapeHtml(title)}</h3>
+      <p class="report-subtitle muted">Outward fuel supply · NIL rate · Value = daily qty (L) × that day&apos;s selling price from DSR</p>
+      <table class="report-table report-gst-summary">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th>Product</th>
+            <th class="num">Qty (L)</th>
+            <th class="num">Nil value</th>
+            <th class="num">CGST</th>
+            <th class="num">SGST</th>
+            <th class="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="7" class="muted">No fuel sales in this period</td></tr>`}</tbody>
+        ${
+          lines.length
+            ? `<tfoot>
+          <tr class="report-total-row">
+            <td colspan="2"><strong>Fuel total</strong></td>
+            <td class="num"><strong>${formatQty(totals.litres)}</strong></td>
+            <td class="num"><strong>${formatAmt(totals.gross)}</strong></td>
+            <td class="num"><strong>—</strong></td>
+            <td class="num"><strong>—</strong></td>
+            <td class="num"><strong>${formatAmt(totals.gross)}</strong></td>
+          </tr>
+        </tfoot>`
+            : ""
+        }
+      </table>
+    </section>`;
 }
 
 function renderGstSalesSummary(data, range) {
-  const slabs = aggregateInvoiceGst(data.invoices, data.invoiceItems);
-  return renderGstSummaryTable(slabs, "Outward supply — GST summary (Lube & billing)", range, false);
+  const includeBilling = isBillingIncludedInGstReports();
+  const fuelLines = buildFuelSalesMonthLines(data.dsrRows, range);
+  const fuelSlabs = fuelSalesToSlabTotals(fuelLines);
+  const billingSlabs = includeBilling ? aggregateInvoiceGst(data.invoices, data.invoiceItems) : null;
+  const combinedSlabs = billingSlabs ? mergeSlabTotals(fuelSlabs, billingSlabs) : fuelSlabs;
+
+  const fuelSection = renderFuelSalesMonthTable(fuelLines, "Fuel sales — month-wise");
+  const billingSection = includeBilling
+    ? renderGstSummaryTable(billingSlabs, "Billing — GST slab summary", range, false, {
+        sectionOnly: true,
+        sectionTitle: "Billing — GST slab summary",
+      })
+    : `<p class="report-note muted">Billing invoices are excluded (enable in Settings → Billing → Include billing in GST sales reports).</p>`;
+  const grandTotal = renderGstSummaryTable(
+    combinedSlabs,
+    "Combined outward supply — GST summary",
+    range,
+    false,
+    { sectionOnly: true, sectionTitle: "Combined outward supply — GST summary" }
+  );
+
+  return `
+    ${reportHeader("Outward supply — GST summary", range.start, range.end)}
+    ${fuelSection}
+    ${billingSection}
+    ${grandTotal}`;
 }
 
 function renderGstSalesDetail(data, range) {
+  const includeBilling = isBillingIncludedInGstReports();
+  const fuelLines = buildFuelSalesMonthLines(data.dsrRows, range);
+
+  const fuelRows = fuelLines
+    .map(
+      (line) => `<tr>
+        <td>${escapeHtml(line.monthLabel)}</td>
+        <td>${escapeHtml(line.productLabel)}</td>
+        <td>—</td>
+        <td class="num">${formatQty(line.litres)}</td>
+        <td class="num">—</td>
+        <td class="num">—</td>
+        <td class="num">—</td>
+        <td class="num">${formatAmt(line.nilValue ?? line.gross)}</td>
+        <td class="num">${formatAmt(line.gross)}</td>
+      </tr>`
+    )
+    .join("");
+
   const itemsByInvoice = new Map();
   data.invoiceItems.forEach((item) => {
     if (!itemsByInvoice.has(item.invoice_id)) itemsByInvoice.set(item.invoice_id, []);
     itemsByInvoice.get(item.invoice_id).push(item);
   });
 
-  const rows = data.invoices
-    .map((inv) => {
-      const items = itemsByInvoice.get(inv.id) || [];
-      const cgst = Number(inv.cgst_total ?? 0);
-      const sgst = Number(inv.sgst_total ?? 0);
-      const igst = Number(inv.igst_total ?? 0);
-      const hasGst = cgst + sgst + igst > 0;
+  const billingRows = includeBilling
+    ? data.invoices
+        .map((inv) => {
+          const items = itemsByInvoice.get(inv.id) || [];
+          const cgst = Number(inv.cgst_total ?? 0);
+          const sgst = Number(inv.sgst_total ?? 0);
+          const igst = Number(inv.igst_total ?? 0);
+          const hasGst = cgst + sgst + igst > 0;
 
-      let taxable = 0;
-      let nonGst = 0;
-      let nilRate = 0;
+          let taxable = 0;
+          let nonGst = 0;
+          let nilRate = 0;
 
-      if (items.length) {
-        const sums = sumInvoiceLineAmounts(items);
-        taxable = sums.taxable;
-        nonGst = sums.nonGst;
-        nilRate = sums.nilRate;
-      } else {
-        nonGst = Number(inv.non_gst_total ?? 0);
-        nilRate = Number(inv.nil_rate_total ?? 0);
-        taxable = invoiceHeaderTaxable(inv);
-      }
+          if (items.length) {
+            const sums = sumInvoiceLineAmounts(items);
+            taxable = sums.taxable;
+            nonGst = sums.nonGst;
+            nilRate = sums.nilRate;
+          } else {
+            nonGst = Number(inv.non_gst_total ?? 0);
+            nilRate = Number(inv.nil_rate_total ?? 0);
+            taxable = invoiceHeaderTaxable(inv);
+          }
 
-      return `<tr>
+          return `<tr class="report-billing-row">
         <td>${formatDisplayDate(inv.invoice_date)}</td>
-        <td>${escapeHtml(inv.invoice_number)}</td>
-        <td>${escapeHtml(inv.party_name)}</td>
-        <td>${escapeHtml(inv.party_gstin || "—")}</td>
+        <td>Billing</td>
+        <td>${escapeHtml(inv.invoice_number)} · ${escapeHtml(inv.party_name)}</td>
+        <td class="num">—</td>
         <td class="num">${hasGst || taxable > 0 ? formatAmt(taxable) : "—"}</td>
         <td class="num">${formatAmt(cgst)}</td>
         <td class="num">${formatAmt(sgst)}</td>
         <td class="num">${formatAmt(nonGst + nilRate)}</td>
         <td class="num">${formatAmt(inv.total_amount)}</td>
       </tr>`;
-    })
-    .join("");
+        })
+        .join("")
+    : "";
+
+  const fuelTotals = sumFuelSalesLines(fuelLines);
+  const hasFuel = fuelLines.length > 0;
+  const hasBilling = includeBilling && data.invoices.length > 0;
+  const emptyMessage =
+    !hasFuel && !hasBilling
+      ? `<tr><td colspan="9" class="muted">${
+          includeBilling ? "No fuel sales or billing in this period" : "No fuel sales in this period"
+        }</td></tr>`
+      : "";
+
+  const billingNote = includeBilling
+    ? ""
+    : `<p class="report-note muted">Billing invoices are excluded (enable in Settings → Billing).</p>`;
 
   return `
     ${reportHeader("Outward supply — GST detail register", range.start, range.end)}
+    ${billingNote}
     <table class="report-table report-gst-detail">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Invoice</th>
-          <th>Party</th>
-          <th>GSTIN</th>
+          <th>Period / Date</th>
+          <th>Type</th>
+          <th>Reference / Party</th>
+          <th class="num">Qty (L)</th>
           <th class="num">Taxable</th>
           <th class="num">CGST</th>
           <th class="num">SGST</th>
@@ -868,7 +1128,26 @@ function renderGstSalesDetail(data, range) {
           <th class="num">Gross</th>
         </tr>
       </thead>
-      <tbody>${rows || `<tr><td colspan="9" class="muted">No invoices in period</td></tr>`}</tbody>
+      <tbody>
+        ${fuelRows}
+        ${billingRows}
+        ${emptyMessage}
+      </tbody>
+      ${
+        hasFuel
+          ? `<tfoot>
+        <tr class="report-total-row">
+          <td colspan="3"><strong>Fuel total</strong></td>
+          <td class="num"><strong>${formatQty(fuelTotals.litres)}</strong></td>
+          <td class="num"><strong>—</strong></td>
+          <td class="num"><strong>—</strong></td>
+          <td class="num"><strong>—</strong></td>
+          <td class="num"><strong>${formatAmt(fuelTotals.gross)}</strong></td>
+          <td class="num"><strong>${formatAmt(fuelTotals.gross)}</strong></td>
+        </tr>
+      </tfoot>`
+          : ""
+      }
     </table>`;
 }
 
@@ -1158,7 +1437,7 @@ function renderProfitLoss(data, range) {
     <p class="report-note muted">Expenses from Expenses page. Gross income matches trading account for the same period.</p>`;
 }
 
-const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=3";
+const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=4";
 
 function reportsAssetUrl(path) {
   return new URL(path, window.location.href).href;
