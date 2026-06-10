@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v64";
+const CACHE_VERSION = "v65";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -48,6 +48,7 @@ const STATIC_ASSET_PATHS = [
   "js/dateRangeFilter.js",
   "js/pumpSettings.js",
   "js/purchaseTaxUtils.js",
+  "js/vendor/supabase.min.js",
   "js/supabase.js",
   "js/auth.js",
   "js/pageSections.js",
