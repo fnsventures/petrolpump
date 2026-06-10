@@ -3068,11 +3068,13 @@ body.reports-page main.settings-layout.reports-layout {
   background: #f8fafc;
 }
 
-.report-tank-section {
+.report-tank-section,
+.report-gst-section {
   margin-bottom: 1.5rem;
 }
 
-.report-tank-title {
+.report-tank-title,
+.report-section-title {
   font-size: 0.9rem;
   margin: 0 0 0.5rem;
 }
