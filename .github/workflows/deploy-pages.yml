@@ -7,6 +7,13 @@ on:
       - staging
   workflow_dispatch:
 
+# peaceiris pushes to gh-pages, which triggers GitHub's pages-build-deployment
+# workflow. Without serialization, back-to-back staging + main deploys race and
+# cancel each other (deploy-pages stuck in deployment_queued, then canceled).
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
