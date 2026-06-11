@@ -443,24 +443,21 @@
   transform: translateX(0) translateY(4px);
 }
 
-.footer-icon-btn[data-tooltip]:hover::after,
-.footer-icon-btn[data-tooltip]:focus-visible::after {
+.footer-icon-btn[data-tooltip]:is(:hover, :focus-visible)::after {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
 }
 
-.footer-icon-btn:first-child[data-tooltip]:hover::after,
-.footer-icon-btn:first-child[data-tooltip]:focus-visible::after {
+.footer-icon-btn:first-child[data-tooltip]:is(:hover, :focus-visible)::after {
   transform: translateX(0) translateY(0);
 }
 
-.footer-icon-btn:last-child[data-tooltip]:hover::after,
-.footer-icon-btn:last-child[data-tooltip]:focus-visible::after {
+.footer-icon-btn:last-child[data-tooltip]:is(:hover, :focus-visible)::after {
   transform: translateX(0) translateY(0);
 }
 
-.footer-icon-btn:hover {
+.footer-icon-btn:is(:hover, :focus-visible) {
   z-index: 3;
   color: #0f172a;
   background: var(--bpcl-yellow);
@@ -468,10 +465,6 @@
 }
 
 .footer-icon-btn:focus-visible {
-  z-index: 3;
-  color: #0f172a;
-  background: var(--bpcl-yellow);
-  border-color: var(--bpcl-yellow);
   outline: 2px solid var(--bpcl-yellow);
   outline-offset: 3px;
 }
