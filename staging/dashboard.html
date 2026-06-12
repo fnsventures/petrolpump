@@ -160,7 +160,7 @@
                 <option value="custom">Custom dates</option>
               </select>
             </div>
-            <div id="dsr-custom-range" class="custom-range hidden">
+            <div id="dsr-custom-range" class="custom-range hidden" aria-hidden="true">
               <div class="form-field form-field-inline">
                 <label for="dsr-start">From</label>
                 <input id="dsr-start" type="date" />
@@ -170,7 +170,9 @@
                 <input id="dsr-end" type="date" />
               </div>
             </div>
-            <button type="submit" id="dsr-apply">Apply</button>
+            <div class="filter-actions">
+              <button type="submit" id="dsr-apply">Apply</button>
+            </div>
           </form>
         </div>
         <p id="dsr-date-label" class="dashboard-muted-caption">Loading…</p>
@@ -256,7 +258,7 @@
                 <option value="custom">Custom dates</option>
               </select>
             </div>
-            <div id="pl-custom-range" class="custom-range hidden">
+            <div id="pl-custom-range" class="custom-range hidden" aria-hidden="true">
               <div class="form-field form-field-inline">
                 <label for="pl-start">From</label>
                 <input id="pl-start" type="date" />
@@ -266,7 +268,9 @@
                 <input id="pl-end" type="date" />
               </div>
             </div>
-            <button type="submit" id="pl-apply">Apply</button>
+            <div class="filter-actions">
+              <button type="submit" id="pl-apply">Apply</button>
+            </div>
           </form>
         </div>
         <p id="pl-date-label" class="dashboard-muted-caption">Loading range…</p>

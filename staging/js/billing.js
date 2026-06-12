@@ -720,7 +720,16 @@ async function loadInvoices(reset = false) {
     data.forEach(inv => {
       const tr = document.createElement("tr");
       const deleteBtn = adminUser
-        ? ` <button type="button" class="button-secondary button-small invoice-delete-btn" data-invoice-id="${escapeHtml(inv.id)}" data-invoice-number="${escapeHtml(inv.invoice_number)}" data-invoice-date="${escapeHtml(inv.invoice_date)}" data-invoice-amount="${escapeHtml(String(inv.total_amount))}" title="Delete invoice (admin)">Delete</button>`
+        ? ` ${AdminDelete.buttonHtml({
+            selector: "invoice-delete-btn",
+            data: {
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoice_number,
+              invoiceDate: inv.invoice_date,
+              invoiceAmount: inv.total_amount,
+            },
+            title: "Delete invoice (admin)",
+          })}`
         : "";
       tr.innerHTML = `
         <td><strong>${escapeHtml(inv.invoice_number)}</strong></td>

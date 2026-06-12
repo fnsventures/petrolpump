@@ -1,4 +1,4 @@
-/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml */
+/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml, AdminDelete */
 
 /**
  * Shared credit customer detail helpers (detail page + overdue modal).
@@ -35,12 +35,16 @@
     });
   }
 
-  function adminDeleteButtonHtml(entry, extraClass) {
+  function adminDeleteButtonHtml(entry, extraClass, options) {
     if (!entry?.id) return "";
-    const cls = extraClass ? ` ${extraClass}` : "";
     const amount = entry.amount != null ? String(entry.amount) : "";
     const date = (entry.transaction_date || entry.entry_date || entry.date || "").toString();
-    return `<button type="button" class="button-secondary button-small credit-delete-btn${cls}" data-entry-id="${escapeHtml(entry.id)}" data-amount="${escapeHtml(amount)}" data-date="${escapeHtml(date)}" title="Delete (admin)">Delete</button>`;
+    const idKey = options?.idKey || "entryId";
+    return AdminDelete.buttonHtml({
+      selector: extraClass || "credit-delete-btn",
+      data: { [idKey]: entry.id, amount, date },
+      title: "Delete (admin)",
+    });
   }
 
   function renderBreakdownRows(entries, columns, options) {
@@ -77,7 +81,7 @@
         .map((e) => {
           const actions = showAdminActions
             ? e.id
-              ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-payment")}</td>`
+              ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-payment", { idKey: "paymentId" })}</td>`
               : `<td class="table-actions muted">—</td>`
             : "";
           return `<tr>

@@ -676,6 +676,11 @@ main a:not(.button-secondary):not(.nav-logout):hover {
     width: 100%;
   }
 
+  .snapshot-head .search-field {
+    width: 100%;
+    min-width: 0;
+  }
+
   .snapshot-head .filter-actions {
     justify-content: stretch;
   }
@@ -686,11 +691,12 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   }
 }
 
-/* Unified filter bar – same look on dashboard, DSR, analysis, expenses */
+/* Unified filters – inline bars (card heads) and standalone panels */
 .filter-bar,
 .snapshot-controls,
 .dsr-filter,
-.dsr-filter-inline {
+.dsr-filter-inline,
+.filter-form {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -701,11 +707,81 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   margin-top: var(--space-2);
 }
 
+.filter-form .form-field,
+.snapshot-controls .form-field,
+.filter-bar .form-field,
+.dsr-filter .form-field,
+.dsr-filter-inline .form-field {
+  margin: 0;
+}
+
 .custom-range {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
   align-items: flex-end;
+}
+
+.custom-range.hidden {
+  display: none;
+}
+
+/* Standalone filter panel (analysis hero, reports, nested toolbars) */
+.filter-card:not(.card) {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.filter-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.filter-card-head + .filter-form {
+  margin-top: var(--space-3);
+}
+
+.filter-card-title {
+  margin: 0;
+  font-size: var(--heading-md, 1rem);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.filter-summary {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--bpcl-blue, #0070c0);
+  line-height: 1.45;
+}
+
+.filter-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.filter-form + .filter-summary {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 640px) {
+  .filter-card-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-card-actions {
+    justify-content: flex-start;
+  }
 }
 
 .form-field {
@@ -741,6 +817,28 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   background: #e2e8f0;
   color: #1e293b;
   border-color: var(--border-strong);
+}
+
+.button-delete {
+  background: var(--color-danger);
+  color: #fff;
+  border: 1px solid var(--color-danger);
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button-delete:hover {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
+  color: #fff;
+}
+
+.button-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .stat-grid {
@@ -1070,7 +1168,7 @@ select:focus {
   box-shadow: var(--focus-ring);
 }
 
-button:not(.button-secondary):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item) {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item) {
   border: none;
   background: linear-gradient(180deg, #0088d1 0%, var(--color-primary) 100%);
   color: #fff;
@@ -1079,17 +1177,18 @@ button:not(.button-secondary):not(.link):not(.nav-logout):not(.nav-toggle):not(.
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-button:not(.button-secondary):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):hover {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):hover {
   background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   box-shadow: 0 2px 8px rgba(0, 112, 192, 0.28);
 }
 
-button:not(.button-secondary):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):active {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):active {
   transform: translateY(1px);
 }
 
 button:focus-visible,
 .button-secondary:focus-visible,
+.button-delete:focus-visible,
 .settings-nav-item:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);

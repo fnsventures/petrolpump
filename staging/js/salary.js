@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete */
 
 const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=2";
 
@@ -184,7 +184,16 @@ function salaryExpenseDescription(staff, note) {
 function salaryDeleteButtonHtml(payment, staff, isAdmin) {
   if (!isAdmin || !payment?.id) return "";
   const staffName = staff?.name || "staff";
-  return `<button type="button" class="button-secondary button-small salary-delete-btn" data-payment-id="${escapeHtml(payment.id)}" data-staff-name="${escapeHtml(staffName)}" data-date="${escapeHtml(payment.date)}" data-amount="${escapeHtml(String(payment.amount))}" title="Delete payment (admin)">Delete</button>`;
+  return AdminDelete.buttonHtml({
+    selector: "salary-delete-btn",
+    data: {
+      paymentId: payment.id,
+      staffName,
+      date: payment.date,
+      amount: payment.amount,
+    },
+    title: "Delete payment (admin)",
+  });
 }
 
 function paidByStaffInRange(payments) {

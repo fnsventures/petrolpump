@@ -1275,12 +1275,14 @@ function initCreditDeleteHandlers() {
     e.stopPropagation();
 
     const entryId = btn.getAttribute("data-entry-id");
-    if (!entryId) return;
+    const paymentId = btn.getAttribute("data-payment-id");
 
     if (entryBtn) {
+      if (!entryId) return;
       await deleteCreditEntry(entryId, btn);
     } else {
-      await deleteCreditPayment(entryId, btn);
+      if (!paymentId) return;
+      await deleteCreditPayment(paymentId, btn);
     }
   });
 }

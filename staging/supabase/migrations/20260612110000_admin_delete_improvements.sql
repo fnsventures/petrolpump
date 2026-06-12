@@ -4,6 +4,8 @@
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
 returns void
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_pay record;

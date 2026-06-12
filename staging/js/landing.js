@@ -47,9 +47,9 @@ const FOOTER_LINKS = [
     external: true,
   },
   {
-    href: "https://www.youtube.com",
+    href: "https://www.youtube.com/@BishnupriyaFuels",
     label: "YouTube",
-    tooltip: "YouTube",
+    tooltip: "@BishnupriyaFuels",
     icon: "youtube",
     external: true,
   },
@@ -135,35 +135,35 @@ function initAboutPopupA11y() {
   window.addEventListener("hashchange", sync);
 }
 
+function createFooterIconLink({ href, label, tooltip, icon, external }) {
+  const link = document.createElement("a");
+  link.className = "footer-icon-btn";
+  link.href = href;
+  link.setAttribute("aria-label", label);
+  link.dataset.tooltip = tooltip;
+
+  if (external) {
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+  }
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", FOOTER_ICONS[icon]);
+  svg.append(path);
+  link.append(svg);
+
+  return link;
+}
+
 function initFooterIcons() {
   const bar = document.querySelector(".footer-icon-bar");
   if (!bar) return;
 
-  bar.replaceChildren(
-    ...FOOTER_LINKS.map(({ href, label, tooltip, icon, external }) => {
-      const link = document.createElement("a");
-      link.className = "footer-icon-btn";
-      link.href = href;
-      link.setAttribute("aria-label", label);
-      link.dataset.tooltip = tooltip;
-
-      if (external) {
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-      }
-
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("viewBox", "0 0 24 24");
-      svg.setAttribute("aria-hidden", "true");
-
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", FOOTER_ICONS[icon]);
-      svg.append(path);
-      link.append(svg);
-
-      return link;
-    })
-  );
+  bar.replaceChildren(...FOOTER_LINKS.map(createFooterIconLink));
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

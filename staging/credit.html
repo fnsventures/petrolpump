@@ -237,14 +237,16 @@
         </section>
 
         <section id="credit-panel-outstanding" class="settings-panel card" data-panel="outstanding" hidden>
-        <div class="card-head card-head-flex">
+        <div class="card-head snapshot-head">
           <div>
             <h2>Outstanding balances</h2>
             <p id="credit-ledger-summary" class="muted" aria-live="polite"></p>
           </div>
-          <div class="form-field search-field">
-            <label for="credit-search">Search customer</label>
-            <input id="credit-search" type="search" placeholder="Name or vehicle…" autocomplete="off" />
+          <div class="snapshot-controls">
+            <div class="form-field search-field">
+              <label for="credit-search">Search customer</label>
+              <input id="credit-search" type="search" placeholder="Name or vehicle…" autocomplete="off" />
+            </div>
           </div>
         </div>
         <div class="table-wrap">
@@ -309,13 +311,13 @@
 
         <section
           id="customer-period-toolbar"
-          class="card customer-filter-card hidden"
+          class="card hidden"
           aria-label="Activity period and print"
           hidden
         >
-          <div class="customer-filter-head">
-            <h2 class="customer-filter-title">Activity period</h2>
-            <div class="customer-filter-actions">
+          <div class="filter-card-head">
+            <h2 class="filter-card-title">Activity period</h2>
+            <div class="filter-card-actions">
               <button
                 type="button"
                 id="customer-summary-print-btn"
@@ -325,15 +327,15 @@
               >
                 Print summary
               </button>
-              <button type="button" id="reset-period-filter" class="link-button customer-filter-reset">
+              <button type="button" id="reset-period-filter" class="button-secondary">
                 Reset to today
               </button>
             </div>
           </div>
 
-          <form id="customer-view-filter" class="customer-filter-row" autocomplete="off">
+          <form id="customer-view-filter" class="filter-form" autocomplete="off">
             <div class="form-field form-field-inline">
-              <label for="filter-range">Date range</label>
+              <label for="filter-range">Period</label>
               <select id="filter-range" aria-describedby="customer-filter-summary">
                 <option value="today">Today</option>
                 <option value="this-week">This week</option>
@@ -342,7 +344,7 @@
                 <option value="custom">Custom dates</option>
               </select>
             </div>
-            <div id="customer-custom-range" class="customer-custom-range custom-range hidden" aria-hidden="true">
+            <div id="customer-custom-range" class="custom-range hidden" aria-hidden="true">
               <div class="form-field form-field-inline">
                 <label for="filter-from">From</label>
                 <input id="filter-from" type="date" />
@@ -354,7 +356,7 @@
             </div>
           </form>
 
-          <p id="customer-filter-summary" class="customer-filter-summary muted text-sm" aria-live="polite"></p>
+          <p id="customer-filter-summary" class="filter-summary muted text-sm" aria-live="polite"></p>
 
           <div class="stat-grid stat-grid-inline customer-toolbar-stats">
             <div class="stat-card stat-card-compact">

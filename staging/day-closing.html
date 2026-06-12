@@ -139,14 +139,24 @@
         </section>
 
         <section class="settings-panel card" data-panel="register" hidden>
-        <h2>Day closing register</h2>
-        <p class="muted">Saved closing statements for accounting and future reference. Use date range to filter.</p>
-        <div class="form-inline margin-bottom">
-          <label for="dc-register-start">From</label>
-          <input id="dc-register-start" type="date" aria-label="From date" />
-          <label for="dc-register-end">To</label>
-          <input id="dc-register-end" type="date" aria-label="To date" />
-          <button type="button" id="dc-register-load">Load</button>
+        <div class="card-head snapshot-head">
+          <div>
+            <h2>Day closing register</h2>
+            <p class="muted">Saved closing statements for accounting and future reference. Use date range to filter.</p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field">
+              <label for="dc-register-start">From</label>
+              <input id="dc-register-start" type="date" />
+            </div>
+            <div class="form-field">
+              <label for="dc-register-end">To</label>
+              <input id="dc-register-end" type="date" />
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="dc-register-load">Load</button>
+            </div>
+          </div>
         </div>
         <div class="table-wrap">
           <table class="day-closing-register-table">
