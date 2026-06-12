@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -28,6 +28,7 @@ const CREDIT_SUMMARY_PRINT_CSS = "css/credit-summary-print.css?v=1";
 
 let creditPager = null;
 let paymentPager = null;
+let isAdmin = false;
 let customerSuggestions = [];
 let customerComboboxActiveIndex = -1;
 let customerComboboxMatches = [];
@@ -48,6 +49,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   if (!auth) return;
 
+  isAdmin = auth.role === "admin";
   applyRoleVisibility(auth.role);
 
   const params = new URLSearchParams(window.location.search);
@@ -183,7 +185,8 @@ async function initCustomerView() {
     document.getElementById("credit-entries-pagination"),
     document.getElementById("credit-entries-info"),
     document.getElementById("credit-entries-back"),
-    document.getElementById("credit-entries-more")
+    document.getElementById("credit-entries-more"),
+    { showAdminActions: isAdmin }
   );
   paymentPager = createBreakdownPager(
     document.getElementById("payment-entries-body"),
@@ -191,10 +194,18 @@ async function initCustomerView() {
     document.getElementById("payment-entries-pagination"),
     document.getElementById("payment-entries-info"),
     document.getElementById("payment-entries-back"),
-    document.getElementById("payment-entries-more")
+    document.getElementById("payment-entries-more"),
+    { showAdminActions: isAdmin }
   );
   const creditBody = document.getElementById("credit-entries-body");
   if (creditBody) creditBody.dataset.breakdownMode = "credit-rich";
+
+  const creditActionsHead = document.getElementById("credit-entries-actions-head");
+  const paymentActionsHead = document.getElementById("payment-entries-actions-head");
+  if (creditActionsHead) creditActionsHead.hidden = !isAdmin;
+  if (paymentActionsHead) paymentActionsHead.hidden = !isAdmin;
+
+  initCreditDeleteHandlers();
 
   await resolveCustomerIds();
   initCustomerInfoEdit();
@@ -556,23 +567,6 @@ function creditSummaryAssetUrl(path) {
   return new URL(path, window.location.href).href;
 }
 
-function getCreditPrintStation() {
-  return PumpSettings?.getCachedSync?.().station || AppConfig.DEFAULT_STATION;
-}
-
-function getCreditPrintStationLegalName() {
-  const s = getCreditPrintStation();
-  return s.legalName || AppConfig.DEFAULT_STATION.legalName;
-}
-
-function getCreditPrintStationTagline() {
-  return getCreditPrintStation().tagline || AppConfig.DEFAULT_STATION.tagline;
-}
-
-function getCreditPrintStationGstin() {
-  return getCreditPrintStation().gstin || AppConfig.DEFAULT_STATION.gstin;
-}
-
 function formatSummaryAmountPlain(value) {
   if (value == null || Number.isNaN(Number(value))) return "—";
   return Number(value).toLocaleString("en-IN", {
@@ -612,7 +606,7 @@ function buildCreditSummaryLedgerRows(entries, emptyLabel) {
 }
 
 function creditSummaryReportHeader(title, subtitleLines) {
-  const gstin = getCreditPrintStationGstin();
+  const gstin = PumpSettings.getStationGstin();
   const subtitles = (subtitleLines || [])
     .filter(Boolean)
     .map((line) => `<p class="report-subtitle">${line}</p>`)
@@ -622,8 +616,8 @@ function creditSummaryReportHeader(title, subtitleLines) {
       <div class="report-letterhead">
         <img src="${creditSummaryAssetUrl(AppConfig.BPCL_LOGO_SRC)}" alt="Bharat Petroleum" class="report-bpcl-logo" width="56" height="68" />
         <div class="report-letterhead-text">
-          <h1 class="report-station">${escapeHtml(getCreditPrintStationLegalName())}</h1>
-          <p class="report-dealer">${escapeHtml(getCreditPrintStationTagline())}</p>
+          <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
+          <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
           ${gstin ? `<p class="report-gstin">GSTIN: ${escapeHtml(gstin)}</p>` : ""}
           <p class="report-title">${escapeHtml(title)}</p>
           ${subtitles}
@@ -824,7 +818,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
       </p>
 
       <footer class="report-print-foot">
-        <span>${escapeHtml(getCreditPrintStationLegalName())}</span>
+        <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
         <span>Credit summary · ${escapeHtml(name)} · ${escapeHtml(asOfLabel)}</span>
       </footer>
     </article>`;
@@ -1052,7 +1046,10 @@ function applyLifetimeSummary(row, options = {}) {
 
 async function loadCustomerDetail() {
   const errorEl = document.getElementById("detail-error");
-  errorEl?.classList.add("hidden");
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.classList.remove("success");
+  }
 
   const { asOfDate, from, to } = getCustomerViewFilter();
   updateCustomerFilterSummary();
@@ -1107,6 +1104,7 @@ async function loadCustomerDetail() {
     renderLifetimeBreakdowns(periodSummary);
 
     const creditEntries = (periodSummary.credit_entries || []).map((e) => ({
+      id: e.id ?? null,
       transaction_date: e.entry_date,
       amount: e.amount,
       fuel_type: e.fuel_type ?? null,
@@ -1114,6 +1112,7 @@ async function loadCustomerDetail() {
       amount_settled: e.amount_settled ?? 0,
     }));
     const paymentEntries = (periodSummary.payment_entries || []).map((e) => ({
+      id: e.id ?? null,
       date: e.entry_date,
       amount: e.amount,
       payment_mode: e.payment_mode ?? null,
@@ -1151,7 +1150,8 @@ async function loadCustomerDetail() {
     updateCreditSummaryPrintButton();
     if (errorEl) {
       errorEl.textContent = AppError.getUserMessage(err);
-      errorEl.classList.remove("hidden");
+      errorEl.classList.add("error");
+      errorEl.classList.remove("success", "hidden");
     }
     AppError.report(err, { context: "loadCustomerDetail" });
   }
@@ -1259,10 +1259,99 @@ async function handleSettle() {
   }
 }
 
+function initCreditDeleteHandlers() {
+  if (!isAdmin || document.body.dataset.creditDeleteBound) return;
+  document.body.dataset.creditDeleteBound = "1";
+
+  document.addEventListener("click", async (e) => {
+    if (!e.target.closest?.("#credit-entries-body, #payment-entries-body")) return;
+
+    const entryBtn = e.target.closest?.(".credit-delete-entry");
+    const paymentBtn = e.target.closest?.(".credit-delete-payment");
+    const btn = entryBtn || paymentBtn;
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const entryId = btn.getAttribute("data-entry-id");
+    if (!entryId) return;
+
+    if (entryBtn) {
+      await deleteCreditEntry(entryId, btn);
+    } else {
+      await deleteCreditPayment(entryId, btn);
+    }
+  });
+}
+
+function showCustomerDetailMessage(msg, isError = false) {
+  const errorEl = document.getElementById("detail-error");
+  if (!errorEl) return;
+  errorEl.textContent = msg || "";
+  errorEl.classList.toggle("hidden", !msg);
+  errorEl.classList.toggle("error", Boolean(isError && msg));
+  errorEl.classList.toggle("success", Boolean(!isError && msg));
+}
+
+async function deleteCreditEntry(entryId, btn) {
+  const amount = Number(btn?.dataset?.amount || 0);
+  const dateStr = btn?.dataset?.date || "";
+  const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
+  const confirmed = confirm(
+    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOnly unsettled entries can be removed. This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  if (btn) btn.disabled = true;
+  showCustomerDetailMessage("");
+  const { error } = await supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
+
+  if (error) {
+    if (btn) btn.disabled = false;
+    showCustomerDetailMessage(AppError.getUserMessage(error), true);
+    AppError.report(error, { context: "deleteCreditEntry", entryId });
+    return;
+  }
+
+  invalidateCreditCaches();
+  await resolveCustomerIds();
+  await loadCustomerDetail();
+  showCustomerDetailMessage(`Credit entry of ${formatCurrency(amount)} deleted.`);
+  if (typeof loadCreditLedger === "function" && !isCustomerView()) {
+    await loadCreditLedger(true);
+  }
+}
+
+async function deleteCreditPayment(paymentId, btn) {
+  const amount = Number(btn?.dataset?.amount || 0);
+  const dateStr = btn?.dataset?.date || "";
+  const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
+  const confirmed = confirm(
+    `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  if (btn) btn.disabled = true;
+  showCustomerDetailMessage("");
+  const { error } = await supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
+
+  if (error) {
+    if (btn) btn.disabled = false;
+    showCustomerDetailMessage(AppError.getUserMessage(error), true);
+    AppError.report(error, { context: "deleteCreditPayment", paymentId });
+    return;
+  }
+
+  invalidateCreditCaches();
+  await resolveCustomerIds();
+  await loadCustomerDetail();
+  showCustomerDetailMessage(`Settlement of ${formatCurrency(amount)} deleted.`);
+}
+
 function invalidateCreditCaches() {
   if (typeof AppCache !== "undefined" && AppCache) {
-    AppCache.invalidateByType("credit_summary");
-    AppCache.invalidateByType("recent_activity");
+    CacheInvalidation.invalidate("credit");
   }
   try {
     localStorage.setItem("credit-updated", String(Date.now()));

@@ -221,13 +221,8 @@ async function clearAllCaches() {
  * Clear API-related caches
  */
 async function clearApiCaches() {
-  if (window.AppCache) {
-    window.AppCache.invalidateByType("dashboard_data");
-    window.AppCache.invalidateByType("credit_summary");
-    window.AppCache.invalidateByType("today_sales");
-    window.AppCache.invalidateByType("recent_activity");
-    window.AppCache.invalidateByType("dsr_summary");
-    window.AppCache.invalidateByType("profit_loss");
+  if (typeof CacheInvalidation !== "undefined") {
+    CacheInvalidation.invalidate("all_api");
   }
 
   await sendToServiceWorker("CLEAR_API_CACHE");

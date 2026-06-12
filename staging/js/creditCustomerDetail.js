@@ -35,7 +35,16 @@
     });
   }
 
-  function renderBreakdownRows(entries, columns) {
+  function adminDeleteButtonHtml(entry, extraClass) {
+    if (!entry?.id) return "";
+    const cls = extraClass ? ` ${extraClass}` : "";
+    const amount = entry.amount != null ? String(entry.amount) : "";
+    const date = (entry.transaction_date || entry.entry_date || entry.date || "").toString();
+    return `<button type="button" class="button-secondary button-small credit-delete-btn${cls}" data-entry-id="${escapeHtml(entry.id)}" data-amount="${escapeHtml(amount)}" data-date="${escapeHtml(date)}" title="Delete (admin)">Delete</button>`;
+  }
+
+  function renderBreakdownRows(entries, columns, options) {
+    const showAdminActions = Boolean(options?.showAdminActions);
     if (!entries?.length) return "";
     if (columns === "credit-rich") {
       return entries
@@ -44,27 +53,41 @@
           const qty = e.quantity != null ? Number(e.quantity).toFixed(3) : "—";
           const settled = Number(e.amount_settled || 0);
           const open = Number(e.amount || 0) - settled;
+          const canDelete = showAdminActions && e.id && settled === 0;
+          const actions = canDelete
+            ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-entry")}</td>`
+            : showAdminActions
+              ? settled > 0
+                ? `<td class="table-actions"><span class="muted" title="Delete settlements first">${open > 0 ? "Partial" : "Settled"}</span></td>`
+                : `<td class="table-actions muted">—</td>`
+              : "";
           return `<tr>
             <td>${escapeHtml(formatDisplayDate(e.transaction_date || e.entry_date))}</td>
             <td>${fuel}</td>
             <td>${qty}</td>
             <td>${formatCurrency(e.amount)}</td>
             <td>${formatCurrency(open)}</td>
+            ${actions}
           </tr>`;
         })
         .join("");
     }
     if (columns === "payment-rich") {
       return entries
-        .map(
-          (e) =>
-            `<tr>
+        .map((e) => {
+          const actions = showAdminActions
+            ? e.id
+              ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-payment")}</td>`
+              : `<td class="table-actions muted">—</td>`
+            : "";
+          return `<tr>
               <td>${escapeHtml(formatDisplayDate(e.date || e.entry_date))}</td>
               <td>${formatCurrency(e.amount)}</td>
               <td>${escapeHtml(e.payment_mode || "—")}</td>
               <td>${escapeHtml(e.note || "—")}</td>
-            </tr>`
-        )
+              ${actions}
+            </tr>`;
+        })
         .join("");
     }
     return entries
@@ -78,8 +101,13 @@
   /**
    * Paginated breakdown controller for a table section.
    */
-  function createBreakdownPager(tbody, emptyEl, paginationEl, infoEl, backBtn, moreBtn) {
-    const state = { entries: [], page: 0 };
+  function createBreakdownPager(tbody, emptyEl, paginationEl, infoEl, backBtn, moreBtn, options) {
+    const state = { entries: [], page: 0, showAdminActions: Boolean(options?.showAdminActions) };
+
+    function setAdminActions(show) {
+      state.showAdminActions = Boolean(show);
+      render();
+    }
 
     function render() {
       const total = state.entries.length;
@@ -99,7 +127,9 @@
       const slice = state.entries.slice(start, end);
       const mode = tbody?.dataset?.breakdownMode || "simple";
 
-      if (tbody) tbody.innerHTML = renderBreakdownRows(slice, mode);
+      if (tbody) {
+        tbody.innerHTML = renderBreakdownRows(slice, mode, { showAdminActions: state.showAdminActions });
+      }
       if (emptyEl) emptyEl.classList.add("hidden");
 
       if (paginationEl && infoEl && backBtn && moreBtn) {
@@ -136,7 +166,7 @@
       });
     }
 
-    return { setEntries, render };
+    return { setEntries, render, setAdminActions };
   }
 
   global.CreditCustomerDetail = {

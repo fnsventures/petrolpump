@@ -119,3 +119,50 @@ function getPlBuyingPriceHint() {
   }
   return `Enter ex-VAT purchase rate per kilolitre (${getPurchaseTaxPctLabel()} applied when saving). Selling rates come from Meter Reading.`;
 }
+
+/**
+ * @returns {{ taxable: number, tax: number, gross: number, cgst: number, sgst: number }}
+ */
+function calcPurchaseLineTax(litres, ratePerLitre, taxPct, options) {
+  const base = Number(litres) * Number(ratePerLitre);
+  const pct = Number(taxPct);
+  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 0) {
+    return { taxable: 0, tax: 0, gross: 0, cgst: 0, sgst: 0 };
+  }
+
+  const storedGrossRate = options?.storedGrossRate === true;
+  let taxable;
+  let tax;
+  let gross;
+  if (storedGrossRate || isPurchaseTaxInclusive()) {
+    gross = base;
+    taxable = gross / (1 + pct / 100);
+    tax = gross - taxable;
+  } else {
+    taxable = base;
+    tax = taxable * (pct / 100);
+    gross = taxable + tax;
+  }
+
+  const half = tax / 2;
+  return { taxable, tax, gross, cgst: half, sgst: half };
+}
+
+Object.assign(window, {
+  getPetrolPurchaseVatPct,
+  getDieselPurchaseVatPct,
+  isPurchaseTaxInclusive,
+  getPurchaseTaxPct,
+  getPurchaseTaxPctLabel,
+  grossBuyingRatePerLitre,
+  buyingRatePerLitreForDb,
+  buyingRatePerLitreToKl,
+  buyingRatePerKlToLitre,
+  validateBuyingRateKlInput,
+  formatBuyingRatePerKl,
+  getBuyingPriceUnitLabel,
+  getPlBuyingPriceFieldLabel,
+  getPlBuyingPricePlaceholder,
+  getPlBuyingPriceHint,
+  calcPurchaseLineTax,
+});

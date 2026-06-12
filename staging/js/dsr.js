@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -500,11 +500,7 @@ function initReadingForm(product) {
     loadReadingHistory(product, true); // Reset pagination to show new entry
     // Invalidate cache so dashboard reflects new DSR immediately
     if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("dashboard_data");
-      AppCache.invalidateByType("today_sales");
-      AppCache.invalidateByType("dsr_summary");
-      AppCache.invalidateByType("profit_loss");
-      AppCache.invalidateByType("reports_data");
+      CacheInvalidation.invalidate("dsr");
     }
   });
 }
@@ -964,14 +960,5 @@ function setNumber(form, name, value) {
     return;
   }
   input.value = value.toFixed(2);
-}
-
-function formatQuantity(value) {
-  if (value === null || value === undefined) return "—";
-  if (Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
 }
 
