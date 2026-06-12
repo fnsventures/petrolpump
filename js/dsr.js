@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation, AdminDelete */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -134,45 +134,35 @@ function getHistoryColCount(product) {
 
 /** Delete meter history rows — admin only (RLS also enforces on server). */
 function initDsrDeleteHandlers() {
-  document.addEventListener("click", async (e) => {
-    const btn = e.target.closest?.(".dsr-delete-entry");
-    if (!btn) return;
-
-    if (currentUserRole !== "admin") {
-      alert("Only an admin can delete meter entries.");
-      return;
-    }
-
+  AdminDelete.bindOnce(document.body, ".dsr-delete-entry", async (btn) => {
     const id = btn.dataset.id;
     const product = btn.dataset.product;
     const dateStr = btn.dataset.date;
     if (!id || !product) return;
 
     const fuelLabel = product === "petrol" ? "MS (Petrol)" : "HSD (Diesel)";
-    const confirmed = confirm(
-      `Delete the ${fuelLabel} meter entry for ${dateStr || "this date"}? This cannot be undone.`
-    );
-    if (!confirmed) return;
 
-    btn.disabled = true;
-    const table = DSR_TABLE[product] || "dsr_petrol";
-    const { error } = await supabaseClient.from(table).delete().eq("id", id);
-
-    if (error) {
-      btn.disabled = false;
-      alert(AppError.getUserMessage(error));
-      AppError.report(error, { context: "deleteMeterEntry", product, id });
-      return;
-    }
-
-    const form = document.getElementById(`dsr-form-${product}`);
-    const dateInput = form?.querySelector('input[name="date"]');
-    if (form && dateInput?.value === dateStr) {
-      await refreshMeterFormForSelectedDate(product, form);
-    }
-
-    await loadReadingHistory(product, true);
-  });
+    await AdminDelete.execute({
+      btn,
+      auth: currentUserRole === "admin" ? { role: "admin" } : null,
+      actionLabel: "delete meter entries",
+      confirmMessage: `Delete the ${fuelLabel} meter entry for ${dateStr || "this date"}? This cannot be undone.`,
+      deleteFn: () => {
+        const table = DSR_TABLE[product] || "dsr_petrol";
+        return supabaseClient.from(table).delete().eq("id", id);
+      },
+      cacheScope: "dsr",
+      onSuccess: async () => {
+        const form = document.getElementById(`dsr-form-${product}`);
+        const dateInput = form?.querySelector('input[name="date"]');
+        if (form && dateInput?.value === dateStr) {
+          await refreshMeterFormForSelectedDate(product, form);
+        }
+        await loadReadingHistory(product, true);
+      },
+      errorContext: { context: "deleteMeterEntry", product, id },
+    });
+  }, "dsrDeleteBound");
 }
 
 /**
@@ -500,11 +490,7 @@ function initReadingForm(product) {
     loadReadingHistory(product, true); // Reset pagination to show new entry
     // Invalidate cache so dashboard reflects new DSR immediately
     if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("dashboard_data");
-      AppCache.invalidateByType("today_sales");
-      AppCache.invalidateByType("dsr_summary");
-      AppCache.invalidateByType("profit_loss");
-      AppCache.invalidateByType("reports_data");
+      CacheInvalidation.invalidate("dsr");
     }
   });
 }
@@ -667,7 +653,11 @@ async function loadReadingHistory(product, reset = false) {
         const rate = product === "petrol" ? row.petrol_rate : row.diesel_rate;
         const pumpCells = pumpColNames.map((col) => `<td>${formatQuantity(row[col])}</td>`).join("");
         const actionsCell = isAdmin
-          ? `<td><button type="button" class="dsr-delete-entry button-secondary" data-id="${escapeHtml(row.id)}" data-product="${escapeHtml(product)}" data-date="${escapeHtml(row.date)}" title="Delete meter entry (admin only)">Delete</button></td>`
+          ? `<td>${AdminDelete.buttonHtml({
+              selector: "dsr-delete-entry",
+              data: { id: row.id, product, date: row.date },
+              title: "Delete meter entry (admin)",
+            })}</td>`
           : "";
         return `<tr>
           <td>${row.date}</td>
@@ -964,14 +954,5 @@ function setNumber(form, name, value) {
     return;
   }
   input.value = value.toFixed(2);
-}
-
-function formatQuantity(value) {
-  if (value === null || value === undefined) return "—";
-  if (Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
 }
 

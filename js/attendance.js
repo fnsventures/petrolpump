@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -115,6 +115,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     pageName: "attendance",
   });
   if (!auth) return;
+  const isAdmin = auth.role === "admin";
   await loadPumpSettings();
   applyRoleVisibility(auth.role);
 
@@ -151,10 +152,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   attendanceBody?.addEventListener("click", (e) => {
-    const btn = e.target.closest?.(".att-save-row");
-    if (!btn || !attendanceBody.contains(btn)) return;
-    const date = attendanceDateInput?.value;
-    if (date) saveRow(btn, date);
+    const saveBtn = e.target.closest?.(".att-save-row");
+    if (saveBtn && attendanceBody.contains(saveBtn)) {
+      const date = attendanceDateInput?.value;
+      if (date) saveRow(saveBtn, date);
+      return;
+    }
+
+    const deleteBtn = e.target.closest?.(".att-delete-row");
+    if (deleteBtn && attendanceBody.contains(deleteBtn)) {
+      const date = attendanceDateInput?.value;
+      if (date) deleteRow(deleteBtn, date);
+    }
   });
 
   if (attendanceDateInput) {
@@ -267,6 +276,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         const shiftSelectOptions = shiftOptions
           .map((opt) => `<option value="${escapeHtml(opt.value)}" ${opt.value === shift ? "selected" : ""}>${escapeHtml(opt.label)}</option>`)
           .join("");
+        const deleteBtn =
+          isAdmin && id
+            ? AdminDelete.buttonHtml({
+                selector: "att-delete-row",
+                data: { staffId: s.id, recordId: id },
+                label: "Clear",
+                title: "Clear attendance (admin)",
+              })
+            : "";
+        const saveBtn = `<button type="button" class="att-save-row button-secondary" data-staff-id="${escapeHtml(s.id)}" data-record-id="${escapeHtml(id)}">Save</button>`;
+        const actionsCell = deleteBtn ? `${saveBtn} ${deleteBtn}` : saveBtn;
         return `
           <tr data-staff-id="${escapeHtml(s.id)}" data-record-id="${escapeHtml(id)}">
             <td>${name}${role}</td>
@@ -281,13 +301,51 @@ document.addEventListener("DOMContentLoaded", async () => {
               </select>
             </td>
             <td><input type="text" class="att-note" value="${note}" maxlength="200" placeholder="Note" data-staff-id="${escapeHtml(s.id)}" /></td>
-            <td><button type="button" class="att-save-row button-secondary" data-staff-id="${escapeHtml(s.id)}" data-record-id="${escapeHtml(id)}">Save</button></td>
+            <td class="table-actions">${actionsCell}</td>
           </tr>
         `;
       })
       .join("");
 
     attendanceBody.querySelectorAll("tr[data-staff-id]").forEach(syncMarkRowClass);
+  }
+
+  async function deleteRow(btn, date) {
+    if (!isAdmin) {
+      alert("Only an admin can clear attendance records.");
+      return;
+    }
+
+    const recordId = btn.getAttribute("data-record-id");
+    const staffId = btn.getAttribute("data-staff-id");
+    if (!recordId) return;
+
+    const staff = staffList.find((s) => s.id === staffId);
+    const staffName = staff?.name || "this staff member";
+    const confirmed = confirm(
+      `Clear attendance for ${staffName} on ${date}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    const { error } = await supabaseClient.from("employee_attendance").delete().eq("id", recordId);
+
+    if (error) {
+      btn.disabled = false;
+      showMessage(AppError.getUserMessage(error), true);
+      AppError.report(error, { context: "attendance deleteRow", recordId });
+      return;
+    }
+
+    showMessage("Attendance cleared.");
+    if (typeof CacheInvalidation !== "undefined") {
+      CacheInvalidation.invalidate("operational");
+    }
+    await loadAttendanceForDate(date);
+    renderAttendanceTable(date);
+    if (historyMonthInput?.value) {
+      await loadHistoryMonth(historyMonthInput.value);
+    }
   }
 
   async function saveRow(btn, date) {
@@ -332,8 +390,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     showMessage("Saved.");
-    if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("recent_activity");
+    if (typeof CacheInvalidation !== "undefined") {
+      CacheInvalidation.invalidate(["recent_activity"]);
     }
     loadAttendanceForDate(date).then(() => renderAttendanceTable(date));
   }
@@ -377,8 +435,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const saved = Number(data?.saved ?? 0);
     showMessage(saved ? `Saved ${saved} record(s).` : "No changes to save.");
-    if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("recent_activity");
+    if (typeof CacheInvalidation !== "undefined") {
+      CacheInvalidation.invalidate(["recent_activity"]);
     }
     loadAttendanceForDate(date).then(() => renderAttendanceTable(date));
   }

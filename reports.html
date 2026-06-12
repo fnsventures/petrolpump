@@ -20,6 +20,7 @@
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js"></script>
+    <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/reports.js?v=6"></script>
@@ -97,8 +98,8 @@
             </aside>
 
             <div class="reports-generate-main">
-              <form id="reports-filter-form" class="reports-period-form" autocomplete="off">
-                <div class="reports-period-fields">
+              <form id="reports-filter-form" class="filter-card" autocomplete="off">
+                <div class="filter-form">
                   <div class="form-field">
                     <label for="reports-start">From</label>
                     <input id="reports-start" type="date" required />
@@ -111,7 +112,7 @@
                     <button type="submit">Load data</button>
                   </div>
                 </div>
-                <p id="reports-date-label" class="reports-period-label">—</p>
+                <p id="reports-date-label" class="filter-summary">—</p>
               </form>
 
               <div class="reports-output">

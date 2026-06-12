@@ -21,6 +21,7 @@
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js"></script>
+    <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/analysis.js?v=3"></script>
@@ -94,12 +95,14 @@
             <h2>Performance command center</h2>
             <p class="analysis-hero-desc">KPIs, trends, and growth metrics across your pump operations. Choose a period, run analysis, then open Metrics, Charts, or Insights for results.</p>
           </div>
-          <div class="analysis-filter-card">
-            <div class="analysis-filter-head">
-              <h3>Analysis period</h3>
-              <p id="analysis-date-label" class="analysis-period-label">Select a range to analyze.</p>
+          <div class="filter-card">
+            <div class="filter-card-head">
+              <div>
+                <h3 class="filter-card-title">Analysis period</h3>
+                <p id="analysis-date-label" class="filter-summary">Select a range to analyze.</p>
+              </div>
             </div>
-            <form id="analysis-filter-form" class="analysis-filter-form dsr-filter" autocomplete="off">
+            <form id="analysis-filter-form" class="filter-form" autocomplete="off">
               <div class="form-field">
                 <label for="analysis-range">Range</label>
                 <select id="analysis-range">

@@ -48,6 +48,7 @@ const STATIC_ASSET_PATHS = [
   "js/dateRangeFilter.js",
   "js/pumpSettings.js",
   "js/purchaseTaxUtils.js",
+  "js/dsrQueries.js",
   "js/vendor/supabase.min.js",
   "js/supabase.js",
   "js/auth.js",

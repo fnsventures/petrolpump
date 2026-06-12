@@ -1,7 +1,8 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
+let isAdmin = false;
 
 async function loadDayClosingBreakdown(dateStr) {
   const dateInput = document.getElementById("day-closing-date");
@@ -224,9 +225,8 @@ async function initializeDayClosing() {
       if (errorEl) errorEl.classList.add("hidden");
       await loadDayClosingBreakdown(dateStr);
       // Invalidate cache so dashboard day-closing banners and data reflect immediately
-      if (typeof AppCache !== "undefined" && AppCache) {
-        AppCache.invalidateByType("dashboard_data");
-        AppCache.invalidateByType("recent_activity");
+      if (typeof CacheInvalidation !== "undefined") {
+        CacheInvalidation.invalidate("operational");
       }
     } catch (err) {
       AppError.report(err, { context: "saveDayClosing" });
@@ -276,23 +276,44 @@ async function initializeDayClosing() {
       const end = registerEnd.value?.trim();
       if (!start || !end) return;
       registerLoadBtn.disabled = true;
-      registerBody.innerHTML = "<tr><td colspan='11' class='muted'>Loading…</td></tr>";
+      registerBody.innerHTML = `<tr><td colspan='${isAdmin ? 12 : 11}' class='muted'>Loading…</td></tr>`;
       try {
-        const { data, error } = await supabaseClient
-          .from("day_closing")
-          .select("date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks")
-          .gte("date", start)
-          .lte("date", end)
-          .order("date", { ascending: false });
+        const [{ data, error }, { data: latestRow }] = await Promise.all([
+          supabaseClient
+            .from("day_closing")
+            .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks")
+            .gte("date", start)
+            .lte("date", end)
+            .order("date", { ascending: false }),
+          supabaseClient
+            .from("day_closing")
+            .select("date")
+            .order("date", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ]);
         if (error) throw error;
+        const colCount = isAdmin ? 12 : 11;
         if (!data?.length) {
-          registerBody.innerHTML = "<tr><td colspan='11' class='muted'>No closing statements in this range.</td></tr>";
+          registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>No closing statements in this range.</td></tr>`;
           return;
         }
+        const latestDate = latestRow?.date || null;
         registerBody.innerHTML = data.map((row) => {
           const d = row.date;
           const ref = row.closing_reference ?? "—";
           const fmtNum = (v) => formatCurrency(Number(v ?? 0));
+          const canDelete = isAdmin && row.id && row.date === latestDate;
+          const deleteBtn = canDelete
+            ? AdminDelete.buttonHtml({
+                selector: "dc-delete-btn",
+                data: { id: row.id, date: d, ref },
+                title: "Delete latest closing (admin)",
+              })
+            : isAdmin
+              ? `<span class="muted" title="Only the most recent closing can be deleted">—</span>`
+              : "";
+          const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
           return `<tr>
             <td>${d}</td>
             <td><code>${escapeHtml(ref)}</code></td>
@@ -305,16 +326,46 @@ async function initializeDayClosing() {
             <td>${fmtNum(row.phone_pay)}</td>
             <td>${fmtNum(row.short_today)}</td>
             <td>${escapeHtml(row.remarks ?? "—")}</td>
+            ${actionsCell}
           </tr>`;
         }).join("");
+
+        if (!registerBody.dataset.dcDeleteBound) {
+          AdminDelete.bindOnce(registerBody, ".dc-delete-btn", (btn) => deleteDayClosing(btn, registerLoadBtn), "dcDeleteBound");
+        }
       } catch (err) {
         AppError.report(err, { context: "loadDayClosingRegister" });
-        registerBody.innerHTML = "<tr><td colspan='11' class='error'>" + escapeHtml(err?.message || "Failed to load.") + "</td></tr>";
+        const errColCount = isAdmin ? 12 : 11;
+        registerBody.innerHTML = `<tr><td colspan='${errColCount}' class='error'>${escapeHtml(err?.message || "Failed to load.")}</td></tr>`;
       } finally {
         registerLoadBtn.disabled = false;
       }
     });
   }
+}
+
+async function deleteDayClosing(btn, reloadBtn) {
+  const id = btn.dataset.id;
+  const dateStr = btn.dataset.date || "";
+  const ref = btn.dataset.ref || "";
+
+  await AdminDelete.execute({
+    btn,
+    auth: isAdmin ? { role: "admin" } : null,
+    actionLabel: "delete day closing records",
+    confirmMessage: `Delete day closing for ${dateStr}${ref && ref !== "—" ? ` (${ref})` : ""}?\n\nOnly the latest closing can be removed so the day can be re-closed. This cannot be undone.`,
+    deleteFn: () => supabaseClient.rpc("delete_day_closing", { p_id: id }),
+    cacheScope: "operational",
+    onSuccess: async () => {
+      const dateInput = document.getElementById("day-closing-date");
+      if (dateInput?.value === dateStr) {
+        dayClosingBreakdown = null;
+        await loadDayClosingBreakdown(dateStr);
+      }
+      if (reloadBtn) reloadBtn.click();
+    },
+    errorContext: { context: "deleteDayClosing", id },
+  });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -324,7 +375,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     pageName: "day-closing",
   });
   if (!auth) return;
+  isAdmin = auth.role === "admin";
   applyRoleVisibility(auth.role);
+
+  const registerActionsHead = document.getElementById("dc-register-actions-head");
+  if (registerActionsHead) registerActionsHead.hidden = !isAdmin;
 
   if (typeof initPageSections === "function") {
     initPageSections({ defaultSection: "close", validSections: ["close", "register"] });

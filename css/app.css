@@ -87,17 +87,6 @@ tbody tr:hover {
   flex-shrink: 0;
 }
 
-.settle-inline .delete-entry {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.85rem;
-  background: #dc2626;
-  color: #fff;
-}
-
-.settle-inline .delete-entry:hover {
-  background: #b91c1c;
-}
-
 .settle-inline .settle-msg {
   font-size: 0.85rem;
   flex-shrink: 0;
@@ -633,24 +622,6 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   font-size: 1.05rem;
 }
 
-.dsr-history .dsr-delete-entry {
-  padding: 0.35rem 0.65rem;
-  font-size: 0.8rem;
-  background: #dc2626;
-  color: #fff;
-  border-color: #dc2626;
-}
-
-.dsr-history .dsr-delete-entry:hover {
-  background: #b91c1c;
-  border-color: #b91c1c;
-}
-
-.dsr-history .dsr-delete-entry:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .dsr-history .table-scroll {
   margin-top: 0.75rem;
 }
@@ -819,37 +790,11 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   line-height: 1.55;
 }
 
-.analysis-filter-card {
+.analysis-hero .filter-card {
   position: relative;
   z-index: 1;
   margin: 0 var(--space-4) var(--space-4);
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  border: 1px solid var(--border);
   box-shadow: var(--shadow-xs);
-}
-
-.analysis-filter-head h3 {
-  margin: 0;
-  font-size: var(--heading-md);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.analysis-period-label {
-  margin: 0.35rem 0 0;
-  font-size: var(--text-sm);
-  color: var(--bpcl-blue);
-  font-weight: 500;
-}
-
-.analysis-filter-form {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
-  margin-top: var(--space-3);
 }
 
 .analysis-apply-btn {
@@ -2824,31 +2769,6 @@ body.reports-page main.settings-layout.reports-layout {
   min-width: 0;
 }
 
-.reports-period-form {
-  padding: var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.reports-period-fields {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-3);
-}
-
-.reports-period-fields .filter-actions {
-  align-self: flex-end;
-}
-
-.reports-period-label {
-  margin: var(--space-3) 0 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--bpcl-blue, #0070c0);
-}
-
 .reports-output {
   min-width: 0;
 }
@@ -3434,12 +3354,6 @@ body.reports-page main.settings-layout.reports-layout {
   font-size: var(--text-xs);
 }
 
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
 .chip-filter {
   border: 1px solid var(--border);
   background: var(--surface);
@@ -3792,71 +3706,13 @@ body.modal-open {
   text-decoration: underline;
 }
 
-.customer-filter-card {
-  padding: var(--space-3) var(--space-4);
-  border-color: var(--border);
-  background: var(--surface);
-}
-
-.customer-filter-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+#customer-period-toolbar .filter-card-head {
   margin-bottom: var(--space-3);
-}
-
-.customer-filter-title {
-  margin: 0;
-  font-size: var(--text-base);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.customer-filter-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2) var(--space-3);
-}
-
-.customer-filter-reset {
-  font-size: var(--text-sm);
-  white-space: nowrap;
 }
 
 .customer-summary-print-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.customer-filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1.25rem;
-}
-
-.customer-filter-row .form-field {
-  min-width: 0;
-  margin: 0;
-}
-
-.customer-custom-range {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.75rem 1.25rem;
-}
-
-.customer-custom-range.hidden {
-  display: none;
-}
-
-.customer-filter-summary {
-  margin: var(--space-3) 0 0;
-  line-height: 1.45;
 }
 
 .customer-toolbar-stats {
@@ -3928,20 +3784,16 @@ body.modal-open {
     border-top: 1px solid rgba(0, 112, 192, 0.12);
   }
 
-  .customer-custom-range {
-    grid-template-columns: 1fr;
-  }
-
-  .customer-filter-head {
+  #customer-period-toolbar .filter-card-head {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .customer-filter-actions {
+  #customer-period-toolbar .filter-card-actions {
     justify-content: flex-start;
   }
 
-  .customer-filter-actions .customer-summary-print-btn {
+  #customer-period-toolbar .filter-card-actions .customer-summary-print-btn {
     flex: 1 1 auto;
   }
 }

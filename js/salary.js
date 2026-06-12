@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete */
 
 const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=2";
 
@@ -23,36 +23,8 @@ function slipAssetUrl(path) {
   return new URL(path, window.location.href).href;
 }
 
-function getStation() {
-  return PumpSettings.getCachedSync().station || AppConfig.DEFAULT_STATION;
-}
-
-function getStationLegalName() {
-  return getStation().legalName || AppConfig.DEFAULT_STATION.legalName;
-}
-
-function getStationTagline() {
-  return getStation().tagline || AppConfig.DEFAULT_STATION.tagline;
-}
-
-function getStationGstin() {
-  return getStation().gstin || AppConfig.DEFAULT_STATION.gstin;
-}
-
-function getStationAddress() {
-  return getStation().address || AppConfig.DEFAULT_STATION.address;
-}
-
-function getStationContactLine() {
-  const s = getStation();
-  const parts = [];
-  if (s.email) parts.push(s.email);
-  if (s.mobile) parts.push(s.mobile);
-  return parts.join(" · ");
-}
-
 function getPfSettings() {
-  const s = getStation();
+  const s = PumpSettings.getStation();
   const def = AppConfig.DEFAULT_STATION;
   return {
     establishmentCode: (s.pfEstablishmentCode || def.pfEstablishmentCode || "").trim(),
@@ -212,7 +184,16 @@ function salaryExpenseDescription(staff, note) {
 function salaryDeleteButtonHtml(payment, staff, isAdmin) {
   if (!isAdmin || !payment?.id) return "";
   const staffName = staff?.name || "staff";
-  return `<button type="button" class="button-secondary button-small salary-delete-btn" data-payment-id="${escapeHtml(payment.id)}" data-staff-name="${escapeHtml(staffName)}" data-date="${escapeHtml(payment.date)}" data-amount="${escapeHtml(String(payment.amount))}" title="Delete payment (admin)">Delete</button>`;
+  return AdminDelete.buttonHtml({
+    selector: "salary-delete-btn",
+    data: {
+      paymentId: payment.id,
+      staffName,
+      date: payment.date,
+      amount: payment.amount,
+    },
+    title: "Delete payment (admin)",
+  });
 }
 
 function paidByStaffInRange(payments) {
@@ -239,10 +220,10 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
     totalPaid,
     staff
   );
-  const gstin = getStationGstin();
+  const gstin = PumpSettings.getStationGstin();
   const pfSettings = getPfSettings();
-  const address = getStationAddress();
-  const contact = getStationContactLine();
+  const address = PumpSettings.getStationAddress();
+  const contact = PumpSettings.getStationContactLine();
   const slipRef = buildSlipRef(staff.id, monthValue);
   const generatedOn = formatDisplayDate(getLocalDateString());
   const employeePfNo = staff.pf_number?.trim() || "";
@@ -297,8 +278,8 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         <div class="salary-slip-letterhead">
           <img src="${slipAssetUrl(AppConfig.BPCL_LOGO_SRC)}" alt="Bharat Petroleum" class="salary-slip-logo" width="56" height="68" />
           <div class="salary-slip-letterhead-text">
-            <h1 class="salary-slip-station">${escapeHtml(getStationLegalName())}</h1>
-            <p class="salary-slip-dealer">${escapeHtml(getStationTagline())}</p>
+            <h1 class="salary-slip-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
+            <p class="salary-slip-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
             ${address ? `<p class="salary-slip-address">${escapeHtml(address)}</p>` : ""}
             ${contact ? `<p class="salary-slip-contact">${escapeHtml(contact)}</p>` : ""}
             ${statutoryParts.length ? `<p class="salary-slip-statutory">${statutoryParts.join("")}</p>` : ""}
@@ -426,7 +407,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         </div>
         <div class="salary-slip-sign">
           <span class="salary-slip-sign-line"></span>
-          <span class="salary-slip-sign-label">For ${escapeHtml(getStationLegalName())}<br />Authorised signatory</span>
+          <span class="salary-slip-sign-label">For ${escapeHtml(PumpSettings.getStationLegalName())}<br />Authorised signatory</span>
         </div>
       </footer>
       <p class="salary-slip-note">Computer-generated salary slip. PF amounts are fixed per employee (set in HR → Staff). Disbursement rows reflect actual payments recorded for ${escapeHtml(monthLabel)}.</p>
@@ -582,8 +563,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await deleteLinkedSalaryExpense(payment, staff);
 
     if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("dashboard_data");
-      AppCache.invalidateByType("recent_activity");
+      CacheInvalidation.invalidate("operational");
     }
 
     await refreshAll();
@@ -1096,8 +1076,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       paymentSuccess?.classList.remove("hidden");
       await refreshAll();
       if (typeof AppCache !== "undefined" && AppCache) {
-        AppCache.invalidateByType("dashboard_data");
-        AppCache.invalidateByType("recent_activity");
+        CacheInvalidation.invalidate("operational");
       }
     });
   }

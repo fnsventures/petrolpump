@@ -86,7 +86,9 @@
               <label for="attendance-date">Date</label>
               <input id="attendance-date" type="date" />
             </div>
-            <button type="button" id="attendance-save-all" class="button-secondary">Save all</button>
+            <div class="filter-actions">
+              <button type="button" id="attendance-save-all" class="button-secondary">Save all</button>
+            </div>
           </div>
         </div>
         <div id="attendance-summary" class="muted margin-top" aria-live="polite"></div>
@@ -123,8 +125,10 @@
               <label for="history-month">Month</label>
               <input id="history-month" type="month" />
             </div>
-            <button type="button" id="history-refresh" class="button-secondary" title="Reload this month from the server">Refresh</button>
-            <button type="button" id="history-download-csv" class="button-secondary">Download CSV</button>
+            <div class="filter-actions">
+              <button type="button" id="history-refresh" class="button-secondary" title="Reload this month from the server">Refresh</button>
+              <button type="button" id="history-download-csv" class="button-secondary">Download CSV</button>
+            </div>
           </div>
         </div>
         <p id="attendance-matrix-summary" class="attendance-matrix-summary muted margin-top" aria-live="polite"></p>

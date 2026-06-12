@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, isPurchaseTaxInclusive, getPurchaseTaxPct, getPurchaseTaxPctLabel, calcPurchaseLineTax, DsrQueries */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -84,22 +84,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadPumpSettings();
   initReportsPage();
 });
-
-function getStation() {
-  return PumpSettings.getCachedSync().station || AppConfig.DEFAULT_STATION;
-}
-
-function getStationLegalName() {
-  return getStation().legalName || AppConfig.DEFAULT_STATION.legalName;
-}
-
-function getStationTagline() {
-  return PumpSettings.getCachedSync().station?.tagline || AppConfig.DEFAULT_STATION.tagline;
-}
-
-function getStationGstin() {
-  return PumpSettings.getCachedSync().station?.gstin || AppConfig.DEFAULT_STATION.gstin;
-}
 
 function findReportMeta(reportId) {
   for (const group of REPORT_CATALOG) {
@@ -256,62 +240,6 @@ function fuelSalesToSlabTotals(lines) {
   return slabTotals;
 }
 
-function getPetrolPurchaseVatPct() {
-  const v = Number(PumpSettings.getCachedSync().reports?.petrolPurchaseVatPct);
-  return Number.isFinite(v) && v >= 0 ? v : AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct;
-}
-
-function getDieselPurchaseVatPct() {
-  const v = Number(PumpSettings.getCachedSync().reports?.dieselPurchaseVatPct);
-  return Number.isFinite(v) && v >= 0 ? v : AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct;
-}
-
-function isPurchaseTaxInclusive() {
-  const r = PumpSettings.getCachedSync().reports || {};
-  if (typeof r.purchaseTaxInclusive === "boolean") return r.purchaseTaxInclusive;
-  return AppConfig.DEFAULT_REPORTS.purchaseTaxInclusive === true;
-}
-
-/** VAT/LST % for inward fuel by product (MS = petrol, HSD = diesel). */
-function getPurchaseTaxPct(product) {
-  const p = normalizeProduct(product);
-  if (p === "petrol") return getPetrolPurchaseVatPct();
-  if (p === "diesel") return getDieselPurchaseVatPct();
-  return getFuelGstPct();
-}
-
-function getPurchaseTaxPctLabel() {
-  return `MS ${getPetrolPurchaseVatPct()}% · HSD ${getDieselPurchaseVatPct()}%`;
-}
-
-/**
- * @returns {{ taxable: number, tax: number, gross: number, cgst: number, sgst: number }}
- */
-function calcPurchaseLineTax(litres, ratePerLitre, taxPct, options) {
-  const base = Number(litres) * Number(ratePerLitre);
-  const pct = Number(taxPct);
-  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 0) {
-    return { taxable: 0, tax: 0, gross: 0, cgst: 0, sgst: 0 };
-  }
-
-  const storedGrossRate = options?.storedGrossRate === true;
-  let taxable;
-  let tax;
-  let gross;
-  if (storedGrossRate || isPurchaseTaxInclusive()) {
-    gross = base;
-    taxable = gross / (1 + pct / 100);
-    tax = gross - taxable;
-  } else {
-    taxable = base;
-    tax = taxable * (pct / 100);
-    gross = taxable + tax;
-  }
-
-  const half = tax / 2;
-  return { taxable, tax, gross, cgst: half, sgst: half };
-}
-
 function getFuelSupplierLabel() {
   return PumpSettings.getCachedSync().reports?.fuelSupplierLabel || AppConfig.DEFAULT_REPORTS.fuelSupplierLabel;
 }
@@ -461,10 +389,6 @@ function formatAmt(value) {
   return Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function normalizeProduct(v) {
-  return String(v ?? "").trim().toLowerCase();
-}
-
 function splitRatio(a, b) {
   const t = Number(a) + Number(b);
   if (!Number.isFinite(t) || t <= 0) return [0.5, 0.5];
@@ -472,14 +396,14 @@ function splitRatio(a, b) {
 }
 
 function reportHeader(title, start, end) {
-  const gstin = getStationGstin();
+  const gstin = PumpSettings.getStationGstin();
   return `
     <header class="report-print-head">
       <div class="report-letterhead">
         <img src="${AppConfig.BPCL_LOGO_SRC}" alt="Bharat Petroleum" class="report-bpcl-logo" width="56" height="68" />
         <div class="report-letterhead-text">
-          <h1 class="report-station">${escapeHtml(getStationLegalName())}</h1>
-          <p class="report-dealer">${escapeHtml(getStationTagline())}</p>
+          <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
+          <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
           ${gstin ? `<p class="report-gstin">GSTIN: ${escapeHtml(gstin)}</p>` : ""}
           <p class="report-title">${escapeHtml(title)}</p>
           <p class="report-period">Period: ${formatDisplayDate(start)} &nbsp;–&nbsp; ${formatDisplayDate(end)}</p>
@@ -542,28 +466,16 @@ async function loadAndRenderReports() {
 }
 
 async function fetchReportData(start, end) {
-  const receiptHistoryStart = PumpSettings.getReceiptHistoryStart();
   const [
-    dsrResult,
+    dsrBundle,
     stockResult,
     expenseResult,
     invoiceResult,
     categoryResult,
   ] = await Promise.all([
-    supabaseClient
-      .from("dsr")
-      .select(
-        "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre"
-      )
-      .gte("date", receiptHistoryStart)
-      .lte("date", end)
-      .order("date", { ascending: true }),
+    DsrQueries.fetchDsrRows(start, end, { select: DsrQueries.DSR_SELECT_FULL }),
     supabaseClient.rpc("get_dsr_stock_range", { p_start: start, p_end: end }),
-    supabaseClient
-      .from("expenses")
-      .select("date, category, amount, description")
-      .gte("date", start)
-      .lte("date", end),
+    DsrQueries.fetchExpenses(start, end, "date, category, amount, description"),
     supabaseClient
       .from("invoices")
       .select(
@@ -575,18 +487,8 @@ async function fetchReportData(start, end) {
     supabaseClient.from("expense_categories").select("name, label").order("sort_order"),
   ]);
 
-  const allDsr = dsrResult.data ?? [];
-  const dsrData = allDsr.filter((row) => row.date >= start && row.date <= end);
-  const receiptRows = allDsr
-    .filter(
-      (row) =>
-        Number(row.receipts ?? 0) > 0 &&
-        row.buying_price_per_litre != null
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
-
   const errors = [
-    dsrResult.error,
+    dsrBundle.error,
     stockResult.error,
     expenseResult.error,
     invoiceResult.error,
@@ -612,13 +514,13 @@ async function fetchReportData(start, end) {
   });
 
   return {
-    dsrRows: dsrData,
+    dsrRows: dsrBundle.data ?? [],
     stockRows: stockResult.data ?? [],
     expenseRows: expenseResult.data ?? [],
     invoices,
     invoiceItems,
     categoryMap,
-    receiptRows,
+    receiptRows: dsrBundle.receiptRows ?? [],
   };
 }
 
@@ -1532,7 +1434,7 @@ function buildPrintSheetWrapped(reportBodyHtml, reportId, range) {
     <div class="report-print-sheet" data-report="${escapeHtml(reportId)}">
       ${reportBodyHtml}
       <footer class="report-print-foot">
-        <span>${escapeHtml(getStationLegalName())}</span>
+        <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
         <span>${escapeHtml(title)}${periodLabel ? ` · ${escapeHtml(periodLabel)}` : ""}</span>
       </footer>
     </div>`;
