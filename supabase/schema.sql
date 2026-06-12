@@ -1830,6 +1830,188 @@ end;
 $$;
 comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Rejects future settlement dates.';
 
+-- Re-apply FIFO settlements after a payment is removed (admin delete)
+create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_pay record;
+  v_entry record;
+  v_remaining numeric;
+  v_alloc numeric;
+begin
+  perform set_config('app.skip_credit_sync', 'true', true);
+
+  begin
+    update public.credit_entries
+    set amount_settled = 0
+    where credit_customer_id = p_credit_customer_id;
+
+    for v_pay in
+      select id, amount
+      from public.credit_payments
+      where credit_customer_id = p_credit_customer_id
+      order by date asc, created_at asc, id asc
+    loop
+      v_remaining := v_pay.amount;
+      for v_entry in
+        select id, amount, amount_settled
+        from public.credit_entries
+        where credit_customer_id = p_credit_customer_id
+          and amount_settled < amount
+        order by transaction_date asc, id asc
+        for update
+      loop
+        exit when v_remaining <= 0;
+        v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
+        update public.credit_entries
+        set amount_settled = amount_settled + v_alloc
+        where id = v_entry.id;
+        v_remaining := v_remaining - v_alloc;
+      end loop;
+    end loop;
+  exception
+    when others then
+      perform set_config('app.skip_credit_sync', '', true);
+      raise;
+  end;
+
+  perform set_config('app.skip_credit_sync', '', true);
+end;
+$$;
+
+comment on function public.reallocate_credit_settlements(uuid) is
+  'Reset amount_settled on all entries for a customer, then re-apply remaining payments FIFO.';
+
+create or replace function public.delete_credit_payment(p_payment_id uuid)
+returns jsonb
+language plpgsql security definer
+as $$
+declare
+  v_payment record;
+  v_new_due numeric;
+  v_last_payment date;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can delete credit settlements';
+  end if;
+
+  select * into v_payment
+  from public.credit_payments
+  where id = p_payment_id;
+
+  if not found then
+    raise exception 'Settlement record not found';
+  end if;
+
+  perform set_config('app.skip_credit_sync', 'true', true);
+
+  begin
+    delete from public.credit_payments where id = p_payment_id;
+    perform public.reallocate_credit_settlements(v_payment.credit_customer_id);
+  exception
+    when others then
+      perform set_config('app.skip_credit_sync', '', true);
+      raise;
+  end;
+
+  perform set_config('app.skip_credit_sync', '', true);
+
+  select coalesce(sum(amount - amount_settled), 0) into v_new_due
+  from public.credit_entries
+  where credit_customer_id = v_payment.credit_customer_id;
+
+  select max(date) into v_last_payment
+  from public.credit_payments
+  where credit_customer_id = v_payment.credit_customer_id;
+
+  update public.credit_customers
+  set amount_due = v_new_due, last_payment = v_last_payment
+  where id = v_payment.credit_customer_id;
+
+  return jsonb_build_object(
+    'credit_customer_id', v_payment.credit_customer_id,
+    'deleted_amount', v_payment.amount,
+    'deleted_date', v_payment.date,
+    'new_due', v_new_due
+  );
+end;
+$$;
+
+comment on function public.delete_credit_payment(uuid) is
+  'Admin-only: delete a credit settlement and re-allocate remaining payments FIFO.';
+
+create or replace function public.delete_day_closing(p_id uuid)
+returns jsonb
+language plpgsql security definer
+as $$
+declare
+  v_row record;
+  v_latest_date date;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can delete day closing records';
+  end if;
+
+  select * into v_row from public.day_closing where id = p_id;
+  if not found then
+    raise exception 'Day closing record not found';
+  end if;
+
+  select max(date) into v_latest_date from public.day_closing;
+
+  if v_row.date < v_latest_date then
+    raise exception 'Only the most recent day closing can be deleted. Remove newer closings first.';
+  end if;
+
+  delete from public.day_closing where id = p_id;
+
+  return jsonb_build_object(
+    'date', v_row.date,
+    'closing_reference', v_row.closing_reference
+  );
+end;
+$$;
+
+comment on function public.delete_day_closing(uuid) is
+  'Admin-only: delete the latest day closing so the date can be re-closed.';
+
+create or replace function public.delete_credit_entry(p_entry_id uuid)
+returns jsonb
+language plpgsql security definer
+as $$
+declare
+  v_entry record;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can delete credit entries';
+  end if;
+
+  select * into v_entry
+  from public.credit_entries
+  where id = p_entry_id;
+
+  if not found then
+    raise exception 'Credit entry not found';
+  end if;
+
+  if coalesce(v_entry.amount_settled, 0) > 0 then
+    raise exception 'Cannot delete a credit entry that has settlements applied. Delete settlements first.';
+  end if;
+
+  delete from public.credit_entries where id = p_entry_id;
+
+  return jsonb_build_object(
+    'credit_customer_id', v_entry.credit_customer_id,
+    'amount', v_entry.amount
+  );
+end;
+$$;
+
+comment on function public.delete_credit_entry(uuid) is
+  'Admin-only: delete an unsettled credit sale entry. amount_due updated via trigger.';
+
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)
 returns numeric
@@ -2093,6 +2275,7 @@ begin
     select coalesce(
       (select jsonb_agg(
         jsonb_build_object(
+          'id', e.id,
           'entry_date', e.transaction_date,
           'amount', e.amount,
           'fuel_type', e.fuel_type,
@@ -2109,6 +2292,7 @@ begin
     select coalesce(
       (select jsonb_agg(
         jsonb_build_object(
+          'id', p.id,
           'entry_date', p.date,
           'amount', p.amount,
           'payment_mode', p.payment_mode,
@@ -2237,6 +2421,11 @@ create trigger audit_credit_trigger
   after insert or update or delete on public.credit_customers
   for each row execute function public.audit_trigger_fn();
 
+drop trigger if exists audit_credit_entries_trigger on public.credit_entries;
+create trigger audit_credit_entries_trigger
+  after insert or update or delete on public.credit_entries
+  for each row execute function public.audit_trigger_fn();
+
 -- Staff members: full audit
 drop trigger if exists audit_staff_members_trigger on public.employees;
 drop trigger if exists audit_employees_trigger on public.employees;
@@ -2313,6 +2502,9 @@ grant execute on function public.get_day_closing_breakdown(date) to authenticate
 grant execute on function public.save_day_closing(date, numeric, numeric, text) to authenticated;
 grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) to authenticated;
 grant execute on function public.record_credit_payment(uuid, date, numeric, text, text) to authenticated;
+grant execute on function public.delete_credit_payment(uuid) to authenticated;
+grant execute on function public.delete_credit_entry(uuid) to authenticated;
+grant execute on function public.delete_day_closing(uuid) to authenticated;
 grant execute on function public.get_credit_ledger_aggregated() to authenticated;
 grant execute on function public.get_open_credit_as_of(date) to authenticated;
 grant execute on function public.get_outstanding_credit_list_as_of(date) to authenticated;

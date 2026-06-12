@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -17,12 +17,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initAnalysisPage();
 });
 
-// --- Formatting ---
-function formatQuantity(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
 function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
   const n = Number(value);
@@ -34,50 +28,19 @@ function formatPercent(value) {
 
 
 async function fetchAnalysisData(startDate, endDate) {
-  const receiptHistoryStart = PumpSettings.getReceiptHistoryStart();
-  const [dsrResult, expenseResult] = await Promise.all([
-    supabaseClient
-      .from("dsr")
-      .select("date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre")
-      .gte("date", receiptHistoryStart)
-      .lte("date", endDate)
-      .order("date", { ascending: true }),
-    supabaseClient
-      .from("expenses")
-      .select("date, amount")
-      .gte("date", startDate)
-      .lte("date", endDate),
+  const [dsrBundle, expenseResult] = await Promise.all([
+    DsrQueries.fetchDsrRows(startDate, endDate),
+    DsrQueries.fetchExpenses(startDate, endDate),
   ]);
 
-  if (dsrResult.error) {
-    AppError.report(dsrResult.error, { context: "fetchAnalysisData", type: "dsr" });
-    throw dsrResult.error;
-  }
-  if (expenseResult.error) {
-    AppError.report(expenseResult.error, { context: "fetchAnalysisData", type: "expenses" });
-    throw expenseResult.error;
-  }
-
-  const allDsr = dsrResult.data ?? [];
-  const dsrData = allDsr.filter((row) => row.date >= startDate && row.date <= endDate);
-  const receiptRows = allDsr
-    .filter(
-      (row) =>
-        Number(row.receipts ?? 0) > 0 &&
-        row.buying_price_per_litre != null &&
-        row.date <= endDate
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
+  if (dsrBundle.error) throw dsrBundle.error;
+  if (expenseResult.error) throw expenseResult.error;
 
   return {
-    dsrData,
+    dsrData: dsrBundle.data ?? [],
     expenseData: expenseResult.data ?? [],
-    receiptRows,
+    receiptRows: dsrBundle.receiptRows ?? [],
   };
-}
-
-function normalizeProduct(value) {
-  return String(value ?? "").trim().toLowerCase();
 }
 
 /**
