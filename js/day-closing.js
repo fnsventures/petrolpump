@@ -276,7 +276,7 @@ async function initializeDayClosing() {
       const end = registerEnd.value?.trim();
       if (!start || !end) return;
       registerLoadBtn.disabled = true;
-      registerBody.innerHTML = "<tr><td colspan='11' class='muted'>Loading…</td></tr>";
+      registerBody.innerHTML = `<tr><td colspan='${isAdmin ? 12 : 11}' class='muted'>Loading…</td></tr>`;
       try {
         const [{ data, error }, { data: latestRow }] = await Promise.all([
           supabaseClient
@@ -305,7 +305,11 @@ async function initializeDayClosing() {
           const fmtNum = (v) => formatCurrency(Number(v ?? 0));
           const canDelete = isAdmin && row.id && row.date === latestDate;
           const deleteBtn = canDelete
-            ? `<button type="button" class="button-secondary button-small dc-delete-btn" data-id="${escapeHtml(row.id)}" data-date="${escapeHtml(d)}" data-ref="${escapeHtml(ref)}" title="Delete latest closing (admin)">Delete</button>`
+            ? AdminDelete.buttonHtml({
+                selector: "dc-delete-btn",
+                data: { id: row.id, date: d, ref },
+                title: "Delete latest closing (admin)",
+              })
             : isAdmin
               ? `<span class="muted" title="Only the most recent closing can be deleted">—</span>`
               : "";

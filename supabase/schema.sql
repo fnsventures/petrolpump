@@ -1834,6 +1834,8 @@ comment on function public.record_credit_payment(uuid, date, numeric, text, text
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
 returns void
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_pay record;
@@ -1883,6 +1885,9 @@ $$;
 
 comment on function public.reallocate_credit_settlements(uuid) is
   'Reset amount_settled on all entries for a customer, then re-apply remaining payments FIFO.';
+
+revoke all on function public.reallocate_credit_settlements(uuid) from public;
+revoke all on function public.reallocate_credit_settlements(uuid) from authenticated;
 
 create or replace function public.delete_credit_payment(p_payment_id uuid)
 returns jsonb

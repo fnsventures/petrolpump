@@ -323,6 +323,45 @@
  * Shared admin delete UX: role guard, confirm, disable button, cache invalidation.
  */
 const AdminDelete = (function () {
+  function escapeAttr(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function dataAttrName(key) {
+    return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+  }
+
+  /**
+   * Unified admin delete button markup for table actions and forms.
+   * @param {object} options
+   * @param {string} options.selector - Page-specific class for event delegation (e.g. "expense-delete-btn")
+   * @param {Record<string, string|number>} [options.data] - data-* attributes (camelCase keys)
+   * @param {string} [options.label="Delete"]
+   * @param {string} [options.title="Delete (admin)"]
+   * @param {boolean} [options.small=true]
+   */
+  function buttonHtml(options) {
+    const {
+      selector,
+      data = {},
+      label = "Delete",
+      title = "Delete (admin)",
+      small = true,
+    } = options || {};
+
+    const classes = ["button-delete", small && "button-small", selector].filter(Boolean).join(" ");
+    const dataAttrs = Object.entries(data)
+      .map(([key, val]) => `data-${dataAttrName(key)}="${escapeAttr(val)}"`)
+      .join(" ");
+    const attrs = [dataAttrs, `title="${escapeAttr(title)}"`].filter(Boolean).join(" ");
+
+    return `<button type="button" class="${classes}" ${attrs}>${escapeAttr(label)}</button>`;
+  }
+
   function requireAdmin(auth, actionLabel) {
     if (auth?.role === "admin") return true;
     alert(`Only an admin can ${actionLabel}.`);
@@ -377,7 +416,7 @@ const AdminDelete = (function () {
     }
   }
 
-  return { requireAdmin, bindOnce, execute };
+  return { requireAdmin, bindOnce, execute, buttonHtml };
 })();
 
 window.AdminDelete = AdminDelete;

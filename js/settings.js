@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, escapeHtml, PumpSettings, loadPumpSettings, AppConfig */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -258,7 +258,13 @@ async function loadProducts() {
       <td>${escapeHtml(p.unit)}</td>
       <td>${formatCurrency(p.default_rate)}</td>
       <td>${escapeHtml(formatGstLabel(p.gst_percent))}</td>
-      <td><button type="button" class="button-secondary delete-product-btn" data-id="${escapeHtml(p.id)}">Remove</button></td>
+      <td>${AdminDelete.buttonHtml({
+        selector: "delete-product-btn",
+        data: { id: p.id },
+        label: "Remove",
+        title: "Remove product",
+        small: false,
+      })}</td>
     </tr>`
     )
     .join("");
@@ -631,7 +637,12 @@ async function loadExpenseCategories() {
       (row) => `
     <tr>
       <td>${escapeHtml(row.label)}</td>
-      <td><button type="button" class="button-secondary delete-expense-category" data-id="${escapeHtml(row.id)}" data-name="${escapeHtml(row.name)}" data-label="${escapeHtml(row.label)}">Delete</button></td>
+      <td>${AdminDelete.buttonHtml({
+        selector: "delete-expense-category",
+        data: { id: row.id, name: row.name, label: row.label },
+        title: "Delete category",
+        small: false,
+      })}</td>
     </tr>`
     )
     .join("");

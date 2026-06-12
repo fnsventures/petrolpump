@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -278,7 +278,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           .join("");
         const deleteBtn =
           isAdmin && id
-            ? `<button type="button" class="att-delete-row button-secondary button-small" data-staff-id="${escapeHtml(s.id)}" data-record-id="${escapeHtml(id)}" title="Clear attendance (admin)">Clear</button>`
+            ? AdminDelete.buttonHtml({
+                selector: "att-delete-row",
+                data: { staffId: s.id, recordId: id },
+                label: "Clear",
+                title: "Clear attendance (admin)",
+              })
             : "";
         const saveBtn = `<button type="button" class="att-save-row button-secondary" data-staff-id="${escapeHtml(s.id)}" data-record-id="${escapeHtml(id)}">Save</button>`;
         const actionsCell = deleteBtn ? `${saveBtn} ${deleteBtn}` : saveBtn;

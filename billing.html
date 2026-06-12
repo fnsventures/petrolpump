@@ -203,21 +203,31 @@
         </section>
 
         <section class="settings-panel card no-print" data-panel="history" hidden>
-        <div class="card-head card-head-flex">
+        <div class="card-head snapshot-head">
           <h2>Invoice History</h2>
-          <div class="filter-bar">
-            <select id="invoice-range">
-              <option value="today">Today</option>
-              <option value="this-week">This week</option>
-              <option value="this-month" selected>This month</option>
-              <option value="custom">Custom range</option>
-            </select>
-            <div id="invoice-custom-range" class="custom-range hidden">
-              <input type="date" id="invoice-start" />
-              <span>to</span>
-              <input type="date" id="invoice-end" />
+          <div class="snapshot-controls">
+            <div class="form-field form-field-inline">
+              <label for="invoice-range">Period</label>
+              <select id="invoice-range">
+                <option value="today">Today</option>
+                <option value="this-week">This week</option>
+                <option value="this-month" selected>This month</option>
+                <option value="custom">Custom dates</option>
+              </select>
             </div>
-            <button type="button" id="invoice-apply-filter" class="button-secondary button-sm">Apply</button>
+            <div id="invoice-custom-range" class="custom-range hidden" aria-hidden="true">
+              <div class="form-field form-field-inline">
+                <label for="invoice-start">From</label>
+                <input type="date" id="invoice-start" />
+              </div>
+              <div class="form-field form-field-inline">
+                <label for="invoice-end">To</label>
+                <input type="date" id="invoice-end" />
+              </div>
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="invoice-apply-filter">Apply</button>
+            </div>
           </div>
         </div>
         <div class="table-wrap">

@@ -292,7 +292,17 @@ async function loadExpenses(reset = false) {
     data.forEach((row) => {
       const deleteBtn =
         isAdmin && row.id
-          ? `<button type="button" class="button-secondary button-small expense-delete-btn" data-expense-id="${escapeHtml(row.id)}" data-category="${escapeHtml(row.category || "")}" data-date="${escapeHtml(row.date)}" data-amount="${escapeHtml(String(row.amount))}" data-description="${escapeHtml(row.description || "")}" title="Delete expense (admin)">Delete</button>`
+          ? AdminDelete.buttonHtml({
+              selector: "expense-delete-btn",
+              data: {
+                expenseId: row.id,
+                category: row.category || "",
+                date: row.date,
+                amount: row.amount,
+                description: row.description || "",
+              },
+              title: "Delete expense (admin)",
+            })
           : "";
       const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
       const tr = document.createElement("tr");
