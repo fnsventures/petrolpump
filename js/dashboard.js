@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, CacheInvalidation */
 
 /**
  * Generate cache key for dashboard data queries
@@ -482,10 +482,6 @@ function updateDashboardAlertsVisibility() {
 }
 
 let snapshotDsrRows = [];
-
-function normalizeProduct(value) {
-  return String(value ?? "").trim().toLowerCase();
-}
 
 let statFitRaf = null;
 
@@ -1461,9 +1457,7 @@ async function handleSaveBuyingPrice(dsrId) {
   }
   // Invalidate cache so other tabs / next load see updated P&L immediately
   if (typeof AppCache !== "undefined" && AppCache) {
-    AppCache.invalidateByType("profit_loss");
-    AppCache.invalidateByType("dashboard_data");
-    AppCache.invalidateByType("reports_data");
+    CacheInvalidation.invalidate("reports");
   }
   const range = getCurrentPlRange();
   if (range) await loadProfitLossSummary(range);
@@ -1682,25 +1676,6 @@ function formatDateInput(date) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
-}
-
-function formatDisplayDate(dateStr) {
-  const date = new Date(`${dateStr}T00:00:00`);
-  return date.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatQuantity(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
 }
 
 // Listen for credit updates from other pages/tabs and refresh credit summary

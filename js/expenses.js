@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -14,6 +14,7 @@ function getCategoryLabel(value) {
 
 // Pagination state
 const PAGE_SIZE = 20;
+let currentAuth = null;
 let expensesPagination = {
   offset: 0,
   hasMore: true,
@@ -28,7 +29,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     pageName: "expenses",
   });
   if (!auth) return;
+  currentAuth = auth;
   applyRoleVisibility(auth.role);
+
+  const actionsHead = document.getElementById("expense-actions-head");
+  if (actionsHead) actionsHead.hidden = auth.role !== "admin";
 
   if (typeof initPageSections === "function") {
     initPageSections({ defaultSection: "record", validSections: ["record", "history"] });
@@ -99,9 +104,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       successEl?.classList.remove("hidden");
       loadExpenses(true);
       // Invalidate cache so dashboard reflects new expense immediately
-      if (typeof AppCache !== "undefined" && AppCache) {
-        AppCache.invalidateByType("dashboard_data");
-        AppCache.invalidateByType("recent_activity");
+      if (typeof CacheInvalidation !== "undefined") {
+        CacheInvalidation.invalidate("operational");
       }
     });
   }
@@ -219,11 +223,13 @@ async function loadExpenses(reset = false) {
 
   const { start, end } = getExpenseDateRange();
 
+  const colCount = currentAuth?.role === "admin" ? 5 : 4;
+
   if (reset) {
     expensesPagination.offset = 0;
     expensesPagination.hasMore = true;
     expensesPagination.totalCount = 0;
-    tbody.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
+    tbody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>Loading…</td></tr>`;
   }
   if (totalRow) totalRow.classList.add("hidden");
   if (emptyCta) emptyCta.classList.add("hidden");
@@ -244,7 +250,7 @@ async function loadExpenses(reset = false) {
 
     const { data, error } = await supabaseClient
       .from("expenses")
-      .select("date, category, description, amount")
+      .select("id, date, category, description, amount")
       .gte("date", start)
       .lte("date", end)
       .order("date", { ascending: false })
@@ -252,7 +258,7 @@ async function loadExpenses(reset = false) {
 
     if (error) {
       if (reset) {
-        tbody.innerHTML = `<tr><td colspan='4' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan='${colCount}' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
       }
       AppError.report(error, { context: "loadExpenses" });
       expensesPagination.isLoading = false;
@@ -282,18 +288,37 @@ async function loadExpenses(reset = false) {
       if (tableEl) tableEl.classList.remove("hidden");
     }
 
-    let periodTotal = 0;
+    const isAdmin = currentAuth?.role === "admin";
     data.forEach((row) => {
-      periodTotal += Number(row.amount ?? 0);
+      const deleteBtn =
+        isAdmin && row.id
+          ? AdminDelete.buttonHtml({
+              selector: "expense-delete-btn",
+              data: {
+                expenseId: row.id,
+                category: row.category || "",
+                date: row.date,
+                amount: row.amount,
+                description: row.description || "",
+              },
+              title: "Delete expense (admin)",
+            })
+          : "";
+      const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${row.date}</td>
         <td>${escapeHtml(getCategoryLabel(row.category))}</td>
         <td>${escapeHtml(row.description ?? "—")}</td>
         <td>${formatCurrency(row.amount)}</td>
+        ${actionsCell}
       `;
       tbody.appendChild(tr);
     });
+
+    if (!tbody.dataset.expenseDeleteBound) {
+      AdminDelete.bindOnce(tbody, ".expense-delete-btn", deleteExpense, "expenseDeleteBound");
+    }
 
     if (reset && totalRow && totalValue) {
       const { data: sumData } = await supabaseClient
@@ -308,13 +333,38 @@ async function loadExpenses(reset = false) {
 
   } catch (err) {
     if (reset) {
-      tbody.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+      const colCount = currentAuth?.role === "admin" ? 5 : 4;
+      tbody.innerHTML = `<tr><td colspan="${colCount}" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
     }
     AppError.report(err, { context: "loadExpenses" });
   } finally {
     expensesPagination.isLoading = false;
     updateExpensesPaginationUI();
   }
+}
+
+async function deleteExpense(btn) {
+  const category = btn.dataset.category || "";
+  if (category === "salary") {
+    alert("Salary expenses are linked to salary payments. Delete the payment from the Salary page instead.");
+    return;
+  }
+
+  const expenseId = btn.dataset.expenseId;
+  const dateStr = btn.dataset.date || "";
+  const amount = Number(btn.dataset.amount || 0);
+  const description = btn.dataset.description || "";
+
+  await AdminDelete.execute({
+    btn,
+    auth: currentAuth,
+    actionLabel: "delete expenses",
+    confirmMessage: `Delete expense of ${formatCurrency(amount)} on ${dateStr}${description ? ` (${description})` : ""}?\n\nThis cannot be undone.`,
+    deleteFn: () => supabaseClient.from("expenses").delete().eq("id", expenseId),
+    cacheScope: "operational",
+    onSuccess: () => loadExpenses(true),
+    errorContext: { context: "deleteExpense", expenseId },
+  });
 }
 
 /**

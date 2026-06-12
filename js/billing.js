@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation */
 
 let productsCache = [];
 let currentAuth = null;
@@ -467,8 +467,8 @@ async function saveInvoice() {
     resetForm();
     loadInvoices(true);
 
-    if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("dashboard_data");
+    if (typeof CacheInvalidation !== "undefined") {
+      CacheInvalidation.invalidate("operational");
     }
   } catch (err) {
     AppError.handle(err, { target: errorEl });
@@ -715,8 +715,22 @@ async function loadInvoices(reset = false) {
       countMap[ic.invoice_id] = (countMap[ic.invoice_id] || 0) + 1;
     });
 
+    const adminUser = currentAuth?.role === "admin";
+
     data.forEach(inv => {
       const tr = document.createElement("tr");
+      const deleteBtn = adminUser
+        ? ` ${AdminDelete.buttonHtml({
+            selector: "invoice-delete-btn",
+            data: {
+              invoiceId: inv.id,
+              invoiceNumber: inv.invoice_number,
+              invoiceDate: inv.invoice_date,
+              invoiceAmount: inv.total_amount,
+            },
+            title: "Delete invoice (admin)",
+          })}`
+        : "";
       tr.innerHTML = `
         <td><strong>${escapeHtml(inv.invoice_number)}</strong></td>
         <td>${formatDate(inv.invoice_date)}</td>
@@ -724,8 +738,8 @@ async function loadInvoices(reset = false) {
         <td>${escapeHtml(inv.vehicle_no || "—")}</td>
         <td>${countMap[inv.id] || 0}</td>
         <td>${formatCurrency(inv.total_amount)}</td>
-        <td>
-          <button class="link" data-print-invoice="${inv.id}" title="Print">Print</button>
+        <td class="table-actions">
+          <button class="link" data-print-invoice="${inv.id}" title="Print">Print</button>${deleteBtn}
         </td>
       `;
       tbody.appendChild(tr);
@@ -735,6 +749,10 @@ async function loadInvoices(reset = false) {
       btn.addEventListener("click", () => showPrintInvoice(btn.dataset.printInvoice));
     });
 
+    if (!tbody.dataset.invoiceDeleteBound) {
+      AdminDelete.bindOnce(tbody, ".invoice-delete-btn", deleteInvoice, "invoiceDeleteBound");
+    }
+
   } catch (err) {
     if (reset) tbody.innerHTML = `<tr><td colspan='7' class='error'>${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
     AppError.report(err, { context: "loadInvoices" });
@@ -742,6 +760,24 @@ async function loadInvoices(reset = false) {
     invoicesPagination.isLoading = false;
     updateInvoicesPaginationUI();
   }
+}
+
+async function deleteInvoice(btn) {
+  const invoiceId = btn.dataset.invoiceId;
+  const invoiceNumber = btn.dataset.invoiceNumber || "this invoice";
+  const invoiceDate = btn.dataset.invoiceDate || "";
+  const invoiceAmount = Number(btn.dataset.invoiceAmount || 0);
+
+  await AdminDelete.execute({
+    btn,
+    auth: currentAuth,
+    actionLabel: "delete invoices",
+    confirmMessage: `Delete invoice ${invoiceNumber} dated ${formatDate(invoiceDate)} (${formatCurrency(invoiceAmount)})?\n\nThis cannot be undone.`,
+    deleteFn: () => supabaseClient.from("invoices").delete().eq("id", invoiceId),
+    cacheScope: "operational",
+    onSuccess: () => loadInvoices(true),
+    errorContext: { context: "deleteInvoice", invoiceId },
+  });
 }
 
 function updateInvoicesPaginationUI() {

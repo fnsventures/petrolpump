@@ -163,8 +163,8 @@
     }
 
     cacheInMemory(next);
-    if (typeof AppCache !== "undefined" && AppCache) {
-      AppCache.invalidateByType("pump_settings");
+    if (typeof CacheInvalidation !== "undefined") {
+      CacheInvalidation.invalidate("pump_settings");
     }
     return next;
   }
@@ -174,12 +174,50 @@
     loadPromise = null;
     if (typeof AppCache !== "undefined" && AppCache) {
       AppCache.remove(CACHE_KEY);
-      AppCache.invalidateByType("pump_settings");
+      if (typeof CacheInvalidation !== "undefined") {
+        CacheInvalidation.invalidate("pump_settings");
+      } else {
+        AppCache.invalidateByType("pump_settings");
+      }
     }
   }
 
   function getStationDisplayName() {
     return getCachedSync().station?.displayName || AppConfig.DEFAULT_STATION.displayName;
+  }
+
+  function getStation() {
+    return getCachedSync().station || AppConfig.DEFAULT_STATION;
+  }
+
+  function getStationField(field) {
+    const s = getStation();
+    const def = AppConfig.DEFAULT_STATION;
+    return s[field] ?? def[field];
+  }
+
+  function getStationLegalName() {
+    return getStationField("legalName");
+  }
+
+  function getStationTagline() {
+    return getStationField("tagline");
+  }
+
+  function getStationGstin() {
+    return getStationField("gstin");
+  }
+
+  function getStationAddress() {
+    return getStationField("address");
+  }
+
+  function getStationContactLine() {
+    const s = getStation();
+    const parts = [];
+    if (s.email) parts.push(s.email);
+    if (s.mobile) parts.push(s.mobile);
+    return parts.join(" · ");
   }
 
   function getPumpConfig() {
@@ -219,6 +257,13 @@
     getCachedSync,
     invalidatePumpSettingsCache,
     getStationDisplayName,
+    getStation,
+    getStationField,
+    getStationLegalName,
+    getStationTagline,
+    getStationGstin,
+    getStationAddress,
+    getStationContactLine,
     getPumpConfig,
     getAlertThresholds,
     getShiftConfig,

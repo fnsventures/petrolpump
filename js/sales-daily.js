@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState, AppError, escapeHtml */
+/* global supabaseClient, requireAuth, applyRoleVisibility, getValidFilterState, setFilterState, AppError, escapeHtml, formatQuantity */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const YYYYMMDD = /^\d{4}-\d{2}-\d{2}$/;
@@ -192,15 +192,5 @@ function mergeDailyData(dsrRows, stockRows) {
       return a.product.localeCompare(b.product);
     }
     return b.date.localeCompare(a.date);
-  });
-}
-
-function formatQuantity(value) {
-  if (value === null || value === undefined || Number.isNaN(Number(value))) {
-    return "—";
-  }
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
   });
 }

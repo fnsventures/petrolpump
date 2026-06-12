@@ -345,3 +345,50 @@ const AppCache = (function () {
 
 // Export for use in other modules
 window.AppCache = AppCache;
+
+/**
+ * Centralized cache invalidation scopes for mutations.
+ * Use instead of scattering invalidateByType calls across page modules.
+ */
+const CacheInvalidation = (function () {
+  const SCOPES = {
+    operational: ["dashboard_data", "recent_activity"],
+    dsr: ["dashboard_data", "today_sales", "dsr_summary", "profit_loss", "reports_data"],
+    credit: ["credit_summary", "dashboard_data", "recent_activity"],
+    reports: ["reports_data", "profit_loss", "dashboard_data"],
+    staff: ["staff_list"],
+    pump_settings: ["pump_settings"],
+    all_api: [
+      "dashboard_data",
+      "credit_summary",
+      "today_sales",
+      "recent_activity",
+      "dsr_summary",
+      "profit_loss",
+      "reports_data",
+    ],
+  };
+
+  function invalidate(scope) {
+    if (typeof AppCache === "undefined" || !AppCache) return;
+    const types = SCOPES[scope] || (Array.isArray(scope) ? scope : [scope]);
+    const seen = new Set();
+    types.forEach((t) => {
+      if (seen.has(t)) return;
+      seen.add(t);
+      AppCache.invalidateByType(t);
+    });
+  }
+
+  function invalidateMultiple(scopes) {
+    const seen = new Set();
+    scopes.forEach((scope) => {
+      (SCOPES[scope] || (Array.isArray(scope) ? scope : [scope])).forEach((t) => seen.add(t));
+    });
+    seen.forEach((t) => AppCache.invalidateByType(t));
+  }
+
+  return { invalidate, invalidateMultiple, SCOPES };
+})();
+
+window.CacheInvalidation = CacheInvalidation;

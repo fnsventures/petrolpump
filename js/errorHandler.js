@@ -318,3 +318,105 @@
     normalize: normalizeError,
   };
 })();
+
+/**
+ * Shared admin delete UX: role guard, confirm, disable button, cache invalidation.
+ */
+const AdminDelete = (function () {
+  function escapeAttr(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function dataAttrName(key) {
+    return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+  }
+
+  /**
+   * Unified admin delete button markup for table actions and forms.
+   * @param {object} options
+   * @param {string} options.selector - Page-specific class for event delegation (e.g. "expense-delete-btn")
+   * @param {Record<string, string|number>} [options.data] - data-* attributes (camelCase keys)
+   * @param {string} [options.label="Delete"]
+   * @param {string} [options.title="Delete (admin)"]
+   * @param {boolean} [options.small=true]
+   */
+  function buttonHtml(options) {
+    const {
+      selector,
+      data = {},
+      label = "Delete",
+      title = "Delete (admin)",
+      small = true,
+    } = options || {};
+
+    const classes = ["button-delete", small && "button-small", selector].filter(Boolean).join(" ");
+    const dataAttrs = Object.entries(data)
+      .map(([key, val]) => `data-${dataAttrName(key)}="${escapeAttr(val)}"`)
+      .join(" ");
+    const attrs = [dataAttrs, `title="${escapeAttr(title)}"`].filter(Boolean).join(" ");
+
+    return `<button type="button" class="${classes}" ${attrs}>${escapeAttr(label)}</button>`;
+  }
+
+  function requireAdmin(auth, actionLabel) {
+    if (auth?.role === "admin") return true;
+    alert(`Only an admin can ${actionLabel}.`);
+    return false;
+  }
+
+  function bindOnce(container, selector, handler, datasetKey) {
+    const key = datasetKey || "adminDeleteBound";
+    if (!container || container.dataset[key]) return;
+    container.dataset[key] = "1";
+    container.addEventListener("click", async (e) => {
+      const btn = e.target.closest?.(selector);
+      if (!btn) return;
+      e.preventDefault();
+      await handler(btn);
+    });
+  }
+
+  async function execute(options) {
+    const {
+      btn,
+      auth,
+      actionLabel,
+      confirmMessage,
+      deleteFn,
+      cacheScope = "operational",
+      onSuccess,
+      errorContext,
+    } = options;
+
+    if (!requireAdmin(auth, actionLabel)) return;
+    if (!confirm(confirmMessage)) return;
+
+    btn.disabled = true;
+    try {
+      const result = await deleteFn();
+      const error = result?.error ?? null;
+      if (error) {
+        btn.disabled = false;
+        alert(window.AppError.getUserMessage(error));
+        window.AppError.report(error, errorContext || {});
+        return;
+      }
+      if (typeof window.CacheInvalidation !== "undefined") {
+        window.CacheInvalidation.invalidate(cacheScope);
+      }
+      if (onSuccess) await onSuccess();
+    } catch (err) {
+      btn.disabled = false;
+      alert(window.AppError.getUserMessage(err));
+      window.AppError.report(err, errorContext || {});
+    }
+  }
+
+  return { requireAdmin, bindOnce, execute, buttonHtml };
+})();
+
+window.AdminDelete = AdminDelete;
