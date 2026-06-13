@@ -1,1 +1,6 @@
-@privatefnsventures-maker
+# F & S Ventures — all changes need owner review
+* @privatefnsventures-maker
+
+/.github/ @privatefnsventures-maker
+/supabase/ @privatefnsventures-maker
+/scripts/ @privatefnsventures-maker
