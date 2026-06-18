@@ -479,10 +479,10 @@ function initReadingForm(product) {
     if (successEl) {
       if (hasReceipts && currentUserRole === "admin") {
         successEl.innerHTML =
-          'Entry saved. Receipts recorded — <a href="dashboard.html#pl">Enter ex-VAT ₹/KL on P&amp;L</a> to calculate profit from this day until the next receipt.';
+          'Entry saved. Receipts recorded — <a href="dashboard.html#pl">Enter pre-VAT ₹/KL on P&amp;L</a> to calculate profit from this day until the next receipt.';
       } else if (hasReceipts) {
         successEl.textContent =
-          "Entry saved. Receipts recorded — an admin can enter ex-VAT ₹/KL on the P&L dashboard to calculate profit.";
+          "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL on the P&L dashboard to calculate profit.";
       } else {
         successEl.textContent = "Entry saved successfully.";
       }

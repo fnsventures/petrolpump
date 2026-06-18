@@ -1311,7 +1311,7 @@ async function handleSaveBuyingPrice(dsrId) {
   const product =
     saveBtn?.dataset?.product ||
     document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`)?.dataset?.product;
-  const valueKl = Number.parseFloat((input?.value ?? "").trim(), 10);
+  const valueKl = Number.parseFloat((input?.value ?? "").trim());
   const parsed = validateBuyingRateKlInput(valueKl);
   if (!parsed.ok) {
     showPlBuyingPriceError(
@@ -1478,7 +1478,8 @@ async function loadProfitLossSummary(range) {
     } else if (!allBuyingPricesEntered) {
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
-        plProfitHintEl.textContent = "Enter ex-VAT ₹/KL for receipt days above to calculate.";
+        plProfitHintEl.textContent =
+          "Enter pre-VAT ₹/KL for receipt days above. P&L cost includes VAT and delivery on each litre sold.";
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");

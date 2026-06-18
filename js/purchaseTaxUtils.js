@@ -10,10 +10,29 @@ function getDieselPurchaseVatPct() {
   return Number.isFinite(v) && v >= 0 ? v : AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct;
 }
 
+function getPurchaseDeliveryPerKl() {
+  const v = Number(PumpSettings.getCachedSync().reports?.purchaseDeliveryPerKl);
+  return Number.isFinite(v) && v >= 0 ? v : AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl;
+}
+
+function getPurchaseDeliveryPerLitre() {
+  return getPurchaseDeliveryPerKl() / LITRES_PER_KL;
+}
+
 function isPurchaseTaxInclusive() {
   const r = PumpSettings.getCachedSync().reports || {};
   if (typeof r.purchaseTaxInclusive === "boolean") return r.purchaseTaxInclusive;
   return AppConfig.DEFAULT_REPORTS.purchaseTaxInclusive === true;
+}
+
+/** True after one-time migration completed (skip re-running bulk conversion). */
+function isBuyingPriceStoredAsPreVat() {
+  return PumpSettings.getCachedSync().reports?.buyingPriceStoredAsPreVat === true;
+}
+
+/** Pre-VAT invoice entry + VAT/delivery applied in reports/P&L (default for BPCL). */
+function usesPreVatBuyingPriceModel() {
+  return !isPurchaseTaxInclusive();
 }
 
 /** VAT/LST % for inward fuel by product (MS = petrol, HSD = diesel). */
@@ -28,33 +47,47 @@ function getPurchaseTaxPctLabel() {
   return `MS ${getPetrolPurchaseVatPct()}% · HSD ${getDieselPurchaseVatPct()}%`;
 }
 
-/**
- * Apply purchase VAT/LST to an entered buying rate (₹/L) when the invoice rate is ex-VAT.
- */
-function grossBuyingRatePerLitre(rate, product) {
-  const r = Number(rate);
-  if (!Number.isFinite(r) || r < 0) return null;
-  if (isPurchaseTaxInclusive()) return r;
-  const pct = getPurchaseTaxPct(product);
-  return r * (1 + pct / 100);
-}
-
 const LITRES_PER_KL = 1000;
 /** Stored buying rates are ₹/L; UI and invoices use ₹/KL. Reject values that look like per-litre entry. */
 const MIN_REASONABLE_BUYING_RATE_KL = 500;
+const BUYING_RATE_DECIMALS = 5;
 
 function roundBuyingRatePerLitre(rate) {
   const r = Number(rate);
   if (!Number.isFinite(r)) return null;
-  return Math.round(r * 100) / 100;
+  const factor = 10 ** BUYING_RATE_DECIMALS;
+  return Math.round(r * factor) / factor;
 }
 
 /**
- * Rate to persist in buying_price_per_litre (gross landed cost ₹/L incl. purchase VAT/LST).
+ * Landed cost (₹/L) from stored pre-VAT rate: (fuel + delivery) × (1 + VAT/LST%).
  */
-function buyingRatePerLitreForDb(ratePerLitre, product) {
-  const gross = grossBuyingRatePerLitre(ratePerLitre, product);
-  return gross != null ? roundBuyingRatePerLitre(gross) : null;
+function landedBuyingRatePerLitre(preVatRatePerLitre, product) {
+  const r = Number(preVatRatePerLitre);
+  if (!Number.isFinite(r) || r < 0) return null;
+  const delivery = getPurchaseDeliveryPerLitre();
+  const pct = getPurchaseTaxPct(product);
+  return roundBuyingRatePerLitre((r + delivery) * (1 + pct / 100));
+}
+
+/** Convert stored DB rate to landed cost for P&L / trading. */
+function storedToLandedBuyingRatePerLitre(storedRatePerLitre, product) {
+  const r = Number(storedRatePerLitre);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  if (usesPreVatBuyingPriceModel()) {
+    return landedBuyingRatePerLitre(r, product);
+  }
+  return r;
+}
+
+/**
+ * Rate to persist in buying_price_per_litre (pre-VAT fuel cost ₹/L).
+ */
+function buyingRatePerLitreForDb(ratePerLitre, _product) {
+  const r = Number(ratePerLitre);
+  if (!Number.isFinite(r) || r < 0) return null;
+  // Store invoice rate as entered; VAT/delivery applied only in reports/P&L.
+  return roundBuyingRatePerLitre(r);
 }
 
 function buyingRatePerLitreToKl(ratePerLitre) {
@@ -104,57 +137,91 @@ function getBuyingPriceUnitLabel() {
 }
 
 function getPlBuyingPriceFieldLabel() {
-  return isPurchaseTaxInclusive()
-    ? `Buying price (${getBuyingPriceUnitLabel()}, incl. VAT)`
-    : `Buying price (ex-VAT ${getBuyingPriceUnitLabel()})`;
+  return usesPreVatBuyingPriceModel()
+    ? `Buying price (pre-VAT ${getBuyingPriceUnitLabel()})`
+    : `Buying price (${getBuyingPriceUnitLabel()}, incl. VAT)`;
 }
 
 function getPlBuyingPricePlaceholder() {
-  return isPurchaseTaxInclusive() ? "₹/KL incl." : "ex-VAT ₹/KL";
+  return usesPreVatBuyingPriceModel() ? "pre-VAT ₹/KL" : "₹/KL incl.";
 }
 
 function getPlBuyingPriceHint() {
-  if (isPurchaseTaxInclusive()) {
+  const delivery = getPurchaseDeliveryPerKl().toLocaleString("en-IN");
+  if (!usesPreVatBuyingPriceModel()) {
     return "Enter tax-inclusive purchase rate per kilolitre (1000 L). Selling rates come from Meter Reading.";
   }
-  return `Enter ex-VAT purchase rate per kilolitre (${getPurchaseTaxPctLabel()} applied when saving). Selling rates come from Meter Reading.`;
+  return `Enter pre-VAT invoice rate per kilolitre (${getPurchaseTaxPctLabel()}). ₹${delivery}/KL delivery and VAT are applied in reports and P&L. Selling rates come from Meter Reading.`;
+}
+
+function getPurchaseGstSummaryNote() {
+  const unit = getBuyingPriceUnitLabel();
+  const vatLabel = getPurchaseTaxPctLabel();
+  if (usesPreVatBuyingPriceModel()) {
+    const delivery = getPurchaseDeliveryPerKl().toLocaleString("en-IN");
+    return `Based on stock receipts (L) and pre-VAT buying price (${unit} on dashboard). VAT/LST: ${vatLabel}. ₹${delivery}/KL delivery included in gross. VAT is calculated on taxable value plus delivery.`;
+  }
+  return `Based on stock receipts (L) and tax-inclusive buying price (${unit} on dashboard). VAT/LST: ${vatLabel}.`;
+}
+
+function getPurchaseGstDetailNote() {
+  const vatLabel = getPurchaseTaxPctLabel();
+  if (usesPreVatBuyingPriceModel()) {
+    const delivery = getPurchaseDeliveryPerKl().toLocaleString("en-IN");
+    return `${vatLabel}. Rate column is the stored pre-VAT invoice rate. ₹${delivery}/KL delivery included in gross; VAT is on taxable + delivery.`;
+  }
+  return `${vatLabel}. Rate column is the stored tax-inclusive purchase rate per ${getBuyingPriceUnitLabel()}.`;
 }
 
 /**
- * @returns {{ taxable: number, tax: number, gross: number, cgst: number, sgst: number }}
+ * @returns {{ taxable: number, tax: number, gross: number, delivery: number, cgst: number, sgst: number }}
  */
-function calcPurchaseLineTax(litres, ratePerLitre, taxPct, options) {
-  const base = Number(litres) * Number(ratePerLitre);
+function calcPurchaseLineTax(litres, ratePerLitre, taxPct, options = {}) {
+  const l = Number(litres);
+  const rate = Number(ratePerLitre);
   const pct = Number(taxPct);
-  if (!Number.isFinite(base) || base <= 0 || !Number.isFinite(pct) || pct < 0) {
-    return { taxable: 0, tax: 0, gross: 0, cgst: 0, sgst: 0 };
+  if (!Number.isFinite(l) || l <= 0 || !Number.isFinite(rate) || rate <= 0 || !Number.isFinite(pct) || pct < 0) {
+    return { taxable: 0, tax: 0, gross: 0, delivery: 0, cgst: 0, sgst: 0 };
   }
 
-  const storedGrossRate = options?.storedGrossRate === true;
+  const usePreVat = options.storedPreVat ?? usesPreVatBuyingPriceModel();
   let taxable;
   let tax;
   let gross;
-  if (storedGrossRate || isPurchaseTaxInclusive()) {
-    gross = base;
+  let delivery = 0;
+
+  if (usePreVat) {
+    taxable = l * rate;
+    delivery = l * getPurchaseDeliveryPerLitre();
+    const vatBase = taxable + delivery;
+    tax = vatBase * (pct / 100);
+    gross = taxable + tax + delivery;
+  } else if (isPurchaseTaxInclusive()) {
+    gross = l * rate;
     taxable = gross / (1 + pct / 100);
     tax = gross - taxable;
   } else {
-    taxable = base;
+    taxable = l * rate;
     tax = taxable * (pct / 100);
     gross = taxable + tax;
   }
 
   const half = tax / 2;
-  return { taxable, tax, gross, cgst: half, sgst: half };
+  return { taxable, tax, gross, delivery, cgst: half, sgst: half };
 }
 
 Object.assign(window, {
   getPetrolPurchaseVatPct,
   getDieselPurchaseVatPct,
+  getPurchaseDeliveryPerKl,
+  getPurchaseDeliveryPerLitre,
   isPurchaseTaxInclusive,
+  isBuyingPriceStoredAsPreVat,
+  usesPreVatBuyingPriceModel,
   getPurchaseTaxPct,
   getPurchaseTaxPctLabel,
-  grossBuyingRatePerLitre,
+  landedBuyingRatePerLitre,
+  storedToLandedBuyingRatePerLitre,
   buyingRatePerLitreForDb,
   buyingRatePerLitreToKl,
   buyingRatePerKlToLitre,
@@ -164,5 +231,7 @@ Object.assign(window, {
   getPlBuyingPriceFieldLabel,
   getPlBuyingPricePlaceholder,
   getPlBuyingPriceHint,
+  getPurchaseGstSummaryNote,
+  getPurchaseGstDetailNote,
   calcPurchaseLineTax,
 });
