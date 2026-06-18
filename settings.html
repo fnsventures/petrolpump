@@ -178,12 +178,17 @@
                 <input id="bill-diesel-vat" type="number" min="0" max="100" step="0.01" />
                 <small class="muted">Diesel inward (e.g. BPCL 24%).</small>
               </div>
+              <div class="form-field">
+                <label for="bill-purchase-delivery">Fuel delivery charge (₹/KL)</label>
+                <input id="bill-purchase-delivery" type="number" min="0" step="0.01" />
+                <small class="muted">Added per kilolitre received when calculating landed buying cost (P&amp;L and GST inward).</small>
+              </div>
               <div class="form-field form-field-checkbox">
                 <label>
                   <input id="bill-purchase-tax-inclusive" type="checkbox" />
                   Buying rate includes VAT/LST
                 </label>
-                <small class="muted">Leave unchecked for BPCL invoices (rate is pre-tax).</small>
+                <small class="muted">Tick if the P&amp;L buying rate matches the tax-inclusive invoice (e.g. ₹97,400/KL on BPCL); stored as pre-VAT per litre.</small>
               </div>
               <div class="form-field form-field-checkbox">
                 <label>
