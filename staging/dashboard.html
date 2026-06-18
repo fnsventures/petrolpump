@@ -16,11 +16,11 @@
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=5"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=1"></script>
+    <script defer src="js/utils.js?v=7"></script>
     <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/purchaseTaxUtils.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
@@ -279,7 +279,7 @@
         <p id="pl-buying-hint" class="dashboard-muted-caption muted"></p>
         <div id="pl-buying-price-alert" class="pl-buying-price-alert hidden">
           <p class="pl-alert-message">
-            Receipt days need a purchase rate to calculate profit. Enter ex-VAT ₹/KL below (per 1000 L; VAT/LST is added automatically); profit uses each rate until the next receipt day. Selling price uses rates from Meter Reading.
+            Receipt days need a purchase rate to calculate profit. Enter pre-VAT ₹/KL below (per 1000 L, as on the BPCL invoice); VAT/LST and delivery are applied in P&amp;L. Profit uses each rate until the next receipt day. Selling price uses rates from Meter Reading.
           </p>
           <ul id="pl-missing-buying-list" class="pl-missing-buying-list"></ul>
         </div>
@@ -329,7 +329,7 @@
             <div id="pl-todo-banner" class="pl-todo-banner hidden" data-role="admin-only" aria-live="polite">
               <p class="pl-todo-message">
                 <strong id="pl-todo-text">You have <span id="pl-todo-count">0</span> receipt day(s) without buying price.</strong>
-                Enter ex-VAT ₹/KL in P&L below to calculate profit from each receipt day until the next receipt day.
+                Enter pre-VAT ₹/KL in P&amp;L below to calculate profit from each receipt day until the next receipt day.
               </p>
               <a href="#pl" id="pl-todo-goto" class="button-secondary pl-todo-goto">Go to P&L</a>
             </div>

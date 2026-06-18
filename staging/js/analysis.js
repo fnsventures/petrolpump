@@ -45,7 +45,7 @@ async function fetchAnalysisData(startDate, endDate) {
 
 /**
  * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹), petrol L, diesel L.
- * Profit = net litres × (selling − buying) − operating expenses (MS/HS testing excluded).
+ * Cost uses landed buying rate: (pre-VAT + delivery/L) × (1 + VAT%). Profit = sales − cost − expenses (testing excluded).
  */
 function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate) {
   const getEffectiveBuying = buildEffectiveBuyingMap(receiptRows);
