@@ -259,8 +259,6 @@ create table if not exists public.dsr_petrol (
 create index if not exists dsr_petrol_date_idx on public.dsr_petrol (date desc);
 
 comment on table public.dsr_petrol is 'Petrol (MS) meter readings. One row per day per tank from Meter Reading form.';
-comment on column public.dsr_petrol.buying_price_per_litre is
-  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
 
 alter table public.dsr_petrol enable row level security;
 
@@ -322,8 +320,6 @@ create index if not exists dsr_diesel_receipts_buying_idx
   where receipts > 0 and buying_price_per_litre is not null;
 
 comment on table public.dsr_diesel is 'Diesel (HSD) meter readings. One row per day per tank from Meter Reading form.';
-comment on column public.dsr_diesel.buying_price_per_litre is
-  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
 
 alter table public.dsr_diesel enable row level security;
 
