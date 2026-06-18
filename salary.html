@@ -22,7 +22,7 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js"></script>
-    <script defer src="js/salary.js?v=9"></script>
+    <script defer src="js/salary.js?v=10"></script>
   </head>
   <body class="salary-page">
     <header class="topbar">
@@ -79,7 +79,7 @@
       <div class="settings-panels">
         <section class="settings-panel card" data-panel="record" hidden>
           <h2>Record salary payment</h2>
-          <p class="muted">Record each installment when salary is paid. Multiple payments per staff member per month are supported; the monthly summary shows what is still due.</p>
+          <p class="muted">Record each installment when salary is paid. Choose the <strong>salary month</strong> the payment applies to (can differ from the cash payment date). Multiple payments per staff member per month are supported.</p>
           <form id="salary-payment-form" class="form" autocomplete="off">
             <div class="form-grid">
               <div class="form-field">
@@ -87,6 +87,13 @@
                 <select id="payment-staff" name="staff_member_id" required>
                   <option value="">Select staff</option>
                 </select>
+              </div>
+              <div class="form-field month-year-filter">
+                <label id="payment-salary-month-label">Salary for</label>
+                <div class="month-year-filter-controls">
+                  <select id="payment-salary-month-month" aria-labelledby="payment-salary-month-label" required></select>
+                  <select id="payment-salary-month-year" aria-label="Salary year" required></select>
+                </div>
               </div>
               <div class="form-field">
                 <label for="payment-date">Payment date</label>
@@ -103,6 +110,7 @@
                   placeholder="0"
                   required
                 />
+                <button type="button" id="payment-fill-remaining" class="button-secondary button-small" style="margin-top:0.35rem">Fill remaining</button>
               </div>
               <div class="form-field">
                 <label for="payment-note">Note</label>
@@ -126,11 +134,11 @@
           <div class="card-head snapshot-head">
             <div>
               <h2>Monthly salary summary</h2>
-              <p class="muted">Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
+              <p class="muted">Pay period summary — tracks salary owed and paid for each calendar month, regardless of when cash was disbursed. Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field month-year-filter">
-                <label id="salary-month-label">Month</label>
+                <label id="salary-month-label">Salary month</label>
                 <div class="month-year-filter-controls">
                   <select id="salary-month-month" aria-labelledby="salary-month-label"></select>
                   <select id="salary-month-year" aria-label="Year"></select>
@@ -148,7 +156,7 @@
               <strong id="salary-kpi-payroll" class="stat-value">—</strong>
             </div>
             <div class="stat-card stat-card-highlight">
-              <span class="stat-label">Paid this month</span>
+              <span class="stat-label">Paid for month</span>
               <strong id="salary-kpi-paid" class="stat-value">—</strong>
             </div>
             <div class="stat-card">
@@ -183,11 +191,11 @@
           <div class="card-head snapshot-head">
             <div>
               <h2>Payment history</h2>
-              <p class="muted">All salary installments recorded for the selected month.</p>
+              <p class="muted">All salary installments for the selected pay period (regardless of when cash was paid).</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field month-year-filter">
-                <label id="salary-history-month-label">Month</label>
+                <label id="salary-history-month-label">Salary month</label>
                 <div class="month-year-filter-controls">
                   <select id="salary-history-month-month" aria-labelledby="salary-history-month-label"></select>
                   <select id="salary-history-month-year" aria-label="Year"></select>
@@ -199,7 +207,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>Date</th>
+                  <th>Paid on</th>
                   <th>Staff</th>
                   <th class="num">Amount (₹)</th>
                   <th>Note</th>

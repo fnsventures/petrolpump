@@ -12,6 +12,43 @@ function getMonthStartEnd(year, month) {
   };
 }
 
+/** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
+function normalizeSalaryMonth(monthValue) {
+  if (!monthValue) return "";
+  const [year, monthPart] = String(monthValue).split("-");
+  if (!year || !monthPart) return "";
+  const month = String(monthPart).padStart(2, "0").slice(0, 2);
+  return `${year}-${month}-01`;
+}
+
+function salaryMonthKey(monthValue) {
+  const normalized = normalizeSalaryMonth(monthValue);
+  return normalized ? normalized.slice(0, 7) : "";
+}
+
+/** Suggest a payment date when paying salary for a given month. */
+function suggestPaymentDate(salaryMonthValue) {
+  const today = getLocalDateString();
+  const key = salaryMonthKey(salaryMonthValue);
+  const currentKey = today.slice(0, 7);
+  if (!key || key === currentKey) return today;
+  if (key < currentKey) {
+    const [year, month] = key.split("-").map(Number);
+    return toLocalDateString(new Date(year, month, 0));
+  }
+  return today;
+}
+
+function isMissingSalaryMonthColumn(error) {
+  const msg = String(error?.message || "");
+  return /salary_month/i.test(msg) || error?.code === "PGRST204";
+}
+
+function isMissingSalaryPaymentIdColumn(error) {
+  const msg = String(error?.message || "");
+  return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
+}
+
 function formatMonthLabel(monthValue) {
   if (!monthValue) return "—";
   const [year, month] = monthValue.split("-").map(Number);
@@ -194,6 +231,20 @@ function salaryDeleteButtonHtml(payment, staff, isAdmin) {
     },
     title: "Delete payment (admin)",
   });
+}
+
+function getStaffBalanceForMonth(staffId, payments, employees) {
+  const staff = (employees || []).find((s) => s.id === staffId);
+  if (!staff) return null;
+  const paidMap = paidByStaffInRange(payments);
+  const paid = paidMap.get(staffId) || 0;
+  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff);
+  return {
+    staff,
+    paid,
+    ...balance,
+    status: salaryStatusInfo(staff.monthly_salary, paid, staff),
+  };
 }
 
 function paidByStaffInRange(payments) {
@@ -480,6 +531,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const paymentError = document.getElementById("salary-payment-error");
   const paymentStaffSelect = document.getElementById("payment-staff");
   const paymentDateInput = document.getElementById("payment-date");
+  const paymentAmountInput = document.getElementById("payment-amount");
+  const paymentFillRemainingBtn = document.getElementById("payment-fill-remaining");
+  const paymentSalaryMonthSelect = document.getElementById("payment-salary-month-month");
+  const paymentSalaryYearSelect = document.getElementById("payment-salary-month-year");
   const paymentMonthHint = document.getElementById("payment-month-hint");
   const salaryMonthSelect = document.getElementById("salary-month-month");
   const salaryYearSelect = document.getElementById("salary-month-year");
@@ -501,8 +556,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   populateMonthYearSelects(salaryMonthSelect, salaryYearSelect);
   populateMonthYearSelects(historyMonthSelect, historyYearSelect);
+  populateMonthYearSelects(paymentSalaryMonthSelect, paymentSalaryYearSelect);
   writeMonthYearValue(salaryMonthSelect, salaryYearSelect, currentMonth);
   writeMonthYearValue(historyMonthSelect, historyYearSelect, currentMonth);
+  writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, currentMonth);
 
   let staffList = [];
   let monthPayments = [];
@@ -518,6 +575,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function deleteLinkedSalaryExpense(payment, staff) {
+    if (payment?.id) {
+      const { data: linked, error: linkErr } = await supabaseClient
+        .from("expenses")
+        .select("id")
+        .eq("salary_payment_id", payment.id)
+        .limit(1);
+
+      if (!linkErr && linked?.length) {
+        const { error: delErr } = await supabaseClient.from("expenses").delete().eq("id", linked[0].id);
+        if (delErr) AppError.report(delErr, { context: "deleteLinkedSalaryExpenseById" });
+        return;
+      }
+      if (linkErr && !isMissingSalaryPaymentIdColumn(linkErr)) {
+        AppError.report(linkErr, { context: "deleteLinkedSalaryExpenseLookupById" });
+      }
+    }
+
     const desc = salaryExpenseDescription(staff, payment.note);
     const { data, error } = await supabaseClient
       .from("expenses")
@@ -582,7 +656,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const payment =
         monthPayments.find((p) => p.id === paymentId) ||
         (await (async () => {
-          const monthVal = readMonthYearValue(historyMonthSelect, historyYearSelect) || getSelectedMonth();
+          const monthVal = getHistoryMonth();
           const all = await loadPaymentsForMonth(monthVal);
           return all.find((p) => p.id === paymentId);
         })());
@@ -604,6 +678,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function getSelectedMonth() {
     return readMonthYearValue(salaryMonthSelect, salaryYearSelect) || currentMonth;
+  }
+
+  function getPaymentSalaryMonth() {
+    return readMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect) || getSelectedMonth();
+  }
+
+  function getHistoryMonth() {
+    return readMonthYearValue(historyMonthSelect, historyYearSelect) || getSelectedMonth();
   }
 
   function syncHistoryMonth() {
@@ -731,38 +813,113 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function loadPaymentsInRange(startDate, endDate) {
     const { data, error } = await supabaseClient
       .from("salary_payments")
-      .select("id, employee_id, date, amount, note")
+      .select("id, employee_id, date, amount, note, salary_month")
       .gte("date", startDate)
       .lte("date", endDate)
       .order("date", { ascending: false });
 
     if (error) {
+      if (isMissingSalaryMonthColumn(error)) {
+        const { data: legacyData, error: legacyError } = await supabaseClient
+          .from("salary_payments")
+          .select("id, employee_id, date, amount, note")
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: false });
+        if (legacyError) {
+          AppError.report(legacyError, { context: "loadPaymentsInRange" });
+          return [];
+        }
+        return legacyData ?? [];
+      }
       AppError.report(error, { context: "loadPaymentsInRange" });
       return [];
     }
     return data ?? [];
   }
 
+  async function loadPaymentsForSalaryMonth(monthValue) {
+    const salaryMonth = normalizeSalaryMonth(monthValue);
+    if (!salaryMonth) return [];
+
+    const { data, error } = await supabaseClient
+      .from("salary_payments")
+      .select("id, employee_id, date, amount, note, salary_month")
+      .eq("salary_month", salaryMonth)
+      .order("date", { ascending: false });
+
+    if (error) {
+      if (isMissingSalaryMonthColumn(error)) {
+        const [year, month] = monthValue.split("-").map(Number);
+        const { start, end } = getMonthStartEnd(year, month);
+        return loadPaymentsInRange(start, end);
+      }
+      AppError.report(error, { context: "loadPaymentsForSalaryMonth" });
+      return [];
+    }
+    return data ?? [];
+  }
+
+  async function getPaymentsForSalaryMonth(monthValue) {
+    if (monthValue === getSelectedMonth() && monthPayments.length) {
+      return monthPayments;
+    }
+    return loadPaymentsForSalaryMonth(monthValue);
+  }
+
   async function updatePaymentMonthHint() {
-    if (!paymentMonthHint || !paymentDateInput?.value) return;
-    const d = paymentDateInput.value;
-    const monthKey = d.slice(0, 7);
+    if (!paymentMonthHint) return;
     const staffId = paymentStaffSelect?.value;
-    if (!staffId) {
+    const monthVal = getPaymentSalaryMonth();
+    if (!staffId || !monthVal) {
       paymentMonthHint.classList.add("hidden");
       return;
     }
     const staff = staffList.find((s) => s.id === staffId);
     if (!staff) return;
 
-    const [year, month] = monthKey.split("-").map(Number);
-    const { start, end } = getMonthStartEnd(year, month);
-    const payments = await loadPaymentsInRange(start, end);
-    const paidMap = paidByStaffInRange(payments);
-    const paid = paidMap.get(staffId) || 0;
-    const status = salaryStatusInfo(staff.monthly_salary, paid, staff);
-    paymentMonthHint.textContent = `${formatMonthLabel(monthKey)}: ${formatCurrency(paid)} paid so far · ${status.pending > 0 ? `${formatCurrency(status.pending)} remaining` : "fully paid"}`;
+    const payments = await getPaymentsForSalaryMonth(monthVal);
+    const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+    if (!balance) return;
+
+    const pf = computePfBreakdown(staff.monthly_salary, staff);
+    const monthLabel = formatMonthLabel(monthVal);
+    let remainingText;
+    if (balance.salary <= 0) {
+      remainingText = "no salary configured";
+    } else if (balance.status.advance > 0.009) {
+      remainingText = `advance ${formatCurrency(balance.status.advance)} paid`;
+    } else if (balance.pending <= 0.009) {
+      remainingText = "fully paid";
+    } else {
+      remainingText = `${formatCurrency(balance.pending)} remaining`;
+    }
+
+    paymentMonthHint.textContent = `${monthLabel}: net ${formatCurrency(pf.netSalary)} · ${formatCurrency(balance.paid)} paid · ${remainingText}`;
     paymentMonthHint.classList.remove("hidden");
+  }
+
+  async function fillPaymentRemaining() {
+    const staffId = paymentStaffSelect?.value;
+    if (!staffId) {
+      if (paymentError) {
+        paymentError.textContent = "Select a staff member first.";
+        paymentError.classList.remove("hidden");
+      }
+      return;
+    }
+    paymentError?.classList.add("hidden");
+
+    const monthVal = getPaymentSalaryMonth();
+    const payments = await getPaymentsForSalaryMonth(monthVal);
+    const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+    if (!balance || balance.pending <= 0.009) {
+      if (paymentAmountInput) paymentAmountInput.value = "";
+      return;
+    }
+    if (paymentAmountInput) {
+      paymentAmountInput.value = balance.pending.toFixed(2);
+    }
   }
 
   async function renderSummary(monthValue) {
@@ -781,9 +938,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const [year, month] = monthValue.split("-").map(Number);
-    const { start, end } = getMonthStartEnd(year, month);
-    monthPayments = await loadPaymentsInRange(start, end);
+    monthPayments = await loadPaymentsForSalaryMonth(monthValue);
     const paidMap = paidByStaffInRange(monthPayments);
 
     let totalPayroll = 0;
@@ -884,10 +1039,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     updatePaymentMonthHint();
   }
 
-  function prefillPayment(staffId) {
+  function prefillPayment(staffId, options = {}) {
+    const salaryMonth = options.salaryMonth || getSelectedMonth();
     if (paymentStaffSelect) paymentStaffSelect.value = staffId;
-    if (paymentDateInput) paymentDateInput.value = getLocalDateString();
-    updatePaymentMonthHint();
+    writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, salaryMonth);
+    if (paymentDateInput) {
+      paymentDateInput.value = suggestPaymentDate(salaryMonth);
+    }
+    if (paymentAmountInput) paymentAmountInput.value = "";
+    updatePaymentMonthHint().then(() => fillPaymentRemaining());
     const recordNav = document.querySelector('.settings-nav-item[data-section="record"]');
     recordNav?.click();
     paymentForm?.scrollIntoView({ behavior: "smooth" });
@@ -897,29 +1057,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const tbody = document.getElementById("salary-payments-body");
     if (!tbody) return;
 
-    const [year, month] = monthValue.split("-").map(Number);
-    const { start, end } = getMonthStartEnd(year, month);
-
-    const { data, error } = await supabaseClient
-      .from("salary_payments")
-      .select("id, employee_id, date, amount, note")
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: false });
-
-    if (error) {
-      tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
-      AppError.report(error, { context: "loadPaymentHistory" });
-      return;
-    }
-
-    const list = data ?? [];
-    const staffById = new Map(staffList.map((s) => [s.id, s]));
+    const list = await loadPaymentsForSalaryMonth(monthValue);
 
     if (!list.length) {
-      tbody.innerHTML = `<tr><td colspan="${isAdmin ? 5 : 5}" class="muted">No payments in ${escapeHtml(formatMonthLabel(monthValue))}.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${isAdmin ? 5 : 5}" class="muted">No payments for ${escapeHtml(formatMonthLabel(monthValue))} salary.</td></tr>`;
       return;
     }
+
+    const staffById = new Map(staffList.map((s) => [s.id, s]));
 
     tbody.innerHTML = list
       .map((p) => {
@@ -959,19 +1104,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadPaymentsForMonth(monthValue) {
-    const [year, month] = monthValue.split("-").map(Number);
-    const { start, end } = getMonthStartEnd(year, month);
-    return loadPaymentsInRange(start, end);
+    return loadPaymentsForSalaryMonth(monthValue);
   }
 
   async function refreshAll() {
     await loadStaffMembers();
     fillStaffSelect(paymentStaffSelect);
     const monthVal = getSelectedMonth();
-    syncHistoryMonth();
+    const historyMonthVal = getHistoryMonth();
     if (monthVal) {
       await renderSummary(monthVal);
-      await loadPaymentHistory(readMonthYearValue(historyMonthSelect, historyYearSelect) || monthVal);
+      await loadPaymentHistory(historyMonthVal);
     }
   }
 
@@ -988,26 +1131,62 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const staffId = paymentStaffSelect?.value;
       const date = paymentDateInput?.value;
-      const amount = Number(document.getElementById("payment-amount")?.value || 0);
+      const amount = Number(paymentAmountInput?.value || 0);
       const note = document.getElementById("payment-note")?.value?.trim() || null;
+      const salaryMonthVal = getPaymentSalaryMonth();
+      const salaryMonth = normalizeSalaryMonth(salaryMonthVal || date?.slice(0, 7));
 
-      if (!staffId) {
+      const resetSubmitBtn = () => {
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save payment";
         }
+      };
+
+      if (!staffId) {
+        resetSubmitBtn();
         paymentError?.classList.remove("hidden");
         if (paymentError) paymentError.textContent = "Select a staff member.";
         return;
       }
+      if (!date) {
+        resetSubmitBtn();
+        paymentError?.classList.remove("hidden");
+        if (paymentError) paymentError.textContent = "Payment date is required.";
+        return;
+      }
+      if (date > getLocalDateString()) {
+        resetSubmitBtn();
+        paymentError?.classList.remove("hidden");
+        if (paymentError) paymentError.textContent = "Payment date cannot be in the future.";
+        return;
+      }
       if (amount <= 0) {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save payment";
-        }
+        resetSubmitBtn();
         paymentError?.classList.remove("hidden");
         if (paymentError) paymentError.textContent = "Amount must be greater than 0.";
         return;
+      }
+      if (!salaryMonth) {
+        resetSubmitBtn();
+        paymentError?.classList.remove("hidden");
+        if (paymentError) paymentError.textContent = "Select the salary month this payment applies to.";
+        return;
+      }
+
+      const staff = staffList.find((s) => s.id === staffId);
+      const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
+      const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+      if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
+        const overBy = roundMoney(amount - balance.pending);
+        const msg =
+          balance.pending <= 0.009
+            ? `Net salary for ${formatMonthLabel(salaryMonthVal)} is already settled. Record ${formatCurrency(amount)} as advance?`
+            : `Amount exceeds remaining balance (${formatCurrency(balance.pending)}). This will overpay by ${formatCurrency(overBy)}. Continue?`;
+        if (!confirm(msg)) {
+          resetSubmitBtn();
+          return;
+        }
       }
 
       const payload = {
@@ -1015,25 +1194,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         date,
         amount,
         note,
+        salary_month: salaryMonth,
       };
       if (auth.session?.user?.id) payload.created_by = auth.session.user.id;
 
-      const { data: insertedPayment, error } = await supabaseClient
+      let insertedPayment = null;
+      let paymentErrorResult = null;
+
+      ({ data: insertedPayment, error: paymentErrorResult } = await supabaseClient
         .from("salary_payments")
         .insert(payload)
         .select("id")
-        .single();
+        .single());
 
-      if (error) {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save payment";
-        }
-        AppError.handle(error, { target: paymentError });
+      if (paymentErrorResult && isMissingSalaryMonthColumn(paymentErrorResult)) {
+        const legacyPayload = { employee_id: staffId, date, amount, note };
+        if (auth.session?.user?.id) legacyPayload.created_by = auth.session.user.id;
+        ({ data: insertedPayment, error: paymentErrorResult } = await supabaseClient
+          .from("salary_payments")
+          .insert(legacyPayload)
+          .select("id")
+          .single());
+      }
+
+      if (paymentErrorResult) {
+        resetSubmitBtn();
+        AppError.handle(paymentErrorResult, { target: paymentError });
         return;
       }
 
-      const staff = staffList.find((s) => s.id === staffId);
       const desc = salaryExpenseDescription(staff, note);
       const expensePayload = {
         date,
@@ -1041,8 +1230,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         description: desc,
         amount,
       };
+      if (insertedPayment?.id) expensePayload.salary_payment_id = insertedPayment.id;
       if (auth.session?.user?.id) expensePayload.created_by = auth.session.user.id;
-      const { error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload);
+
+      let expenseError = null;
+      ({ error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload));
+
+      if (expenseError && isMissingSalaryPaymentIdColumn(expenseError)) {
+        delete expensePayload.salary_payment_id;
+        ({ error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload));
+      }
 
       if (expenseError) {
         if (insertedPayment?.id) {
@@ -1057,21 +1254,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             });
           }
         }
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save payment";
-        }
+        resetSubmitBtn();
         AppError.handle(expenseError, { target: paymentError });
         return;
       }
 
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Save payment";
-      }
+      resetSubmitBtn();
 
       paymentForm.reset();
       paymentDateInput.value = getLocalDateString();
+      writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, getSelectedMonth());
       fillStaffSelect(paymentStaffSelect);
       paymentSuccess?.classList.remove("hidden");
       await refreshAll();
@@ -1082,7 +1274,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   paymentStaffSelect?.addEventListener("change", updatePaymentMonthHint);
-  paymentDateInput?.addEventListener("change", updatePaymentMonthHint);
+  paymentFillRemainingBtn?.addEventListener("click", fillPaymentRemaining);
+
+  function onPaymentSalaryMonthChange() {
+    const monthVal = getPaymentSalaryMonth();
+    if (paymentDateInput && monthVal) {
+      paymentDateInput.value = suggestPaymentDate(monthVal);
+    }
+    updatePaymentMonthHint();
+  }
+
+  paymentSalaryMonthSelect?.addEventListener("change", onPaymentSalaryMonthChange);
+  paymentSalaryYearSelect?.addEventListener("change", onPaymentSalaryMonthChange);
 
   function bindMonthYearFilter(monthSelect, yearSelect, onChange) {
     if (!monthSelect || !yearSelect) return;
@@ -1096,6 +1299,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   bindMonthYearFilter(salaryMonthSelect, salaryYearSelect, async (val) => {
     syncHistoryMonth();
+    writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, val);
     await renderSummary(val);
     await loadPaymentHistory(val);
   });
@@ -1110,9 +1314,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const monthVal = getSelectedMonth();
       if (!monthVal) return;
       await loadStaffMembers();
-      const [year, month] = monthVal.split("-").map(Number);
-      const { start, end } = getMonthStartEnd(year, month);
-      const payments = await loadPaymentsInRange(start, end);
+      const payments = await loadPaymentsForSalaryMonth(monthVal);
       const paidMap = paidByStaffInRange(payments);
       const headers = [
         "Name",
