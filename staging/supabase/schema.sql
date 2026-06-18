@@ -493,9 +493,12 @@ create table if not exists public.expenses (
   category text,
   description text,
   amount numeric(14,2) not null default 0,
+  salary_payment_id uuid references public.salary_payments (id) on delete set null,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+create unique index if not exists expenses_salary_payment_id_unique on public.expenses (salary_payment_id) where salary_payment_id is not null;
 
 create index if not exists expenses_date_idx on public.expenses (date desc);
 create index if not exists expenses_created_at_idx on public.expenses (created_at desc);
@@ -1086,6 +1089,7 @@ create table if not exists public.salary_payments (
   id uuid primary key default uuid_generate_v4(),
   employee_id uuid not null references public.employees (id) on delete restrict,
   date date not null,
+  salary_month date not null,
   amount numeric(14,2) not null check (amount > 0),
   note text check (char_length(note) <= 200),
   created_by uuid references auth.users (id) on delete set null,
@@ -1094,8 +1098,9 @@ create table if not exists public.salary_payments (
 
 create index if not exists salary_payments_employee_date_idx on public.salary_payments (employee_id, date desc);
 create index if not exists salary_payments_date_idx on public.salary_payments (date desc);
+create index if not exists salary_payments_salary_month_idx on public.salary_payments (salary_month desc, employee_id);
 
-comment on table public.salary_payments is 'Installment salary payments to employees. One row per payment (e.g. 2000 today, 3000 next week).';
+comment on table public.salary_payments is 'Installment salary payments to employees. salary_month is the pay period; date is when cash was paid.';
 
 alter table public.salary_payments enable row level security;
 
