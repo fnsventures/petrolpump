@@ -3,6 +3,227 @@
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
 let isAdmin = false;
+let dcBreakdownRequestId = 0;
+let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
+let expenseCategoryLabels = null;
+
+const DC_DETAIL_KINDS = ["collection", "credit", "expenses"];
+const DC_LEGACY_EXPENSE_LABELS = {
+  miscellanious: "Miscellaneous",
+  mstest: "Miscellaneous",
+  hsdtest: "Others",
+};
+const DC_AMOUNT_COLUMN = {
+  label: "Amount",
+  format: (row) => formatCurrency(row.amount),
+  escape: false,
+};
+const DC_DETAIL_COLUMNS = {
+  collection: [
+    { label: "Customer", key: "customer" },
+    { label: "Mode", key: "mode" },
+    DC_AMOUNT_COLUMN,
+  ],
+  credit: [
+    { label: "Customer", key: "customer" },
+    { label: "Fuel", format: (row) => (row.legacy ? "Legacy" : row.fuel) },
+    { label: "Qty (L)", format: (row) => (row.quantity == null ? "—" : row.quantity.toFixed(3)) },
+    DC_AMOUNT_COLUMN,
+  ],
+  expenses: [
+    { label: "Category", key: "category" },
+    { label: "Description", key: "description" },
+    DC_AMOUNT_COLUMN,
+  ],
+};
+
+function getDcDetailElements(kind) {
+  const group = document.querySelector(`.dc-breakdown-group[data-breakdown="${kind}"]`);
+  return {
+    toggle: group?.querySelector(".dc-breakdown-toggle") ?? null,
+    panel: group?.querySelector(".dc-breakdown-details") ?? null,
+  };
+}
+
+function collapseDayClosingDetails() {
+  document.querySelectorAll(".dc-breakdown-group").forEach((group) => {
+    const toggle = group.querySelector(".dc-breakdown-toggle");
+    const panel = group.querySelector(".dc-breakdown-details");
+    toggle?.setAttribute("aria-expanded", "false");
+    if (panel) {
+      panel.hidden = true;
+      panel.innerHTML = "";
+    }
+  });
+}
+
+async function refreshDayClosingDetailsState(dateStr) {
+  const prevDate = dcDetailsCache.date;
+  dcDetailsCache = { date: dateStr, collection: null, credit: null, expenses: null };
+  if (prevDate !== dateStr) {
+    collapseDayClosingDetails();
+    return;
+  }
+  await Promise.all(DC_DETAIL_KINDS.map(async (kind) => {
+    const { toggle } = getDcDetailElements(kind);
+    if (toggle?.getAttribute("aria-expanded") === "true") {
+      await loadDayClosingDetail(kind, dateStr);
+    }
+  }));
+}
+
+async function loadExpenseCategoryLabels() {
+  if (expenseCategoryLabels) return expenseCategoryLabels;
+  const { data, error } = await supabaseClient
+    .from("expense_categories")
+    .select("name, label");
+  if (error) throw error;
+  expenseCategoryLabels = Object.fromEntries((data || []).map((row) => [row.name, row.label]));
+  return expenseCategoryLabels;
+}
+
+function renderDayClosingDetailTable(rows, columns) {
+  if (!rows.length) {
+    return '<p class="muted">No entries for this date.</p>';
+  }
+  const head = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("");
+  const body = rows.map((row) => {
+    const cells = columns.map((col) => {
+      const value = typeof col.format === "function" ? col.format(row) : (row[col.key] ?? "—");
+      return `<td>${typeof value === "string" && col.escape !== false ? escapeHtml(String(value)) : value}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+  return `<table class="dc-breakdown-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function fetchCollectionDetails(dateStr) {
+  const { data, error } = await supabaseClient
+    .from("credit_payments")
+    .select("amount, payment_mode, credit_customers(customer_name)")
+    .eq("date", dateStr)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    customer: row.credit_customers?.customer_name || "—",
+    mode: row.payment_mode || "—",
+    amount: Number(row.amount ?? 0),
+  }));
+}
+
+async function fetchCreditTodayDetails(dateStr) {
+  const [entriesRes, legacyRes] = await Promise.all([
+    supabaseClient
+      .from("credit_entries")
+      .select("credit_customer_id, amount, fuel_type, quantity, credit_customers(customer_name)")
+      .eq("transaction_date", dateStr)
+      .order("created_at", { ascending: true }),
+    supabaseClient
+      .from("credit_customers")
+      .select("id, customer_name, amount_due")
+      .eq("date", dateStr)
+      .gt("amount_due", 0),
+  ]);
+  if (entriesRes.error) throw entriesRes.error;
+  if (legacyRes.error) throw legacyRes.error;
+
+  const entryRows = (entriesRes.data || []).map((row) => ({
+    customer: row.credit_customers?.customer_name || "—",
+    fuel: row.fuel_type || "—",
+    quantity: Number(row.quantity ?? 0),
+    amount: Number(row.amount ?? 0),
+    legacy: false,
+  }));
+
+  const legacyCandidates = legacyRes.data || [];
+  let legacyRows = [];
+  if (legacyCandidates.length) {
+    const ids = legacyCandidates.map((row) => row.id);
+    const { data: withEntries, error: entryCheckError } = await supabaseClient
+      .from("credit_entries")
+      .select("credit_customer_id")
+      .in("credit_customer_id", ids);
+    if (entryCheckError) throw entryCheckError;
+    const hasEntry = new Set((withEntries || []).map((row) => row.credit_customer_id));
+    legacyRows = legacyCandidates
+      .filter((row) => !hasEntry.has(row.id))
+      .map((row) => ({
+        customer: row.customer_name || "—",
+        fuel: "—",
+        quantity: null,
+        amount: Number(row.amount_due ?? 0),
+        legacy: true,
+      }));
+  }
+
+  return [...entryRows, ...legacyRows];
+}
+
+async function fetchExpensesDetails(dateStr) {
+  const [expensesRes, labelMap] = await Promise.all([
+    supabaseClient
+      .from("expenses")
+      .select("category, description, amount")
+      .eq("date", dateStr)
+      .order("created_at", { ascending: true }),
+    loadExpenseCategoryLabels(),
+  ]);
+  if (expensesRes.error) throw expensesRes.error;
+  const getCategoryLabel = (value) => labelMap[value] || DC_LEGACY_EXPENSE_LABELS[value] || value || "—";
+  return (expensesRes.data || []).map((row) => ({
+    category: getCategoryLabel(row.category),
+    description: row.description || "—",
+    amount: Number(row.amount ?? 0),
+  }));
+}
+
+const DC_DETAIL_FETCHERS = {
+  collection: fetchCollectionDetails,
+  credit: fetchCreditTodayDetails,
+  expenses: fetchExpensesDetails,
+};
+
+async function loadDayClosingDetail(kind, dateStr) {
+  const { panel } = getDcDetailElements(kind);
+  if (!panel) return;
+
+  if (dcDetailsCache.date === dateStr && dcDetailsCache[kind]) {
+    panel.innerHTML = dcDetailsCache[kind];
+    return;
+  }
+
+  panel.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const rows = await DC_DETAIL_FETCHERS[kind](dateStr);
+    const html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind]);
+    dcDetailsCache.date = dateStr;
+    dcDetailsCache[kind] = html;
+    panel.innerHTML = html;
+  } catch (err) {
+    AppError.report(err, { context: `loadDayClosingDetail:${kind}` });
+    panel.innerHTML = `<p class="error">${escapeHtml(err?.message || "Failed to load details.")}</p>`;
+  }
+}
+
+async function toggleDayClosingDetail(kind) {
+  const dateInput = document.getElementById("day-closing-date");
+  const dateStr = dateInput?.value?.trim();
+  if (!dateStr) return;
+
+  const { toggle, panel } = getDcDetailElements(kind);
+  if (!toggle || !panel) return;
+
+  const isOpen = toggle.getAttribute("aria-expanded") === "true";
+  if (isOpen) {
+    toggle.setAttribute("aria-expanded", "false");
+    panel.hidden = true;
+    return;
+  }
+
+  toggle.setAttribute("aria-expanded", "true");
+  panel.hidden = false;
+  await loadDayClosingDetail(kind, dateStr);
+}
 
 async function loadDayClosingBreakdown(dateStr) {
   const dateInput = document.getElementById("day-closing-date");
@@ -20,6 +241,11 @@ async function loadDayClosingBreakdown(dateStr) {
 
   if (!dateStr || !dateInput) return;
 
+  const requestId = ++dcBreakdownRequestId;
+  refreshDayClosingDetailsState(dateStr).catch((err) => {
+    AppError.report(err, { context: "refreshDayClosingDetailsState" });
+  });
+
   successEl?.classList.add("hidden");
   errorEl?.classList.add("hidden");
   if (totalSaleEl) totalSaleEl.textContent = "…";
@@ -32,9 +258,11 @@ async function loadDayClosingBreakdown(dateStr) {
 
   try {
     const { data, error } = await supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
+    if (requestId !== dcBreakdownRequestId) return;
     if (error) throw error;
     dayClosingBreakdown = data;
   } catch (err) {
+    if (requestId !== dcBreakdownRequestId) return;
     AppError.report(err, { context: "loadDayClosingBreakdown" });
     dayClosingBreakdown = null;
     if (totalSaleEl) totalSaleEl.textContent = "—";
@@ -50,6 +278,8 @@ async function loadDayClosingBreakdown(dateStr) {
     }
     return;
   }
+
+  if (requestId !== dcBreakdownRequestId) return;
 
   const b = dayClosingBreakdown || {};
   const totalSale = Number(b.total_sale ?? 0);
@@ -101,6 +331,15 @@ async function loadDayClosingBreakdown(dateStr) {
   if (remarksInput) {
     remarksInput.value = b.remarks ?? "";
     remarksInput.disabled = !!alreadySaved;
+  }
+  const noActivityHint = document.getElementById("dc-no-activity-hint");
+  if (noActivityHint) {
+    const hasActivity = totalSale || collection || shortPrevious || creditToday || expensesToday;
+    if (!hasActivity && !alreadySaved) {
+      noActivityHint.classList.remove("hidden");
+    } else {
+      noActivityHint.classList.add("hidden");
+    }
   }
   successEl?.classList.add("hidden");
 
@@ -256,6 +495,19 @@ async function initializeDayClosing() {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", () => loadDayClosingBreakdown(dateInput.value || todayStr));
   }
+
+  document.querySelector(".day-closing-breakdown")?.addEventListener("click", (event) => {
+    const toggle = event.target.closest(".dc-breakdown-toggle");
+    if (!toggle) return;
+    const kind = toggle.closest("[data-breakdown]")?.dataset.breakdown;
+    if (kind && DC_DETAIL_KINDS.includes(kind)) {
+      toggleDayClosingDetail(kind);
+    }
+  });
+
+  loadExpenseCategoryLabels().catch((err) => {
+    AppError.report(err, { context: "loadExpenseCategoryLabels" });
+  });
 
   await loadDayClosingBreakdown(dateInput.value || todayStr);
 

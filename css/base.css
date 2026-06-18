@@ -1168,7 +1168,7 @@ select:focus {
   box-shadow: var(--focus-ring);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item) {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):not(.dc-breakdown-toggle) {
   border: none;
   background: linear-gradient(180deg, #0088d1 0%, var(--color-primary) 100%);
   color: #fff;
@@ -1177,12 +1177,12 @@ button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):no
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):hover {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):not(.dc-breakdown-toggle):hover {
   background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   box-shadow: 0 2px 8px rgba(0, 112, 192, 0.28);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):active {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.settings-nav-item):not(.dc-breakdown-toggle):active {
   transform: translateY(1px);
 }
 
