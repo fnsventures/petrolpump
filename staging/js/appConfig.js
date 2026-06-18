@@ -74,6 +74,8 @@
     /** BPCL-style VAT/LST on fuel purchases (MS / HSD). */
     petrolPurchaseVatPct: 28,
     dieselPurchaseVatPct: 24,
+    /** Transport / delivery on inward fuel (₹ per kilolitre). */
+    purchaseDeliveryPerKl: 600,
     /** false = rate is pre-tax (BPCL invoice); true = rate includes tax. */
     purchaseTaxInclusive: false,
     fuelSupplierLabel: "BPCL / Fuel supplier",

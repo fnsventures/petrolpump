@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, isPurchaseTaxInclusive, getPurchaseTaxPct, getPurchaseTaxPctLabel, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, computeProfitLossSummary, isTestingExpenseCategory */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, isPurchaseTaxInclusive, getPurchaseTaxPct, getPurchaseTaxPctLabel, getPurchaseDeliveryPerKl, calcPurchaseLineTax, landedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, computeProfitLossSummary, isTestingExpenseCategory */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -1094,9 +1094,8 @@ function buildFuelPurchaseRows(data, range) {
   const detailRows = purchaseLines.map(({ date, product, litres, rate }) => {
     const taxPct = getPurchaseTaxPct(product);
     const slabKey = classifyGstSlab(taxPct);
-    const { taxable, tax, gross, cgst, sgst } = calcPurchaseLineTax(litres, rate, taxPct, {
-      storedGrossRate: true,
-    });
+    const line = calcPurchaseLineTax(litres, rate, taxPct, { storedPreVatRate: true });
+    const { taxable, tax, gross, cgst, sgst, exVatRatePerLitre } = line;
 
     if (slabTotals[slabKey]) {
       slabTotals[slabKey].taxable += taxable;
@@ -1105,7 +1104,18 @@ function buildFuelPurchaseRows(data, range) {
       slabTotals[slabKey].gross += gross;
     }
 
-    return { date, product, litres, rate, taxPct, taxable, tax, gross, cgst, sgst };
+    return {
+      date,
+      product,
+      litres,
+      rate: exVatRatePerLitre,
+      taxPct,
+      taxable,
+      tax,
+      gross,
+      cgst,
+      sgst,
+    };
   });
 
   return {
@@ -1129,13 +1139,11 @@ function renderGstPurchaseSummary(data, range) {
     ${renderGstSummaryTable(slabTotals, "Inward supply — GST summary (Fuel receipts)", range, true)}
     ${emptyNote}
     ${missingNote}
-    <p class="report-note muted">Based on stock receipts (L) and buying price (${escapeHtml(getBuyingPriceUnitLabel())}, ex-VAT on dashboard). VAT/LST: ${escapeHtml(
+    <p class="report-note muted">Based on stock receipts (L) and pre-VAT buying price (${escapeHtml(getBuyingPriceUnitLabel())} on dashboard). VAT/LST: ${escapeHtml(
       getPurchaseTaxPctLabel()
-    )}. ${
-      isPurchaseTaxInclusive()
-        ? "Buying rate treated as tax-inclusive."
-        : "Buying rate treated as pre-tax; VAT/LST added on taxable value."
-    }</p>`;
+    )}. ₹${escapeHtml(
+      getPurchaseDeliveryPerKl().toLocaleString("en-IN")
+    )}/KL delivery included in gross. Rate column is the stored pre-VAT invoice rate.</p>`;
 }
 
 function renderGstPurchaseDetail(data, range) {
@@ -1184,7 +1192,9 @@ function renderGstPurchaseDetail(data, range) {
         ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on dashboard.</p>`
         : ""
     }
-    <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. Buying rate in database is tax-inclusive (VAT/LST included when saved from P&amp;L).</p>`;
+    <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. Rate column is ex-VAT invoice ₹/KL; gross includes VAT/LST and ₹${escapeHtml(
+      getPurchaseDeliveryPerKl().toLocaleString("en-IN")
+    )}/KL delivery applied in gross. Buying rate in database is pre-VAT per litre.</p>`;
 }
 
 /** Trading account (stock-based) + P&L figures via shared computeProfitLossSummary. */
@@ -1203,7 +1213,9 @@ function computeTradingAndPl(data, range) {
     if (!products[p]) return;
     const netL = getDsrNetSaleLitres(row);
     const rate = getDsrSaleRate(row);
-    const buyingRate = getBuying(row.product, row.date) ?? Number(row.buying_price_per_litre ?? 0);
+    const preVatBuy = getBuying(row.product, row.date) ?? Number(row.buying_price_per_litre ?? 0);
+    const buyingRate =
+      Number.isFinite(preVatBuy) && preVatBuy > 0 ? landedBuyingRatePerLitre(preVatBuy, p) : 0;
     products[p].sales += netL * rate;
     products[p].purchase += Number(row.receipts ?? 0) * buyingRate;
   });
@@ -1215,8 +1227,12 @@ function computeTradingAndPl(data, range) {
     const last = prodRows[prodRows.length - 1];
     products[p].openingL = Number(first.opening_stock ?? 0);
     products[p].closingL = Number(last.dip_stock ?? last.stock ?? 0);
-    const openBuy = getBuying(p, first.date) ?? 0;
-    const closeBuy = getBuying(p, last.date) ?? openBuy;
+    const openPreVat = getBuying(p, first.date) ?? 0;
+    const closePreVat = getBuying(p, last.date) ?? openPreVat;
+    const openBuy =
+      Number.isFinite(openPreVat) && openPreVat > 0 ? landedBuyingRatePerLitre(openPreVat, p) : 0;
+    const closeBuy =
+      Number.isFinite(closePreVat) && closePreVat > 0 ? landedBuyingRatePerLitre(closePreVat, p) : openBuy;
     products[p].openingStockVal = products[p].openingL * openBuy;
     products[p].closingStockVal = products[p].closingL * closeBuy;
   });
