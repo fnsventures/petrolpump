@@ -463,3 +463,205 @@ window.setFilterState = setFilterState;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
 window.withProgress = withProgress;
+
+/** Net sale litres (meter sales minus testing). */
+function getDsrNetSaleLitres(row) {
+  return Math.max(Number(row?.total_sales ?? 0) - Number(row?.testing ?? 0), 0);
+}
+
+function getDsrSaleRate(row) {
+  const product = normalizeProduct(row?.product);
+  return product === "petrol"
+    ? Number(row?.petrol_rate ?? 0)
+    : product === "diesel"
+      ? Number(row?.diesel_rate ?? 0)
+      : 0;
+}
+
+/** Sum DSR sale value (₹). Day closing and dashboard total sale use includeTesting: true. */
+function calculateDsrSaleRupees(rows, { includeTesting = false } = {}) {
+  let total = 0;
+  for (const row of rows ?? []) {
+    const litres = includeTesting
+      ? Number(row?.total_sales ?? 0)
+      : getDsrNetSaleLitres(row);
+    const rate = getDsrSaleRate(row);
+    if (litres > 0 && rate > 0) total += litres * rate;
+  }
+  return total;
+}
+
+/**
+ * Effective buying price (₹/L) from latest receipt on or before the sale date.
+ * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
+ */
+function buildEffectiveBuyingMap(receiptRows) {
+  const byProduct = new Map();
+  (receiptRows ?? []).forEach((row) => {
+    const p = normalizeProduct(row.product);
+    if (!byProduct.has(p)) byProduct.set(p, []);
+    byProduct.get(p).push({
+      date: row.date,
+      buying_price_per_litre: Number(row.buying_price_per_litre),
+    });
+  });
+  byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
+  return function getEffectiveBuying(product, date) {
+    const list = byProduct.get(normalizeProduct(product));
+    if (!list?.length) return null;
+    const found = list.find((r) => r.date <= date);
+    return found != null && Number.isFinite(found.buying_price_per_litre)
+      ? found.buying_price_per_litre
+      : null;
+  };
+}
+
+function getEffectiveBuyingRate(row, getBuying) {
+  const fromReceipt = getBuying?.(row.product, row.date);
+  if (fromReceipt != null && Number.isFinite(fromReceipt)) return fromReceipt;
+  const onRow = Number(row?.buying_price_per_litre ?? 0);
+  return Number.isFinite(onRow) && onRow > 0 ? onRow : null;
+}
+
+/** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
+function computeFuelRowMargin(row, getBuying) {
+  const product = normalizeProduct(row?.product);
+  if (product !== "petrol" && product !== "diesel") {
+    return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
+  }
+  const litres = getDsrNetSaleLitres(row);
+  if (!Number.isFinite(litres) || litres <= 0) {
+    return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
+  }
+  const sellingRate = getDsrSaleRate(row);
+  const buyingRate = getEffectiveBuyingRate(row, getBuying);
+  const revenue =
+    Number.isFinite(sellingRate) && sellingRate > 0 ? litres * sellingRate : 0;
+  const cost = buyingRate != null ? litres * buyingRate : 0;
+  const grossProfit =
+    revenue > 0 && buyingRate != null ? litres * (sellingRate - buyingRate) : 0;
+  return { revenue, cost, grossProfit, litres };
+}
+
+/** Net sale revenue (₹) from fuel DSR rows. */
+function computeFuelRevenue(dsrRows) {
+  let total = 0;
+  let missingRates = 0;
+  for (const row of dsrRows ?? []) {
+    const { revenue, litres } = computeFuelRowMargin(row, null);
+    if (litres <= 0) continue;
+    const rate = getDsrSaleRate(row);
+    if (!Number.isFinite(rate) || rate <= 0) missingRates += 1;
+    total += revenue;
+  }
+  return { total, missingRates };
+}
+
+/** Fuel cost at effective buying rates (₹). */
+function computeFuelCostOfGoods(dsrRows, getBuying) {
+  let total = 0;
+  for (const row of dsrRows ?? []) {
+    total += computeFuelRowMargin(row, getBuying).cost;
+  }
+  return total;
+}
+
+/** Fuel gross profit: net litres × (selling rate − effective buying rate). */
+function computeFuelGrossProfit(dsrRows, getBuying) {
+  let total = 0;
+  for (const row of dsrRows ?? []) {
+    total += computeFuelRowMargin(row, getBuying).grossProfit;
+  }
+  return total;
+}
+
+function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false } = {}) {
+  return (expenseRows ?? []).reduce((sum, row) => {
+    const isTesting = isTestingExpenseCategory(row.category);
+    if (testingOnly && !isTesting) return sum;
+    if (excludeTesting && isTesting) return sum;
+    return sum + Number(row.amount ?? 0);
+  }, 0);
+}
+
+/** MS/HS fuel testing — excluded from P&L net profit (tracked separately in day closing). */
+const TESTING_EXPENSE_CATEGORY_SLUGS = new Set([
+  "mstest",
+  "hsdtest",
+  "ms_testing",
+  "hs_testing",
+  "ms-test",
+  "hs-test",
+  "ms_test",
+  "hs_test",
+]);
+
+function isTestingExpenseCategory(category, label) {
+  const slug = String(category ?? "").toLowerCase();
+  if (TESTING_EXPENSE_CATEGORY_SLUGS.has(slug)) return true;
+  const normalizedLabel = String(label ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return normalizedLabel === "ms testing" || normalizedLabel === "hs testing" || normalizedLabel === "hsd testing";
+}
+
+/** Receipt days missing buying price (blocks P&L until admin enters ₹/KL). */
+function findMissingBuyingPriceRows(dsrRows) {
+  return (dsrRows ?? []).filter((row) => {
+    if (Number(row.receipts ?? 0) <= 0) return false;
+    const bp = row.buying_price_per_litre;
+    return bp == null || bp === "" || (typeof bp === "number" && !Number.isFinite(bp));
+  });
+}
+
+/**
+ * Unified P&L for dashboard, reports, and analysis.
+ * Net profit = gross profit − operating expenses (MS/HS testing excluded).
+ */
+function computeProfitLossSummary({
+  dsrRows,
+  receiptRows,
+  expenseRows,
+  lubeSales = 0,
+  requireAllBuying = true,
+} = {}) {
+  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows);
+  const canCalculate = !requireAllBuying || missingBuyingPrice.length === 0;
+  const getBuying = buildEffectiveBuyingMap(canCalculate ? receiptRows : []);
+  const { total: revenue, missingRates } = computeFuelRevenue(dsrRows);
+  const costOfGoods = canCalculate ? computeFuelCostOfGoods(dsrRows, getBuying) : 0;
+  const fuelGrossProfit = canCalculate ? computeFuelGrossProfit(dsrRows, getBuying) : null;
+  const lube = Number(lubeSales ?? 0);
+  const testingExpenses = sumExpenseAmounts(expenseRows, { testingOnly: true });
+  const totalExpenses = sumExpenseAmounts(expenseRows, { excludeTesting: true });
+  const grossProfit = fuelGrossProfit != null ? fuelGrossProfit + lube : null;
+  const netProfit = grossProfit != null ? grossProfit - totalExpenses : null;
+
+  return {
+    revenue,
+    missingRates,
+    costOfGoods,
+    fuelGrossProfit,
+    lubeSales: lube,
+    grossProfit,
+    testingExpenses,
+    totalExpenses,
+    netProfit,
+    missingBuyingPrice,
+    canCalculate,
+  };
+}
+
+window.getDsrNetSaleLitres = getDsrNetSaleLitres;
+window.getDsrSaleRate = getDsrSaleRate;
+window.calculateDsrSaleRupees = calculateDsrSaleRupees;
+window.buildEffectiveBuyingMap = buildEffectiveBuyingMap;
+window.computeFuelRowMargin = computeFuelRowMargin;
+window.computeFuelRevenue = computeFuelRevenue;
+window.computeFuelCostOfGoods = computeFuelCostOfGoods;
+window.computeFuelGrossProfit = computeFuelGrossProfit;
+window.sumExpenseAmounts = sumExpenseAmounts;
+window.isTestingExpenseCategory = isTestingExpenseCategory;
+window.findMissingBuyingPriceRows = findMissingBuyingPriceRows;
+window.computeProfitLossSummary = computeProfitLossSummary;

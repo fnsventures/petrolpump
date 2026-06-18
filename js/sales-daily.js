@@ -95,7 +95,7 @@ function renderProductRows(tbody, rows) {
   }
   tbody.innerHTML = rows
     .map((row) => {
-      const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
+      const netSale = getDsrNetSaleLitres(row);
       return `<tr>
         <td>${escapeHtml(row.date)}</td>
         <td>${formatQuantity(row.sales_pump1)}</td>

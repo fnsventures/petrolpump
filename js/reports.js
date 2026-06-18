@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, isPurchaseTaxInclusive, getPurchaseTaxPct, getPurchaseTaxPctLabel, calcPurchaseLineTax, DsrQueries */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, isPurchaseTaxInclusive, getPurchaseTaxPct, getPurchaseTaxPctLabel, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, computeProfitLossSummary, isTestingExpenseCategory */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -121,8 +121,8 @@ const FUEL_OUTWARD_GST_PCT = 0;
 function calcDailyFuelSale(row) {
   const product = normalizeProduct(row.product);
   if (product !== "petrol" && product !== "diesel") return { litres: 0, gross: 0 };
-  const litres = Math.max(Number(row.total_sales ?? 0) - Number(row.testing ?? 0), 0);
-  const rate = product === "petrol" ? Number(row.petrol_rate ?? 0) : Number(row.diesel_rate ?? 0);
+  const litres = getDsrNetSaleLitres(row);
+  const rate = getDsrSaleRate(row);
   if (!Number.isFinite(litres) || litres <= 0 || !Number.isFinite(rate) || rate <= 0) {
     return { litres: 0, gross: 0 };
   }
@@ -537,29 +537,7 @@ function mergeDsrStock(dsrRows, stockRows) {
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function buildEffectiveBuyingMap(receiptRows) {
-  const byProduct = new Map();
-  receiptRows.forEach((row) => {
-    const p = normalizeProduct(row.product);
-    if (!byProduct.has(p)) byProduct.set(p, []);
-    byProduct.get(p).push({
-      date: row.date,
-      buying_price_per_litre: Number(row.buying_price_per_litre),
-    });
-  });
-  byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
-  return function getEffectiveBuying(product, date) {
-    const list = byProduct.get(normalizeProduct(product));
-    if (!list?.length) return null;
-    const found = list.find((r) => r.date <= date);
-    return found != null && Number.isFinite(found.buying_price_per_litre)
-      ? found.buying_price_per_litre
-      : null;
-  };
-}
-
 function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rateField) {
-  const lines = [];
   let cumSale = 0;
   let cumVariance = 0;
   let totalPurchase = 0;
@@ -1209,6 +1187,7 @@ function renderGstPurchaseDetail(data, range) {
     <p class="report-note muted">${escapeHtml(getPurchaseTaxPctLabel())}. Buying rate in database is tax-inclusive (VAT/LST included when saved from P&amp;L).</p>`;
 }
 
+/** Trading account (stock-based) + P&L figures via shared computeProfitLossSummary. */
 function computeTradingAndPl(data, range) {
   const getBuying = buildEffectiveBuyingMap(data.receiptRows);
   const merged = mergeDsrStock(data.dsrRows, data.stockRows);
@@ -1222,8 +1201,8 @@ function computeTradingAndPl(data, range) {
   merged.forEach((row) => {
     const p = normalizeProduct(row.product);
     if (!products[p]) return;
-    const netL = Math.max(Number(row.total_sales ?? 0) - Number(row.testing ?? 0), 0);
-    const rate = p === "petrol" ? Number(row.petrol_rate ?? 0) : Number(row.diesel_rate ?? 0);
+    const netL = getDsrNetSaleLitres(row);
+    const rate = getDsrSaleRate(row);
     const buyingRate = getBuying(row.product, row.date) ?? Number(row.buying_price_per_litre ?? 0);
     products[p].sales += netL * rate;
     products[p].purchase += Number(row.receipts ?? 0) * buyingRate;
@@ -1250,18 +1229,40 @@ function computeTradingAndPl(data, range) {
   const closingStock = Object.values(products).reduce((s, x) => s + x.closingStockVal, 0);
 
   const grossIncome = grossSales + closingStock - openingStock - totalPurchase;
+  const pl = computeProfitLossSummary({
+    dsrRows: merged,
+    receiptRows: data.receiptRows,
+    expenseRows: data.expenseRows,
+    lubeSales: products.lube.sales,
+    requireAllBuying: false,
+  });
 
   const expensesByCategory = new Map();
+  const testingExpensesByCategory = new Map();
   data.expenseRows.forEach((e) => {
     const key = e.category || "misc";
     const label = data.categoryMap[key] || key || "Miscellaneous";
-    if (!expensesByCategory.has(key)) expensesByCategory.set(key, { label, amount: 0 });
-    expensesByCategory.get(key).amount += Number(e.amount ?? 0);
+    const amount = Number(e.amount ?? 0);
+    const bucket = isTestingExpenseCategory(key, label) ? testingExpensesByCategory : expensesByCategory;
+    if (!bucket.has(key)) bucket.set(key, { label, amount: 0 });
+    bucket.get(key).amount += amount;
   });
-  const totalExpenses = data.expenseRows.reduce((s, e) => s + Number(e.amount ?? 0), 0);
-  const netProfit = grossIncome - totalExpenses;
 
-  return { products, grossSales, totalPurchase, openingStock, closingStock, grossIncome, expensesByCategory, totalExpenses, netProfit };
+  return {
+    products,
+    grossSales,
+    totalPurchase,
+    openingStock,
+    closingStock,
+    grossIncome,
+    fuelGrossProfit: pl.fuelGrossProfit ?? 0,
+    grossProfit: pl.grossProfit ?? 0,
+    expensesByCategory,
+    testingExpensesByCategory,
+    totalExpenses: pl.totalExpenses,
+    testingExpenses: pl.testingExpenses,
+    netProfit: pl.netProfit ?? 0,
+  };
 }
 
 function renderTradingAccount(data, range) {
@@ -1315,6 +1316,9 @@ function renderProfitLoss(data, range) {
   const expenseRows = Array.from(t.expensesByCategory.values()).sort(
     (a, b) => b.amount - a.amount
   );
+  const testingExpenseRows = Array.from(t.testingExpensesByCategory.values()).sort(
+    (a, b) => b.amount - a.amount
+  );
 
   const expenseHtml = expenseRows
     .map(
@@ -1323,20 +1327,35 @@ function renderProfitLoss(data, range) {
     )
     .join("");
 
+  const testingExpenseHtml = testingExpenseRows.length
+    ? `<tr class="report-subhead-row"><td colspan="2">MS/HS testing (excluded from net profit — day closing only)</td></tr>${testingExpenseRows
+        .map(
+          (e) =>
+            `<tr class="muted"><td>${escapeHtml(e.label)}</td><td class="num">${formatAmt(e.amount)}</td></tr>`
+        )
+        .join("")}`
+    : "";
+
+  const lubeProfitRow =
+    t.products.lube.sales > 0
+      ? `<tr><td>Gross profit — Lube / Billing</td><td class="num">${formatAmt(t.products.lube.sales)}</td></tr>`
+      : "";
+
   return `
     ${reportHeader("Profit & loss account", range.start, range.end)}
     <table class="report-table">
       <thead><tr><th>Particulars</th><th>Amount (₹)</th></tr></thead>
       <tbody>
-        <tr><td>Gross income b/f (from trading)</td><td class="num">${formatAmt(t.grossIncome)}</td></tr>
+        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${formatAmt(t.fuelGrossProfit)}</td></tr>
+        ${lubeProfitRow}
+        <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${formatAmt(t.grossProfit)}</strong></td></tr>
         ${expenseHtml}
+        <tr class="report-total-row"><td><strong>Total expenses</strong></td><td class="num"><strong>${formatAmt(t.totalExpenses)}</strong></td></tr>
         <tr class="report-total-row"><td><strong>Net profit</strong></td><td class="num"><strong>${formatAmt(t.netProfit)}</strong></td></tr>
+        ${testingExpenseHtml}
       </tbody>
-      <tfoot>
-        <tr><td>Total expenses</td><td class="num">${formatAmt(t.totalExpenses)}</td></tr>
-      </tfoot>
     </table>
-    <p class="report-note muted">Expenses from Expenses page. Gross income matches trading account for the same period.</p>`;
+    <p class="report-note muted">Net profit = gross profit − operating expenses. MS/HS testing is excluded (handled in day closing). Fuel margin uses net sale litres × (selling − buying).</p>`;
 }
 
 const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=4";

@@ -104,9 +104,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
+      const savedDate = payload.date;
       form.reset();
       if (dateInput) {
-        dateInput.value = getLocalDateString();
+        dateInput.value = savedDate;
       }
       successEl?.classList.remove("hidden");
       loadExpenses(true);
