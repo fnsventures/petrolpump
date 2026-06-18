@@ -12,6 +12,13 @@ function getCategoryLabel(value) {
   return CATEGORY_LABEL_MAP[value] || LEGACY_CATEGORY_LABELS[value] || value || "—";
 }
 
+/** Salary is recorded on salary.html; linked expense rows stay for day-closing totals only. */
+const SALARY_EXPENSE_CATEGORY = "salary";
+
+function applyNonSalaryExpenseFilter(query) {
+  return query.neq("category", SALARY_EXPENSE_CATEGORY);
+}
+
 // Pagination state
 const PAGE_SIZE = 20;
 let currentAuth = null;
@@ -97,9 +104,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
+      const savedDate = payload.date;
       form.reset();
       if (dateInput) {
-        dateInput.value = getLocalDateString();
+        dateInput.value = savedDate;
       }
       successEl?.classList.remove("hidden");
       loadExpenses(true);
@@ -140,12 +148,14 @@ async function loadAndFillCategorySelect() {
   optPlaceholder.value = "";
   optPlaceholder.textContent = "Select category";
   select.appendChild(optPlaceholder);
-  categories.forEach((c) => {
-    const opt = document.createElement("option");
-    opt.value = c.value;
-    opt.textContent = c.label;
-    select.appendChild(opt);
-  });
+  categories
+    .filter((c) => c.value !== SALARY_EXPENSE_CATEGORY)
+    .forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.value;
+      opt.textContent = c.label;
+      select.appendChild(opt);
+    });
 }
 
 function getExpenseDateRange() {
@@ -240,21 +250,25 @@ async function loadExpenses(reset = false) {
 
   try {
     if (reset) {
-      const { count, error: countError } = await supabaseClient
-        .from("expenses")
-        .select("*", { count: "exact", head: true })
-        .gte("date", start)
-        .lte("date", end);
+      const { count, error: countError } = await applyNonSalaryExpenseFilter(
+        supabaseClient
+          .from("expenses")
+          .select("*", { count: "exact", head: true })
+          .gte("date", start)
+          .lte("date", end)
+      );
       if (!countError) expensesPagination.totalCount = count || 0;
     }
 
-    const { data, error } = await supabaseClient
-      .from("expenses")
-      .select("id, date, category, description, amount")
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: false })
-      .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1);
+    const { data, error } = await applyNonSalaryExpenseFilter(
+      supabaseClient
+        .from("expenses")
+        .select("id, date, category, description, amount")
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: false })
+        .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1)
+    );
 
     if (error) {
       if (reset) {
@@ -321,11 +335,13 @@ async function loadExpenses(reset = false) {
     }
 
     if (reset && totalRow && totalValue) {
-      const { data: sumData } = await supabaseClient
-        .from("expenses")
-        .select("amount")
-        .gte("date", start)
-        .lte("date", end);
+      const { data: sumData } = await applyNonSalaryExpenseFilter(
+        supabaseClient
+          .from("expenses")
+          .select("amount")
+          .gte("date", start)
+          .lte("date", end)
+      );
       const total = (sumData || []).reduce((s, r) => s + Number(r.amount ?? 0), 0);
       totalValue.textContent = formatCurrency(total);
       totalRow.classList.remove("hidden");
