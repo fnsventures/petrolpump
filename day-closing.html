@@ -78,6 +78,7 @@
         <section class="settings-panel card is-visible dashboard-card day-closing-card" data-panel="close">
         <h2 class="dashboard-section-title">Day closing &amp; short</h2>
         <p class="muted">(Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short</p>
+        <p id="dc-no-activity-hint" class="muted hidden">No meter readings, collections, credit, or expenses recorded for this date.</p>
         <form id="day-closing-form" class="form day-closing-form" autocomplete="off">
           <div class="form-field">
             <label for="day-closing-date">Date</label>
@@ -89,9 +90,17 @@
                 <dt>Total sale (₹)</dt>
                 <dd id="dc-total-sale">—</dd>
               </div>
-              <div class="dsr-summary-row">
-                <dt>Collection (₹)</dt>
-                <dd id="dc-collection">—</dd>
+              <div class="dc-breakdown-group" data-breakdown="collection">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
+                      <span>Collection (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-collection">—</dd>
+                </div>
+                <div id="dc-collection-details" class="dc-breakdown-details" hidden></div>
               </div>
               <div class="dsr-summary-row">
                 <dt>Short previous (₹)</dt>
@@ -109,13 +118,29 @@
                 <dt>Phone pay (₹)</dt>
                 <dd><input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" aria-label="PhonePe/UPI" /></dd>
               </div>
-              <div class="dsr-summary-row">
-                <dt>Credit today (₹)</dt>
-                <dd id="dc-credit-today">—</dd>
+              <div class="dc-breakdown-group" data-breakdown="credit">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
+                      <span>Credit today (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-credit-today">—</dd>
+                </div>
+                <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
               </div>
-              <div class="dsr-summary-row">
-                <dt>Expenses today (₹)</dt>
-                <dd id="dc-expenses-today">—</dd>
+              <div class="dc-breakdown-group" data-breakdown="expenses">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
+                      <span>Expenses today (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-expenses-today">—</dd>
+                </div>
+                <div id="dc-expenses-details" class="dc-breakdown-details" hidden></div>
               </div>
               <div class="dsr-summary-row dsr-summary-inhand">
                 <dt>Today's short (₹)</dt>
