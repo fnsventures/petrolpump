@@ -250,7 +250,7 @@ create table if not exists public.dsr_petrol (
   receipts numeric(14,2) not null default 0,
   petrol_rate numeric(10,2),
   diesel_rate numeric(10,2),
-  buying_price_per_litre numeric(10,2),
+  buying_price_per_litre numeric(12, 5),
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
@@ -259,6 +259,8 @@ create table if not exists public.dsr_petrol (
 create index if not exists dsr_petrol_date_idx on public.dsr_petrol (date desc);
 
 comment on table public.dsr_petrol is 'Petrol (MS) meter readings. One row per day per tank from Meter Reading form.';
+comment on column public.dsr_petrol.buying_price_per_litre is
+  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
 
 alter table public.dsr_petrol enable row level security;
 
@@ -303,7 +305,7 @@ create table if not exists public.dsr_diesel (
   receipts numeric(14,2) not null default 0,
   petrol_rate numeric(10,2),
   diesel_rate numeric(10,2),
-  buying_price_per_litre numeric(10,2),
+  buying_price_per_litre numeric(12, 5),
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
@@ -320,6 +322,8 @@ create index if not exists dsr_diesel_receipts_buying_idx
   where receipts > 0 and buying_price_per_litre is not null;
 
 comment on table public.dsr_diesel is 'Diesel (HSD) meter readings. One row per day per tank from Meter Reading form.';
+comment on column public.dsr_diesel.buying_price_per_litre is
+  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
 
 alter table public.dsr_diesel enable row level security;
 

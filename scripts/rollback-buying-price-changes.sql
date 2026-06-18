@@ -2,8 +2,8 @@
 -- ROLLBACK: undo buying-price pre-VAT migration on production database.
 -- Run manually in Supabase SQL Editor — ONE block at a time.
 --
--- Use this if you ran buying-price-strip-vat-once.sql or the auto-migration
--- that divided buying_price_per_litre by (1 + VAT%).
+-- Use this if you ran migration 20260618150000_buying_price_pre_vat_and_delivery
+-- (divided buying_price_per_litre by 1 + VAT%).
 --
 -- This multiplies stored rates back to tax-inclusive (previous behaviour).
 -- =============================================================================
@@ -63,7 +63,7 @@ begin
   update public.dsr_petrol
   set buying_price_per_litre = round(
     (buying_price_per_litre * (1 + v_petrol_pct / 100))::numeric,
-    2
+    5
   )
   where buying_price_per_litre is not null and buying_price_per_litre > 0;
   get diagnostics v_petrol_rows = row_count;
@@ -71,7 +71,7 @@ begin
   update public.dsr_diesel
   set buying_price_per_litre = round(
     (buying_price_per_litre * (1 + v_diesel_pct / 100))::numeric,
-    2
+    5
   )
   where buying_price_per_litre is not null and buying_price_per_litre > 0;
   get diagnostics v_diesel_rows = row_count;
@@ -89,6 +89,6 @@ end;
 $$;
 
 comment on column public.dsr_petrol.buying_price_per_litre is
-  'Admin: gross landed cost per litre (incl. purchase VAT/LST); set from P&L ex-VAT ₹/KL entry.';
+  'Admin: gross landed cost per litre (incl. purchase VAT/LST); set from P&L ₹/KL entry.';
 comment on column public.dsr_diesel.buying_price_per_litre is
-  'Admin: gross landed cost per litre (incl. purchase VAT/LST); set from P&L ex-VAT ₹/KL entry.';
+  'Admin: gross landed cost per litre (incl. purchase VAT/LST); set from P&L ₹/KL entry.';
