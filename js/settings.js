@@ -148,6 +148,10 @@ function bindBillingDefaultsForm(auth) {
   const r = PumpSettings.getCachedSync().reports || {};
   set("bill-petrol-vat", r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct);
   set("bill-diesel-vat", r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct);
+  set(
+    "bill-purchase-delivery",
+    r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl
+  );
   const inclEl = document.getElementById("bill-purchase-tax-inclusive");
   if (inclEl) {
     inclEl.checked =
@@ -201,6 +205,10 @@ function bindBillingDefaultsForm(auth) {
           dieselPurchaseVatPct: parseOptionalNumber(
             document.getElementById("bill-diesel-vat")?.value,
             r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
+          ),
+          purchaseDeliveryPerKl: parseOptionalNumber(
+            document.getElementById("bill-purchase-delivery")?.value,
+            r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl
           ),
           purchaseTaxInclusive: Boolean(
             document.getElementById("bill-purchase-tax-inclusive")?.checked
