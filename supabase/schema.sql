@@ -493,9 +493,12 @@ create table if not exists public.expenses (
   category text,
   description text,
   amount numeric(14,2) not null default 0,
+  salary_payment_id uuid references public.salary_payments (id) on delete set null,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
+
+create unique index if not exists expenses_salary_payment_id_unique on public.expenses (salary_payment_id) where salary_payment_id is not null;
 
 create index if not exists expenses_date_idx on public.expenses (date desc);
 create index if not exists expenses_created_at_idx on public.expenses (created_at desc);
@@ -1086,6 +1089,7 @@ create table if not exists public.salary_payments (
   id uuid primary key default uuid_generate_v4(),
   employee_id uuid not null references public.employees (id) on delete restrict,
   date date not null,
+  salary_month date not null,
   amount numeric(14,2) not null check (amount > 0),
   note text check (char_length(note) <= 200),
   created_by uuid references auth.users (id) on delete set null,
@@ -1094,8 +1098,9 @@ create table if not exists public.salary_payments (
 
 create index if not exists salary_payments_employee_date_idx on public.salary_payments (employee_id, date desc);
 create index if not exists salary_payments_date_idx on public.salary_payments (date desc);
+create index if not exists salary_payments_salary_month_idx on public.salary_payments (salary_month desc, employee_id);
 
-comment on table public.salary_payments is 'Installment salary payments to employees. One row per payment (e.g. 2000 today, 3000 next week).';
+comment on table public.salary_payments is 'Installment salary payments to employees. salary_month is the pay period; date is when cash was paid.';
 
 alter table public.salary_payments enable row level security;
 
@@ -1473,8 +1478,9 @@ declare
   v_credit_today numeric := 0;
   v_expenses_today numeric := 0;
 begin
+  -- Total sale: gross litres (total_sales, includes testing) × rate
   select coalesce(sum(
-    (coalesce(v_row.total_sales, 0) - coalesce(v_row.testing, 0))
+    coalesce(v_row.total_sales, 0)
     * case
         when v_row.product = 'petrol' then coalesce(v_row.petrol_rate, 0)
         when v_row.product = 'diesel' then coalesce(v_row.diesel_rate, 0)
@@ -1512,7 +1518,53 @@ begin
 end;
 $$;
 
+comment on function public.compute_day_closing_components(date) is
+  'Shared day-closing totals. Total sale uses gross DSR litres (incl. testing); expenses include all categories.';
+
 grant execute on function public.compute_day_closing_components(date) to authenticated;
+
+create or replace function public.recascade_day_closing_short_from(p_from_date date)
+returns void
+language plpgsql security definer
+as $$
+declare
+  v_row record;
+  v_components jsonb;
+  v_short_today numeric;
+begin
+  for v_row in
+    select date, night_cash, phone_pay
+    from public.day_closing
+    where date > p_from_date
+    order by date asc
+  loop
+    v_components := public.compute_day_closing_components(v_row.date);
+    v_short_today := (
+      coalesce((v_components->>'total_sale')::numeric, 0)
+      + coalesce((v_components->>'collection')::numeric, 0)
+      + coalesce((v_components->>'short_previous')::numeric, 0)
+    ) - (
+      v_row.night_cash + v_row.phone_pay
+      + coalesce((v_components->>'credit_today')::numeric, 0)
+      + coalesce((v_components->>'expenses_today')::numeric, 0)
+    );
+
+    update public.day_closing set
+      total_sale = coalesce((v_components->>'total_sale')::numeric, 0),
+      collection = coalesce((v_components->>'collection')::numeric, 0),
+      short_previous = coalesce((v_components->>'short_previous')::numeric, 0),
+      credit_today = coalesce((v_components->>'credit_today')::numeric, 0),
+      expenses_today = coalesce((v_components->>'expenses_today')::numeric, 0),
+      short_today = v_short_today
+    where date = v_row.date;
+  end loop;
+end;
+$$;
+
+comment on function public.recascade_day_closing_short_from(date) is
+  'After a day closing overwrite, recalculate short chain for all later closed dates.';
+
+grant execute on function public.recascade_day_closing_short_from(date) to authenticated;
 
 -- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
 create or replace function public.get_day_closing_breakdown(p_date date)
@@ -1523,66 +1575,58 @@ declare
   v_components jsonb;
   v_existing record;
   v_already_saved boolean := false;
+  v_can_overwrite boolean := false;
+  v_use_snapshot boolean := false;
+  v_expenses_live numeric := 0;
+  v_total_sale numeric := 0;
+  v_collection numeric := 0;
+  v_short_previous numeric := 0;
+  v_credit_today numeric := 0;
 begin
   select total_sale, collection, short_previous, credit_today, expenses_today,
          night_cash, phone_pay, short_today, closing_reference, remarks
   into v_existing
   from public.day_closing where date = p_date limit 1;
   v_already_saved := found;
+  v_can_overwrite := v_already_saved and public.is_admin();
+  v_use_snapshot := v_already_saved and v_existing.total_sale is not null and not v_can_overwrite;
 
-  if v_already_saved and v_existing.total_sale is not null then
-    return jsonb_build_object(
-      'date', p_date,
-      'total_sale', coalesce(v_existing.total_sale, 0),
-      'collection', coalesce(v_existing.collection, 0),
-      'short_previous', coalesce(v_existing.short_previous, 0),
-      'credit_today', coalesce(v_existing.credit_today, 0),
-      'expenses_today', coalesce(v_existing.expenses_today, 0),
-      'night_cash', coalesce(v_existing.night_cash, 0),
-      'phone_pay', coalesce(v_existing.phone_pay, 0),
-      'short_today', coalesce(v_existing.short_today, 0),
-      'closing_reference', v_existing.closing_reference,
-      'remarks', v_existing.remarks,
-      'already_saved', true
-    );
-  end if;
+  if v_use_snapshot then
+    select coalesce(sum(amount), 0) into v_expenses_live
+    from public.expenses where date = p_date;
 
-  v_components := public.compute_day_closing_components(p_date);
-
-  if v_already_saved then
-    return jsonb_build_object(
-      'date', p_date,
-      'total_sale', coalesce((v_components->>'total_sale')::numeric, 0),
-      'collection', coalesce((v_components->>'collection')::numeric, 0),
-      'short_previous', coalesce((v_components->>'short_previous')::numeric, 0),
-      'credit_today', coalesce((v_components->>'credit_today')::numeric, 0),
-      'expenses_today', coalesce((v_components->>'expenses_today')::numeric, 0),
-      'night_cash', coalesce(v_existing.night_cash, 0),
-      'phone_pay', coalesce(v_existing.phone_pay, 0),
-      'short_today', coalesce(v_existing.short_today, 0),
-      'closing_reference', v_existing.closing_reference,
-      'remarks', v_existing.remarks,
-      'already_saved', true
-    );
+    v_total_sale := coalesce(v_existing.total_sale, 0);
+    v_collection := coalesce(v_existing.collection, 0);
+    v_short_previous := coalesce(v_existing.short_previous, 0);
+    v_credit_today := coalesce(v_existing.credit_today, 0);
+  else
+    v_components := public.compute_day_closing_components(p_date);
+    v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
+    v_collection := coalesce((v_components->>'collection')::numeric, 0);
+    v_short_previous := coalesce((v_components->>'short_previous')::numeric, 0);
+    v_credit_today := coalesce((v_components->>'credit_today')::numeric, 0);
+    v_expenses_live := coalesce((v_components->>'expenses_today')::numeric, 0);
   end if;
 
   return jsonb_build_object(
     'date', p_date,
-    'total_sale', coalesce((v_components->>'total_sale')::numeric, 0),
-    'collection', coalesce((v_components->>'collection')::numeric, 0),
-    'short_previous', coalesce((v_components->>'short_previous')::numeric, 0),
-    'credit_today', coalesce((v_components->>'credit_today')::numeric, 0),
-    'expenses_today', coalesce((v_components->>'expenses_today')::numeric, 0),
-    'night_cash', null,
-    'phone_pay', null,
-    'short_today', null,
-    'closing_reference', null,
-    'remarks', null,
-    'already_saved', false
+    'total_sale', v_total_sale,
+    'collection', v_collection,
+    'short_previous', v_short_previous,
+    'credit_today', v_credit_today,
+    'expenses_today', v_expenses_live,
+    'night_cash', case when v_already_saved then coalesce(v_existing.night_cash, 0) else null end,
+    'phone_pay', case when v_already_saved then coalesce(v_existing.phone_pay, 0) else null end,
+    'short_today', case when v_already_saved then coalesce(v_existing.short_today, 0) else null end,
+    'closing_reference', case when v_already_saved then v_existing.closing_reference else null end,
+    'remarks', case when v_already_saved then v_existing.remarks else null end,
+    'already_saved', v_already_saved,
+    'can_overwrite', v_can_overwrite
   );
 end;
 $$;
-comment on function public.get_day_closing_breakdown(date) is 'Returns day closing components. When already_saved with snapshot, returns stored values for accounting. credit_today from credit_entries + legacy credit_customers.';
+comment on function public.get_day_closing_breakdown(date) is
+  'Returns day closing components. Snapshot for saved days; admins see live values and can_overwrite.';
 
 -- RPC: Save day closing with full statement snapshot and accounting reference
 create or replace function public.save_day_closing(
@@ -1596,6 +1640,8 @@ language plpgsql security definer
 as $$
 declare
   v_components jsonb;
+  v_existing record;
+  v_is_overwrite boolean := false;
   v_total_sale numeric;
   v_collection numeric;
   v_short_previous numeric;
@@ -1612,8 +1658,14 @@ begin
     raise exception 'phone_pay must be >= 0';
   end if;
 
-  if exists (select 1 from public.day_closing where date = p_date) then
-    raise exception 'Day closing already saved for this date.';
+  select closing_reference into v_existing
+  from public.day_closing where date = p_date;
+  if found then
+    if not public.is_admin() then
+      raise exception 'Day closing already saved for this date.';
+    end if;
+    v_is_overwrite := true;
+    v_ref := v_existing.closing_reference;
   end if;
 
   v_components := public.compute_day_closing_components(p_date);
@@ -1626,25 +1678,41 @@ begin
   v_short_today := (v_total_sale + v_collection + v_short_previous)
     - (p_night_cash + p_phone_pay + v_credit_today + v_expenses_today);
 
-  select coalesce(max(
-    nullif(regexp_replace(closing_reference, '^DC-[0-9]+-([0-9]+)$', '\1'), '')::bigint
-  ), 0) + 1 into v_seq
-  from public.day_closing
-  where extract(year from date) = extract(year from p_date)
-    and closing_reference is not null
-    and closing_reference ~ '^DC-[0-9]+-[0-9]+$';
-  v_ref := 'DC-' || to_char(p_date, 'YYYY') || '-' || lpad(v_seq::text, 5, '0');
+  if v_is_overwrite then
+    update public.day_closing set
+      night_cash = p_night_cash,
+      phone_pay = p_phone_pay,
+      short_today = v_short_today,
+      total_sale = v_total_sale,
+      collection = v_collection,
+      short_previous = v_short_previous,
+      credit_today = v_credit_today,
+      expenses_today = v_expenses_today,
+      remarks = nullif(trim(p_remarks), '')
+    where date = p_date;
 
-  insert into public.day_closing (
-    date, night_cash, phone_pay, short_today,
-    total_sale, collection, short_previous, credit_today, expenses_today,
-    closing_reference, remarks, created_by
-  )
-  values (
-    p_date, p_night_cash, p_phone_pay, v_short_today,
-    v_total_sale, v_collection, v_short_previous, v_credit_today, v_expenses_today,
-    v_ref, nullif(trim(p_remarks), ''), auth.uid()
-  );
+    perform public.recascade_day_closing_short_from(p_date);
+  else
+    select coalesce(max(
+      nullif(regexp_replace(closing_reference, '^DC-[0-9]+-([0-9]+)$', '\1'), '')::bigint
+    ), 0) + 1 into v_seq
+    from public.day_closing
+    where extract(year from date) = extract(year from p_date)
+      and closing_reference is not null
+      and closing_reference ~ '^DC-[0-9]+-[0-9]+$';
+    v_ref := 'DC-' || to_char(p_date, 'YYYY') || '-' || lpad(v_seq::text, 5, '0');
+
+    insert into public.day_closing (
+      date, night_cash, phone_pay, short_today,
+      total_sale, collection, short_previous, credit_today, expenses_today,
+      closing_reference, remarks, created_by
+    )
+    values (
+      p_date, p_night_cash, p_phone_pay, v_short_today,
+      v_total_sale, v_collection, v_short_previous, v_credit_today, v_expenses_today,
+      v_ref, nullif(trim(p_remarks), ''), auth.uid()
+    );
+  end if;
 
   return jsonb_build_object(
     'date', p_date,
@@ -1657,11 +1725,13 @@ begin
     'phone_pay', coalesce(p_phone_pay, 0),
     'short_today', coalesce(v_short_today, 0),
     'closing_reference', v_ref,
-    'remarks', nullif(trim(p_remarks), '')
+    'remarks', nullif(trim(p_remarks), ''),
+    'overwritten', v_is_overwrite
   );
 end;
 $$;
-comment on function public.save_day_closing(date, numeric, numeric, text) is 'Save day closing with full statement snapshot and accounting reference. credit_today from credit_entries + legacy credit_customers.';
+comment on function public.save_day_closing(date, numeric, numeric, text) is
+  'Save day closing with full statement snapshot. Admins can overwrite an existing closing for the same date.';
 
 -- RPC: Add credit entry (Transaction Date = DSR date)
 create or replace function public.add_credit_entry(
