@@ -516,11 +516,21 @@ function buildEffectiveBuyingMap(receiptRows) {
   };
 }
 
-function getEffectiveBuyingRate(row, getBuying) {
+function getStoredPreVatBuyingRate(row, getBuying) {
   const fromReceipt = getBuying?.(row.product, row.date);
   if (fromReceipt != null && Number.isFinite(fromReceipt)) return fromReceipt;
   const onRow = Number(row?.buying_price_per_litre ?? 0);
   return Number.isFinite(onRow) && onRow > 0 ? onRow : null;
+}
+
+function getEffectiveBuyingRate(row, getBuying) {
+  const product = normalizeProduct(row?.product);
+  const preVat = getStoredPreVatBuyingRate(row, getBuying);
+  if (preVat == null) return null;
+  if (typeof landedBuyingRatePerLitre === "function") {
+    return landedBuyingRatePerLitre(preVat, product);
+  }
+  return preVat;
 }
 
 /** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
@@ -656,6 +666,7 @@ function computeProfitLossSummary({
 window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;
+window.getStoredPreVatBuyingRate = getStoredPreVatBuyingRate;
 window.buildEffectiveBuyingMap = buildEffectiveBuyingMap;
 window.computeFuelRowMargin = computeFuelRowMargin;
 window.computeFuelRevenue = computeFuelRevenue;
