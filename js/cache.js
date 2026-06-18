@@ -357,7 +357,7 @@ const CacheInvalidation = (function () {
     credit: ["credit_summary", "dashboard_data", "recent_activity"],
     reports: ["reports_data", "profit_loss", "dashboard_data"],
     staff: ["staff_list"],
-    pump_settings: ["pump_settings"],
+    pump_settings: ["pump_settings", "reports_data", "profit_loss", "dashboard_data"],
     all_api: [
       "dashboard_data",
       "credit_summary",
