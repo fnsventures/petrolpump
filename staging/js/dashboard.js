@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, CacheInvalidation */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, CacheInvalidation, getDsrNetSaleLitres, computeProfitLossSummary */
 
 /**
  * Generate cache key for dashboard data queries
@@ -24,8 +24,6 @@ function getCreditSummaryCacheKey(dateStr) {
 let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
-let lastSnapshotPetrolRate = null;
-let lastSnapshotDieselRate = null;
 
 function formatRatePerLitre(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) {
@@ -415,9 +413,6 @@ function updateFuelRateDisplay(petrolRate, dieselRate, options = {}) {
 
   const petrolValid = Number.isFinite(petrolRate) && petrolRate > 0;
   const dieselValid = Number.isFinite(dieselRate) && dieselRate > 0;
-
-  lastSnapshotPetrolRate = petrolValid ? petrolRate : null;
-  lastSnapshotDieselRate = dieselValid ? dieselRate : null;
 
   if (petrolEl) petrolEl.textContent = formatRatePerLitre(petrolRate);
   if (dieselEl) dieselEl.textContent = formatRatePerLitre(dieselRate);
@@ -911,35 +906,8 @@ function updateTotalSaleRupees() {
   const todayRupees = document.getElementById("today-total-rupees");
   if (!todayRupees) return;
 
-  const petrolRateRaw =
-    rateFromDsrRows(snapshotDsrRows, "petrol")?.rate ?? lastSnapshotPetrolRate;
-  const dieselRateRaw =
-    rateFromDsrRows(snapshotDsrRows, "diesel")?.rate ?? lastSnapshotDieselRate;
-  const petrolValid = Number.isFinite(petrolRateRaw) && petrolRateRaw > 0;
-  const dieselValid = Number.isFinite(dieselRateRaw) && dieselRateRaw > 0;
+  const totalAmount = calculateDsrSaleRupees(snapshotDsrRows, { includeTesting: true });
 
-  if (!petrolValid && !dieselValid) {
-    todayRupees.textContent = "—";
-    return;
-  }
-
-  const petrolRate = petrolValid ? petrolRateRaw : 0;
-  const dieselRate = dieselValid ? dieselRateRaw : 0;
-
-  // Total quantity (including testing) × rate for Price (₹)
-  const petrolLiters = sumByProduct(
-    snapshotDsrRows,
-    "petrol",
-    (row) => Number(row.total_sales ?? 0)
-  );
-  const dieselLiters = sumByProduct(
-    snapshotDsrRows,
-    "diesel",
-    (row) => Number(row.total_sales ?? 0)
-  );
-
-  const totalAmount = petrolLiters * petrolRate + dieselLiters * dieselRate;
-  
   if (totalAmount === 0) {
     todayRupees.textContent = "—";
   } else {
@@ -989,66 +957,6 @@ function renderCreditSummary(total, creditTotal) {
   const value = Number(total);
   lastCreditTotalRupees = value;
   if (creditTotal) creditTotal.textContent = formatCurrency(value);
-}
-
-function calculateIncome(rows) {
-  let total = 0;
-  let missingRates = 0;
-
-  (rows ?? []).forEach((row) => {
-    const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
-    if (!Number.isFinite(netSale) || netSale <= 0) return;
-
-    const rate =
-      row.product === "petrol"
-        ? Number(row.petrol_rate)
-        : Number(row.diesel_rate);
-    const hasRate = Number.isFinite(rate) && rate > 0;
-
-    if (!hasRate) {
-      missingRates += 1;
-      return;
-    }
-
-    total += netSale * rate;
-  });
-
-  return { total, missingRates };
-}
-
-/**
- * Cost of goods: for each sale day, effective buying price = the buying price from the most recent
- * receipt day (same product) on or before that date. buying_price_per_litre in DB is gross (incl. VAT).
- * Sum net_sale * effective_buying.
- */
-function calculateCostOfGoods(dsrRows, receiptRows, endDate) {
-  const byProduct = new Map();
-  (receiptRows ?? []).forEach((row) => {
-    const p = normalizeProduct(row.product);
-    if (!byProduct.has(p)) byProduct.set(p, []);
-    byProduct.get(p).push({
-      date: row.date,
-      buying_price_per_litre: Number(row.buying_price_per_litre),
-    });
-  });
-  byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
-
-  function getEffectiveBuying(product, date) {
-    const list = byProduct.get(normalizeProduct(product));
-    if (!list || list.length === 0) return null;
-    const found = list.find((r) => r.date <= date);
-    return found != null && Number.isFinite(found.buying_price_per_litre) ? found.buying_price_per_litre : null;
-  }
-
-  let cost = 0;
-  (dsrRows ?? []).forEach((row) => {
-    const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
-    if (!Number.isFinite(netSale) || netSale <= 0) return;
-    const buyingRate = getEffectiveBuying(row.product, row.date);
-    if (buyingRate == null) return;
-    cost += netSale * buyingRate;
-  });
-  return cost;
 }
 
 /**
@@ -1239,16 +1147,8 @@ function renderDsrSummary(data, elements, range) {
     lastDay &&
     (lastDayStockRows.length > 0 || lastDayDsrRows.length > 0) &&
     (Number.isFinite(petrolStock) || Number.isFinite(dieselStock));
-  const petrolNetSale = sumByProduct(
-    dsrData,
-    "petrol",
-    (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
-  );
-  const dieselNetSale = sumByProduct(
-    dsrData,
-    "diesel",
-    (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
-  );
+  const petrolNetSale = sumByProduct(dsrData, "petrol", getDsrNetSaleLitres);
+  const dieselNetSale = sumByProduct(dsrData, "diesel", getDsrNetSaleLitres);
   // Variation tiles: single day = that day's variation; range = sum of all variations in the period.
   // Prefer dsr_stock.variation; when dsr_stock has no rows in range, derive from dsr.stock (stock change over period).
   const stockInRange = range
@@ -1310,19 +1210,17 @@ function renderDsrSummary(data, elements, range) {
     applyVariationTone(dieselVariationEl, dieselVariation, canShowVariation);
   }
 
-  // Day summary: total net sale (₹), expenses, outstanding on period credit sales, in hand
-  const totalNetSaleRupees = hasDsr && (dsrPetrolRate > 0 || dsrDieselRate > 0)
-    ? petrolNetSale * (dsrPetrolRate || 0) + dieselNetSale * (dsrDieselRate || 0)
-    : 0;
+  // Day summary: total sale (₹, incl. testing), expenses, in hand
+  const totalSaleRupees = hasDsr ? calculateDsrSaleRupees(dsrData, { includeTesting: true }) : 0;
   const creditOutstandingInRange = (creditData ?? []).reduce((sum, row) => {
     const amt = Number(row.amount ?? 0);
     const settled = Number(row.amount_settled ?? 0);
     return sum + Math.max(0, amt - settled);
   }, 0);
-  const inHand = totalNetSaleRupees - expenseTotal - creditOutstandingInRange;
+  const inHand = totalSaleRupees - expenseTotal - creditOutstandingInRange;
 
   if (totalNetSaleEl) {
-    totalNetSaleEl.textContent = hasDsr ? formatCurrency(totalNetSaleRupees) : "—";
+    totalNetSaleEl.textContent = hasDsr ? formatCurrency(totalSaleRupees) : "—";
   }
   if (summaryExpenseEl) {
     summaryExpenseEl.textContent = hasExpense ? formatCurrency(expenseTotal) : "—";
@@ -1520,17 +1418,14 @@ async function loadProfitLossSummary(range) {
 
   const hasDsr = !dsrError;
   const hasExpense = !expenseError;
-  const income = calculateIncome(dsrRows);
-
-  const isMissingBuyingPrice = (row) => {
-    if (Number(row.receipts ?? 0) <= 0) return false;
-    const bp = row.buying_price_per_litre;
-    return bp == null || bp === "" || (typeof bp === "number" && !Number.isFinite(bp));
-  };
-  const missingBuyingPrice = dsrRows.filter(isMissingBuyingPrice);
-  const allBuyingPricesEntered = missingBuyingPrice.length === 0;
-  const receiptRowsForCost = allBuyingPricesEntered ? (receiptRows ?? []) : [];
-  const costOfGoods = calculateCostOfGoods(dsrRows, receiptRowsForCost, range.end);
+  const pl = computeProfitLossSummary({
+    dsrRows,
+    receiptRows,
+    expenseRows: expenseData,
+  });
+  const income = { total: pl.revenue, missingRates: pl.missingRates };
+  const missingBuyingPrice = pl.missingBuyingPrice;
+  const allBuyingPricesEntered = pl.canCalculate;
 
   const plAlertEl = document.getElementById("pl-buying-price-alert");
   const plMissingListEl = document.getElementById("pl-missing-buying-list");
@@ -1562,21 +1457,7 @@ async function loadProfitLossSummary(range) {
     }
   }
 
-  const petrolNetSale = sumByProduct(
-    dsrRows,
-    "petrol",
-    (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
-  );
-  const dieselNetSale = sumByProduct(
-    dsrRows,
-    "diesel",
-    (row) => Number(row.total_sales ?? 0) - Number(row.testing ?? 0)
-  );
-  const totalNetSale = petrolNetSale + dieselNetSale;
-  const expenseTotal = (expenseData ?? []).reduce(
-    (sum, row) => sum + Number(row.amount ?? 0),
-    0
-  );
+  const expenseTotal = pl.totalExpenses;
 
   if (plNetSaleEl) {
     plNetSaleEl.textContent = hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
@@ -1602,8 +1483,7 @@ async function loadProfitLossSummary(range) {
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");
     } else {
-      const revenue = income.total;
-      const profitLoss = revenue - costOfGoods - expenseTotal;
+      const profitLoss = pl.netProfit;
       plValueEl.textContent = formatCurrency(profitLoss);
       plValueEl.classList.toggle("stat-positive", profitLoss >= 0);
       plValueEl.classList.toggle("stat-negative", profitLoss < 0);

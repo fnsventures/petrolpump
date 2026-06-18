@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, buildEffectiveBuyingMap, computeFuelRowMargin, isTestingExpenseCategory */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -44,31 +44,8 @@ async function fetchAnalysisData(startDate, endDate) {
 }
 
 /**
- * Build map: for each (product, date) return effective gross buying price (₹/L in DB, incl. VAT) from latest receipt row on or before that date.
- * receiptRows: { date, product, buying_price_per_litre } sorted by date desc per product.
- */
-function buildEffectiveBuyingMap(receiptRows) {
-  const byProduct = new Map();
-  (receiptRows ?? []).forEach((row) => {
-    const p = normalizeProduct(row.product);
-    if (!byProduct.has(p)) byProduct.set(p, []);
-    byProduct.get(p).push({
-      date: row.date,
-      buying_price_per_litre: Number(row.buying_price_per_litre),
-    });
-  });
-  byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
-  return function getEffectiveBuying(product, date) {
-    const list = byProduct.get(normalizeProduct(product));
-    if (!list || list.length === 0) return null;
-    const found = list.find((r) => r.date <= date);
-    return found != null && Number.isFinite(found.buying_price_per_litre) ? found.buying_price_per_litre : null;
-  };
-}
-
-/**
  * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹), petrol L, diesel L.
- * Profit = sales - cost (using effective buying price from last receipt till next) - expenses.
+ * Profit = net litres × (selling − buying) − operating expenses (MS/HS testing excluded).
  */
 function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate) {
   const getEffectiveBuying = buildEffectiveBuyingMap(receiptRows);
@@ -92,24 +69,16 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
   (dsrData ?? []).forEach((row) => {
     const key = row.date;
     if (!byDate.has(key)) return;
-    const netSale = Number(row.total_sales ?? 0) - Number(row.testing ?? 0);
-    if (!Number.isFinite(netSale) || netSale <= 0) return;
-    const rate =
-      normalizeProduct(row.product) === "petrol"
-        ? Number(row.petrol_rate ?? 0)
-        : Number(row.diesel_rate ?? 0);
-    const revenue = Number.isFinite(rate) && rate > 0 ? netSale * rate : 0;
-    const buyingRate = getEffectiveBuying(row.product, row.date);
-    const cost =
-      buyingRate != null && Number.isFinite(buyingRate) ? netSale * buyingRate : 0;
+    const { revenue, cost, litres } = computeFuelRowMargin(row, getEffectiveBuying);
+    if (litres <= 0) return;
     const entry = byDate.get(key);
     entry.salesRupees += revenue;
     entry.costRupees += cost;
     if (normalizeProduct(row.product) === "petrol") {
-      entry.petrolL += netSale;
+      entry.petrolL += litres;
       entry.petrolRupees += revenue;
     } else {
-      entry.dieselL += netSale;
+      entry.dieselL += litres;
       entry.dieselRupees += revenue;
     }
   });
@@ -117,6 +86,7 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
   (expenseData ?? []).forEach((row) => {
     const key = row.date;
     if (!byDate.has(key)) return;
+    if (isTestingExpenseCategory(row.category)) return;
     byDate.get(key).expenseRupees += Number(row.amount ?? 0);
   });
 
