@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, getValidFilterState, setFilterState */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -8,6 +8,32 @@ let dcDetailsCache = { date: null, collection: null, credit: null, expenses: nul
 let expenseCategoryLabels = null;
 
 const DC_DETAIL_KINDS = ["collection", "credit", "expenses"];
+const DAY_CLOSING_DATE_RANGE = new Set(["date"]);
+
+function saveDayClosingDateFilter(dateStr) {
+  if (dateStr && typeof setFilterState === "function") {
+    setFilterState("day_closing_close", { range: "date", start: dateStr });
+  }
+}
+
+function resolveDayClosingDateInput(dateInput, todayStr) {
+  const dateParam = new URLSearchParams(window.location.search).get("date");
+  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    dateInput.value = dateParam;
+  } else {
+    const stored =
+      typeof getValidFilterState === "function"
+        ? getValidFilterState("day_closing_close", DAY_CLOSING_DATE_RANGE)
+        : null;
+    if (stored?.start) {
+      dateInput.value = stored.start;
+    } else if (!dateInput.value) {
+      dateInput.value = todayStr;
+    }
+  }
+  saveDayClosingDateFilter(dateInput.value);
+  return dateInput.value || todayStr;
+}
 const DC_LEGACY_EXPENSE_LABELS = {
   miscellanious: "Miscellaneous",
   mstest: "Miscellaneous",
@@ -241,6 +267,8 @@ async function loadDayClosingBreakdown(dateStr) {
 
   if (!dateStr || !dateInput) return;
 
+  if (dateInput.value !== dateStr) dateInput.value = dateStr;
+
   const requestId = ++dcBreakdownRequestId;
   refreshDayClosingDetailsState(dateStr).catch((err) => {
     AppError.report(err, { context: "refreshDayClosingDetailsState" });
@@ -308,18 +336,12 @@ async function loadDayClosingBreakdown(dateStr) {
   }
 
   const alreadySaved = !!b.already_saved;
+  const canOverwrite = canOverwriteDayClosing(b);
   const saveBtn = document.getElementById("day-closing-save");
-  const alreadySavedEl = document.getElementById("day-closing-already-saved");
   const referenceLine = document.getElementById("dc-reference-line");
   const remarksInput = document.getElementById("dc-remarks");
-  if (saveBtn) saveBtn.disabled = alreadySaved;
-  if (alreadySavedEl) {
-    if (alreadySaved) {
-      alreadySavedEl.classList.remove("hidden");
-    } else {
-      alreadySavedEl.classList.add("hidden");
-    }
-  }
+  syncDayClosingSaveButton(saveBtn);
+  syncDayClosingAlreadySavedNotice(b);
   if (referenceLine) {
     if (b.closing_reference) {
       referenceLine.textContent = "Reference: " + b.closing_reference + (b.remarks ? " · " + b.remarks : "");
@@ -330,7 +352,7 @@ async function loadDayClosingBreakdown(dateStr) {
   }
   if (remarksInput) {
     remarksInput.value = b.remarks ?? "";
-    remarksInput.disabled = !!alreadySaved;
+    remarksInput.disabled = alreadySaved && !canOverwrite;
   }
   const noActivityHint = document.getElementById("dc-no-activity-hint");
   if (noActivityHint) {
@@ -344,6 +366,34 @@ async function loadDayClosingBreakdown(dateStr) {
   successEl?.classList.add("hidden");
 
   updateDayClosingShortLive();
+}
+
+function canOverwriteDayClosing(breakdown) {
+  return !!(breakdown?.can_overwrite || (isAdmin && breakdown?.already_saved));
+}
+
+function syncDayClosingSaveButton(btn) {
+  if (!btn) return;
+  const alreadySaved = !!dayClosingBreakdown?.already_saved;
+  const canOverwrite = canOverwriteDayClosing(dayClosingBreakdown);
+  btn.disabled = alreadySaved && !canOverwrite;
+  btn.textContent = canOverwrite ? "Save changes" : "Save day closing";
+}
+
+function syncDayClosingAlreadySavedNotice(breakdown) {
+  const el = document.getElementById("day-closing-already-saved");
+  if (!el) return;
+  const alreadySaved = !!breakdown?.already_saved;
+  const canOverwrite = canOverwriteDayClosing(breakdown);
+  if (alreadySaved && !canOverwrite) {
+    el.textContent = "Day closing already saved for this date.";
+    el.classList.remove("hidden");
+  } else if (canOverwrite) {
+    el.textContent = "Day closing saved. You can update values and save again.";
+    el.classList.remove("hidden");
+  } else {
+    el.classList.add("hidden");
+  }
 }
 
 function updateDayClosingShortLive() {
@@ -379,12 +429,12 @@ async function initializeDayClosing() {
   if (!dateInput || !form) return;
 
   const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
-  const dateParam = new URLSearchParams(window.location.search).get("date");
-  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) dateInput.value = dateParam;
-  if (!dateInput.value) dateInput.value = todayStr;
+  resolveDayClosingDateInput(dateInput, todayStr);
 
   dateInput.addEventListener("change", () => {
-    loadDayClosingBreakdown(dateInput.value || todayStr);
+    const dateStr = dateInput.value || todayStr;
+    saveDayClosingDateFilter(dateStr);
+    loadDayClosingBreakdown(dateStr);
   });
 
   const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
@@ -415,25 +465,22 @@ async function initializeDayClosing() {
     const phonePay = Number(document.getElementById("dc-phone-pay")?.value ?? 0);
     const remarks = document.getElementById("dc-remarks")?.value?.trim() || null;
     if (!dateStr) {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save day closing"; }
+      syncDayClosingSaveButton(submitBtn);
       if (errorEl) {
         errorEl.textContent = "Please select a date.";
         errorEl.classList.remove("hidden");
       }
       return;
     }
-    if (dayClosingBreakdown?.already_saved) {
+    if (dayClosingBreakdown?.already_saved && !canOverwriteDayClosing(dayClosingBreakdown)) {
       alreadySavedHandled = true;
-      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Save day closing"; }
-      const alreadySavedEl = document.getElementById("day-closing-already-saved");
-      if (alreadySavedEl) {
-        alreadySavedEl.classList.remove("hidden");
-      }
+      syncDayClosingSaveButton(submitBtn);
+      syncDayClosingAlreadySavedNotice(dayClosingBreakdown);
       if (errorEl) errorEl.classList.add("hidden");
       return;
     }
     if (nightCash < 0 || phonePay < 0) {
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save day closing"; }
+      syncDayClosingSaveButton(submitBtn);
       if (errorEl) {
         errorEl.textContent = "Night cash and Phone pay must be ≥ 0.";
         errorEl.classList.remove("hidden");
@@ -453,8 +500,9 @@ async function initializeDayClosing() {
       updateDayClosingShortLive();
       if (successEl) {
         const refPart = data?.closing_reference ? " Reference: " + data.closing_reference + "." : "";
+        const action = data?.overwritten ? "Day closing updated." : "Day closing saved.";
         successEl.classList.remove("hidden");
-        successEl.textContent = "Day closing saved." + refPart + " Today's short: " + formatCurrency(Number(data?.short_today ?? 0)) + " (stored for next day).";
+        successEl.textContent = action + refPart + " Today's short: " + formatCurrency(Number(data?.short_today ?? 0)) + " (stored for next day).";
       }
       const referenceLine = document.getElementById("dc-reference-line");
       if (referenceLine && data?.closing_reference) {
@@ -462,6 +510,8 @@ async function initializeDayClosing() {
         referenceLine.classList.remove("hidden");
       }
       if (errorEl) errorEl.classList.add("hidden");
+      dateInput.value = dateStr;
+      saveDayClosingDateFilter(dateStr);
       await loadDayClosingBreakdown(dateStr);
       // Invalidate cache so dashboard day-closing banners and data reflect immediately
       if (typeof CacheInvalidation !== "undefined") {
@@ -476,7 +526,7 @@ async function initializeDayClosing() {
         const alreadySavedEl = document.getElementById("day-closing-already-saved");
         if (alreadySavedEl) alreadySavedEl.classList.remove("hidden");
         if (submitBtn) submitBtn.disabled = true;
-        dayClosingBreakdown = { ...(dayClosingBreakdown || {}), already_saved: true };
+        dayClosingBreakdown = { ...(dayClosingBreakdown || {}), already_saved: true, can_overwrite: isAdmin };
         await loadDayClosingBreakdown(dateStr);
       } else {
         if (errorEl) {
@@ -485,10 +535,7 @@ async function initializeDayClosing() {
         }
       }
     } finally {
-      if (submitBtn && !alreadySavedHandled) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Save day closing";
-      }
+      if (submitBtn && !alreadySavedHandled) syncDayClosingSaveButton(submitBtn);
     }
   });
 
