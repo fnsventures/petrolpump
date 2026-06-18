@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -148,6 +148,7 @@ function bindBillingDefaultsForm(auth) {
   const r = PumpSettings.getCachedSync().reports || {};
   set("bill-petrol-vat", r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct);
   set("bill-diesel-vat", r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct);
+  set("bill-delivery-per-kl", r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl);
   const inclEl = document.getElementById("bill-purchase-tax-inclusive");
   if (inclEl) {
     inclEl.checked =
@@ -202,6 +203,10 @@ function bindBillingDefaultsForm(auth) {
             document.getElementById("bill-diesel-vat")?.value,
             r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
           ),
+          purchaseDeliveryPerKl: parseOptionalNumber(
+            document.getElementById("bill-delivery-per-kl")?.value,
+            r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl
+          ),
           purchaseTaxInclusive: Boolean(
             document.getElementById("bill-purchase-tax-inclusive")?.checked
           ),
@@ -215,12 +220,6 @@ function bindBillingDefaultsForm(auth) {
       if (btn) { btn.disabled = false; btn.textContent = "Save billing defaults"; }
     }
   });
-}
-
-function formatGstLabel(pct) {
-  if (pct < 0) return "Exempt";
-  if (pct === 0) return "Nil";
-  return pct + "%";
 }
 
 function initProducts() {

@@ -493,6 +493,7 @@ function calculateDsrSaleRupees(rows, { includeTesting = false } = {}) {
 
 /**
  * Effective buying price (₹/L) from latest receipt on or before the sale date.
+ * Returns landed cost for P&L: pre-VAT fuel + delivery + VAT/LST (see purchaseTaxUtils).
  * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
  */
 function buildEffectiveBuyingMap(receiptRows) {
@@ -516,11 +517,22 @@ function buildEffectiveBuyingMap(receiptRows) {
   };
 }
 
+/** Stored (pre-VAT) buying rate — row value first, then latest receipt on or before that date. */
+function resolveStoredBuyingRate(row, getBuying) {
+  const rowRate = Number(row?.buying_price_per_litre);
+  if (Number.isFinite(rowRate) && rowRate > 0) return rowRate;
+  const fromMap = getBuying?.(row?.product, row?.date);
+  return fromMap != null && Number.isFinite(fromMap) && fromMap > 0 ? fromMap : null;
+}
+
 function getEffectiveBuyingRate(row, getBuying) {
-  const fromReceipt = getBuying?.(row.product, row.date);
-  if (fromReceipt != null && Number.isFinite(fromReceipt)) return fromReceipt;
-  const onRow = Number(row?.buying_price_per_litre ?? 0);
-  return Number.isFinite(onRow) && onRow > 0 ? onRow : null;
+  const product = row?.product;
+  const stored = resolveStoredBuyingRate(row, getBuying);
+  if (stored == null) return null;
+  if (typeof storedToLandedBuyingRatePerLitre === "function") {
+    return storedToLandedBuyingRatePerLitre(stored, product) ?? stored;
+  }
+  return stored;
 }
 
 /** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
@@ -617,7 +629,9 @@ function findMissingBuyingPriceRows(dsrRows) {
 
 /**
  * Unified P&L for dashboard, reports, and analysis.
- * Net profit = gross profit − operating expenses (MS/HS testing excluded).
+ * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%).
+ * Net profit = fuel gross profit + lube − operating expenses (MS/HS testing excluded).
+ * Requires purchaseTaxUtils.js (loaded before utils.js).
  */
 function computeProfitLossSummary({
   dsrRows,
@@ -657,6 +671,8 @@ window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;
 window.buildEffectiveBuyingMap = buildEffectiveBuyingMap;
+window.resolveStoredBuyingRate = resolveStoredBuyingRate;
+window.getEffectiveBuyingRate = getEffectiveBuyingRate;
 window.computeFuelRowMargin = computeFuelRowMargin;
 window.computeFuelRevenue = computeFuelRevenue;
 window.computeFuelCostOfGoods = computeFuelCostOfGoods;
