@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindPumpsForm(auth);
   bindShiftsForm(auth);
   bindAlertsForm(auth);
+  bindIntegrationsForm(auth);
   initProducts();
   initUsersForm();
   initStaffSalaries();
@@ -27,7 +28,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // ─── Section navigation ──────────────────────────────────────────────────────
 
-const VALID_SECTIONS = ["station", "billing", "pumps", "users", "salaries", "attendance", "alerts", "expenses", "access"];
+const VALID_SECTIONS = ["station", "billing", "pumps", "users", "salaries", "attendance", "alerts", "expenses", "integrations", "access"];
 
 function parseOptionalNumber(raw, fallback) {
   const s = raw === undefined || raw === null ? "" : String(raw).trim();
@@ -466,6 +467,47 @@ function bindAlertsForm(auth) {
       AppError.handle(err, { target: errorEl });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "Save alerts"; }
+    }
+  });
+}
+
+// ─── Integrations ────────────────────────────────────────────────────────────
+
+function bindIntegrationsForm(auth) {
+  const form = document.getElementById("integrations-drive-form");
+  if (!form) return;
+  const cfg = PumpSettings.getCachedSync().integrations?.googleDrive || AppConfig.DEFAULT_INTEGRATIONS.googleDrive;
+  const enabledEl = document.getElementById("gdrive-enabled");
+  const folderEl = document.getElementById("gdrive-root-folder");
+  if (enabledEl) enabledEl.checked = cfg.enabled === true;
+  if (folderEl) folderEl.value = cfg.rootFolderId || "";
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const successEl = document.getElementById("integrations-drive-success");
+    const errorEl = document.getElementById("integrations-drive-error");
+    successEl?.classList.add("hidden");
+    errorEl?.classList.add("hidden");
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    try {
+      const rootFolderId = (folderEl?.value || "").trim();
+      if (enabledEl?.checked && !rootFolderId) {
+        throw new Error("Root folder ID is required when Google Drive is enabled.");
+      }
+      await PumpSettings.savePumpSettings({
+        integrations: {
+          googleDrive: {
+            enabled: enabledEl?.checked === true,
+            rootFolderId,
+          },
+        },
+      }, auth.session?.user?.id);
+      successEl?.classList.remove("hidden");
+    } catch (err) {
+      AppError.handle(err, { target: errorEl });
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = "Save integration settings"; }
     }
   });
 }

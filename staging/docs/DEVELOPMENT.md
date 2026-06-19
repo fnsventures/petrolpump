@@ -35,7 +35,9 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 
 3. Apply the schema (if not already done) by running the SQL in `supabase/schema.sql` in the Supabase SQL Editor, or apply migrations **in filename order** from `supabase/migrations/`. After a fresh apply, `pump_settings` row `id = 1` is created with empty `{}` config; open **Settings** as admin to seed station/billing defaults (or rely on `js/appConfig.js` client fallbacks until saved).
 
-4. **Service worker (optional):** The app registers `sw.js` for offline caching. During local dev, hard-refresh or unregister the worker if assets look stale after changes.
+   **Storage buckets** for profile and staff photos (`user-avatars`, `staff-photos`) are created by migrations `20260528300000_user_avatar.sql` and `20260528500000_employee_photo.sql`. If you applied schema manually without migrations, run those migrations too.
+
+4. **Service worker (optional):** The app registers `sw.js` for offline caching. During local dev, hard-refresh or unregister the worker if assets look stale after changes. Bump `CACHE_VERSION` in `sw.js` when shipping static asset updates.
 
 ### 1.3 Run a local server
 
@@ -131,11 +133,33 @@ cp scripts/db.env.example scripts/db.env
 
 Optional: `./scripts/db.sh backup` before step 4.
 
+### 2.5 Edge functions (manual deploy)
+
+GitHub Actions deploys the **static frontend only**. Supabase Edge Functions must be deployed separately with the Supabase CLI.
+
+**Prerequisite:** [Supabase CLI](https://supabase.com/docs/guides/cli) installed and logged in.
+
+```bash
+supabase login
+supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+```
+
+Repeat for **staging** and **prod** Supabase projects (each has its own project ref in **Project Settings → General**).
+
+**Secrets:** Google OAuth and other function secrets are set in Supabase Dashboard → **Edge Functions → Secrets**, not in GitHub. Full walkthrough: [Invoice documents guide](INVOICE_DOCUMENTS.md).
+
+| Function | Purpose |
+|----------|---------|
+| `invoice-documents` | Upload/download/delete supplier invoices in Google Drive |
+| `get-dashboard-data` | Optional batched dashboard payload |
+
+When releasing invoice-document changes, deploy the function **before or with** the frontend merge. See [Invoice documents → Release checklist](INVOICE_DOCUMENTS.md#10-release-checklist).
+
 ---
 
 ## 3. Supervisor / operator login
 
-Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, attendance, salary) but **not** Analysis, **Reports**, or Settings. They cannot edit the employee roster or product catalog (admin-only RLS). Both roles must be **provisioned** in `public.users` — an Auth account alone is insufficient. Data access is enforced by RLS and RPC guards; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
+Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, **invoice documents**, attendance, salary) but **not** Staff roster, Analysis, **Reports**, or Settings. They cannot edit the employee roster, product catalog, or station config (admin-only RLS). They **can** record attendance, salary payments, and supplier invoice uploads. Both roles must be **provisioned** in `public.users` — an Auth account alone is insufficient. Data access is enforced by RLS and RPC guards; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
 
 ### 3.1 Steps to enable a supervisor
 
@@ -156,7 +180,10 @@ Operators can log in with a **supervisor** role: they see operational pages (das
    Emails are stored in lowercase; the app matches login email case-insensitively.
 
 3. **Login**  
-   The user signs in on the login page with the same email and password. They are redirected to the dashboard; Analysis, Reports, and Settings are hidden from the navigation. Direct navigation to admin URLs is blocked by `check_page_access` when pages use `requireAuth({ pageName: … })`.
+   The user signs in on the login page with the same email and password. They are redirected to the dashboard; Staff, Analysis, Reports, and Settings are hidden from the navigation. Direct navigation to admin URLs is blocked by `check_page_access` when pages use `requireAuth({ pageName: … })`.
+
+4. **Profile (optional)**  
+   Supervisors can upload a profile avatar from the topbar user menu (same as admins).
 
 ---
 
@@ -167,3 +194,4 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 | [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment overview |
 | [Data Tables](DATA_TABLES.md) | Database tables and RLS |
 | [Flows](FLOWS.md) | User and data flows |
+| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function deploy, troubleshooting |

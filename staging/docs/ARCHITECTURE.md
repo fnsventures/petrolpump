@@ -51,12 +51,15 @@ petrolPump/
 ├── expenses.html           # Daily expenses by category
 ├── day-closing.html        # Day closing & short (night cash, phone pay, snapshot)
 ├── billing.html            # Lube/accessory invoicing (cash memos)
+├── invoices.html           # Supplier/purchase invoice documents (Google Drive)
 ├── attendance.html         # Employee attendance (status, check-in/out)
-├── salary.html             # Salary payments (installments per employee)
-├── analysis.html           # P&L / Analysis (admin only)
+├── salary.html             # Salary payments, pay-period tracking, printable slips
+├── staff.html              # Employee roster, profile, photo, BPCL ID card (admin only)
+├── analysis.html           # Business intelligence: KPIs, charts, insights (admin only)
 ├── reports.html            # Printable reports: DSR, GST, trading/P&L (admin only)
-├── settings.html           # Station config, users, HR, categories (admin only)
+├── settings.html           # Station config, users, salaries, products, integrations (admin only)
 ├── about.html              # About / info page
+├── 404.html                # Not found page
 ├── assets/                 # BPCL logo, landing images
 ├── CNAME                   # GitHub Pages custom domain
 ├── sw.js                   # Service worker (PWA / offline caching)
@@ -67,11 +70,16 @@ petrolPump/
 
 ```
 css/
-├── base.css    # Layout, typography, shared components
-├── app.css     # App shell, dashboard, forms, tables
-├── login.css   # Login page
-├── landing.css # Public landing (index.html)
-└── style.css   # Legacy / additional styles
+├── base.css                 # Layout, typography, shared components
+├── app.css                  # App shell, dashboard, forms, tables
+├── login.css                # Login page
+├── landing.css              # Public landing (index.html)
+├── style.css                # Legacy / additional styles
+├── invoice-print.css        # Billing invoice print layout
+├── salary-slip-print.css    # Salary slip print layout
+├── staff-id-print.css       # Staff ID card print layout
+├── reports-print.css        # Reports print layout
+└── credit-summary-print.css # Credit customer summary print layout
 ```
 
 ### 3.3 Scripts
@@ -99,17 +107,35 @@ js/
 ├── creditCustomerDetail.js # Shared customer credit helpers (used by credit.js)
 ├── expenses.js         # Expenses
 ├── day-closing.js      # Day closing
-├── billing.js          # Invoices → save_invoice RPC
+├── billing.js          # Sales invoices → save_invoice RPC
+├── invoices.js         # Supplier invoice documents → edge function + invoice_documents
 ├── attendance.js       # Attendance batch save
-├── salary.js           # Salary payments
-├── analysis.js         # P&L (admin)
+├── salary.js           # Salary payments, pay-period tracking, expense linkage
+├── staff.js            # Employee roster CRUD, photo upload, ID card (admin)
+├── staffEmployees.js   # Cached employee loader (admin table vs supervisor RPCs)
+├── analysis.js         # BI dashboard: KPIs, charts, insights (admin)
 ├── reports.js          # Report catalog and print views (admin)
-└── settings.js         # pump_settings, users, HR, categories (admin)
+└── settings.js         # pump_settings, users, salaries, products, integrations (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`.
+**Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js` (hash-based in-page tabs on dashboard, reports, credit, billing, salary, attendance, invoices, analysis, settings).
 
-### 3.4 Backend (Supabase)
+### 3.4 Navigation (authenticated pages)
+
+Top navigation is grouped and role-aware (`js/auth.js` → `applyRoleVisibility()`). Links marked `data-role="admin-only"` are hidden for supervisors; empty groups are removed.
+
+| Group | Pages | Supervisor | Admin |
+|-------|-------|------------|-------|
+| **Operations** | Dashboard, Meter Reading (`dsr.html`), DSR listing (`sales-daily.html`) | ✓ | ✓ |
+| **Finance** | Credit, Expenses, Day closing, Billing, Invoices | ✓ | ✓ |
+| **HR** | Attendance, Salary, **Staff** | Attendance + Salary only | ✓ (incl. Staff) |
+| **Admin** | Analysis, Reports, Settings | ✗ | ✓ |
+
+Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `credit.html` with query/hash preserved.
+
+---
+
+### 3.5 Backend (Supabase)
 
 ```
 supabase/
@@ -124,10 +150,11 @@ supabase/
 │   ├── 20260619100000_security_loophole_mitigation.sql
 │   └── …
 └── functions/
-    └── get-dashboard-data/   # Edge function: batched dashboard payload (optional)
+    ├── get-dashboard-data/   # Edge function: batched dashboard payload (optional)
+    └── invoice-documents/    # Edge function: supplier invoices ↔ Google Drive
 ```
 
-### 3.5 Documentation
+### 3.6 Documentation
 
 ```
 docs/
@@ -135,8 +162,9 @@ docs/
 ├── ARCHITECTURE.md # This file — structure, stack, security, deployment
 ├── DATA_TABLES.md  # Database tables: purpose, columns, RLS
 ├── FLOWS.md        # User and data flows
-├── DSR_TABLES.md   # DSR petrol/diesel tables and computed stock
-└── DEVELOPMENT.md  # Local setup, deployment, supervisor login
+├── DSR_TABLES.md         # DSR petrol/diesel tables and computed stock
+├── DEVELOPMENT.md        # Local setup, deployment, supervisor login
+└── INVOICE_DOCUMENTS.md  # Supplier invoices + Google Drive setup (full guide)
 ```
 
 ---
@@ -164,8 +192,8 @@ docs/
 │  Supabase                                                                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
 │  │  Auth           │  │  PostgreSQL     │  │  Edge Functions (opt)   │  │
-│  │  Email/Password  │  │  Tables + RLS   │  │  e.g. get-dashboard-data │  │
-│  │  JWT → role     │  │  RPCs, Triggers │  │                          │  │
+│  │  Email/Password  │  │  Tables + RLS   │  │  get-dashboard-data,    │  │
+│  │  JWT → role     │  │  RPCs, Triggers │  │  invoice-documents      │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -180,13 +208,50 @@ docs/
 
 ## 5. Frontend (runtime)
 
+### 5.1 Entry and config
+
 - **Entry:** Public users open `index.html` (landing); operators use `login.html` → Supabase Auth → `dashboard.html`. Legacy bookmarks (`credit-customer.html`, `credit-overdue.html`) redirect into `credit.html` with hash/query preserved.
 - **Config:** `js/env.js` exposes `window.__APP_CONFIG__` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV`). In CI this file is generated from GitHub environment secrets; locally it is created from `env.example.js`. Station defaults and GST slabs live in `js/appConfig.js`; live values are merged from `pump_settings` via `js/pumpSettings.js`.
-- **Auth:** `js/auth.js` handles session guard, role resolution from `public.users`, redirect to login when unauthenticated, and role-based nav. `requireAuth({ pageName })` calls RPC `check_page_access` for defense-in-depth (e.g. `reports`, `analysis`, `settings`). Role is cached via `AppCache`.
 - **Supabase client:** `js/supabase.js` creates the client, registers `sw.js` on load, and exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker.
-- **Pages:** Each feature has its own HTML and JS; navigation is grouped (Operations, Finance, HR, Admin) and role-aware. Supervisors get operational pages including **billing**; **reports**, **analysis**, and **settings** are admin-only.
-- **Dashboard:** Section nav (snapshot, DSR summary, P&amp;L, notifications) plus **At a glance** (selling rates, tank fill from dip vs `pump_settings.reports.tanks`). May call edge function `get-dashboard-data` for a batched payload.
-- **Caching:** `sw.js` precaches HTML/CSS/JS (versioned `CACHE_VERSION`) and applies network-first caching for Supabase REST/Functions URLs; `js/cache.js` (`AppCache`) holds short-lived API snapshots in `localStorage`.
+
+### 5.2 Authentication and session
+
+- **Auth:** `js/auth.js` handles session guard, role resolution from `public.users` (never from JWT metadata), redirect to login when unauthenticated, and role-based nav.
+- **`requireAuth({ pageName })`** calls RPC `check_page_access` for defense-in-depth. Role is cached via `AppCache`.
+- **Unprovisioned users** (Auth account without `public.users` row) are redirected to `login.html?error=unprovisioned`.
+- **Forgot password:** Login page uses Supabase `resetPasswordForEmail`.
+- **Profile avatar:** Topbar user menu supports upload/remove of operator photo (max 2 MB JPG/PNG/WebP) → Storage bucket `user-avatars`, RPC `update_my_avatar`, column `users.avatar_url`.
+- **Topbar UX:** BPCL logo lockup, centered page subtitle, collapsible mobile nav with accordion groups.
+
+### 5.3 Feature pages (summary)
+
+| Page | Script | Primary purpose |
+|------|--------|-----------------|
+| `dashboard.html` | `dashboard.js` | Snapshot, DSR summary, admin P&amp;L + buying price, alerts, tank visuals |
+| `dsr.html` | `dsr.js` | Meter Reading — upsert `dsr_petrol` / `dsr_diesel` |
+| `sales-daily.html` | `sales-daily.js` | Date-range DSR listing with stock reconciliation |
+| `credit.html` | `credit.js` | Ledger, customer detail (in-page hash routes), payments, outstanding |
+| `expenses.html` | `expenses.js` | Daily expenses by category |
+| `day-closing.html` | `day-closing.js` | Close day + register; admin overwrite/delete |
+| `billing.html` | `billing.js` | Outward lube invoices via `save_invoice` |
+| `invoices.html` | `invoices.js` | Supplier invoice documents → Google Drive edge function |
+| `attendance.html` | `attendance.js` | Batch attendance via `save_employee_attendance_batch` |
+| `salary.html` | `salary.js` | Pay-period tracking, installments, slips, linked expenses |
+| `staff.html` | `staff.js` | Employee roster, photo, ID card print (admin only) |
+| `analysis.html` | `analysis.js` | BI: KPIs, daily series, Chart.js charts, insights (admin) |
+| `reports.html` | `reports.js` | Printable DSR, GST, trading account, P&amp;L (admin) |
+| `settings.html` | `settings.js` | Station, billing, pumps, users, salaries, shifts, alerts, categories, integrations |
+
+**Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
+
+**Dashboard sections** (side nav via `pageSections.js`): `snapshot` (all roles), `dsr` summary (all), `pl` (**admin only** — inline pre-VAT buying price entry), `notifications` (alerts, day-closing reminder). Aside rail **At a glance** shows MS/HSD selling rates and animated tank fill % from `pump_settings.config.pumps` capacities.
+
+**Analysis sections:** `setup` (date range), `metrics` (KPI cards), `charts` (sales, profit, fuel/revenue mix via Chart.js CDN), `insights` (text summaries). Printable P&amp;L is on **Reports** (`pl` report) and dashboard **P&amp;L** section — Analysis is a broader BI view.
+
+### 5.4 Caching and offline
+
+- **`sw.js`:** Precaches HTML/CSS/JS (versioned `CACHE_VERSION`, currently `v72`) and applies network-first caching for Supabase REST/Functions URLs. Works for prod root and `/staging/` scope.
+- **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` (role, reports, settings, etc.).
 
 ---
 
@@ -207,12 +272,33 @@ docs/
 ### 6.3 Key server-side constructs
 
 - **DSR storage:** Physical tables `dsr_petrol` and `dsr_diesel`; views `dsr` (union) and `dsr_stock` (computed reconciliation); RPC `get_dsr_stock_range(start, end)`.
-- **RPCs (examples):** `check_page_access(page)`, `require_staff_access()` (internal guard), `get_day_closing_breakdown(date)`, `save_day_closing(...)`, `compute_day_closing_components(date)`, `add_credit_entry(...)`, `record_credit_payment(...)`, `get_credit_ledger_aggregated()`, `get_open_credit_as_of(date)`, `get_customer_credit_detail_as_of(name, date)`, `update_dsr_buying_price(uuid, value)`, `save_invoice(...)`, `save_employee_attendance_batch(date, jsonb)`, `upsert_staff(...)`, `delete_staff(...)`. Most security-definer RPCs call `require_staff_access()` at entry.
-- **Billing integrity:** `invoice_items` line rows are inserted only inside `save_invoice`; direct client INSERT/UPDATE/DELETE on `invoice_items` is denied by RLS.
-- **Internal RPCs:** `recascade_day_closing_short_from(date)` is not granted to `authenticated` — only invoked from `save_day_closing` (security definer).
-- **Triggers:** `credit_entries_sync_trigger` on `credit_entries`; audit triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
+- **Page access:** `check_page_access(page)` — see [Flows §1](FLOWS.md#1-authentication-and-role-based-access) for the full page list.
+- **Staff / HR RPCs:** `list_employees_roster()` (no PII — attendance/salary pickers), `list_employees_salary()` (full HR fields for slips), `set_employee_photo(uuid, url)` (admin), `save_employee_attendance_batch(date, jsonb)`.
+- **Operator profile:** `update_my_avatar(url)`, `my_avatar_storage_folder()` (path helper for Storage RLS).
+- **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
+- **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite` for admins), `save_day_closing(...)`, `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest date only), `recascade_day_closing_short_from(date)` (internal).
+- **Billing:** `generate_invoice_number()`, `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
+- **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
+- **User management:** `upsert_staff(...)`, `delete_staff(email)` — admin staff provisioning with bootstrap rules.
+- **Audit:** Triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
 
-Full table and RPC reference: [Data Tables](DATA_TABLES.md).
+### 6.4 Supabase Storage buckets
+
+| Bucket | Purpose | Upload policy |
+|--------|---------|---------------|
+| `user-avatars` | Operator profile photos (`users.avatar_url`) | Authenticated user writes to own folder (`my_avatar_storage_folder()`) |
+| `staff-photos` | Employee ID card photos (`employees.photo_url`) | Admin only; RPC `set_employee_photo` updates DB after upload |
+
+Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `20260528500000_employee_photo.sql`.
+
+### 6.5 Edge functions
+
+| Function | Purpose | Deploy |
+|----------|---------|--------|
+| `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | Manual via Supabase CLI |
+| `get-dashboard-data` | Optional batched dashboard payload | Manual; **not used** by current `dashboard.js` (direct queries) |
+
+Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
 ---
 
@@ -221,10 +307,25 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 - **Enforcement:** RLS and security-definer RPC guards are the primary authorization layer. Client-side checks only affect the UI.
 - **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. Authenticated users without a `public.users` row cannot read or write application data — policies and RPCs use `is_supervisor_or_admin()` / `require_staff_access()`.
 - **Roles:**
-  - **admin:** Full access (settings, reports, analysis, employee HR mutations, product catalog, delete).
-  - **supervisor:** Operational pages including **billing**; no settings, reports, or analysis; insert/update own records; no delete.
+
+| Capability | Admin | Supervisor |
+|------------|-------|------------|
+| Operations + Finance pages (DSR, credit, expenses, day closing, billing, invoices) | ✓ | ✓ |
+| Attendance + salary recording | ✓ | ✓ |
+| Staff roster / ID cards (`staff.html`) | ✓ | ✗ |
+| Settings, Analysis, Reports | ✓ | ✗ |
+| Dashboard P&amp;L section + buying price entry | ✓ | ✗ |
+| Product catalog edit (Settings → Billing) | ✓ | ✗ (can bill using existing products) |
+| Employee master mutations (`employees` table) | ✓ | ✗ (reads via `list_employees_*` RPCs) |
+| Day closing overwrite after save | ✓ | ✗ (read-only snapshot) |
+| Delete latest day closing | ✓ | ✗ |
+| Delete credit entries / payments | ✓ | ✗ |
+| Delete supplier invoice documents | ✓ | ✗ |
+| Delete salary payments | ✓ | ✗ |
+
 - **Default policy pattern (operational tables):** SELECT for provisioned staff; INSERT with `is_supervisor_or_admin()` and `created_by = auth.uid()`; UPDATE for provisioned staff on own row or admin; DELETE admin only. Admin-only tables (e.g. `expense_categories`, `products`, `employees`) and exceptions are documented in [Data Tables](DATA_TABLES.md).
 - **Admin bootstrap:** When no admin exists, the first user may self-provision via `upsert_staff` or the matching RLS INSERT — only their own JWT email, role must be `admin`. Prevents arbitrary email escalation before an admin is established.
+- **Admin delete pattern:** `js/utils.js` → `AdminDelete` shows destructive actions only for admins (credit entries, day closing register, salary payments, etc.).
 - **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`).
 
 ---
@@ -248,3 +349,4 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 | [Flows](FLOWS.md) | User and data flows (auth, daily ops, credit, HR, admin) |
 | [DSR Tables](DSR_TABLES.md) | `dsr_petrol` / `dsr_diesel`, views, stock reconciliation |
 | [Development guide](DEVELOPMENT.md) | Local development, deployment, supervisor login |
+| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive integration, edge function, full setup |
