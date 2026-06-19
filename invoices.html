@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Invoice documents · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/invoices.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">Invoice documents</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" aria-label="Main navigation">
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="dsr.html">Meter Reading</a>
+            <a href="sales-daily.html">DSR</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="credit.html">Credit</a>
+            <a href="expenses.html">Expenses</a>
+            <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
+            <a href="invoices.html">Invoices</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="attendance.html">Attendance</a>
+            <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
+            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
+          </div>
+        </div>
+        <button id="logout-button" class="link nav-logout">Logout</button>
+      </nav>
+    </header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Invoice sections">
+        <p class="settings-nav-title">Invoices</p>
+        <button type="button" class="settings-nav-item is-active" data-section="upload">Upload invoice</button>
+        <button type="button" class="settings-nav-item" data-section="library">Invoice library</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card is-visible" data-panel="upload">
+          <h2>Upload invoice</h2>
+          <p class="muted">Supplier invoices are stored in Google Drive under <strong>Year → Month</strong> folders based on the invoice date.</p>
+          <div id="invoice-drive-banner" class="smart-alert smart-alert--warning hidden" role="status"></div>
+          <form id="invoice-upload-form" class="form">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="invoice-date">Invoice date</label>
+                <input id="invoice-date" name="invoiceDate" type="date" required />
+              </div>
+              <div class="form-field">
+                <label for="invoice-vendor">Vendor / supplier <span class="optional-label">(optional)</span></label>
+                <input id="invoice-vendor" name="vendor" type="text" maxlength="120" placeholder="e.g. BPCL" />
+              </div>
+              <div class="form-field">
+                <label for="invoice-title">Title / reference <span class="optional-label">(optional)</span></label>
+                <input id="invoice-title" name="title" type="text" maxlength="120" placeholder="Invoice no. or description" />
+              </div>
+              <div class="form-field">
+                <label for="invoice-amount">Amount (₹) <span class="optional-label">(optional)</span></label>
+                <input id="invoice-amount" name="amount" type="number" min="0" step="0.01" placeholder="Optional" />
+              </div>
+              <div class="form-field form-field-full">
+                <label for="invoice-notes">Notes <span class="optional-label">(optional)</span></label>
+                <textarea id="invoice-notes" name="notes" rows="2" maxlength="500" placeholder="Optional"></textarea>
+              </div>
+              <div class="form-field form-field-full">
+                <label for="invoice-file">File (PDF or image, max 15 MB)</label>
+                <input id="invoice-file" name="file" type="file" accept=".pdf,image/jpeg,image/png,image/webp" required />
+              </div>
+            </div>
+            <button type="submit" id="invoice-upload-btn">Upload invoice</button>
+            <p id="invoice-upload-success" class="success hidden">Invoice uploaded successfully.</p>
+            <p id="invoice-upload-error" class="error hidden"></p>
+            <p class="muted" data-role="admin-only" style="display:none">Configure Google Drive in <a href="settings.html#integrations">Settings → Integrations</a>.</p>
+          </form>
+        </section>
+
+        <section class="settings-panel card" data-panel="library" hidden>
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Invoice library</h2>
+              <p class="muted">Browse and download supplier invoices uploaded by your team.</p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="invoice-range">Period</label>
+                <select id="invoice-range">
+                  <option value="this-month" selected>This month</option>
+                  <option value="this-year">This year</option>
+                  <option value="custom">Custom dates</option>
+                </select>
+              </div>
+              <div id="invoice-custom-range" class="custom-range hidden" aria-hidden="true">
+                <div class="form-field">
+                  <label for="invoice-start">From</label>
+                  <input id="invoice-start" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="invoice-end">To</label>
+                  <input id="invoice-end" type="date" />
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="invoice-apply-filter">Apply</button>
+              </div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Vendor</th>
+                  <th>Title</th>
+                  <th>Amount (₹)</th>
+                  <th>File</th>
+                  <th class="table-actions">Action</th>
+                </tr>
+              </thead>
+              <tbody id="invoice-table-body">
+                <tr>
+                  <td colspan="6" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="invoice-empty-cta" class="empty-state hidden">
+            <p>No invoices found for this period.</p>
+            <p class="empty-cta">Upload an invoice using the form above.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>
