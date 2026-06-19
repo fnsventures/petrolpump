@@ -83,6 +83,13 @@
     includeBillingInGst: true,
   };
 
+  const DEFAULT_INTEGRATIONS = {
+    googleDrive: {
+      enabled: false,
+      rootFolderId: "",
+    },
+  };
+
   /** Full default settings object (DB seed + client fallback). */
   const DEFAULT_PUMP_SETTINGS = {
     station: DEFAULT_STATION,
@@ -91,6 +98,7 @@
     reports: DEFAULT_REPORTS,
     alerts: DEFAULT_ALERTS,
     shifts: DEFAULT_SHIFTS,
+    integrations: DEFAULT_INTEGRATIONS,
   };
 
   /** Legacy localStorage keys (migrated to pump_settings on load). */
@@ -122,6 +130,7 @@
     DEFAULT_SHIFTS,
     DEFAULT_REPORTS,
     DEFAULT_REPORT_TANKS,
+    DEFAULT_INTEGRATIONS,
     STORAGE_KEYS,
     RECEIPT_HISTORY_START: DEFAULT_BILLING.receiptHistoryStart,
   };
