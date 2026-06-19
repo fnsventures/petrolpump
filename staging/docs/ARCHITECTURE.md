@@ -84,7 +84,8 @@ js/
 ├── supabase.js         # Supabase client from window.__APP_CONFIG__
 ├── auth.js             # Session guard, role, check_page_access, nav
 ├── pumpSettings.js     # Load/cache pump_settings.config
-├── utils.js            # Shared utilities (formatting, debounce, …)
+├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
+├── dsrQueries.js       # Shared DSR fetch/select helpers; mergeDsrStock for reports/dashboard
 ├── errorHandler.js     # Centralized error reporting
 ├── cache.js            # AppCache (role, reports, settings, …)
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
@@ -106,7 +107,7 @@ js/
 └── settings.js         # pump_settings, users, HR, categories (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `errorHandler.js`, `cache.js`.
+**Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`.
 
 ### 3.4 Backend (Supabase)
 
@@ -120,6 +121,7 @@ supabase/
 │   ├── 20250526*_billing_system.sql
 │   ├── 20250527*_pump_settings.sql
 │   ├── 20260528100000_employee_personal_details.sql
+│   ├── 20260619100000_security_loophole_mitigation.sql
 │   └── …
 └── functions/
     └── get-dashboard-data/   # Edge function: batched dashboard payload (optional)
@@ -199,13 +201,15 @@ docs/
 
 - **Engine:** PostgreSQL (Supabase).
 - **Schema:** Defined in `supabase/schema.sql`; changes are applied via migrations under `supabase/migrations/`.
-- **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()` (security definer).
+- **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()`, and `require_staff_access()` (security definer). Only users provisioned in `public.users` (admin or supervisor) can read or write operational data.
 - **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`.
 
 ### 6.3 Key server-side constructs
 
 - **DSR storage:** Physical tables `dsr_petrol` and `dsr_diesel`; views `dsr` (union) and `dsr_stock` (computed reconciliation); RPC `get_dsr_stock_range(start, end)`.
-- **RPCs (examples):** `check_page_access(page)`, `get_day_closing_breakdown(date)`, `save_day_closing(...)`, `compute_day_closing_components(date)`, `add_credit_entry(...)`, `record_credit_payment(...)`, `get_credit_ledger_aggregated()`, `get_open_credit_as_of(date)`, `get_customer_credit_detail_as_of(name, date)`, `update_dsr_buying_price(uuid, value)`, `save_invoice(...)`, `save_employee_attendance_batch(date, jsonb)`, `upsert_staff(...)`, `delete_staff(...)`.
+- **RPCs (examples):** `check_page_access(page)`, `require_staff_access()` (internal guard), `get_day_closing_breakdown(date)`, `save_day_closing(...)`, `compute_day_closing_components(date)`, `add_credit_entry(...)`, `record_credit_payment(...)`, `get_credit_ledger_aggregated()`, `get_open_credit_as_of(date)`, `get_customer_credit_detail_as_of(name, date)`, `update_dsr_buying_price(uuid, value)`, `save_invoice(...)`, `save_employee_attendance_batch(date, jsonb)`, `upsert_staff(...)`, `delete_staff(...)`. Most security-definer RPCs call `require_staff_access()` at entry.
+- **Billing integrity:** `invoice_items` line rows are inserted only inside `save_invoice`; direct client INSERT/UPDATE/DELETE on `invoice_items` is denied by RLS.
+- **Internal RPCs:** `recascade_day_closing_short_from(date)` is not granted to `authenticated` — only invoked from `save_day_closing` (security definer).
 - **Triggers:** `credit_entries_sync_trigger` on `credit_entries`; audit triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
 
 Full table and RPC reference: [Data Tables](DATA_TABLES.md).
@@ -214,11 +218,14 @@ Full table and RPC reference: [Data Tables](DATA_TABLES.md).
 
 ## 7. Security model
 
-- **Enforcement:** RLS is the primary authorization layer. Client-side checks only affect the UI.
+- **Enforcement:** RLS and security-definer RPC guards are the primary authorization layer. Client-side checks only affect the UI.
+- **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. Authenticated users without a `public.users` row cannot read or write application data — policies and RPCs use `is_supervisor_or_admin()` / `require_staff_access()`.
 - **Roles:**
   - **admin:** Full access (settings, reports, analysis, employee HR mutations, product catalog, delete).
   - **supervisor:** Operational pages including **billing**; no settings, reports, or analysis; insert/update own records; no delete.
-- **Policies:** Typically SELECT for all authenticated; INSERT with `created_by = auth.uid()`; UPDATE for own row or admin; DELETE only for admin. Exceptions (e.g. `expense_categories`, `users`) are documented in [Data Tables](DATA_TABLES.md).
+- **Default policy pattern (operational tables):** SELECT for provisioned staff; INSERT with `is_supervisor_or_admin()` and `created_by = auth.uid()`; UPDATE for provisioned staff on own row or admin; DELETE admin only. Admin-only tables (e.g. `expense_categories`, `products`, `employees`) and exceptions are documented in [Data Tables](DATA_TABLES.md).
+- **Admin bootstrap:** When no admin exists, the first user may self-provision via `upsert_staff` or the matching RLS INSERT — only their own JWT email, role must be `admin`. Prevents arbitrary email escalation before an admin is established.
+- **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`).
 
 ---
 

@@ -32,6 +32,33 @@ For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
 ---
 
+## RLS conventions
+
+All application tables have RLS enabled. Unless noted otherwise:
+
+| Operation | Rule |
+|-----------|------|
+| **SELECT** | Provisioned staff only — `is_supervisor_or_admin()` (row must match a `public.users` email to JWT) |
+| **INSERT** | Provisioned staff + `created_by = auth.uid()` |
+| **UPDATE** | Provisioned staff + (own row or admin) |
+| **DELETE** | Admin only |
+
+**Provisioned staff** means the signed-in user has a row in `public.users` with role `admin` or `supervisor`. Auth-only users (in `auth.users` but not `public.users`) are denied.
+
+**Security-definer RPCs** (credit, day closing, billing, DSR stock range, employee roster, etc.) call `require_staff_access()` at entry — same gate as RLS.
+
+**Exceptions:**
+
+- **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`.
+- **expense_categories, products, employees:** SELECT provisioned staff; mutations admin only.
+- **invoice_items:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — lines created only inside `save_invoice` RPC.
+- **audit_log:** SELECT admin only; writes via triggers only.
+- **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
+
+Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`.
+
+---
+
 ## audit_log
 
 **Purpose:** Audit trail for sensitive operations. Only admins can read.
@@ -66,7 +93,7 @@ For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 | display_name | text | Optional; shown in app |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE only for admin (with bootstrap rule for first admin). Staff changes should use RPCs `upsert_staff`, `delete_staff`.
+**RLS:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own JWT email, role `admin` only); UPDATE/DELETE admin. Staff changes should use RPCs `upsert_staff`, `delete_staff`.
 
 ---
 
@@ -95,7 +122,7 @@ For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
 **Index:** `(date desc)`.
 
-**RLS:** SELECT all authenticated; INSERT with `created_by = auth.uid()`; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
 
@@ -142,7 +169,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | is_active | boolean | Active flag |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE **admin only**.
+**RLS:** SELECT provisioned staff; INSERT/UPDATE/DELETE **admin only**.
 
 ---
 
@@ -165,9 +192,9 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**RPC:** `save_invoice(...)` — atomic insert of header + line items (`jsonb` array).
+**RPC:** `save_invoice(...)` — atomic insert of header + line items (`jsonb` array); calls `require_staff_access()`.
 
 **Audit:** `audit_invoices_trigger`.
 
@@ -189,7 +216,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | gst_percent, amount | numeric | Tax and line total |
 | created_at | timestamptz | Created at |
 
-**RLS:** Inherited via invoice policies (read with invoice; writes via `save_invoice` RPC).
+**RLS:** SELECT provisioned staff; INSERT/UPDATE/DELETE **denied** on client (`with check (false)` / `using (false)`). Line rows are created only inside `save_invoice` (security definer).
 
 ---
 
@@ -204,7 +231,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | updated_at | timestamptz | Last change |
 | updated_by | uuid | auth.users.id |
 
-**RLS:** SELECT all authenticated; INSERT/UPDATE **admin only**.
+**RLS:** SELECT provisioned staff; INSERT/UPDATE **admin only**.
 
 **Client:** `js/pumpSettings.js` loads/caches config; Settings page and dashboard/reports consume it.
 
@@ -226,7 +253,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 **Indexes:** `(date desc)`, `(created_at desc)`.
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
 
@@ -242,7 +269,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | sort_order | int | Display order |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE admin only.
+**RLS:** SELECT provisioned staff; INSERT/UPDATE/DELETE admin only.
 
 ---
 
@@ -266,7 +293,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all authenticated; INSERT/UPDATE/DELETE **admin only** (supervisors read for salary/attendance pages).
+**RLS:** SELECT provisioned staff; INSERT/UPDATE/DELETE **admin only** (supervisors read via `list_employees_roster` / `list_employees_salary` RPCs).
 
 ---
 
@@ -286,7 +313,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 **Indexes:** `(employee_id, date desc)`, `(date desc)`.
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
 
@@ -309,7 +336,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 **Unique:** `(employee_id, date)`.
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
 
@@ -331,7 +358,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all; INSERT own; UPDATE supervisor or admin; DELETE admin only.
+**RLS:** Default operational pattern; UPDATE also allowed for supervisor or admin (contact info; `amount_due` updated by payment RPC/triggers).
 
 **Trigger:** `credit_entries_sync_trigger` on `credit_entries` updates `credit_customers.amount_due`.
 
@@ -355,7 +382,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 **Constraint:** `amount_settled <= amount`.
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 **Trigger:** Updates `credit_customers.amount_due` on insert/update/delete.
 
@@ -376,7 +403,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 **Note:** Payment allocation to entries (FIFO) is done in RPC `record_credit_payment`; then trigger on `credit_entries` updates `credit_customers.amount_due`.
 
@@ -406,9 +433,9 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** SELECT all; INSERT own; UPDATE own or admin; DELETE admin only.
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**RPCs:** `get_day_closing_breakdown(date)` returns components (from snapshot if already saved); `save_day_closing(date, night_cash, phone_pay, remarks)` computes short and inserts one row.
+**RPCs:** `get_day_closing_breakdown(date)` returns components (from snapshot if already saved); `save_day_closing(date, night_cash, phone_pay, remarks)` computes short and inserts one row. Both call `require_staff_access()`. `recascade_day_closing_short_from` is internal (not callable by clients).
 
 ---
 

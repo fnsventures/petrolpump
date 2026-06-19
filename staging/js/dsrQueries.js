@@ -57,6 +57,20 @@
     return { data: data ?? [], error };
   }
 
+  /** Merge DSR meter rows with dsr_stock dip/opening fields (date + product key). */
+  function mergeDsrStock(dsrRows, stockRows) {
+    const map = new Map();
+    (dsrRows ?? []).forEach((row) => {
+      const key = `${row.date}-${row.product}`;
+      map.set(key, { ...row });
+    });
+    (stockRows ?? []).forEach((row) => {
+      const key = `${row.date}-${row.product}`;
+      map.set(key, { ...(map.get(key) || {}), ...row, product: row.product, date: row.date });
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   global.DsrQueries = {
     DSR_SELECT_FULL,
     DSR_SELECT_PL,
@@ -65,5 +79,6 @@
     extractReceiptRows,
     fetchDsrRows,
     fetchExpenses,
+    mergeDsrStock,
   };
 })(typeof window !== "undefined" ? window : globalThis);

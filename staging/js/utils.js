@@ -98,6 +98,36 @@ function formatDisplayDate(dateStr) {
 }
 
 /**
+ * Format YYYY-MM-DD for tables/reports (e.g. "10/02/2025").
+ * @param {string|null|undefined} dateStr
+ * @returns {string}
+ */
+function formatNumericDate(dateStr) {
+  if (!dateStr) return "—";
+  const date = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/**
+ * Format a number with fixed decimal places (no currency symbol).
+ * @param {number|null|undefined} value
+ * @param {number} [fractionDigits=2]
+ * @returns {string}
+ */
+function formatNumberPlain(value, fractionDigits = 2) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return Number(value).toLocaleString("en-IN", {
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
+/**
  * Single letter for avatar fallback (first letter of name or email local part).
  * @param {string|null|undefined} nameOrEmail
  * @returns {string}
@@ -427,6 +457,8 @@ window.throttle = throttle;
 window.toLocalDateString = toLocalDateString;
 window.formatDateInput = formatDateInput;
 window.formatDisplayDate = formatDisplayDate;
+window.formatNumericDate = formatNumericDate;
+window.formatNumberPlain = formatNumberPlain;
 window.getAvatarInitial = getAvatarInitial;
 window.getAvatarInitials = getAvatarInitials;
 window.formatEmailLocalLabel = formatEmailLocalLabel;
@@ -463,6 +495,48 @@ window.setFilterState = setFilterState;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
 window.withProgress = withProgress;
+
+/**
+ * Sum a numeric field across rows for one fuel product (petrol / diesel).
+ * @param {Array} rows
+ * @param {string} product
+ * @param {(row: object) => number} valueFn
+ * @returns {number}
+ */
+function sumByProduct(rows, product, valueFn) {
+  const expectedProduct = normalizeProduct(product);
+  return (rows ?? []).reduce((sum, row) => {
+    if (normalizeProduct(row.product) !== expectedProduct) return sum;
+    return sum + Number(valueFn(row) ?? 0);
+  }, 0);
+}
+
+/**
+ * Petrol/diesel stock (L) for a single calendar day.
+ * Prefers dsr_stock.dip_stock when a stock row exists for that product; else dsr.stock.
+ * @returns {{ petrolStock: number, dieselStock: number, hasAnyRow: boolean }}
+ */
+function resolveDayFuelStock(stockData, dsrData, dateStr) {
+  const lastDayStockRows = (stockData ?? []).filter((row) => row.date === dateStr);
+  const lastDayDsrRows = (dsrData ?? []).filter((row) => row.date === dateStr);
+  const hasPetrolInStock = lastDayStockRows.some(
+    (row) => normalizeProduct(row.product) === "petrol"
+  );
+  const hasDieselInStock = lastDayStockRows.some(
+    (row) => normalizeProduct(row.product) === "diesel"
+  );
+  const petrolStock = hasPetrolInStock
+    ? sumByProduct(lastDayStockRows, "petrol", (row) => Number(row.dip_stock ?? 0))
+    : sumByProduct(lastDayDsrRows, "petrol", (row) => Number(row.stock ?? 0));
+  const dieselStock = hasDieselInStock
+    ? sumByProduct(lastDayStockRows, "diesel", (row) => Number(row.dip_stock ?? 0))
+    : sumByProduct(lastDayDsrRows, "diesel", (row) => Number(row.stock ?? 0));
+  return {
+    petrolStock,
+    dieselStock,
+    hasAnyRow: lastDayStockRows.length > 0 || lastDayDsrRows.length > 0,
+  };
+}
 
 /** Net sale litres (meter sales minus testing). */
 function getDsrNetSaleLitres(row) {
@@ -667,6 +741,8 @@ function computeProfitLossSummary({
   };
 }
 
+window.sumByProduct = sumByProduct;
+window.resolveDayFuelStock = resolveDayFuelStock;
 window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;

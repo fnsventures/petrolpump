@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, CacheInvalidation, getDsrNetSaleLitres, computeProfitLossSummary */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock */
 
 /**
  * Generate cache key for dashboard data queries
@@ -268,25 +268,6 @@ function resolveDipStockWithFallback(stockData, dsrData, dateStr) {
     dieselMeta: dieselLast
       ? { date: dieselLast.date, isFallback: dieselLast.isFallback ?? dieselOnDate == null }
       : null,
-  };
-}
-
-/** @deprecated Use resolveDipStockWithFallback — kept for DSR summary tiles on exact date only */
-function resolveStockForDate(stockData, dsrData, dateStr) {
-  const lastDayStockRows = (stockData ?? []).filter((row) => row.date === dateStr);
-  const lastDayDsrRows = (dsrData ?? []).filter((row) => row.date === dateStr);
-  const hasPetrolInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "petrol");
-  const hasDieselInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "diesel");
-  const petrolStockFromStock = sumByProduct(lastDayStockRows, "petrol", (row) => Number(row.dip_stock ?? 0));
-  const dieselStockFromStock = sumByProduct(lastDayStockRows, "diesel", (row) => Number(row.dip_stock ?? 0));
-  const petrolStockFromDsr = sumByProduct(lastDayDsrRows, "petrol", (row) => Number(row.stock ?? 0));
-  const dieselStockFromDsr = sumByProduct(lastDayDsrRows, "diesel", (row) => Number(row.stock ?? 0));
-  const petrolStock = hasPetrolInStock ? petrolStockFromStock : petrolStockFromDsr;
-  const dieselStock = hasDieselInStock ? dieselStockFromStock : dieselStockFromDsr;
-  const hasData = lastDayStockRows.length > 0 || lastDayDsrRows.length > 0;
-  return {
-    petrolStock: hasData && Number.isFinite(petrolStock) ? petrolStock : null,
-    dieselStock: hasData && Number.isFinite(dieselStock) ? dieselStock : null,
   };
 }
 
@@ -1086,14 +1067,11 @@ async function loadDsrSummary(range) {
     }
     const lastDayStockForAlert = (dashboardData.stockData || []).filter((row) => row.date === range.end);
     const lastDayDsrForAlert = (dashboardData.dsrData || []).filter((row) => row.date === range.end);
-    const hasPetrolStock = lastDayStockForAlert.some((row) => normalizeProduct(row.product) === "petrol");
-    const hasDieselStock = lastDayStockForAlert.some((row) => normalizeProduct(row.product) === "diesel");
-    const petrolStock = hasPetrolStock
-      ? sumByProduct(lastDayStockForAlert, "petrol", (row) => Number(row.dip_stock ?? 0))
-      : sumByProduct(lastDayDsrForAlert, "petrol", (row) => Number(row.stock ?? 0));
-    const dieselStock = hasDieselStock
-      ? sumByProduct(lastDayStockForAlert, "diesel", (row) => Number(row.dip_stock ?? 0))
-      : sumByProduct(lastDayDsrForAlert, "diesel", (row) => Number(row.stock ?? 0));
+    const { petrolStock, dieselStock } = resolveDayFuelStock(
+      lastDayStockForAlert,
+      lastDayDsrForAlert,
+      range.end
+    );
     updateLowStockAlert(petrolStock, dieselStock);
     lastPetrolVariation = sumByProduct(lastDayStockForAlert, "petrol", (row) => row.variation);
     lastDieselVariation = sumByProduct(lastDayStockForAlert, "diesel", (row) => row.variation);
@@ -1133,20 +1111,9 @@ function renderDsrSummary(data, elements, range) {
   // Stock tiles: dip stock for the selected day (or last day of range only).
   // Prefer dsr_stock.dip_stock; fall back to dsr.stock when dsr_stock has no row for that day.
   const lastDay = range?.end;
-  const lastDayStockRows = lastDay ? (stockData ?? []).filter((row) => row.date === lastDay) : [];
-  const lastDayDsrRows = lastDay ? (dsrData ?? []).filter((row) => row.date === lastDay) : [];
-  const petrolStockFromStock = sumByProduct(lastDayStockRows, "petrol", (row) => Number(row.dip_stock ?? 0));
-  const dieselStockFromStock = sumByProduct(lastDayStockRows, "diesel", (row) => Number(row.dip_stock ?? 0));
-  const petrolStockFromDsr = sumByProduct(lastDayDsrRows, "petrol", (row) => Number(row.stock ?? 0));
-  const dieselStockFromDsr = sumByProduct(lastDayDsrRows, "diesel", (row) => Number(row.stock ?? 0));
-  const hasPetrolInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "petrol");
-  const hasDieselInStock = lastDayStockRows.some((row) => normalizeProduct(row.product) === "diesel");
-  const petrolStock = hasPetrolInStock ? petrolStockFromStock : petrolStockFromDsr;
-  const dieselStock = hasDieselInStock ? dieselStockFromStock : dieselStockFromDsr;
-  const hasLastDayStock =
-    lastDay &&
-    (lastDayStockRows.length > 0 || lastDayDsrRows.length > 0) &&
-    (Number.isFinite(petrolStock) || Number.isFinite(dieselStock));
+  const { petrolStock, dieselStock, hasAnyRow: hasLastDayStock } = lastDay
+    ? resolveDayFuelStock(stockData, dsrData, lastDay)
+    : { petrolStock: 0, dieselStock: 0, hasAnyRow: false };
   const petrolNetSale = sumByProduct(dsrData, "petrol", getDsrNetSaleLitres);
   const dieselNetSale = sumByProduct(dsrData, "diesel", getDsrNetSaleLitres);
   // Variation tiles: single day = that day's variation; range = sum of all variations in the period.
@@ -1186,7 +1153,11 @@ function renderDsrSummary(data, elements, range) {
   const dsrPetrolRate = petrolRates.length > 0 ? petrolRates[petrolRates.length - 1] : 0;
   const dsrDieselRate = dieselRates.length > 0 ? dieselRates[dieselRates.length - 1] : 0;
 
-  const canShowStock = (hasStock || hasDsr) && hasLastDayStock;
+  const canShowStock =
+    (hasStock || hasDsr) &&
+    lastDay &&
+    hasLastDayStock &&
+    (Number.isFinite(petrolStock) || Number.isFinite(dieselStock));
   if (petrolStockEl) {
     petrolStockEl.textContent = canShowStock ? formatQuantity(petrolStock) : "—";
   }
@@ -1338,14 +1309,9 @@ async function handleSaveBuyingPrice(dsrId) {
     btn.textContent = "Saving…";
   }
   const rpc = await supabaseClient.rpc("update_dsr_buying_price", { p_dsr_id: dsrId, p_value: value });
-  let fallback = { data: true };
   if (rpc.error) {
-    const fb1 = await supabaseClient.from("dsr_petrol").update({ buying_price_per_litre: value }).eq("id", dsrId).select("id").maybeSingle();
-    fallback = (fb1.data) ? fb1 : await supabaseClient.from("dsr_diesel").update({ buying_price_per_litre: value }).eq("id", dsrId).select("id").maybeSingle();
-  }
-  if (rpc.error && (fallback.error || !fallback.data)) {
-    AppError.report(rpc.error || fallback.error, { context: "handleSaveBuyingPrice", type: "dsr" });
-    showPlBuyingPriceError((rpc.error?.message || fallback.error?.message) || "Could not save. Ensure you are logged in as admin.");
+    AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
+    showPlBuyingPriceError(rpc.error.message || "Could not save. Ensure you are logged in as admin.");
     resetBtn();
     return;
   }
@@ -1508,57 +1474,6 @@ window.addEventListener("resize", () => {
   scheduleAutoFitStats();
 });
 
-
-function getCustomRange(startValue, endValue) {
-  if (!startValue && !endValue) return null;
-  let start = startValue || endValue;
-  let end = endValue || startValue;
-  if (end < start) {
-    [start, end] = [end, start];
-  }
-  return { start, end };
-}
-
-function getMonthRange(year, monthIndex) {
-  const start = new Date(year, monthIndex, 1);
-  const end = new Date(year, monthIndex + 1, 0);
-  return {
-    start: formatDateInput(start),
-    end: formatDateInput(end),
-  };
-}
-
-function getWeekRange(date) {
-  const day = date.getDay();
-  const diffToMonday = (day + 6) % 7;
-  const start = new Date(date);
-  start.setDate(date.getDate() - diffToMonday);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return {
-    start: formatDateInput(start),
-    end: formatDateInput(end),
-  };
-}
-
-function setCustomRangeVisibility(container, startInput, endInput, isVisible) {
-  if (isVisible) {
-    container.classList.remove("hidden");
-  } else {
-    container.classList.add("hidden");
-  }
-  startInput.disabled = !isVisible;
-  endInput.disabled = !isVisible;
-}
-
-function formatDateInput(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
 // Listen for credit updates from other pages/tabs and refresh credit summary
 window.addEventListener("storage", (e) => {
   if (e.key !== "credit-updated") return;
@@ -1584,14 +1499,6 @@ window.addEventListener("pageshow", (e) => {
     refreshCreditSummaryOnVisible();
   }
 });
-
-function sumByProduct(rows, product, valueFn) {
-  const expectedProduct = normalizeProduct(product);
-  return (rows ?? []).reduce((sum, row) => {
-    if (normalizeProduct(row.product) !== expectedProduct) return sum;
-    return sum + Number(valueFn(row) ?? 0);
-  }, 0);
-}
 
 function applyVariationTone(element, value, isActive) {
   element.classList.remove("stat-positive", "stat-negative");

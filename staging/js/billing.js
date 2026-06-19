@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate */
 
 let productsCache = [];
 let currentAuth = null;
@@ -6,14 +6,6 @@ let printAfterSave = false;
 
 const PAGE_SIZE = 20;
 let invoicesPagination = { offset: 0, hasMore: true, totalCount: 0, isLoading: false };
-
-function formatDate(dateStr) {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-// ─── Init ────────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -535,7 +527,7 @@ function populatePrintInvoice(invoice, items) {
   document.getElementById("print-party-gstin").textContent = printField(invoice.party_gstin);
   document.getElementById("print-vehicle-no").textContent = printField(invoice.vehicle_no);
   document.getElementById("print-invoice-number").textContent = invoice.invoice_number;
-  document.getElementById("print-invoice-date").textContent = formatDate(invoice.invoice_date);
+  document.getElementById("print-invoice-date").textContent = formatNumericDate(invoice.invoice_date);
   document.getElementById("print-mobile").textContent = printField(invoice.mobile);
   document.getElementById("print-km").textContent = printField(invoice.km_reading);
 
@@ -733,7 +725,7 @@ async function loadInvoices(reset = false) {
         : "";
       tr.innerHTML = `
         <td><strong>${escapeHtml(inv.invoice_number)}</strong></td>
-        <td>${formatDate(inv.invoice_date)}</td>
+        <td>${formatNumericDate(inv.invoice_date)}</td>
         <td>${escapeHtml(inv.party_name)}</td>
         <td>${escapeHtml(inv.vehicle_no || "—")}</td>
         <td>${countMap[inv.id] || 0}</td>
@@ -772,7 +764,7 @@ async function deleteInvoice(btn) {
     btn,
     auth: currentAuth,
     actionLabel: "delete invoices",
-    confirmMessage: `Delete invoice ${invoiceNumber} dated ${formatDate(invoiceDate)} (${formatCurrency(invoiceAmount)})?\n\nThis cannot be undone.`,
+    confirmMessage: `Delete invoice ${invoiceNumber} dated ${formatNumericDate(invoiceDate)} (${formatCurrency(invoiceAmount)})?\n\nThis cannot be undone.`,
     deleteFn: () => supabaseClient.from("invoices").delete().eq("id", invoiceId),
     cacheScope: "operational",
     onSuccess: () => loadInvoices(true),
