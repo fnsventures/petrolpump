@@ -10,10 +10,10 @@ backup_production() {
   local schema_file="${backup_dir}/prod-schema-${timestamp}${label}.sql"
   local data_file="${backup_dir}/prod-data-${timestamp}${label}.sql"
 
-  echo "    Schema → ${schema_file}"
+  echo "    Schema → ${schema_file}" >&2
   supabase db dump --db-url "${db_url}" -f "${schema_file}"
 
-  echo "    Data   → ${data_file}"
+  echo "    Data   → ${data_file}" >&2
   supabase db dump --data-only --db-url "${db_url}" --use-copy \
     --schema public,auth,storage \
     --exclude "${STORAGE_DUMP_EXCLUDES}" \

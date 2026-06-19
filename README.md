@@ -38,6 +38,7 @@ End-to-end flows and page → data mapping: [Flows](docs/FLOWS.md).
 | [**Development guide**](docs/DEVELOPMENT.md) | Local setup, deployment (prod/staging), supervisor login |
 | [**Invoice documents**](docs/INVOICE_DOCUMENTS.md) | Supplier invoices + Google Drive — full setup from scratch |
 | [**Database scripts**](scripts/README.md) | Prod → staging sync, prod migration, backup |
+| [**Backup guide**](docs/BACKUP.md) | Monthly prod DB → Google Drive (GitHub Actions, restore) |
 
 Full index and getting started by role: **[docs/README.md](docs/README.md)**.
 
