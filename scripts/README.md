@@ -13,6 +13,7 @@ All write operations target **staging** or **production** explicitly — prod da
 | Check prod before migration | `./scripts/db.sh migrate` | No | No |
 | Check prod only (same as migrate without apply) | `./scripts/db.sh preflight` | No | No |
 | Backup prod to local files | `./scripts/db.sh backup` | No | No |
+| Backup prod → Google Drive (CI or local) | `./scripts/backup-prod-to-drive.sh` | No | No |
 | Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | Yes (schema) | No |
 
 **Recommended entry point:** `./scripts/db.sh` — see `./scripts/db.sh help`
@@ -138,6 +139,20 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 
 ---
 
+### `./scripts/backup-prod-to-drive.sh`
+
+**Purpose:** Dump prod schema + data, gzip, and upload to Google Drive. Same dumps as `./scripts/db.sh backup`.
+
+**Full documentation:** [docs/BACKUP.md](../docs/BACKUP.md) — setup, architecture, included/excluded data, verify, restore, troubleshooting.
+
+**Quick reference:**
+
+- **Automated:** `.github/workflows/backup-prod-db.yml` — 1st of month 03:00 UTC + manual **Run workflow**
+- **Local:** `./scripts/backup-prod-to-drive.sh` (export Google secrets + `GOOGLE_DRIVE_BACKUP_FOLDER_ID`; `PROD_DB_URL` from `scripts/db.env`)
+- **Drive layout:** `BackupRoot/YYYY/YYYY-MM/` → `prod-schema-*.sql.gz`, `prod-data-*.sql.gz`, `backup-manifest-*.txt`
+
+---
+
 ## Script files
 
 | File | Role |
@@ -145,7 +160,9 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 | `db.sh` | Main entry point (sync / migrate / backup) |
 | `sync-prod-to-staging.sh` | Prod → staging data copy |
 | `migrate-prod.sh` | Prod schema migration |
-| `backup-prod.sh` | Prod-only backup |
+| `backup-prod.sh` | Prod-only backup (local files) |
+| `backup-prod-to-drive.sh` | Prod backup + Google Drive upload |
+| `lib/google-drive.sh` | OAuth + Drive upload helpers |
 | `db.env.example` | Connection URL template |
 | `lib/db-client.sh` | Shared psql / Docker helpers |
 | `lib/env.sh` | Load `db.env` |
@@ -190,5 +207,6 @@ Never commit these.
 
 ## Related docs
 
+- [Backup guide](../docs/BACKUP.md) — prod DB → Google Drive (GitHub Actions, restore)
 - [Development guide §2](../docs/DEVELOPMENT.md#2-deployment-prod-and-staging) — GitHub Pages deploy, branches
 - [Architecture](../docs/ARCHITECTURE.md) — app structure and Supabase model
