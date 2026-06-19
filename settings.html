@@ -46,6 +46,7 @@
             <a href="expenses.html">Expenses</a>
             <a href="day-closing.html">Day closing &amp; short</a>
             <a href="billing.html">Billing</a>
+            <a href="invoices.html">Invoices</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -79,6 +80,7 @@
         <button type="button" class="settings-nav-item" data-section="attendance">Attendance shifts</button>
         <button type="button" class="settings-nav-item" data-section="alerts">Alerts &amp; thresholds</button>
         <button type="button" class="settings-nav-item" data-section="expenses">Expense categories</button>
+        <button type="button" class="settings-nav-item" data-section="integrations">Integrations</button>
         <button type="button" class="settings-nav-item" data-section="access">Access list</button>
       </nav>
 
@@ -454,6 +456,33 @@
               <tr><td colspan="2" class="muted">Loading…</td></tr>
             </tbody>
           </table>
+        </section>
+
+        <!-- Integrations -->
+        <section id="settings-panel-integrations" class="settings-panel card" data-panel="integrations" hidden>
+          <h2>Google Drive (invoice documents)</h2>
+          <p class="muted">Supplier invoices uploaded from the Invoices page are stored in your Google Drive under <strong>Year → Month</strong> folders.</p>
+          <ol class="muted margin-bottom">
+            <li>Create a folder in Google Drive (e.g. <em>Petrol Pump Invoices</em>).</li>
+            <li>Share that folder with your Google service account email as <strong>Editor</strong>.</li>
+            <li>Copy the folder ID from the Drive URL (<code>…/folders/FOLDER_ID</code>).</li>
+            <li>Add the service account JSON as <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> in Supabase Edge Function secrets.</li>
+          </ol>
+          <form id="integrations-drive-form" class="form">
+            <div class="form-field">
+              <label class="checkbox-label">
+                <input id="gdrive-enabled" type="checkbox" />
+                Enable Google Drive storage for invoice documents
+              </label>
+            </div>
+            <div class="form-field">
+              <label for="gdrive-root-folder">Root folder ID</label>
+              <input id="gdrive-root-folder" type="text" maxlength="120" placeholder="e.g. 1abcXYZ…" />
+            </div>
+            <button type="submit">Save integration settings</button>
+            <p id="integrations-drive-success" class="success hidden">Integration settings saved.</p>
+            <p id="integrations-drive-error" class="error hidden"></p>
+          </form>
         </section>
 
         <!-- Access list -->
