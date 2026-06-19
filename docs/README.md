@@ -23,7 +23,7 @@ This folder contains the technical documentation for the Petrol Pump application
   Start with [Architecture](ARCHITECTURE.md) (structure and stack) and [Flows](FLOWS.md) (how features connect). Then use [Development guide](DEVELOPMENT.md) to run and deploy.
 
 - **Working on schema, RPCs, billing, or reporting**  
-  Use [Data Tables](DATA_TABLES.md) and [DSR Tables](DSR_TABLES.md). Billing uses `products`, `invoices`, `save_invoice`; reports are admin-only on `reports.html`.
+  Use [Data Tables](DATA_TABLES.md) (includes [RLS conventions](DATA_TABLES.md#rls-conventions)) and [DSR Tables](DSR_TABLES.md). Billing uses `products`, `invoices`, `save_invoice`; reports are admin-only on `reports.html`.
 
 - **Setting up locally or deploying**  
   Follow [Development guide](DEVELOPMENT.md) for env config, local server, GitHub Actions, and supervisor setup.
