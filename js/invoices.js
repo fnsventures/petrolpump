@@ -1,20 +1,15 @@
 /* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getMonthRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const INVOICE_LIST_COLUMNS =
+  "id, invoice_date, year, month, title, vendor, amount, file_name, mime_type, drive_web_view_link, created_at";
+const TABLE_COLSPAN = 6;
 
 let currentAuth = null;
 let driveConfigured = false;
+let loadInvoicesController = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -25,11 +20,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   currentAuth = auth;
   applyRoleVisibility(auth.role);
-  await loadPumpSettings(true);
+  await loadPumpSettings();
   applyInvoicesBranding();
-
-  const actionsHead = document.getElementById("invoice-actions-head");
-  if (actionsHead) actionsHead.hidden = auth.role !== "admin";
+  applyLocalDriveBanner();
 
   if (typeof initPageSections === "function") {
     initPageSections({ defaultSection: "upload", validSections: ["upload", "library"] });
@@ -38,10 +31,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateInput = document.getElementById("invoice-date");
   if (dateInput) dateInput.value = getLocalDateString();
 
-  await refreshDriveStatus();
-  bindUploadForm();
   initInvoiceFilter();
-  loadInvoices();
+  bindUploadForm();
+  bindInvoiceTableActions();
+
+  await Promise.all([refreshDriveStatus(), loadInvoices()]);
 });
 
 function applyInvoicesBranding() {
@@ -53,43 +47,138 @@ function applyInvoicesBranding() {
   if (subtitle) document.title = `${subtitle} · ${name}`;
 }
 
-async function refreshDriveStatus() {
+function appConfig() {
+  return window.__APP_CONFIG__ || {};
+}
+
+function getLocalDriveSettings() {
+  const gd = PumpSettings.getCachedSync()?.integrations?.googleDrive;
+  return {
+    enabled: gd?.enabled === true,
+    rootFolderId: (gd?.rootFolderId || "").trim() || null,
+  };
+}
+
+function driveSetupHint() {
+  return currentAuth?.role === "admin"
+    ? "See Settings → Integrations for setup steps."
+    : "Ask an admin to complete Google Drive setup.";
+}
+
+function applyLocalDriveBanner() {
+  const local = getLocalDriveSettings();
+  if (local.enabled && local.rootFolderId) return;
+
+  const parts = [];
+  if (!local.enabled) parts.push("Google Drive integration is disabled in Settings.");
+  else if (!local.rootFolderId) parts.push("Root folder ID is missing in Settings → Integrations.");
+  if (parts.length) setDriveBanner(`${parts.join(" ")} ${driveSetupHint()}`.trim());
+}
+
+async function getSessionToken() {
+  const { data } = await supabaseClient.auth.getSession();
+  const token = data?.session?.access_token;
+  if (!token) throw new Error("Session expired. Please log in again.");
+  return token;
+}
+
+function invoiceFunctionUrl() {
+  const cfg = appConfig();
+  return `${cfg.SUPABASE_URL || supabaseClient.supabaseUrl}/functions/v1/invoice-documents`;
+}
+
+async function invoiceFunctionHeaders(json = false) {
+  const cfg = appConfig();
+  const headers = {
+    Authorization: `Bearer ${await getSessionToken()}`,
+    apikey: cfg.SUPABASE_ANON_KEY || supabaseClient.supabaseKey,
+  };
+  if (json) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+async function parseFunctionErrorResponse(res) {
+  const errBody = await res.json().catch(() => ({}));
+  return errBody.error || `Request failed (${res.status})`;
+}
+
+async function postInvoiceFunction(body, init = {}) {
+  const res = await fetch(invoiceFunctionUrl(), {
+    method: "POST",
+    headers: await invoiceFunctionHeaders(true),
+    body: JSON.stringify(body),
+    ...init,
+  });
+  if (!res.ok) throw new Error(await parseFunctionErrorResponse(res));
+  return res;
+}
+
+async function invokeInvoiceFunction(body) {
+  const res = await postInvoiceFunction(body);
+  const data = await res.json();
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+function setDriveBanner(message, disableUpload = true) {
   const banner = document.getElementById("invoice-drive-banner");
   const uploadBtn = document.getElementById("invoice-upload-btn");
   if (!banner) return;
+  banner.classList.remove("hidden");
+  banner.className = "smart-alert smart-alert--warning";
+  banner.innerHTML = `<span class="smart-alert-message">${escapeHtml(message)}</span>`;
+  if (uploadBtn) uploadBtn.disabled = disableUpload;
+}
 
+function hideDriveBanner() {
+  const banner = document.getElementById("invoice-drive-banner");
+  const uploadBtn = document.getElementById("invoice-upload-btn");
+  banner?.classList.add("hidden");
+  if (uploadBtn) uploadBtn.disabled = false;
+}
+
+function buildDriveBannerMessage(data) {
+  const parts = [];
+  if (!data.hasOAuth && !data.hasServiceAccount) {
+    parts.push("Google OAuth secrets are not configured on the server.");
+  } else if (data.hasServiceAccount && !data.hasOAuth) {
+    parts.push("Service accounts cannot upload to personal Gmail — add OAuth secrets in Supabase.");
+  }
+  if (!data.settingsEnabled) parts.push("Google Drive integration is disabled in Settings.");
+  else if (!data.rootFolderId) parts.push("Root folder ID is missing in Settings → Integrations.");
+  return `${parts.join(" ")} ${driveSetupHint()}`.trim();
+}
+
+async function refreshDriveStatus() {
   try {
-    const { data, error } = await supabaseClient.functions.invoke("invoice-documents", {
-      body: { action: "status" },
-    });
-    if (error) throw error;
-    driveConfigured = !!data?.configured;
-    if (driveConfigured) {
-      banner.classList.add("hidden");
-      if (uploadBtn) uploadBtn.disabled = false;
+    const data = await invokeInvoiceFunction({ action: "status" });
+
+    if (data.authOk === false && data.authError) {
+      driveConfigured = false;
+      setDriveBanner(`Session error: ${data.authError} Log out and log in again.`);
       return;
     }
-    banner.classList.remove("hidden");
-    banner.className = "smart-alert smart-alert--warning";
-    const parts = [];
-    if (!data?.hasServiceAccount) {
-      parts.push("Google service account is not configured on the server.");
+
+    driveConfigured = !!data.configured;
+    if (driveConfigured) {
+      hideDriveBanner();
+      return;
     }
-    if (!data?.rootFolderId) {
-      parts.push("Root Google Drive folder ID is missing in Settings → Integrations.");
-    }
-    banner.innerHTML = `<span class="smart-alert-message">${escapeHtml(parts.join(" ") + (currentAuth?.role === "admin"
-      ? " Configure it in Settings, then share the folder with the service account email."
-      : " Ask an admin to configure Google Drive in Settings."))}</span>`;
-    if (uploadBtn) uploadBtn.disabled = true;
+
+    setDriveBanner(buildDriveBannerMessage(data));
   } catch (err) {
     driveConfigured = false;
-    banner.classList.remove("hidden");
-    banner.className = "smart-alert smart-alert--warning";
-    banner.innerHTML = `<span class="smart-alert-message">Could not verify Google Drive setup. Upload may be unavailable.</span>`;
-    if (uploadBtn) uploadBtn.disabled = true;
     AppError.report(err, { context: "invoiceDriveStatus" });
+    const local = getLocalDriveSettings();
+    if (!local.enabled || !local.rootFolderId) return;
+    setDriveBanner(err.message || "Could not verify Google Drive setup.");
   }
+}
+
+function showFormError(errorEl, message) {
+  if (!errorEl) return;
+  errorEl.textContent = message;
+  errorEl.classList.remove("hidden");
 }
 
 function bindUploadForm() {
@@ -105,38 +194,16 @@ function bindUploadForm() {
     errorEl?.classList.add("hidden");
 
     if (!driveConfigured) {
-      if (errorEl) {
-        errorEl.textContent = "Google Drive is not configured.";
-        errorEl.classList.remove("hidden");
-      }
+      showFormError(errorEl, "Google Drive is not configured.");
       return;
     }
 
     const fileInput = document.getElementById("invoice-file");
     const file = fileInput?.files?.[0];
-    if (!file) {
-      if (errorEl) {
-        errorEl.textContent = "Select a file to upload.";
-        errorEl.classList.remove("hidden");
-      }
-      return;
-    }
-    if (!ALLOWED_MIME.has(file.type)) {
-      if (errorEl) {
-        errorEl.textContent = "Allowed types: PDF, JPEG, PNG, WebP.";
-        errorEl.classList.remove("hidden");
-      }
-      return;
-    }
-    if (file.size > MAX_INVOICE_BYTES) {
-      if (errorEl) {
-        errorEl.textContent = "File is too large (max 15 MB).";
-        errorEl.classList.remove("hidden");
-      }
-      return;
-    }
+    if (!file) return showFormError(errorEl, "Select a file to upload.");
+    if (!ALLOWED_MIME.has(file.type)) return showFormError(errorEl, "Allowed types: PDF, JPEG, PNG, WebP.");
+    if (file.size > MAX_INVOICE_BYTES) return showFormError(errorEl, "File is too large (max 15 MB).");
 
-    const formData = new FormData(form);
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = "Uploading…";
@@ -144,25 +211,14 @@ function bindUploadForm() {
     showProgress();
 
     try {
-      const { data: sessionData } = await supabaseClient.auth.getSession();
-      const token = sessionData?.session?.access_token;
-      if (!token) throw new Error("Session expired. Please log in again.");
-
-      const cfg = window.__APP_CONFIG__ || {};
-      const supabaseUrl = cfg.SUPABASE_URL || supabaseClient.supabaseUrl;
-      const res = await fetch(`${supabaseUrl}/functions/v1/invoice-documents`, {
+      const res = await fetch(invoiceFunctionUrl(), {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: cfg.SUPABASE_ANON_KEY || supabaseClient.supabaseKey,
-        },
-        body: formData,
+        headers: await invoiceFunctionHeaders(false),
+        body: new FormData(form),
       });
 
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(payload.error || `Upload failed (${res.status})`);
-      }
+      if (!res.ok) throw new Error(payload.error || `Upload failed (${res.status})`);
 
       successEl?.classList.remove("hidden");
       form.reset();
@@ -172,36 +228,30 @@ function bindUploadForm() {
       loadInvoices();
     } catch (err) {
       AppError.report(err, { context: "invoiceUpload" });
-      if (errorEl) {
-        errorEl.textContent = err.message || "Upload failed.";
-        errorEl.classList.remove("hidden");
-      }
+      showFormError(errorEl, err.message || "Upload failed.");
     } finally {
       hideProgress();
       if (submitBtn) {
         submitBtn.disabled = !driveConfigured;
-        submitBtn.textContent = "Upload to Google Drive";
+        submitBtn.textContent = "Upload invoice";
       }
     }
   });
 }
 
 function getInvoiceDateRange() {
-  const rangeSelect = document.getElementById("invoice-range");
-  const mode = rangeSelect?.value || "this-month";
-  const today = new Date();
-
+  const mode = document.getElementById("invoice-range")?.value || "this-month";
   if (mode === "this-year") {
-    const y = today.getFullYear();
+    const y = new Date().getFullYear();
     return { start: `${y}-01-01`, end: `${y}-12-31` };
   }
-
   const range = readDateRangeFromControls(
     document.getElementById("invoice-range"),
     document.getElementById("invoice-start"),
     document.getElementById("invoice-end")
   );
   if (range) return { start: range.start, end: range.end };
+  const today = new Date();
   return getMonthRange(today.getFullYear(), today.getMonth());
 }
 
@@ -225,60 +275,80 @@ function initInvoiceFilter() {
 async function loadInvoices() {
   const tbody = document.getElementById("invoice-table-body");
   const emptyCta = document.getElementById("invoice-empty-cta");
+  const tableEl = tbody?.closest("table");
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="6" class="muted">Loading…</td></tr>`;
+  loadInvoicesController?.abort();
+  const controller = new AbortController();
+  loadInvoicesController = controller;
+
+  tbody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="muted">Loading…</td></tr>`;
   emptyCta?.classList.add("hidden");
+  if (tableEl) tableEl.classList.remove("hidden");
 
   const { start, end } = getInvoiceDateRange();
-
   const { data, error } = await supabaseClient
     .from("invoice_documents")
-    .select("id, invoice_date, year, month, title, vendor, amount, file_name, mime_type, drive_web_view_link, created_at")
+    .select(INVOICE_LIST_COLUMNS)
     .gte("invoice_date", start)
     .lte("invoice_date", end)
     .order("invoice_date", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .abortSignal(controller.signal);
+
+  if (controller.signal.aborted) return;
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
     return;
   }
 
   if (!data?.length) {
     tbody.innerHTML = "";
+    if (tableEl) tableEl.classList.add("hidden");
     emptyCta?.classList.remove("hidden");
     return;
   }
 
   const isAdmin = currentAuth?.role === "admin";
-
   tbody.innerHTML = data.map((row) => {
     const folderLabel = `${row.year} / ${MONTH_NAMES[(row.month || 1) - 1] || row.month}`;
-    const amountCell = row.amount != null ? formatCurrency(row.amount) : "—";
-    const viewLink = row.drive_web_view_link
-      ? `<a href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener noreferrer">View</a>`
+    const viewBtn = row.drive_web_view_link
+      ? `<button type="button" class="link" data-action="view" data-href="${escapeHtml(row.drive_web_view_link)}">View</button>`
       : "";
-    const downloadBtn = `<button type="button" class="link invoice-download-btn" data-id="${escapeHtml(row.id)}">Download</button>`;
-    const actions = isAdmin
-      ? `<td class="table-actions"><button type="button" class="link danger invoice-delete-btn" data-id="${escapeHtml(row.id)}">Delete</button></td>`
+    const downloadBtn = `<button type="button" class="link" data-action="download" data-id="${escapeHtml(row.id)}">Download</button>`;
+    const deleteBtn = isAdmin
+      ? `<button type="button" class="link danger" data-action="delete" data-id="${escapeHtml(row.id)}">Delete</button>`
       : "";
+    const actions = [viewBtn, downloadBtn, deleteBtn].filter(Boolean).join(" · ");
 
     return `<tr>
       <td>${escapeHtml(row.invoice_date)}<br><small class="muted">${escapeHtml(folderLabel)}</small></td>
       <td>${escapeHtml(row.vendor || "—")}</td>
       <td>${escapeHtml(row.title || "—")}</td>
-      <td>${amountCell}</td>
-      <td>${escapeHtml(row.file_name)} ${viewLink ? " · " + viewLink : ""} · ${downloadBtn}</td>
-      ${actions}
+      <td>${row.amount != null ? formatCurrency(row.amount) : "—"}</td>
+      <td>${escapeHtml(row.file_name)}</td>
+      <td class="table-actions">${actions || "—"}</td>
     </tr>`;
   }).join("");
+}
 
-  tbody.querySelectorAll(".invoice-download-btn").forEach((btn) => {
-    btn.addEventListener("click", () => downloadInvoice(btn.dataset.id, btn));
-  });
-  tbody.querySelectorAll(".invoice-delete-btn").forEach((btn) => {
-    btn.addEventListener("click", () => deleteInvoice(btn.dataset.id));
+function bindInvoiceTableActions() {
+  const tbody = document.getElementById("invoice-table-body");
+  if (!tbody) return;
+
+  tbody.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-action]");
+    if (!btn || !tbody.contains(btn)) return;
+
+    const id = btn.dataset.id;
+    if (btn.dataset.action === "view") {
+      const href = btn.dataset.href;
+      if (href) window.open(href, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (btn.dataset.action === "download") await downloadInvoice(id, btn);
+    if (btn.dataset.action === "delete") await deleteInvoice(id);
   });
 }
 
@@ -292,30 +362,9 @@ async function downloadInvoice(id, btn) {
   showProgress();
 
   try {
-    const { data: sessionData } = await supabaseClient.auth.getSession();
-    const token = sessionData?.session?.access_token;
-    if (!token) throw new Error("Session expired.");
-
-    const cfg = window.__APP_CONFIG__ || {};
-    const supabaseUrl = cfg.SUPABASE_URL || supabaseClient.supabaseUrl;
-    const res = await fetch(`${supabaseUrl}/functions/v1/invoice-documents`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: cfg.SUPABASE_ANON_KEY || supabaseClient.supabaseKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ action: "download", id }),
-    });
-
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `Download failed (${res.status})`);
-    }
-
+    const res = await postInvoiceFunction({ action: "download", id });
     const blob = await res.blob();
-    const disposition = res.headers.get("Content-Disposition") || "";
-    const match = disposition.match(/filename="([^"]+)"/);
+    const match = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
     const fileName = match?.[1] || "invoice";
 
     const url = URL.createObjectURL(blob);
@@ -342,11 +391,7 @@ async function deleteInvoice(id) {
 
   showProgress();
   try {
-    const { data, error } = await supabaseClient.functions.invoke("invoice-documents", {
-      body: { action: "delete", id },
-    });
-    if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+    await invokeInvoiceFunction({ action: "delete", id });
     loadInvoices();
   } catch (err) {
     AppError.report(err, { context: "invoiceDelete" });

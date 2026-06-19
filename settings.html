@@ -461,12 +461,18 @@
         <!-- Integrations -->
         <section id="settings-panel-integrations" class="settings-panel card" data-panel="integrations" hidden>
           <h2>Google Drive (invoice documents)</h2>
-          <p class="muted">Supplier invoices uploaded from the Invoices page are stored in your Google Drive under <strong>Year → Month</strong> folders.</p>
+          <p class="muted">Supplier invoices are stored in your Google Drive under <strong>Year → Month</strong> folders.</p>
+          <p class="muted"><strong>Personal Gmail:</strong> use OAuth (below). Service accounts cannot upload to My Drive — they have no storage quota.</p>
+          <h3 class="settings-subheading">One-time OAuth setup</h3>
           <ol class="muted margin-bottom">
-            <li>Create a folder in Google Drive (e.g. <em>Petrol Pump Invoices</em>).</li>
-            <li>Share that folder with your Google service account email as <strong>Editor</strong>.</li>
-            <li>Copy the folder ID from the Drive URL (<code>…/folders/FOLDER_ID</code>).</li>
-            <li>Add the service account JSON as <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> in Supabase Edge Function secrets.</li>
+            <li>Google Cloud Console → <strong>APIs &amp; Services → Credentials</strong> → create <strong>OAuth client ID</strong> (Web application).</li>
+            <li>Add redirect URI: <code>https://developers.google.com/oauthplayground</code></li>
+            <li>Open <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener noreferrer">OAuth Playground</a> → gear icon → check <em>Use your own OAuth credentials</em> → enter Client ID &amp; Secret.</li>
+            <li>Select scope <code>https://www.googleapis.com/auth/drive</code> → Authorize with your Gmail → <strong>Exchange authorization code for tokens</strong> → copy the <strong>Refresh token</strong>.</li>
+            <li>In Supabase → Edge Functions → Secrets, set:
+              <code>GOOGLE_OAUTH_CLIENT_ID</code>, <code>GOOGLE_OAUTH_CLIENT_SECRET</code>, <code>GOOGLE_OAUTH_REFRESH_TOKEN</code>.
+            </li>
+            <li>Create a folder in Drive, copy its ID from the URL (<code>…/folders/FOLDER_ID</code>), paste below.</li>
           </ol>
           <form id="integrations-drive-form" class="form">
             <div class="form-field">

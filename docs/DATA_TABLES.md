@@ -17,6 +17,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [products](#products) | Product master for lube/accessory billing |
 | [invoices](#invoices) | Sales invoices / cash memos |
 | [invoice_items](#invoice_items) | Line items per invoice |
+| [invoice_documents](#invoice_documents) | Supplier/purchase invoice files (metadata; files in Google Drive) |
 | [pump_settings](#pump_settings) | Single-row JSON station config |
 | [expenses](#expenses) | Daily operating expenses |
 | [expense_categories](#expense_categories) | User-managed expense categories |
@@ -29,6 +30,8 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 
 For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
+
+**Storage buckets** (Supabase Storage, not PostgreSQL tables): `user-avatars` (operator profile photos), `staff-photos` (employee ID card photos). See [Architecture §6.4](ARCHITECTURE.md#64-supabase-storage-buckets).
 
 ---
 
@@ -49,8 +52,8 @@ All application tables have RLS enabled. Unless noted otherwise:
 
 **Exceptions:**
 
-- **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`.
-- **expense_categories, products, employees:** SELECT provisioned staff; mutations admin only.
+- **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`. Avatar URL updated via `update_my_avatar`.
+- **expense_categories, products, employees:** SELECT admin only on `employees` (supervisors use `list_employees_roster` / `list_employees_salary` RPCs); mutations admin only on all three.
 - **invoice_items:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — lines created only inside `save_invoice` RPC.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
@@ -91,9 +94,10 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | email | text | Unique, lowercase for matching |
 | role | text | `admin` \| `supervisor` |
 | display_name | text | Optional; shown in app |
+| avatar_url | text | Optional; public URL in `user-avatars` Storage bucket |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own JWT email, role `admin` only); UPDATE/DELETE admin. Staff changes should use RPCs `upsert_staff`, `delete_staff`.
+**RLS:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own JWT email, role `admin` only); UPDATE/DELETE admin. Staff changes should use RPCs `upsert_staff`, `delete_staff`. Avatar: RPC `update_my_avatar(p_avatar_url)`.
 
 ---
 
@@ -220,9 +224,38 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ---
 
+## invoice_documents
+
+**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (year/month folders under a configured root). Not related to billing table `invoices`.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| invoice_date | date | Supplier invoice date |
+| year | smallint | Folder year (from date) |
+| month | smallint | Folder month 1–12 |
+| title | text | Optional description |
+| vendor | text | Supplier name |
+| amount | numeric(14,2) | Optional amount |
+| file_name | text | Stored filename |
+| mime_type | text | e.g. `application/pdf` |
+| file_size | bigint | Size in bytes |
+| drive_file_id | text | Google Drive file ID |
+| drive_folder_id | text | Month folder ID in Drive |
+| drive_web_view_link | text | Optional view URL (anyone-with-link if shared on upload) |
+| notes | text | Optional |
+| uploaded_by | uuid | FK → auth.users |
+| created_at | timestamptz | Upload time |
+
+**RLS:** SELECT and INSERT for `is_supervisor_or_admin()`; DELETE for `is_admin()` only. Rows are inserted by edge function `invoice-documents` via service role; client reads via SELECT policy.
+
+**Page:** `invoices.html` (Finance → Invoices). **Setup:** [Invoice documents guide](INVOICE_DOCUMENTS.md).
+
+---
+
 ## pump_settings
 
-**Purpose:** **Single-row** JSON configuration (`id = 1`): station branding, billing defaults, pump/tank layout, report tanks, purchase VAT %, alerts, attendance shifts. Seeded from `js/appConfig.js` defaults when empty.
+**Purpose:** **Single-row** JSON configuration (`id = 1`): station branding, billing defaults, pump/tank layout, report tanks, purchase VAT %, alerts, attendance shifts, **integrations (Google Drive for invoice documents)**. Seeded from `js/appConfig.js` defaults when empty.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -234,6 +267,27 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 **RLS:** SELECT provisioned staff; INSERT/UPDATE **admin only**.
 
 **Client:** `js/pumpSettings.js` loads/caches config; Settings page and dashboard/reports consume it.
+
+**Integrations (`config.integrations.googleDrive`):**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| enabled | boolean | When true, invoice uploads allowed |
+| rootFolderId | string | Google Drive folder ID (URL `…/folders/ID`) |
+
+**Other notable config keys** (see `js/appConfig.js` defaults):
+
+| Path | Purpose |
+|------|---------|
+| `station.pfEstablishmentCode` | EPFO establishment code on salary slips |
+| `billing.includeInGstReports` | Include lube invoices in GST sales reports |
+| `reports.petrolPurchaseVatPct` / `dieselPurchaseVatPct` | Fuel purchase VAT/LST % for P&amp;L and purchase reports |
+| `reports.purchaseDeliveryPerKl` | Delivery charge ₹/KL on inward fuel |
+| `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
+| `alerts.*` | Low stock, high credit, high variation, day-closing reminder thresholds |
+| `shifts.*` | Morning/afternoon shift names and times for attendance |
+
+Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` for upload path. Full setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
 
 ---
 
@@ -248,8 +302,11 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | category | text | References expense_categories (logical) |
 | description | text | Optional |
 | amount | numeric | Amount (₹) |
+| salary_payment_id | uuid | Optional FK → salary_payments.id (auto-created when recording salary; unique when set) |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
+
+**Salary linkage:** When a salary payment is recorded on `salary.html`, the client inserts a matching `expenses` row (category typically “Salary”) with `salary_payment_id` set. Deleting the salary payment removes the linked expense.
 
 **Indexes:** `(date desc)`, `(created_at desc)`.
 
@@ -288,32 +345,45 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | phone_number | text | Optional 10-digit mobile |
 | pan_number | text | Optional PAN (`ABCDE1234F`) |
 | pf_number | text | Optional PF / UAN (max 30 chars) |
+| pf_contribution | numeric | Fixed monthly PF deduction (₹) — set in Settings → Staff salaries; shown on salary slips |
+| blood_group | text | Optional: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-` (required for ID card print) |
+| photo_url | text | Optional; public URL in `staff-photos` bucket (required for ID card print) |
+| date_of_birth | date | Optional; shown on staff ID card |
+| id_valid_from | date | ID card validity start (back of card) |
+| id_valid_to | date | ID card validity end (back of card) |
 | display_order | smallint | Order in lists |
-| is_active | boolean | Active flag |
+| is_active | boolean | Active flag (soft-delete sets false when FK blocks hard delete) |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT provisioned staff; INSERT/UPDATE/DELETE **admin only** (supervisors read via `list_employees_roster` / `list_employees_salary` RPCs).
+**RLS:** SELECT/INSERT/UPDATE/DELETE **admin only**. Supervisors never query this table directly — they use RPCs `list_employees_roster()` (name, role, salary, order only) or `list_employees_salary()` (includes PII for slips).
+
+**RPCs:** `set_employee_photo(employee_id, photo_url)` — admin updates `photo_url` after Storage upload.
+
+**Page:** `staff.html` (admin) — roster, profile, photo upload, BPCL-style ID card preview/print (`css/staff-id-print.css`). Deep link: `staff.html#{employee_uuid}`.
 
 ---
 
 ## salary_payments
 
-**Purpose:** Salary installments: one row per payment (e.g. partial salary on different dates).
+**Purpose:** Salary installments: one row per payment (e.g. partial salary on different dates). **`salary_month`** is the pay period (first day of month); **`date`** is when cash was actually paid.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
 | employee_id | uuid | FK → employees.id |
-| date | date | Payment date |
+| date | date | Payment date (when cash was paid) |
+| salary_month | date | Pay period — first day of the month being paid (e.g. `2026-06-01` for June salary) |
 | amount | numeric | Amount (₹) |
 | note | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**Indexes:** `(employee_id, date desc)`, `(date desc)`.
+**Indexes:** `(employee_id, date desc)`, `(date desc)`, `(salary_month desc, employee_id)`.
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** Default operational pattern; DELETE admin only.
+
+**Client:** `salary.html` groups payments by `salary_month`, shows monthly summary vs `employees.monthly_salary`, prints salary slips (`css/salary-slip-print.css`), and creates linked `expenses` row on payment.
 
 ---
 
@@ -435,7 +505,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**RPCs:** `get_day_closing_breakdown(date)` returns components (from snapshot if already saved); `save_day_closing(date, night_cash, phone_pay, remarks)` computes short and inserts one row. Both call `require_staff_access()`. `recascade_day_closing_short_from` is internal (not callable by clients).
+**RPCs:** `get_day_closing_breakdown(date)` returns components plus `already_saved` and `can_overwrite` (true when admin and a row exists). When saved and not admin, returns **snapshot** values from the stored row (supervisor sees frozen accounting figures). `save_day_closing(date, night_cash, phone_pay, remarks)` computes short and inserts one row; **admins may overwrite** an existing date (recomputes live components, preserves `closing_reference`, recascades `short_previous` forward). `delete_day_closing(id)` — admin only, **latest date only**. Both call `require_staff_access()`. `recascade_day_closing_short_from` is internal (not callable by clients).
 
 ---
 
@@ -456,7 +526,10 @@ invoices
   └── invoice_items.invoice_id
 
 pump_settings (id=1)
-  └── config JSON used by UI (station, billing, reports, pumps, alerts)
+  └── config JSON used by UI (station, billing, reports, pumps, alerts, integrations.googleDrive)
+
+invoice_documents
+  └── uploaded_by → auth.users; files in Google Drive (see INVOICE_DOCUMENTS.md)
 
 employees
   ├── salary_payments.employee_id
@@ -468,7 +541,50 @@ credit_customers
 
 day_closing
   └── short_previous = prev day’s short_today
+
+expenses
+  └── optional salary_payment_id → salary_payments (salary → expense auto-link)
 ```
+
+---
+
+## RPC reference
+
+Security-definer RPCs callable by `authenticated` (unless noted). Most call `require_staff_access()` at entry.
+
+| RPC | Purpose | Admin-only mutations |
+|-----|---------|----------------------|
+| `get_user_role()` | Resolve role from JWT email → `users` | — |
+| `is_admin()`, `is_supervisor_or_admin()` | Policy helpers | — |
+| `require_staff_access()` | Raises if not provisioned staff | internal |
+| `check_page_access(page)` | Returns `{ allowed, role, page }` | — |
+| `upsert_staff(email, role, display_name, password?)` | Create/update app user | bootstrap + admin |
+| `delete_staff(email)` | Remove app user | admin |
+| `update_my_avatar(url)` | Set operator profile photo URL | own row |
+| `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
+| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row | — |
+| `generate_invoice_number()` | Next billing invoice number | — |
+| `save_invoice(...)` | Atomic invoice + line items | — |
+| `list_employees_roster()` | Active employees without PII | — |
+| `list_employees_salary()` | Active employees with HR fields | — |
+| `set_employee_photo(id, url)` | Update employee photo URL | admin |
+| `save_employee_attendance_batch(date, jsonb)` | Upsert attendance rows | — |
+| `get_day_closing_breakdown(date)` | Closing components + overwrite flags | — |
+| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing | overwrite: admin |
+| `delete_day_closing(id)` | Remove latest closing | admin |
+| `compute_day_closing_components(date)` | Live component calculation | internal use |
+| `add_credit_entry(...)` | New credit sale | — |
+| `record_credit_payment(...)` | Payment + FIFO allocation | — |
+| `delete_credit_entry(id)` | Remove unsettled sale | admin |
+| `delete_credit_payment(id)` | Remove payment + reallocate | admin |
+| `get_credit_ledger_aggregated()` | Ledger summary list | — |
+| `get_open_credit_as_of(date)` | Total open credit | — |
+| `get_outstanding_credit_list_as_of(date)` | Overdue/outstanding customers | — |
+| `get_customer_credit_detail_as_of(name, date)` | Customer breakdown as of date | — |
+| `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
+| `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
+
+Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, `credit_entries_sync_amount_due`, audit trigger functions.
 
 ---
 
@@ -480,3 +596,4 @@ day_closing
 | [Flows](FLOWS.md) | User and data flows; page → data mapping |
 | [DSR Tables](DSR_TABLES.md) | DSR vs dsr_stock in detail |
 | [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
+| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
