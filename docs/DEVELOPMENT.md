@@ -100,6 +100,11 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
    - `SUPABASE_URL` — Supabase project URL for that environment.
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
+   **Prod only** — for the monthly database backup workflow (see [scripts/README.md](../scripts/README.md#scriptsbackup-prod-to-drivesh)):
+   - `PROD_DB_URL` — Session pooler URI from Supabase → Connect.
+   - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN` — same values as Supabase Edge Function secrets (invoice documents).
+   - `GOOGLE_DRIVE_BACKUP_FOLDER_ID` — Google Drive folder ID for DB backups (create a dedicated folder; not the invoice root).
+
 Use one Supabase project for prod and another for staging.
 
 ### 2.3 Deploy flow
