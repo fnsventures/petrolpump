@@ -13,6 +13,7 @@ All write operations target **staging** or **production** explicitly — prod da
 | Check prod before migration | `./scripts/db.sh migrate` | No | No |
 | Check prod only (same as migrate without apply) | `./scripts/db.sh preflight` | No | No |
 | Backup prod to local files | `./scripts/db.sh backup` | No | No |
+| Backup prod → Google Drive (CI or local) | `./scripts/backup-prod-to-drive.sh` | No | No |
 | Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | Yes (schema) | No |
 
 **Recommended entry point:** `./scripts/db.sh` — see `./scripts/db.sh help`
@@ -138,6 +139,38 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 
 ---
 
+### `./scripts/backup-prod-to-drive.sh`
+
+**Purpose:** Dump prod schema + data, gzip, and upload to a **Google Drive backup folder**. Same dumps as `./scripts/db.sh backup`.
+
+**Runs automatically:** GitHub Actions workflow `.github/workflows/backup-prod-db.yml` — **1st of each month** (03:00 UTC) and **manual** via **Actions → Backup production database → Run workflow**.
+
+**Drive layout:** `BackupRoot/YYYY/YYYY-MM/` with files:
+
+- `prod-schema-YYYYMMDD-HHMMSS.sql.gz`
+- `prod-data-YYYYMMDD-HHMMSS.sql.gz`
+- `backup-manifest-YYYYMMDD-HHMMSS.txt` (timestamp + DSR row counts)
+
+**GitHub prod environment secrets** (Settings → Environments → prod):
+
+| Secret | Value |
+|--------|--------|
+| `PROD_DB_URL` | Session pooler URI (same as `scripts/db.env`) |
+| `GOOGLE_OAUTH_CLIENT_ID` | Same as Supabase Edge Function secrets |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Same as Supabase Edge Function secrets |
+| `GOOGLE_OAUTH_REFRESH_TOKEN` | Same Gmail OAuth refresh token |
+| `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | Drive folder ID for DB backups (separate from invoice folder) |
+
+Create an empty folder in Drive (e.g. `Database Backups - Bishnupriya Fuels`), copy its ID from the URL.
+
+**Local run (optional):** export the Google secrets + `GOOGLE_DRIVE_BACKUP_FOLDER_ID`, ensure `PROD_DB_URL` is in `scripts/db.env` or env, then:
+
+```bash
+./scripts/backup-prod-to-drive.sh
+```
+
+---
+
 ## Script files
 
 | File | Role |
@@ -145,7 +178,9 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 | `db.sh` | Main entry point (sync / migrate / backup) |
 | `sync-prod-to-staging.sh` | Prod → staging data copy |
 | `migrate-prod.sh` | Prod schema migration |
-| `backup-prod.sh` | Prod-only backup |
+| `backup-prod.sh` | Prod-only backup (local files) |
+| `backup-prod-to-drive.sh` | Prod backup + Google Drive upload |
+| `lib/google-drive.sh` | OAuth + Drive upload helpers |
 | `db.env.example` | Connection URL template |
 | `lib/db-client.sh` | Shared psql / Docker helpers |
 | `lib/env.sh` | Load `db.env` |
