@@ -39,10 +39,10 @@ command -v gzip >/dev/null 2>&1 || { echo "gzip is required."; exit 1; }
 init_db_client
 
 echo "==> Backup production (read-only)"
-backup_files=()
-while IFS= read -r line; do
-  backup_files+=("${line}")
-done < <(backup_production "${PROD_DB_URL}" "${BACKUP_DIR}" "${TIMESTAMP}" "")
+backup_production "${PROD_DB_URL}" "${BACKUP_DIR}" "${TIMESTAMP}" "" >/dev/null
+schema_file="${BACKUP_DIR}/prod-schema-${TIMESTAMP}.sql"
+data_file="${BACKUP_DIR}/prod-data-${TIMESTAMP}.sql"
+backup_files=("${schema_file}" "${data_file}")
 capture_dsr_snapshot "${PROD_DB_URL}" "${BACKUP_DIR}" "${TIMESTAMP}" "snapshot"
 manifest_file="${BACKUP_DIR}/backup-manifest-${TIMESTAMP}.txt"
 {

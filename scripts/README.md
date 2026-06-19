@@ -141,33 +141,15 @@ Also use **Supabase Dashboard → Database → Backups** before major releases.
 
 ### `./scripts/backup-prod-to-drive.sh`
 
-**Purpose:** Dump prod schema + data, gzip, and upload to a **Google Drive backup folder**. Same dumps as `./scripts/db.sh backup`.
+**Purpose:** Dump prod schema + data, gzip, and upload to Google Drive. Same dumps as `./scripts/db.sh backup`.
 
-**Runs automatically:** GitHub Actions workflow `.github/workflows/backup-prod-db.yml` — **1st of each month** (03:00 UTC) and **manual** via **Actions → Backup production database → Run workflow**.
+**Full documentation:** [docs/BACKUP.md](../docs/BACKUP.md) — setup, architecture, included/excluded data, verify, restore, troubleshooting.
 
-**Drive layout:** `BackupRoot/YYYY/YYYY-MM/` with files:
+**Quick reference:**
 
-- `prod-schema-YYYYMMDD-HHMMSS.sql.gz`
-- `prod-data-YYYYMMDD-HHMMSS.sql.gz`
-- `backup-manifest-YYYYMMDD-HHMMSS.txt` (timestamp + DSR row counts)
-
-**GitHub prod environment secrets** (Settings → Environments → prod):
-
-| Secret | Value |
-|--------|--------|
-| `PROD_DB_URL` | Session pooler URI (same as `scripts/db.env`) |
-| `GOOGLE_OAUTH_CLIENT_ID` | Same as Supabase Edge Function secrets |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Same as Supabase Edge Function secrets |
-| `GOOGLE_OAUTH_REFRESH_TOKEN` | Same Gmail OAuth refresh token |
-| `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | Drive folder ID for DB backups (separate from invoice folder) |
-
-Create an empty folder in Drive (e.g. `Database Backups - Bishnupriya Fuels`), copy its ID from the URL.
-
-**Local run (optional):** export the Google secrets + `GOOGLE_DRIVE_BACKUP_FOLDER_ID`, ensure `PROD_DB_URL` is in `scripts/db.env` or env, then:
-
-```bash
-./scripts/backup-prod-to-drive.sh
-```
+- **Automated:** `.github/workflows/backup-prod-db.yml` — 1st of month 03:00 UTC + manual **Run workflow**
+- **Local:** `./scripts/backup-prod-to-drive.sh` (export Google secrets + `GOOGLE_DRIVE_BACKUP_FOLDER_ID`; `PROD_DB_URL` from `scripts/db.env`)
+- **Drive layout:** `BackupRoot/YYYY/YYYY-MM/` → `prod-schema-*.sql.gz`, `prod-data-*.sql.gz`, `backup-manifest-*.txt`
 
 ---
 
@@ -225,5 +207,6 @@ Never commit these.
 
 ## Related docs
 
+- [Backup guide](../docs/BACKUP.md) — prod DB → Google Drive (GitHub Actions, restore)
 - [Development guide §2](../docs/DEVELOPMENT.md#2-deployment-prod-and-staging) — GitHub Pages deploy, branches
 - [Architecture](../docs/ARCHITECTURE.md) — app structure and Supabase model
