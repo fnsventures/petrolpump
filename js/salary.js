@@ -1,16 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete */
-
-const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=2";
-
-function getMonthStartEnd(year, month) {
-  const m = month - 1;
-  const start = new Date(year, m, 1);
-  const end = new Date(year, m + 1, 0);
-  return {
-    start: toLocalDateString(start),
-    end: toLocalDateString(end),
-  };
-}
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -172,14 +160,6 @@ function amountInWordsINR(amount) {
   return `${words} Only`;
 }
 
-function formatAmountPlain(value) {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function computeSalaryBalance(monthlySalary, paid, staff) {
   const gross = Number(monthlySalary ?? 0);
   const payable = staff ? computePfBreakdown(gross, staff).netSalary : gross;
@@ -295,7 +275,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(formatDisplayDate(p.date))}</td>
-          <td class="num">₹ ${formatAmountPlain(p.amount)}</td>
+          <td class="num">₹ ${formatNumberPlain(p.amount)}</td>
           <td>${escapeHtml(p.note || "—")}</td>
         </tr>`
         )
@@ -303,9 +283,9 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
     : `<tr><td colspan="4" style="text-align:center;color:#64748b">No salary disbursements recorded for this month</td></tr>`;
 
   const balanceRow = netAdvance > 0.009
-    ? `<tr class="salary-slip-summary-balance"><td>Advance paid (over net salary)</td><td>₹ ${formatAmountPlain(netAdvance)}</td></tr>`
+    ? `<tr class="salary-slip-summary-balance"><td>Advance paid (over net salary)</td><td>₹ ${formatNumberPlain(netAdvance)}</td></tr>`
     : netPending > 0.009
-      ? `<tr class="salary-slip-summary-balance"><td>Balance payable (net)</td><td>₹ ${formatAmountPlain(netPending)}</td></tr>`
+      ? `<tr class="salary-slip-summary-balance"><td>Balance payable (net)</td><td>₹ ${formatNumberPlain(netPending)}</td></tr>`
       : `<tr class="salary-slip-summary-paid"><td>Balance payable (net)</td><td>₹ 0.00 — Settled</td></tr>`;
 
   const employerPfBlock =
@@ -316,7 +296,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         <table>
           <tr>
             <td>Employer PF (fixed monthly)</td>
-            <td>₹ ${formatAmountPlain(pf.employerPf)}</td>
+            <td>₹ ${formatNumberPlain(pf.employerPf)}</td>
           </tr>
         </table>
         <p style="margin:3pt 0 0;font-size:6.8pt;color:#64748b">Employer PF is deposited to EPFO separately and is not deducted from employee take-home pay.</p>
@@ -378,7 +358,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         </div>
         <div>
           <dt>PF wage (gross)</dt>
-          <dd>₹ ${formatAmountPlain(pf.gross)}</dd>
+          <dd>₹ ${formatNumberPlain(pf.gross)}</dd>
         </div>
       </dl>
 
@@ -388,11 +368,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
           <table class="salary-slip-pay-table">
             <tr>
               <td>Gross salary</td>
-              <td>₹ ${formatAmountPlain(pf.gross)}</td>
+              <td>₹ ${formatNumberPlain(pf.gross)}</td>
             </tr>
             <tr class="salary-slip-pay-total">
               <td>Total earnings</td>
-              <td>₹ ${formatAmountPlain(pf.gross)}</td>
+              <td>₹ ${formatNumberPlain(pf.gross)}</td>
             </tr>
           </table>
         </div>
@@ -401,11 +381,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
           <table class="salary-slip-pay-table">
             <tr>
               <td>Employee PF (fixed monthly)</td>
-              <td>₹ ${formatAmountPlain(pf.employeePf)}</td>
+              <td>₹ ${formatNumberPlain(pf.employeePf)}</td>
             </tr>
             <tr class="salary-slip-pay-total">
               <td>Total deductions</td>
-              <td>₹ ${formatAmountPlain(pf.employeePf)}</td>
+              <td>₹ ${formatNumberPlain(pf.employeePf)}</td>
             </tr>
           </table>
         </div>
@@ -415,7 +395,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
 
       <div class="salary-slip-net-box">
         <span class="salary-slip-net-label">Net salary (take-home)</span>
-        <span class="salary-slip-net-amount">₹ ${formatAmountPlain(pf.netSalary)}</span>
+        <span class="salary-slip-net-amount">₹ ${formatNumberPlain(pf.netSalary)}</span>
       </div>
       <p class="salary-slip-words"><strong>In words:</strong> ${escapeHtml(amountInWordsINR(pf.netSalary))}</p>
 
@@ -433,7 +413,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         <tfoot>
           <tr>
             <td colspan="2">Total disbursed</td>
-            <td class="num">₹ ${formatAmountPlain(totalPaid)}</td>
+            <td class="num">₹ ${formatNumberPlain(totalPaid)}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -442,11 +422,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
       <table class="salary-slip-summary">
         <tr class="salary-slip-summary-net">
           <td>Net salary for month</td>
-          <td>₹ ${formatAmountPlain(pf.netSalary)}</td>
+          <td>₹ ${formatNumberPlain(pf.netSalary)}</td>
         </tr>
         <tr class="salary-slip-summary-total">
           <td>Total disbursed this month</td>
-          <td>₹ ${formatAmountPlain(totalPaid)}</td>
+          <td>₹ ${formatNumberPlain(totalPaid)}</td>
         </tr>
         ${balanceRow}
       </table>
@@ -851,7 +831,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (error) {
       if (isMissingSalaryMonthColumn(error)) {
         const [year, month] = monthValue.split("-").map(Number);
-        const { start, end } = getMonthStartEnd(year, month);
+        const { start, end } = getMonthRange(year, month - 1);
         return loadPaymentsInRange(start, end);
       }
       AppError.report(error, { context: "loadPaymentsForSalaryMonth" });

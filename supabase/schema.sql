@@ -81,6 +81,24 @@ $$;
 
 comment on function public.is_supervisor_or_admin() is 'Returns true if the current user is a supervisor or admin.';
 
+-- Reject unprovisioned auth users (exist in auth.users but not public.users)
+create or replace function public.require_staff_access()
+returns void
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_supervisor_or_admin() then
+    raise exception 'Provisioned staff access required';
+  end if;
+end;
+$$;
+
+comment on function public.require_staff_access() is
+  'Raises unless the caller is a provisioned admin or supervisor in public.users.';
+
 -- ============================================================================
 -- AUDIT LOG TABLE (tracks sensitive operations)
 -- ============================================================================
@@ -139,6 +157,12 @@ begin
   if not public.is_admin() then
     if exists (select 1 from public.users where role = 'admin') then
       raise exception 'Access denied: Admin role required';
+    end if;
+    if lower(trim(p_email)) <> lower(trim(auth.jwt() ->> 'email')) then
+      raise exception 'Bootstrap: can only provision your own email as the first admin';
+    end if;
+    if p_role <> 'admin' then
+      raise exception 'Bootstrap: first user must be admin';
     end if;
   end if;
   if p_role not in ('admin', 'supervisor') then
@@ -266,18 +290,18 @@ alter table public.dsr_petrol enable row level security;
 
 drop policy if exists "dsr_petrol_select_authenticated" on public.dsr_petrol;
 create policy "dsr_petrol_select_authenticated" on public.dsr_petrol
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "dsr_petrol_insert_own" on public.dsr_petrol;
 create policy "dsr_petrol_insert_own" on public.dsr_petrol
   for insert to authenticated
-  with check (created_by = auth.uid());
+  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "dsr_petrol_update_by_role" on public.dsr_petrol;
 create policy "dsr_petrol_update_by_role" on public.dsr_petrol
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "dsr_petrol_delete_admin" on public.dsr_petrol;
 create policy "dsr_petrol_delete_admin" on public.dsr_petrol
@@ -329,18 +353,18 @@ alter table public.dsr_diesel enable row level security;
 
 drop policy if exists "dsr_diesel_select_authenticated" on public.dsr_diesel;
 create policy "dsr_diesel_select_authenticated" on public.dsr_diesel
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "dsr_diesel_insert_own" on public.dsr_diesel;
 create policy "dsr_diesel_insert_own" on public.dsr_diesel
   for insert to authenticated
-  with check (created_by = auth.uid());
+  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "dsr_diesel_update_by_role" on public.dsr_diesel;
 create policy "dsr_diesel_update_by_role" on public.dsr_diesel
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "dsr_diesel_delete_admin" on public.dsr_diesel;
 create policy "dsr_diesel_delete_admin" on public.dsr_diesel
@@ -453,8 +477,14 @@ returns table (
   created_by uuid,
   created_at timestamptz
 )
-language sql stable security definer
+language plpgsql
+stable
+security definer
+set search_path = public
 as $$
+begin
+  perform public.require_staff_access();
+  return query
   with bounds as (
     select (p_start - interval '1 day')::date as lookback_start
   ),
@@ -483,6 +513,7 @@ as $$
     w.remark, w.created_by, w.created_at
   from with_opening w
   where w.date >= p_start and w.date <= p_end;
+end;
 $$;
 
 comment on function public.get_dsr_stock_range(date, date) is
@@ -518,7 +549,7 @@ drop policy if exists "expenses_select_by_role" on public.expenses;
 create policy "expenses_select_authenticated" on public.expenses
   for select
   to authenticated
-  using (true);
+  using (public.is_supervisor_or_admin());
 
 -- INSERT: Users can only insert records owned by themselves
 drop policy if exists "expenses_insert_authenticated" on public.expenses;
@@ -527,7 +558,7 @@ create policy "expenses_insert_own" on public.expenses
   for insert
   to authenticated
   with check (
-    created_by = auth.uid()
+    public.is_supervisor_or_admin() and created_by = auth.uid()
   );
 
 -- UPDATE: Users can update their own records, admins can update all
@@ -536,12 +567,12 @@ create policy "expenses_update_by_role" on public.expenses
   for update
   to authenticated
   using (
-    created_by = auth.uid()
-    or public.is_admin()
+    public.is_supervisor_or_admin()
+    and (created_by = auth.uid() or public.is_admin())
   )
   with check (
-    created_by = auth.uid()
-    or public.is_admin()
+    public.is_supervisor_or_admin()
+    and (created_by = auth.uid() or public.is_admin())
   );
 
 -- DELETE: Only admins can delete expense records (audit trail protection)
@@ -570,7 +601,7 @@ alter table public.expense_categories enable row level security;
 
 drop policy if exists "expense_categories_select_authenticated" on public.expense_categories;
 create policy "expense_categories_select_authenticated" on public.expense_categories
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "expense_categories_insert_admin" on public.expense_categories;
 create policy "expense_categories_insert_admin" on public.expense_categories
@@ -610,7 +641,7 @@ alter table public.products enable row level security;
 
 drop policy if exists "products_select_authenticated" on public.products;
 create policy "products_select_authenticated" on public.products
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "products_insert_admin" on public.products;
 create policy "products_insert_admin" on public.products
@@ -666,18 +697,18 @@ alter table public.invoices enable row level security;
 
 drop policy if exists "invoices_select_authenticated" on public.invoices;
 create policy "invoices_select_authenticated" on public.invoices
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "invoices_insert_own" on public.invoices;
 create policy "invoices_insert_own" on public.invoices
   for insert to authenticated
-  with check (created_by = auth.uid());
+  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "invoices_update_by_role" on public.invoices;
 create policy "invoices_update_by_role" on public.invoices
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "invoices_delete_admin" on public.invoices;
 create policy "invoices_delete_admin" on public.invoices
@@ -708,19 +739,19 @@ alter table public.invoice_items enable row level security;
 
 drop policy if exists "invoice_items_select_authenticated" on public.invoice_items;
 create policy "invoice_items_select_authenticated" on public.invoice_items
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "invoice_items_insert_own" on public.invoice_items;
 create policy "invoice_items_insert_own" on public.invoice_items
-  for insert to authenticated with check (true);
+  for insert to authenticated with check (false);
 
 drop policy if exists "invoice_items_update_by_role" on public.invoice_items;
 create policy "invoice_items_update_by_role" on public.invoice_items
-  for update to authenticated using (true) with check (true);
+  for update to authenticated using (false) with check (false);
 
 drop policy if exists "invoice_items_delete_authenticated" on public.invoice_items;
 create policy "invoice_items_delete_authenticated" on public.invoice_items
-  for delete to authenticated using (true);
+  for delete to authenticated using (false);
 
 
 -- Generate next invoice number (CRI/NNNN)
@@ -779,6 +810,8 @@ declare
   v_qty numeric;
   v_rate numeric;
 begin
+  perform public.require_staff_access();
+
   v_invoice_number := public.generate_invoice_number();
   v_invoice_id := uuid_generate_v4();
 
@@ -904,6 +937,7 @@ security definer
 set search_path = public
 as $$
 begin
+  perform public.require_staff_access();
   if auth.jwt() ->> 'email' is null or trim(auth.jwt() ->> 'email') = '' then
     raise exception 'Not authenticated';
   end if;
@@ -922,12 +956,19 @@ alter table public.users enable row level security;
 
 drop policy if exists "users_select_authenticated" on public.users;
 create policy "users_select_authenticated" on public.users
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "users_insert_admin" on public.users;
 create policy "users_insert_admin" on public.users
   for insert to authenticated
-  with check (public.is_admin() or not exists (select 1 from public.users u where u.role = 'admin'));
+  with check (
+    public.is_admin()
+    or (
+      not exists (select 1 from public.users u where u.role = 'admin')
+      and lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'))
+      and role = 'admin'
+    )
+  );
 
 drop policy if exists "users_update_admin" on public.users;
 create policy "users_update_admin" on public.users
@@ -1000,18 +1041,23 @@ returns table (
   monthly_salary numeric,
   display_order smallint
 )
-language sql
+language plpgsql
 security definer
 stable
+set search_path = public
 as $$
+begin
+  perform public.require_staff_access();
+  return query
   select e.id, e.name, e.role_display, e.monthly_salary, e.display_order
   from public.employees e
   where e.is_active = true
   order by e.display_order, e.name;
+end;
 $$;
 
 comment on function public.list_employees_roster() is
-  'Active employees without PII — for salary and attendance (all authenticated).';
+  'Active employees without PII — for salary and attendance (provisioned staff only).';
 
 grant execute on function public.list_employees_roster() to authenticated;
 
@@ -1034,10 +1080,14 @@ returns table (
   id_valid_from date,
   id_valid_to date
 )
-language sql
+language plpgsql
 security definer
 stable
+set search_path = public
 as $$
+begin
+  perform public.require_staff_access();
+  return query
   select
     e.id,
     e.name,
@@ -1058,10 +1108,11 @@ as $$
   from public.employees e
   where e.is_active = true
   order by e.display_order, e.name;
+end;
 $$;
 
 comment on function public.list_employees_salary() is
-  'Active employees with HR Staff page fields for salary slips (supervisors; admins use employees table).';
+  'Active employees with HR Staff page fields for salary slips (provisioned staff only).';
 
 grant execute on function public.list_employees_salary() to authenticated;
 
@@ -1110,17 +1161,17 @@ alter table public.salary_payments enable row level security;
 
 drop policy if exists "salary_payments_select_authenticated" on public.salary_payments;
 create policy "salary_payments_select_authenticated" on public.salary_payments
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "salary_payments_insert_own" on public.salary_payments;
 create policy "salary_payments_insert_own" on public.salary_payments
-  for insert to authenticated with check (created_by = auth.uid());
+  for insert to authenticated with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "salary_payments_update_by_role" on public.salary_payments;
 create policy "salary_payments_update_by_role" on public.salary_payments
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "salary_payments_delete_admin" on public.salary_payments;
 create policy "salary_payments_delete_admin" on public.salary_payments
@@ -1151,17 +1202,17 @@ alter table public.employee_attendance enable row level security;
 
 drop policy if exists "employee_attendance_select_authenticated" on public.employee_attendance;
 create policy "employee_attendance_select_authenticated" on public.employee_attendance
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "employee_attendance_insert_own" on public.employee_attendance;
 create policy "employee_attendance_insert_own" on public.employee_attendance
-  for insert to authenticated with check (created_by = auth.uid());
+  for insert to authenticated with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "employee_attendance_update_own" on public.employee_attendance;
 create policy "employee_attendance_update_own" on public.employee_attendance
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "employee_attendance_delete_admin" on public.employee_attendance;
 create policy "employee_attendance_delete_admin" on public.employee_attendance
@@ -1253,7 +1304,7 @@ drop policy if exists "credit_select_by_role" on public.credit_customers;
 create policy "credit_select_authenticated" on public.credit_customers
   for select
   to authenticated
-  using (true);
+  using (public.is_supervisor_or_admin());
 
 -- INSERT: Users can only insert records owned by themselves
 drop policy if exists "credit_insert_authenticated" on public.credit_customers;
@@ -1262,7 +1313,7 @@ create policy "credit_insert_own" on public.credit_customers
   for insert
   to authenticated
   with check (
-    created_by = auth.uid()
+    public.is_supervisor_or_admin() and created_by = auth.uid()
   );
 
 -- UPDATE: Supervisors and admins (contact info; amount_due also updated by payment RPC/triggers)
@@ -1314,17 +1365,17 @@ alter table public.credit_entries enable row level security;
 
 drop policy if exists "credit_entries_select_authenticated" on public.credit_entries;
 create policy "credit_entries_select_authenticated" on public.credit_entries
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "credit_entries_insert_own" on public.credit_entries;
 create policy "credit_entries_insert_own" on public.credit_entries
-  for insert to authenticated with check (created_by = auth.uid());
+  for insert to authenticated with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "credit_entries_update_by_role" on public.credit_entries;
 create policy "credit_entries_update_by_role" on public.credit_entries
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "credit_entries_delete_admin" on public.credit_entries;
 create policy "credit_entries_delete_admin" on public.credit_entries
@@ -1383,18 +1434,18 @@ alter table public.credit_payments enable row level security;
 
 drop policy if exists "credit_payments_select_authenticated" on public.credit_payments;
 create policy "credit_payments_select_authenticated" on public.credit_payments
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "credit_payments_insert_own" on public.credit_payments;
 create policy "credit_payments_insert_own" on public.credit_payments
   for insert to authenticated
-  with check (created_by = auth.uid());
+  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "credit_payments_update_by_role" on public.credit_payments;
 create policy "credit_payments_update_by_role" on public.credit_payments
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "credit_payments_delete_admin" on public.credit_payments;
 create policy "credit_payments_delete_admin" on public.credit_payments
@@ -1441,18 +1492,18 @@ alter table public.day_closing enable row level security;
 
 drop policy if exists "day_closing_select_authenticated" on public.day_closing;
 create policy "day_closing_select_authenticated" on public.day_closing
-  for select to authenticated using (true);
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "day_closing_insert_own" on public.day_closing;
 create policy "day_closing_insert_own" on public.day_closing
   for insert to authenticated
-  with check (created_by = auth.uid());
+  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
 
 drop policy if exists "day_closing_update_by_role" on public.day_closing;
 create policy "day_closing_update_by_role" on public.day_closing
   for update to authenticated
-  using (created_by = auth.uid() or public.is_admin())
-  with check (created_by = auth.uid() or public.is_admin());
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "day_closing_delete_admin" on public.day_closing;
 create policy "day_closing_delete_admin" on public.day_closing
@@ -1482,6 +1533,8 @@ declare
   v_credit_today numeric := 0;
   v_expenses_today numeric := 0;
 begin
+  perform public.require_staff_access();
+
   -- Total sale: gross litres (total_sales, includes testing) × rate
   select coalesce(sum(
     coalesce(v_row.total_sales, 0)
@@ -1568,7 +1621,9 @@ $$;
 comment on function public.recascade_day_closing_short_from(date) is
   'After a day closing overwrite, recalculate short chain for all later closed dates.';
 
-grant execute on function public.recascade_day_closing_short_from(date) to authenticated;
+grant execute on function public.recascade_day_closing_short_from(date) to service_role;
+revoke all on function public.recascade_day_closing_short_from(date) from public;
+revoke all on function public.recascade_day_closing_short_from(date) from authenticated;
 
 -- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
 create or replace function public.get_day_closing_breakdown(p_date date)
@@ -1587,6 +1642,8 @@ declare
   v_short_previous numeric := 0;
   v_credit_today numeric := 0;
 begin
+  perform public.require_staff_access();
+
   select total_sale, collection, short_previous, credit_today, expenses_today,
          night_cash, phone_pay, short_today, closing_reference, remarks
   into v_existing
@@ -1655,6 +1712,8 @@ declare
   v_ref text;
   v_seq bigint;
 begin
+  perform public.require_staff_access();
+
   if p_night_cash is null or p_night_cash < 0 then
     raise exception 'night_cash must be >= 0';
   end if;
@@ -1758,6 +1817,8 @@ declare
   v_fuel_type text;
   v_quantity numeric;
 begin
+  perform public.require_staff_access();
+
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
@@ -1835,6 +1896,8 @@ declare
   v_alloc numeric;
   v_new_due numeric;
 begin
+  perform public.require_staff_access();
+
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
@@ -2099,6 +2162,8 @@ as $$
 declare
   v_total numeric;
 begin
+  perform public.require_staff_access();
+
   with bal as (
     select e.credit_customer_id, coalesce(sum(e.amount), 0) as credit_tot
     from public.credit_entries e
@@ -2134,6 +2199,7 @@ returns table (
 language plpgsql security definer stable
 as $$
 begin
+  perform public.require_staff_access();
   return query
   with bal as (
     select e.credit_customer_id,
@@ -2192,6 +2258,7 @@ returns table (
 language plpgsql security definer stable
 as $$
 begin
+  perform public.require_staff_access();
   return query
   with name_match as (
     select c.id as credit_customer_id,
@@ -2259,6 +2326,7 @@ returns table (
 language plpgsql security definer stable
 as $$
 begin
+  perform public.require_staff_access();
   return query
   with customer_ids as (
     select c.id as credit_customer_id
@@ -2312,6 +2380,7 @@ returns table (
 language plpgsql security definer stable
 as $$
 begin
+  perform public.require_staff_access();
   return query
   with customer_ids as (
     select c.id as credit_customer_id from public.credit_customers c
@@ -2404,6 +2473,7 @@ returns table (
 language plpgsql security definer stable
 as $$
 begin
+  perform public.require_staff_access();
   return query
   with ranked as (
     select c.id, c.customer_name, c.vehicle_no, c.amount_due, c.date, c.last_payment, c.notes,
@@ -2563,7 +2633,7 @@ alter table public.pump_settings enable row level security;
 drop policy if exists pump_settings_select_authenticated on public.pump_settings;
 create policy pump_settings_select_authenticated
   on public.pump_settings for select to authenticated
-  using (true);
+  using (public.is_supervisor_or_admin());
 
 drop policy if exists pump_settings_upsert_admin on public.pump_settings;
 create policy pump_settings_upsert_admin
@@ -2575,6 +2645,7 @@ grant select on public.pump_settings to authenticated;
 grant insert, update on public.pump_settings to authenticated;
 
 -- RPC execute grants for authenticated clients
+grant execute on function public.require_staff_access() to authenticated;
 grant execute on function public.check_page_access(text) to authenticated;
 grant execute on function public.update_dsr_buying_price(uuid, numeric) to authenticated;
 grant execute on function public.get_day_closing_breakdown(date) to authenticated;
