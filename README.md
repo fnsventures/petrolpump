@@ -20,7 +20,7 @@ Web application for **daily operations**, **finance**, and **HR** at a BPCL fuel
 | **HR** | Employee roster (incl. Aadhaar, PAN, PF), attendance, salary installments |
 | **Settings** | Station branding, pump/tank layout, billing defaults, users, alerts (admin) |
 
-**Roles:** `admin` (full access) and `supervisor` (operations + billing; no settings, reports, or analysis). Authorization is enforced by RLS and `check_page_access`.
+**Roles:** `admin` (full access) and `supervisor` (operations + billing; no settings, reports, or analysis). Both must be provisioned in `public.users`. Authorization is enforced by RLS, RPC guards, and `check_page_access`.
 
 End-to-end flows and page → data mapping: [Flows](docs/FLOWS.md).
 

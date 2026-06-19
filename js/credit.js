@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -566,15 +566,6 @@ async function resolveCustomerIds() {
 function creditSummaryAssetUrl(path) {
   return new URL(path, window.location.href).href;
 }
-
-function formatSummaryAmountPlain(value) {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function sortSummaryEntriesByDate(entries) {
   return [...(entries || [])].sort((a, b) =>
     String(a.entry_date || "").localeCompare(String(b.entry_date || ""))
@@ -599,7 +590,7 @@ function buildCreditSummaryLedgerRows(entries, emptyLabel) {
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(formatDisplayDate(e.entry_date))}</td>
-          <td class="num">₹ ${formatSummaryAmountPlain(e.amount)}</td>
+          <td class="num">₹ ${formatNumberPlain(e.amount)}</td>
         </tr>`
     )
     .join("");
@@ -688,7 +679,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
         <p class="credit-summary-doc-meta">
           ${
             periodActivity
-              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatSummaryAmountPlain(periodCredit)}, settled ₹ ${formatSummaryAmountPlain(periodSettled)}, outstanding ₹ ${formatSummaryAmountPlain(outstanding)} (net for this period).`
+              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatNumberPlain(periodCredit)}, settled ₹ ${formatNumberPlain(periodSettled)}, outstanding ₹ ${formatNumberPlain(outstanding)} (net for this period).`
               : `Figures below are cumulative through ${escapeHtml(asOfLabel)}.`
           }
         </p>
@@ -714,7 +705,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
       <div class="credit-summary-kpis">
         <div class="credit-summary-kpi credit-summary-kpi--outstanding${cleared ? " is-cleared" : ""}">
           <span class="credit-summary-kpi-label">Outstanding</span>
-          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(outstanding)}</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(outstanding)}</span>
           <span class="credit-summary-kpi-meta">${
             cleared
               ? periodScopedOutstanding
@@ -727,12 +718,12 @@ function buildCreditSummaryPrintHtml(summary, context) {
         </div>
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Credit taken</span>
-          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(creditTaken)}</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(creditTaken)}</span>
           ${creditMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(creditMeta)}</span>` : ""}
         </div>
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Settlement done</span>
-          <span class="credit-summary-kpi-value">₹ ${formatSummaryAmountPlain(settlementDone)}</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(settlementDone)}</span>
           ${settlementMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(settlementMeta)}</span>` : ""}
         </div>
       </div>
@@ -742,8 +733,8 @@ function buildCreditSummaryPrintHtml(summary, context) {
           ? `<div class="credit-summary-period-box">
         <strong>Selected period:</strong> ${escapeHtml(periodActivity)}
         <div class="credit-summary-period-stats">
-          <span>Credit in period: <strong>₹ ${formatSummaryAmountPlain(periodCredit)}</strong></span>
-          <span>Settled in period: <strong>₹ ${formatSummaryAmountPlain(periodSettled)}</strong></span>
+          <span>Credit in period: <strong>₹ ${formatNumberPlain(periodCredit)}</strong></span>
+          <span>Settled in period: <strong>₹ ${formatNumberPlain(periodSettled)}</strong></span>
         </div>
       </div>`
           : ""
@@ -772,7 +763,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
           <tfoot>
             <tr class="report-total-row">
               <td colspan="2">Total credit</td>
-              <td class="num">₹ ${formatSummaryAmountPlain(creditTotal)}</td>
+              <td class="num">₹ ${formatNumberPlain(creditTotal)}</td>
             </tr>
           </tfoot>
         </table>
@@ -801,7 +792,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
           <tfoot>
             <tr class="report-total-row">
               <td colspan="2">Total settled</td>
-              <td class="num">₹ ${formatSummaryAmountPlain(paymentTotal)}</td>
+              <td class="num">₹ ${formatNumberPlain(paymentTotal)}</td>
             </tr>
           </tfoot>
         </table>
