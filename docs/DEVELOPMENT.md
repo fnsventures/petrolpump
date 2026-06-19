@@ -100,7 +100,7 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
    - `SUPABASE_URL` — Supabase project URL for that environment.
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
-   **Prod only** — for the monthly database backup workflow (see [scripts/README.md](../scripts/README.md#scriptsbackup-prod-to-drivesh)):
+   **Prod only** — for the monthly database backup workflow (full guide: [Backup](BACKUP.md)):
    - `PROD_DB_URL` — Session pooler URI from Supabase → Connect.
    - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN` — same values as Supabase Edge Function secrets (invoice documents).
    - `GOOGLE_DRIVE_BACKUP_FOLDER_ID` — Google Drive folder ID for DB backups (create a dedicated folder; not the invoice root).
@@ -200,3 +200,4 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 | [Data Tables](DATA_TABLES.md) | Database tables and RLS |
 | [Flows](FLOWS.md) | User and data flows |
 | [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function deploy, troubleshooting |
+| [Backup](BACKUP.md) | Prod DB backup to Google Drive (GitHub Actions, restore, troubleshooting) |

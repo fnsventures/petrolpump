@@ -14,6 +14,7 @@ This folder contains the technical documentation for the Petrol Pump application
 | [**DSR_TABLES.md**](DSR_TABLES.md) | **DSR model**: `dsr_petrol` / `dsr_diesel`, union `dsr` view, computed `dsr_stock`, and `get_dsr_stock_range`. |
 | [**DEVELOPMENT.md**](DEVELOPMENT.md) | **Setup and operations**: local development (env, server, first login), deployment (prod/staging, GitHub secrets, deploy flow), supervisor/operator login. |
 | [**INVOICE_DOCUMENTS.md**](INVOICE_DOCUMENTS.md) | **Supplier invoice documents + Google Drive**: full setup from scratch (Google Cloud OAuth, Supabase secrets, edge function deploy, Settings, troubleshooting). |
+| [**BACKUP.md**](BACKUP.md) | **Production DB backup**: monthly GitHub Actions → Google Drive, setup, what is included/excluded, verify, restore, troubleshooting. |
 | [**../scripts/README.md**](../scripts/README.md) | **Database scripts**: prod → staging sync, prod migration, backup — which command to run and when. |
 
 ---
@@ -34,6 +35,9 @@ This folder contains the technical documentation for the Petrol Pump application
 
 - **Setting up supplier invoice storage (Google Drive)**  
   Follow [Invoice documents guide](INVOICE_DOCUMENTS.md) — step-by-step for Google Cloud, Supabase edge function, and app integration.
+
+- **Production database backup (monthly Drive upload)**  
+  Follow [Backup guide](BACKUP.md) — GitHub Actions setup, secrets, restore, and troubleshooting.
 
 - **Understanding a feature end-to-end**  
   Use [Flows](FLOWS.md) for dashboard, daily ops, credit, billing, invoice documents, day closing (incl. admin overwrite), reports, analysis, HR, and settings — including the page → data table.
