@@ -24,13 +24,14 @@ User opens app (index.html / login.html)
     → Enters email + password
     → Supabase Auth signs in
     → auth.js: fetch role from public.users (by email)
+    → If no public.users row: role unset — RLS/RPCs deny all data (provisioned staff required)
     → Role cached (AppCache), stored in session
     → Redirect: admin/supervisor → dashboard.html
     → requireAuth() on protected pages; optional pageName → check_page_access RPC
     → Navigation: admin sees Analysis, Reports, Settings; supervisor sees ops + billing only
 ```
 
-**Important:** All data access is enforced by RLS in the database. Hiding links and `check_page_access` are for UX and defense-in-depth.
+**Important:** All data access is enforced by RLS and security-definer RPC guards in the database. A user must exist in both Auth and `public.users`. Hiding links and `check_page_access` are for UX and defense-in-depth.
 
 | Page | `check_page_access` |
 |------|---------------------|

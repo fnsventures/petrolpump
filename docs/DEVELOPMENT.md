@@ -57,14 +57,22 @@ Then open **http://localhost:3000/** in your browser. Use `index.html` or `login
 
 ### 1.4 First login
 
-- Ensure at least one user exists in **Supabase Auth** (Authentication → Users) with email/password.
-- Add the same user to `public.users` with role `admin` (e.g. via Supabase SQL Editor or the app Settings page after first login if you bootstrap an admin another way). Example:
+Two steps are required — Supabase Auth alone is **not** enough to use the app:
 
-  ```sql
-  insert into public.users (email, role)
-  values ('your@email.com', 'admin')
-  on conflict (email) do update set role = 'admin';
-  ```
+1. **Supabase Auth** — Create the user under **Authentication → Users** (email/password).
+2. **Provision in `public.users`** — Add a row with the same email and role `admin` or `supervisor`.
+
+**Greenfield (no admin yet):** After signing in, the first user can self-provision as admin via **Settings → Users** or the `upsert_staff` RPC. Bootstrap rules enforce: only **your own JWT email**, role must be **`admin`**. You cannot create a supervisor or provision someone else's email until an admin exists.
+
+**Existing deployment:** An admin adds operators via **Settings → Users** or SQL:
+
+```sql
+insert into public.users (email, role)
+values ('your@email.com', 'admin')
+on conflict (email) do update set role = 'admin';
+```
+
+**Unprovisioned users** (Auth account only, no `public.users` row) can sign in but will see empty data and errors on all operational pages — RLS and RPCs require provisioned staff (`is_supervisor_or_admin()`).
 
 ---
 
@@ -127,7 +135,7 @@ Optional: `./scripts/db.sh backup` before step 4.
 
 ## 3. Supervisor / operator login
 
-Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, attendance, salary) but **not** Analysis, **Reports**, or Settings. They cannot edit the employee roster or product catalog (admin-only RLS). Data access is still enforced by RLS; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
+Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, attendance, salary) but **not** Analysis, **Reports**, or Settings. They cannot edit the employee roster or product catalog (admin-only RLS). Both roles must be **provisioned** in `public.users` — an Auth account alone is insufficient. Data access is enforced by RLS and RPC guards; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
 
 ### 3.1 Steps to enable a supervisor
 

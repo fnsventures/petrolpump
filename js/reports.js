@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, storedToLandedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, resolveStoredBuyingRate, computeProfitLossSummary, isTestingExpenseCategory */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, storedToLandedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, resolveStoredBuyingRate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -115,18 +115,12 @@ function formatMonthLabel(monthKey) {
 const FUEL_OUTWARD_GST_PCT = 0;
 
 /**
- * Daily fuel sale value: net litres × that day's selling rate (petrol_rate / diesel_rate).
+ * Daily fuel sale value: net litres × that day's selling rate.
  * @returns {{ litres: number, gross: number }}
  */
 function calcDailyFuelSale(row) {
-  const product = normalizeProduct(row.product);
-  if (product !== "petrol" && product !== "diesel") return { litres: 0, gross: 0 };
-  const litres = getDsrNetSaleLitres(row);
-  const rate = getDsrSaleRate(row);
-  if (!Number.isFinite(litres) || litres <= 0 || !Number.isFinite(rate) || rate <= 0) {
-    return { litres: 0, gross: 0 };
-  }
-  return { litres, gross: litres * rate };
+  const { revenue, litres } = computeFuelRowMargin(row, null);
+  return { litres, gross: revenue };
 }
 
 /**
@@ -366,29 +360,6 @@ function setActiveReportTab(reportId) {
   if (descEl) descEl.textContent = label?.description ?? "";
 }
 
-function formatDateInput(date) {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function formatDisplayDate(dateStr) {
-  const d = new Date(`${dateStr}T00:00:00`);
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" });
-}
-
-function formatQty(value) {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatAmt(value) {
-  if (value == null || Number.isNaN(Number(value))) return "—";
-  return Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 function splitRatio(a, b) {
   const t = Number(a) + Number(b);
   if (!Number.isFinite(t) || t <= 0) return [0.5, 0.5];
@@ -406,7 +377,7 @@ function reportHeader(title, start, end) {
           <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
           ${gstin ? `<p class="report-gstin">GSTIN: ${escapeHtml(gstin)}</p>` : ""}
           <p class="report-title">${escapeHtml(title)}</p>
-          <p class="report-period">Period: ${formatDisplayDate(start)} &nbsp;–&nbsp; ${formatDisplayDate(end)}</p>
+          <p class="report-period">Period: ${formatNumericDate(start)} &nbsp;–&nbsp; ${formatNumericDate(end)}</p>
         </div>
       </div>
     </header>`;
@@ -434,8 +405,8 @@ async function loadAndRenderReports() {
   if (label) {
     label.textContent =
       rangeStart === rangeEnd
-        ? formatDisplayDate(rangeStart)
-        : `${formatDisplayDate(rangeStart)} – ${formatDisplayDate(rangeEnd)}`;
+        ? formatNumericDate(rangeStart)
+        : `${formatNumericDate(rangeStart)} – ${formatNumericDate(rangeEnd)}`;
   }
 
   if (preview) preview.textContent = "Loading…";
@@ -524,19 +495,6 @@ async function fetchReportData(start, end) {
   };
 }
 
-function mergeDsrStock(dsrRows, stockRows) {
-  const map = new Map();
-  dsrRows.forEach((row) => {
-    const key = `${row.date}-${row.product}`;
-    map.set(key, { ...row });
-  });
-  stockRows.forEach((row) => {
-    const key = `${row.date}-${row.product}`;
-    map.set(key, { ...(map.get(key) || {}), ...row, product: row.product, date: row.date });
-  });
-  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
-}
-
 function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rateField) {
   let cumSale = 0;
   let cumVariance = 0;
@@ -573,18 +531,18 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
       const rate = Number(row[rateField] ?? 0);
 
       return `<tr>
-        <td>${formatDisplayDate(row.date)}</td>
-        <td class="num">${formatQty(openingDip)}</td>
-        <td class="num">${formatQty(purchase)}</td>
-        <td class="num">${formatQty(testing)}</td>
-        <td class="num">${formatQty(saleMeter)}</td>
-        <td class="num">${formatQty(actualSale)}</td>
-        <td class="num">${formatQty(cumSale)}</td>
-        <td class="num">${formatQty(saleByDip)}</td>
-        <td class="num">${formatQty(closingDip)}</td>
-        <td class="num">${formatQty(variance)}</td>
-        <td class="num">${formatQty(cumVariance)}</td>
-        <td class="num">${formatAmt(rate)}</td>
+        <td>${formatNumericDate(row.date)}</td>
+        <td class="num">${formatNumberPlain(openingDip)}</td>
+        <td class="num">${formatNumberPlain(purchase)}</td>
+        <td class="num">${formatNumberPlain(testing)}</td>
+        <td class="num">${formatNumberPlain(saleMeter)}</td>
+        <td class="num">${formatNumberPlain(actualSale)}</td>
+        <td class="num">${formatNumberPlain(cumSale)}</td>
+        <td class="num">${formatNumberPlain(saleByDip)}</td>
+        <td class="num">${formatNumberPlain(closingDip)}</td>
+        <td class="num">${formatNumberPlain(variance)}</td>
+        <td class="num">${formatNumberPlain(cumVariance)}</td>
+        <td class="num">${formatNumberPlain(rate)}</td>
       </tr>`;
     })
     .join("");
@@ -616,15 +574,15 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
           <tr class="report-total-row">
             <td><strong>TOTAL</strong></td>
             <td></td>
-            <td class="num"><strong>${formatQty(totalPurchase)}</strong></td>
-            <td class="num"><strong>${formatQty(totalTesting)}</strong></td>
-            <td class="num"><strong>${formatQty(totalMeter)}</strong></td>
-            <td class="num"><strong>${formatQty(totalActual)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totalPurchase)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totalTesting)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totalMeter)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totalActual)}</strong></td>
             <td></td>
             <td></td>
-            <td class="num"><strong>${formatQty(lastClosing)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(lastClosing)}</strong></td>
             <td></td>
-            <td class="num"><strong>${formatQty(cumVariance)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(cumVariance)}</strong></td>
             <td></td>
           </tr>
         </tfoot>
@@ -634,7 +592,7 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
 }
 
 function renderTankWiseDsr(data, range) {
-  const merged = mergeDsrStock(data.dsrRows, data.stockRows);
+  const merged = DsrQueries.mergeDsrStock(data.dsrRows, data.stockRows);
   const tanks = PumpSettings.getCachedSync().reports?.tanks || AppConfig.DEFAULT_REPORT_TANKS;
 
   let sections = reportHeader("Tank-wise DSR report", range.start, range.end);
@@ -778,10 +736,10 @@ function renderGstSummaryTable(slabTotals, title, range, inward, options = {}) {
       const lineTax = t.cgst + t.sgst;
       return `<tr>
       <td>${escapeHtml(s.label)}</td>
-      <td class="num">${formatAmt(t.taxable)}</td>
-      <td class="num">${inward ? formatAmt(lineTax) : formatAmt(t.cgst)}</td>
-      <td class="num">${inward ? "—" : formatAmt(t.sgst)}</td>
-      <td class="num">${formatAmt(t.gross)}</td>
+      <td class="num">${formatNumberPlain(t.taxable)}</td>
+      <td class="num">${inward ? formatNumberPlain(lineTax) : formatNumberPlain(t.cgst)}</td>
+      <td class="num">${inward ? "—" : formatNumberPlain(t.sgst)}</td>
+      <td class="num">${formatNumberPlain(t.gross)}</td>
     </tr>`;
     })
     .join("");
@@ -822,14 +780,14 @@ function renderGstSummaryTable(slabTotals, title, range, inward, options = {}) {
       <tfoot>
         <tr class="report-total-row">
           <td><strong>Total</strong></td>
-          <td class="num"><strong>${formatAmt(totalTaxable)}</strong></td>
-          <td class="num"><strong>${formatAmt(inward ? totalVat : totalCgst)}</strong></td>
-          <td class="num"><strong>${inward ? "—" : formatAmt(totalSgst)}</strong></td>
-          <td class="num"><strong>${formatAmt(totalGross)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totalTaxable)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(inward ? totalVat : totalCgst)}</strong></td>
+          <td class="num"><strong>${inward ? "—" : formatNumberPlain(totalSgst)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totalGross)}</strong></td>
         </tr>
       </tfoot>
     </table>
-    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} value: <strong>${formatAmt(totalTaxable)}</strong> · Gross: <strong>${formatAmt(totalGross)}</strong></p>${tail}`;
+    <p class="report-summary-line">Total taxable ${inward ? "inward" : "outward"} value: <strong>${formatNumberPlain(totalTaxable)}</strong> · Gross: <strong>${formatNumberPlain(totalGross)}</strong></p>${tail}`;
 }
 
 function renderFuelSalesMonthTable(lines, title) {
@@ -838,11 +796,11 @@ function renderFuelSalesMonthTable(lines, title) {
       (line) => `<tr>
         <td>${escapeHtml(line.monthLabel)}</td>
         <td>${escapeHtml(line.productLabel)}</td>
-        <td class="num">${formatQty(line.litres)}</td>
-        <td class="num">${formatAmt(line.nilValue ?? line.gross)}</td>
+        <td class="num">${formatNumberPlain(line.litres)}</td>
+        <td class="num">${formatNumberPlain(line.nilValue ?? line.gross)}</td>
         <td class="num">—</td>
         <td class="num">—</td>
-        <td class="num">${formatAmt(line.gross)}</td>
+        <td class="num">${formatNumberPlain(line.gross)}</td>
       </tr>`
     )
     .join("");
@@ -870,11 +828,11 @@ function renderFuelSalesMonthTable(lines, title) {
             ? `<tfoot>
           <tr class="report-total-row">
             <td colspan="2"><strong>Fuel total</strong></td>
-            <td class="num"><strong>${formatQty(totals.litres)}</strong></td>
-            <td class="num"><strong>${formatAmt(totals.gross)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totals.litres)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totals.gross)}</strong></td>
             <td class="num"><strong>—</strong></td>
             <td class="num"><strong>—</strong></td>
-            <td class="num"><strong>${formatAmt(totals.gross)}</strong></td>
+            <td class="num"><strong>${formatNumberPlain(totals.gross)}</strong></td>
           </tr>
         </tfoot>`
             : ""
@@ -922,12 +880,12 @@ function renderGstSalesDetail(data, range) {
         <td>${escapeHtml(line.monthLabel)}</td>
         <td>${escapeHtml(line.productLabel)}</td>
         <td>—</td>
-        <td class="num">${formatQty(line.litres)}</td>
+        <td class="num">${formatNumberPlain(line.litres)}</td>
         <td class="num">—</td>
         <td class="num">—</td>
         <td class="num">—</td>
-        <td class="num">${formatAmt(line.nilValue ?? line.gross)}</td>
-        <td class="num">${formatAmt(line.gross)}</td>
+        <td class="num">${formatNumberPlain(line.nilValue ?? line.gross)}</td>
+        <td class="num">${formatNumberPlain(line.gross)}</td>
       </tr>`
     )
     .join("");
@@ -963,15 +921,15 @@ function renderGstSalesDetail(data, range) {
           }
 
           return `<tr class="report-billing-row">
-        <td>${formatDisplayDate(inv.invoice_date)}</td>
+        <td>${formatNumericDate(inv.invoice_date)}</td>
         <td>Billing</td>
         <td>${escapeHtml(inv.invoice_number)} · ${escapeHtml(inv.party_name)}</td>
         <td class="num">—</td>
-        <td class="num">${hasGst || taxable > 0 ? formatAmt(taxable) : "—"}</td>
-        <td class="num">${formatAmt(cgst)}</td>
-        <td class="num">${formatAmt(sgst)}</td>
-        <td class="num">${formatAmt(nonGst + nilRate)}</td>
-        <td class="num">${formatAmt(inv.total_amount)}</td>
+        <td class="num">${hasGst || taxable > 0 ? formatNumberPlain(taxable) : "—"}</td>
+        <td class="num">${formatNumberPlain(cgst)}</td>
+        <td class="num">${formatNumberPlain(sgst)}</td>
+        <td class="num">${formatNumberPlain(nonGst + nilRate)}</td>
+        <td class="num">${formatNumberPlain(inv.total_amount)}</td>
       </tr>`;
         })
         .join("")
@@ -1018,12 +976,12 @@ function renderGstSalesDetail(data, range) {
           ? `<tfoot>
         <tr class="report-total-row">
           <td colspan="3"><strong>Fuel total</strong></td>
-          <td class="num"><strong>${formatQty(fuelTotals.litres)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(fuelTotals.litres)}</strong></td>
           <td class="num"><strong>—</strong></td>
           <td class="num"><strong>—</strong></td>
           <td class="num"><strong>—</strong></td>
-          <td class="num"><strong>${formatAmt(fuelTotals.gross)}</strong></td>
-          <td class="num"><strong>${formatAmt(fuelTotals.gross)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(fuelTotals.gross)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(fuelTotals.gross)}</strong></td>
         </tr>
       </tfoot>`
           : ""
@@ -1134,15 +1092,15 @@ function renderGstPurchaseDetail(data, range) {
         const prod = normalizeProduct(r.product);
         const ref = prod === "petrol" ? "MS" : prod === "diesel" ? "HSD" : String(r.product).toUpperCase();
         return `<tr>
-      <td>${formatDisplayDate(r.date)}</td>
+      <td>${formatNumericDate(r.date)}</td>
       <td>${escapeHtml(ref)}</td>
       <td>${escapeHtml(getFuelSupplierLabel())}</td>
-      <td class="num">${formatQty(r.litres)}</td>
+      <td class="num">${formatNumberPlain(r.litres)}</td>
       <td class="num">${formatBuyingRatePerKl(r.rate)}</td>
-      <td class="num">${formatAmt(r.taxable)}</td>
+      <td class="num">${formatNumberPlain(r.taxable)}</td>
       <td class="num">${r.taxPct}%</td>
-      <td class="num">${formatAmt(r.tax)}</td>
-      <td class="num">${formatAmt(r.gross)}</td>
+      <td class="num">${formatNumberPlain(r.tax)}</td>
+      <td class="num">${formatNumberPlain(r.gross)}</td>
     </tr>`;
       }
     )
@@ -1177,7 +1135,7 @@ function renderGstPurchaseDetail(data, range) {
 /** Trading account (stock-based) + P&L figures via shared computeProfitLossSummary. */
 function computeTradingAndPl(data, range) {
   const getBuying = buildEffectiveBuyingMap(data.receiptRows);
-  const merged = mergeDsrStock(data.dsrRows, data.stockRows);
+  const merged = DsrQueries.mergeDsrStock(data.dsrRows, data.stockRows);
 
   const products = {
     petrol: { label: "Petrol (MS)", sales: 0, purchase: 0, openingStockVal: 0, closingStockVal: 0, openingL: 0, closingL: 0 },
@@ -1277,7 +1235,7 @@ function renderTradingAccount(data, range) {
     const body = rows
       .map(
         ([label, amt]) =>
-          `<tr><td>${escapeHtml(label)}</td><td class="num">${formatAmt(amt)}</td></tr>`
+          `<tr><td>${escapeHtml(label)}</td><td class="num">${formatNumberPlain(amt)}</td></tr>`
       )
       .join("");
     const total = rows
@@ -1289,7 +1247,7 @@ function renderTradingAccount(data, range) {
         <table class="report-table report-trading-table">
           <thead><tr><th>Particulars</th><th class="num">Amount (₹)</th></tr></thead>
           <tbody>${body}</tbody>
-          <tfoot><tr class="report-total-row"><td><strong>Total</strong></td><td class="num"><strong>${formatAmt(total)}</strong></td></tr></tfoot>
+          <tfoot><tr class="report-total-row"><td><strong>Total</strong></td><td class="num"><strong>${formatNumberPlain(total)}</strong></td></tr></tfoot>
         </table>
       </div>`;
   };
@@ -1317,7 +1275,7 @@ function renderProfitLoss(data, range) {
   const expenseHtml = expenseRows
     .map(
       (e) =>
-        `<tr><td>${escapeHtml(e.label)}</td><td class="num">${formatAmt(e.amount)}</td></tr>`
+        `<tr><td>${escapeHtml(e.label)}</td><td class="num">${formatNumberPlain(e.amount)}</td></tr>`
     )
     .join("");
 
@@ -1325,14 +1283,14 @@ function renderProfitLoss(data, range) {
     ? `<tr class="report-subhead-row"><td colspan="2">MS/HS testing (excluded from net profit — day closing only)</td></tr>${testingExpenseRows
         .map(
           (e) =>
-            `<tr class="muted"><td>${escapeHtml(e.label)}</td><td class="num">${formatAmt(e.amount)}</td></tr>`
+            `<tr class="muted"><td>${escapeHtml(e.label)}</td><td class="num">${formatNumberPlain(e.amount)}</td></tr>`
         )
         .join("")}`
     : "";
 
   const lubeProfitRow =
     t.products.lube.sales > 0
-      ? `<tr><td>Gross profit — Lube / Billing</td><td class="num">${formatAmt(t.products.lube.sales)}</td></tr>`
+      ? `<tr><td>Gross profit — Lube / Billing</td><td class="num">${formatNumberPlain(t.products.lube.sales)}</td></tr>`
       : "";
 
   return `
@@ -1340,12 +1298,12 @@ function renderProfitLoss(data, range) {
     <table class="report-table">
       <thead><tr><th>Particulars</th><th>Amount (₹)</th></tr></thead>
       <tbody>
-        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${formatAmt(t.fuelGrossProfit)}</td></tr>
+        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${formatNumberPlain(t.fuelGrossProfit)}</td></tr>
         ${lubeProfitRow}
-        <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${formatAmt(t.grossProfit)}</strong></td></tr>
+        <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${formatNumberPlain(t.grossProfit)}</strong></td></tr>
         ${expenseHtml}
-        <tr class="report-total-row"><td><strong>Total expenses</strong></td><td class="num"><strong>${formatAmt(t.totalExpenses)}</strong></td></tr>
-        <tr class="report-total-row"><td><strong>Net profit</strong></td><td class="num"><strong>${formatAmt(t.netProfit)}</strong></td></tr>
+        <tr class="report-total-row"><td><strong>Total expenses</strong></td><td class="num"><strong>${formatNumberPlain(t.totalExpenses)}</strong></td></tr>
+        <tr class="report-total-row"><td><strong>Net profit</strong></td><td class="num"><strong>${formatNumberPlain(t.netProfit)}</strong></td></tr>
         ${testingExpenseHtml}
       </tbody>
     </table>
@@ -1439,8 +1397,8 @@ function buildPrintSheetWrapped(reportBodyHtml, reportId, range) {
   const title = meta?.title || "Report";
   const periodLabel = range
     ? range.start === range.end
-      ? formatDisplayDate(range.start)
-      : `${formatDisplayDate(range.start)} – ${formatDisplayDate(range.end)}`
+      ? formatNumericDate(range.start)
+      : `${formatNumericDate(range.start)} – ${formatNumericDate(range.end)}`
     : "";
 
   return `

@@ -59,6 +59,8 @@ There is **no** separate Stock form or `sync_dsr_receipts_from_stock` step. Ente
 
 - Same reconciliation logic as the view, but `LAG(opening)` is scoped to **range + one prior day** per product (better for report date pickers).
 - Prefer this RPC when loading a bounded period to avoid scanning full history.
+- Requires provisioned staff (`require_staff_access()`).
+- **Client:** `js/dsrQueries.js` provides `mergeDsrStock(dsrRows, stockRows)` to combine meter rows with stock fields for dashboard and reports.
 
 ---
 
