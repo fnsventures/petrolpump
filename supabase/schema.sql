@@ -503,9 +503,9 @@ begin
     where d.date >= b.lookback_start and d.date <= p_end
   ),
   with_opening as (
-    select *,
-      coalesce(lag(dip_stock) over (partition by product order by date), 0) as opening_stock
-    from base
+    select b.*,
+      coalesce(lag(b.dip_stock) over (partition by b.product order by b.date), 0) as opening_stock
+    from base b
   )
   select w.date, w.product, w.opening_stock, w.receipts,
     (w.opening_stock + w.receipts) as total_stock, w.sale_from_meter, w.testing, w.net_sale,
