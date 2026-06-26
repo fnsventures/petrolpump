@@ -19,6 +19,8 @@ let customerName = "";
 let customerId = null;
 let customerIds = [];
 let customerOutstandingDue = 0;
+let customerPrepaidBalance = 0;
+let customerNetBalance = 0;
 let customerContact = { mobile: "", address: "" };
 let customerVehicleNos = [];
 let lastCustomerSummary = null;
@@ -35,6 +37,70 @@ let customerComboboxMatches = [];
 
 function isCustomerView() {
   return Boolean(customerName);
+}
+
+function updateCustomerBalanceState(amountDue, prepaidBalance) {
+  customerOutstandingDue = Number(amountDue) || 0;
+  customerPrepaidBalance = Number(prepaidBalance) || 0;
+  customerNetBalance = customerOutstandingDue - customerPrepaidBalance;
+}
+
+function customerHasAdvance(netBalance, prepaidBalance) {
+  return prepaidBalance > 0 && netBalance <= 0;
+}
+
+function formatCustomerBalanceDisplay(netBalance, prepaidBalance) {
+  if (customerHasAdvance(netBalance, prepaidBalance)) {
+    return `+ ${formatCurrency(prepaidBalance)}`;
+  }
+  return formatCurrency(netBalance);
+}
+
+function getCustomerBalanceLabel(netBalance, prepaidBalance) {
+  if (customerHasAdvance(netBalance, prepaidBalance)) return "Credit balance";
+  return "Outstanding";
+}
+
+function ledgerRowAmountDue(row) {
+  return Number(row?.amount_due ?? 0);
+}
+
+function ledgerRowPrepaid(row) {
+  return Number(row?.prepaid_balance ?? 0);
+}
+
+function ledgerRowNetBalance(row) {
+  return ledgerRowAmountDue(row) - ledgerRowPrepaid(row);
+}
+
+function ledgerRowIsListed(row) {
+  return ledgerRowAmountDue(row) > 0 || ledgerRowPrepaid(row) > 0;
+}
+
+function applyCustomerBalanceHero(netBalance, prepaidBalance) {
+  const label = getCustomerBalanceLabel(netBalance, prepaidBalance);
+  const labelEl = document.querySelector(".customer-balance-label");
+  if (labelEl) labelEl.textContent = label;
+
+  const outstandingEl = document.getElementById("stat-outstanding");
+  if (outstandingEl) {
+    outstandingEl.textContent = formatCustomerBalanceDisplay(netBalance, prepaidBalance);
+  }
+
+  const heroAmount = outstandingEl?.closest(".customer-balance-hero-amount");
+  if (heroAmount) {
+    heroAmount.classList.toggle("has-credit", customerHasAdvance(netBalance, prepaidBalance));
+    heroAmount.classList.toggle("is-cleared", netBalance <= 0 && prepaidBalance <= 0);
+  }
+
+  const payCta = document.getElementById("customer-record-payment-cta");
+  if (payCta) payCta.classList.remove("hidden");
+
+  const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
+  if (settleNav) {
+    settleNav.classList.remove("hidden");
+    settleNav.hidden = false;
+  }
 }
 
 function customerDetailUrl(row) {
@@ -530,7 +596,7 @@ async function resolveCustomerIds() {
   const pattern = `%${escapeIlikePattern(needle)}%`;
   const { data: list, error } = await supabaseClient
     .from("credit_customers")
-    .select("id, vehicle_no, amount_due, last_payment, customer_name, mobile, address")
+    .select("id, vehicle_no, amount_due, prepaid_balance, last_payment, customer_name, mobile, address")
     .ilike("customer_name", pattern);
 
   if (error) {
@@ -554,13 +620,9 @@ async function resolveCustomerIds() {
   setCustomerNameEditable(rows.length > 0);
 
   const totalDue = rows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
-  customerOutstandingDue = totalDue;
-  const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
-  if (settleNav) {
-    const hide = totalDue <= 0;
-    settleNav.classList.toggle("hidden", hide);
-    settleNav.hidden = hide;
-  }
+  const totalPrepaid = rows.reduce((s, r) => s + Number(r.prepaid_balance || 0), 0);
+  updateCustomerBalanceState(totalDue, totalPrepaid);
+  applyCustomerBalanceHero(customerNetBalance, customerPrepaidBalance);
 }
 
 function creditSummaryAssetUrl(path) {
@@ -978,11 +1040,11 @@ function renderLifetimeBreakdowns(summary) {
 }
 
 function applyLifetimeSummary(row, options = {}) {
-  const summaryOutstanding = row ? Number(row.remaining) : 0;
-  const heroOutstanding =
-    options.heroOutstanding != null ? Number(options.heroOutstanding) : summaryOutstanding;
+  updateCustomerBalanceState(
+    options.heroAmountDue ?? customerOutstandingDue,
+    options.heroPrepaidBalance ?? customerPrepaidBalance
+  );
 
-  customerOutstandingDue = heroOutstanding;
   const creditTaken = row ? Number(row.credit_taken) : 0;
   const settlementDone = row ? Number(row.settlement_done) : 0;
 
@@ -991,18 +1053,9 @@ function applyLifetimeSummary(row, options = {}) {
     if (el) el.textContent = text;
   };
 
-  set("stat-outstanding", formatCurrency(heroOutstanding));
+  applyCustomerBalanceHero(customerNetBalance, customerPrepaidBalance);
   set("stat-lifetime-credit", formatCurrency(creditTaken));
   set("stat-lifetime-settled", formatCurrency(settlementDone));
-
-  const outstandingEl = document.getElementById("stat-outstanding");
-  const heroAmount = outstandingEl?.closest(".customer-balance-hero-amount");
-  if (heroAmount) {
-    heroAmount.classList.toggle("is-cleared", heroOutstanding <= 0);
-  }
-
-  const payCta = document.getElementById("customer-record-payment-cta");
-  if (payCta) payCta.classList.toggle("hidden", heroOutstanding <= 0);
 
   const creditWhen = document.getElementById("customer-credit-when");
   if (creditWhen) {
@@ -1025,13 +1078,6 @@ function applyLifetimeSummary(row, options = {}) {
     } else {
       settlementWhen.textContent = "";
     }
-  }
-
-  const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
-  if (settleNav) {
-    const hide = heroOutstanding <= 0;
-    settleNav.classList.toggle("hidden", hide);
-    settleNav.hidden = hide;
   }
 }
 
@@ -1091,7 +1137,10 @@ async function loadCustomerDetail() {
       : "";
 
     const periodSummary = buildPeriodScopedSummary(summary, from, to);
-    applyLifetimeSummary(periodSummary, { heroOutstanding: customerOutstandingDue });
+    applyLifetimeSummary(periodSummary, {
+      heroAmountDue: customerOutstandingDue,
+      heroPrepaidBalance: customerPrepaidBalance,
+    });
     renderLifetimeBreakdowns(periodSummary);
 
     const creditEntries = (periodSummary.credit_entries || []).map((e) => ({
@@ -1171,12 +1220,6 @@ async function handleSettle() {
     if (msg) msg.textContent = "Enter a valid amount.";
     return;
   }
-  if (customerOutstandingDue > 0 && amount > customerOutstandingDue) {
-    if (msg) {
-      msg.textContent = `Amount cannot exceed outstanding balance (${formatCurrency(customerOutstandingDue)}).`;
-    }
-    return;
-  }
   if (settlementDate > todayStr) {
     if (msg) msg.textContent = "Settlement date cannot be in the future.";
     return;
@@ -1185,54 +1228,91 @@ async function handleSettle() {
   const btn = document.getElementById("settle-btn");
   if (btn) btn.disabled = true;
 
-  let remainingPay = amount;
-
-  for (const id of settleIds) {
-    if (remainingPay <= 0) break;
-
-    const { data: customerRow, error: fetchErr } = await supabaseClient
-      .from("credit_customers")
-      .select("amount_due")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (fetchErr) {
-      if (btn) btn.disabled = false;
-      if (msg) msg.textContent = AppError.getUserMessage(fetchErr);
-      AppError.report(fetchErr, { context: "creditCustomerSettleFetch" });
-      return;
-    }
-
-    const due = Number(customerRow?.amount_due ?? 0);
-    if (due <= 0) continue;
-
-    const payAmount = Math.min(remainingPay, due);
-    const { data, error } = await supabaseClient.rpc("record_credit_payment", {
-      p_credit_customer_id: id,
+  if (settleIds.length === 1) {
+    const { error } = await supabaseClient.rpc("record_credit_payment", {
+      p_credit_customer_id: settleIds[0],
       p_date: settlementDate,
-      p_amount: payAmount,
+      p_amount: amount,
       p_note: null,
       p_payment_mode: paymentMode,
     });
 
+    if (btn) btn.disabled = false;
+
     if (error) {
-      if (btn) btn.disabled = false;
       if (msg) msg.textContent = AppError.getUserMessage(error);
-      AppError.report(error, { context: "creditCustomerSettle", customerId: id });
+      AppError.report(error, { context: "creditCustomerSettle", customerId: settleIds[0] });
       invalidateCreditCaches();
       await resolveCustomerIds();
       await loadCustomerDetail();
       return;
     }
+  } else {
+    let remainingPay = amount;
 
-    remainingPay -= payAmount;
-  }
+    for (const id of settleIds) {
+      if (remainingPay <= 0) break;
 
-  if (btn) btn.disabled = false;
+      const { data: customerRow, error: fetchErr } = await supabaseClient
+        .from("credit_customers")
+        .select("amount_due")
+        .eq("id", id)
+        .maybeSingle();
 
-  if (remainingPay >= amount) {
-    if (msg) msg.textContent = "No outstanding balance to apply payment to.";
-    return;
+      if (fetchErr) {
+        if (btn) btn.disabled = false;
+        if (msg) msg.textContent = AppError.getUserMessage(fetchErr);
+        AppError.report(fetchErr, { context: "creditCustomerSettleFetch" });
+        return;
+      }
+
+      const due = Number(customerRow?.amount_due ?? 0);
+      if (due <= 0) continue;
+
+      const payAmount = Math.min(remainingPay, due);
+      const { error } = await supabaseClient.rpc("record_credit_payment", {
+        p_credit_customer_id: id,
+        p_date: settlementDate,
+        p_amount: payAmount,
+        p_note: null,
+        p_payment_mode: paymentMode,
+      });
+
+      if (error) {
+        if (btn) btn.disabled = false;
+        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.report(error, { context: "creditCustomerSettle", customerId: id });
+        invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        return;
+      }
+
+      remainingPay -= payAmount;
+    }
+
+    if (remainingPay > 0) {
+      const primaryId = customerId || settleIds[0];
+      const { error } = await supabaseClient.rpc("record_credit_payment", {
+        p_credit_customer_id: primaryId,
+        p_date: settlementDate,
+        p_amount: remainingPay,
+        p_note: null,
+        p_payment_mode: paymentMode,
+      });
+
+      if (error) {
+        if (btn) btn.disabled = false;
+        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.report(error, { context: "creditCustomerSettlePrepaid", customerId: primaryId });
+        invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        return;
+      }
+    }
+
+    if (btn) btn.disabled = false;
   }
 
   const settleAmountInput = document.getElementById("settle-amount");
@@ -1243,10 +1323,13 @@ async function handleSettle() {
 
   if (msg) {
     msg.classList.add("success");
-    msg.textContent =
-      customerOutstandingDue === 0
-        ? "Fully settled."
-        : `Settled · remaining ${formatCurrency(customerOutstandingDue)}`;
+    if (customerPrepaidBalance > 0 && customerNetBalance <= 0) {
+      msg.textContent = `Payment recorded · credit balance +${formatCurrency(customerPrepaidBalance)}`;
+    } else if (customerNetBalance === 0) {
+      msg.textContent = "Fully settled.";
+    } else {
+      msg.textContent = `Settled · remaining ${formatCurrency(customerNetBalance)}`;
+    }
   }
 }
 
@@ -1640,21 +1723,35 @@ function initPaginationControls() {
 
 function getFilteredLedger() {
   const q = creditPagination.searchQuery;
-  const outstanding = creditPagination.ledgerData.filter((row) => Number(row.amount_due) > 0);
-  if (!q) return outstanding;
-  return outstanding.filter((row) => {
+  const listed = creditPagination.ledgerData.filter(ledgerRowIsListed);
+  if (!q) return listed;
+  const needle = q.toLowerCase();
+  return listed.filter((row) => {
     const name = (row.customer_name || "").toLowerCase();
     const vehicle = (row.vehicle_no || "").toLowerCase();
-    return name.includes(q) || vehicle.includes(q);
+    return name.includes(needle) || vehicle.includes(needle);
   });
 }
 
 function updateSummaryStats(filtered) {
-  const total = filtered.reduce((s, r) => s + Number(r.amount_due || 0), 0);
+  const total = filtered.reduce((s, r) => s + Math.max(0, ledgerRowNetBalance(r)), 0);
   const totalEl = document.getElementById("credit-total-outstanding");
   const countEl = document.getElementById("credit-customer-count");
   if (totalEl) totalEl.textContent = formatCurrency(total);
   if (countEl) countEl.textContent = String(filtered.length);
+}
+
+function renderLedgerBalanceCell(net, prepaid, isAdvance) {
+  const display = formatCustomerBalanceDisplay(net, prepaid);
+  const amountClass = isAdvance ? "credit-ledger-balance--advance" : "";
+  return `<td class="num ${amountClass}" data-amount="${net}">${display}</td>`;
+}
+
+function renderLedgerCustomerCell(row, detailHref, isAdvance) {
+  const advanceTag = isAdvance
+    ? '<span class="credit-advance-tag">Advance payment</span>'
+    : "";
+  return `<td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${advanceTag}</td>`;
 }
 
 function renderLedgerPage(resetTable) {
@@ -1667,15 +1764,15 @@ function renderLedgerPage(resetTable) {
 
   if (filtered.length === 0) {
     const msg = creditPagination.searchQuery
-      ? "No matching customers with outstanding balance."
-      : "No outstanding balances — all customers are cleared.";
+      ? "No matching customers with outstanding or advance balance."
+      : "No outstanding or advance balances — all customers are cleared.";
     tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${escapeHtml(msg)}</p>${
       creditPagination.searchQuery
         ? ""
         : '<p class="empty-cta"><a href="#record">Record credit sale</a>.</p>'
     }</div></td></tr>`;
     creditPagination.hasMore = false;
-    updatePaginationUI();
+    updatePaginationUI(filtered);
     return;
   }
 
@@ -1691,10 +1788,13 @@ function renderLedgerPage(resetTable) {
   rowsToShow.forEach((row) => {
     const tr = document.createElement("tr");
     const detailHref = customerDetailUrl(row);
+    const prepaid = ledgerRowPrepaid(row);
+    const net = ledgerRowNetBalance(row);
+    const isAdvance = customerHasAdvance(net, prepaid);
     tr.innerHTML = `
-      <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a></td>
+      ${renderLedgerCustomerCell(row, detailHref, isAdvance)}
       <td>${escapeHtml(row.vehicle_no ?? "—")}</td>
-      <td data-amount="${row.amount_due}">${formatCurrency(row.amount_due)}</td>
+      ${renderLedgerBalanceCell(net, prepaid, isAdvance)}
       <td>${formatDisplayDate(row.last_payment)}</td>
       <td class="table-actions"><a class="button-secondary button-small" href="${detailHref}">View details</a></td>
     `;
@@ -1702,7 +1802,7 @@ function renderLedgerPage(resetTable) {
   });
 
   creditPagination.hasMore = sliceEnd < filtered.length;
-  updatePaginationUI();
+  updatePaginationUI(filtered);
 }
 
 async function loadCreditLedger(reset = false) {
@@ -1747,12 +1847,11 @@ async function loadCreditLedger(reset = false) {
   }
 }
 
-function updatePaginationUI() {
+function updatePaginationUI(filtered = getFilteredLedger()) {
   const loadMoreBtn = document.getElementById("credit-load-more");
   const paginationInfo = document.getElementById("credit-pagination-info");
   const summaryEl = document.getElementById("credit-ledger-summary");
 
-  const filtered = getFilteredLedger();
   const showing = Math.min(creditPagination.offset + PAGE_SIZE, filtered.length);
 
   const infoText =

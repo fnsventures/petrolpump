@@ -3412,6 +3412,25 @@ body.reports-page main.settings-layout.reports-layout {
   text-decoration: underline;
 }
 
+.credit-advance-tag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 999px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.credit-ledger-balance--advance {
+  color: #15803d;
+  font-weight: 600;
+}
+
 .table-actions {
   text-align: right;
   white-space: nowrap;
@@ -3755,6 +3774,18 @@ body.modal-open {
 
 .customer-balance-hero-amount.is-cleared .customer-balance-label::after {
   content: " · Cleared";
+  font-weight: 600;
+  color: #15803d;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.customer-balance-hero-amount.has-credit .customer-balance-value {
+  color: #15803d;
+}
+
+.customer-balance-hero-amount.has-credit .customer-balance-label::after {
+  content: " · Advance";
   font-weight: 600;
   color: #15803d;
   text-transform: none;
