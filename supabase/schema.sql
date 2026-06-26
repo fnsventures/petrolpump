@@ -1324,6 +1324,7 @@ create table if not exists public.credit_customers (
   mobile text check (mobile is null or char_length(trim(mobile)) <= 20),
   address text check (address is null or char_length(trim(address)) <= 500),
   amount_due numeric(14,2) not null default 0,
+  prepaid_balance numeric(14,2) not null default 0 check (prepaid_balance >= 0),
   date date not null default current_date,
   last_payment date,
   notes text,
@@ -1340,6 +1341,7 @@ comment on table public.credit_customers is 'Credit ledger for fleet and institu
 comment on column public.credit_customers.date is 'Date for which this credit applies; used for day-closing credit_today sum.';
 comment on column public.credit_customers.mobile is 'Customer mobile / phone (optional)';
 comment on column public.credit_customers.address is 'Customer address (optional)';
+comment on column public.credit_customers.prepaid_balance is 'Advance credit from overpayment. Net balance = amount_due - prepaid_balance.';
 
 alter table public.credit_customers enable row level security;
 
@@ -1427,7 +1429,9 @@ create policy "credit_entries_delete_admin" on public.credit_entries
   for delete to authenticated using (public.is_admin());
 
 create or replace function public.credit_entries_sync_amount_due()
-returns trigger language plpgsql security definer as $$
+returns trigger language plpgsql security definer
+set search_path = public
+as $$
 declare
   v_customer_id uuid;
 begin
@@ -1439,16 +1443,47 @@ begin
   else
     v_customer_id := new.credit_customer_id;
   end if;
-  update public.credit_customers c
-  set amount_due = coalesce((
-    select sum(e.amount - e.amount_settled)
-    from public.credit_entries e
-    where e.credit_customer_id = c.id
-  ), 0)
-  where c.id = v_customer_id;
+  perform public.sync_credit_customer_balances(v_customer_id);
   if tg_op = 'DELETE' then return old; else return new; end if;
 end;
 $$;
+
+create or replace function public.sync_credit_customer_balances(p_credit_customer_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_new_due numeric;
+  v_prepaid numeric;
+  v_payment_total numeric;
+  v_settled_total numeric;
+begin
+  select
+    coalesce(sum(amount - amount_settled), 0),
+    coalesce(sum(amount_settled), 0)
+  into v_new_due, v_settled_total
+  from public.credit_entries
+  where credit_customer_id = p_credit_customer_id;
+
+  select coalesce(sum(amount), 0) into v_payment_total
+  from public.credit_payments
+  where credit_customer_id = p_credit_customer_id;
+
+  v_prepaid := greatest(0, v_payment_total - v_settled_total);
+
+  update public.credit_customers
+  set amount_due = v_new_due, prepaid_balance = v_prepaid
+  where id = p_credit_customer_id;
+end;
+$$;
+
+comment on function public.sync_credit_customer_balances(uuid) is
+  'Sync amount_due and prepaid_balance from credit_entries and credit_payments.';
+
+revoke all on function public.sync_credit_customer_balances(uuid) from public;
+revoke all on function public.sync_credit_customer_balances(uuid) from authenticated;
 
 drop trigger if exists credit_entries_sync_trigger on public.credit_entries;
 create trigger credit_entries_sync_trigger
@@ -1861,6 +1896,10 @@ declare
   v_entry_id uuid;
   v_fuel_type text;
   v_quantity numeric;
+  v_remaining numeric;
+  v_entry record;
+  v_alloc numeric;
+  v_prepaid numeric;
 begin
   perform public.require_staff_access();
 
@@ -1914,6 +1953,38 @@ begin
   values (v_customer_id, p_transaction_date, v_fuel_type, v_quantity, p_amount, auth.uid())
   returning id into v_entry_id;
 
+  select prepaid_balance into v_prepaid
+  from public.credit_customers
+  where id = v_customer_id;
+
+  if coalesce(v_prepaid, 0) > 0 then
+    perform set_config('app.skip_credit_sync', 'true', true);
+    begin
+      v_remaining := v_prepaid;
+      for v_entry in
+        select id, amount, amount_settled
+        from public.credit_entries
+        where credit_customer_id = v_customer_id
+          and amount_settled < amount
+        order by transaction_date asc, id asc
+        for update
+      loop
+        exit when v_remaining <= 0;
+        v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
+        update public.credit_entries
+        set amount_settled = amount_settled + v_alloc
+        where id = v_entry.id;
+        v_remaining := v_remaining - v_alloc;
+      end loop;
+      perform public.sync_credit_customer_balances(v_customer_id);
+    exception
+      when others then
+        perform set_config('app.skip_credit_sync', '', true);
+        raise;
+    end;
+    perform set_config('app.skip_credit_sync', '', true);
+  end if;
+
   return jsonb_build_object(
     'credit_customer_id', v_customer_id,
     'credit_entry_id', v_entry_id,
@@ -1940,6 +2011,7 @@ declare
   v_entry record;
   v_alloc numeric;
   v_new_due numeric;
+  v_prepaid numeric;
 begin
   perform public.require_staff_access();
 
@@ -1975,6 +2047,15 @@ begin
       where id = v_entry.id;
       v_remaining := v_remaining - v_alloc;
     end loop;
+
+    insert into public.credit_payments (credit_customer_id, date, amount, note, payment_mode, created_by)
+    values (p_credit_customer_id, p_date, p_amount, nullif(trim(p_note), ''), coalesce(p_payment_mode, 'Cash'), auth.uid());
+
+    perform public.sync_credit_customer_balances(p_credit_customer_id);
+
+    update public.credit_customers
+    set last_payment = p_date
+    where id = p_credit_customer_id;
   exception
     when others then
       perform set_config('app.skip_credit_sync', '', true);
@@ -1983,34 +2064,21 @@ begin
 
   perform set_config('app.skip_credit_sync', '', true);
 
-  if v_remaining >= p_amount then
-    raise exception 'No outstanding balance to apply payment to';
-  end if;
-
-  if v_remaining > 0 then
-    raise exception 'Payment amount exceeds outstanding balance';
-  end if;
-
-  insert into public.credit_payments (credit_customer_id, date, amount, note, payment_mode, created_by)
-  values (p_credit_customer_id, p_date, p_amount, nullif(trim(p_note), ''), coalesce(p_payment_mode, 'Cash'), auth.uid());
-
-  select coalesce(sum(amount - amount_settled), 0) into v_new_due
-  from public.credit_entries
-  where credit_customer_id = p_credit_customer_id;
-
-  update public.credit_customers
-  set amount_due = v_new_due, last_payment = p_date
+  select amount_due, prepaid_balance into v_new_due, v_prepaid
+  from public.credit_customers
   where id = p_credit_customer_id;
 
   return jsonb_build_object(
     'credit_customer_id', p_credit_customer_id,
     'date', p_date,
     'amount', p_amount,
-    'new_due', v_new_due
+    'new_due', v_new_due,
+    'prepaid_balance', v_prepaid,
+    'net_balance', v_new_due - v_prepaid
   );
 end;
 $$;
-comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Rejects future settlement dates.';
+comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Overpayment is stored as prepaid_balance.';
 
 -- Re-apply FIFO settlements after a payment is removed (admin delete)
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
@@ -2055,6 +2123,8 @@ begin
         v_remaining := v_remaining - v_alloc;
       end loop;
     end loop;
+
+    perform public.sync_credit_customer_balances(p_credit_customer_id);
   exception
     when others then
       perform set_config('app.skip_credit_sync', '', true);
@@ -2078,6 +2148,7 @@ as $$
 declare
   v_payment record;
   v_new_due numeric;
+  v_prepaid numeric;
   v_last_payment date;
 begin
   if not public.is_admin() then
@@ -2105,23 +2176,24 @@ begin
 
   perform set_config('app.skip_credit_sync', '', true);
 
-  select coalesce(sum(amount - amount_settled), 0) into v_new_due
-  from public.credit_entries
-  where credit_customer_id = v_payment.credit_customer_id;
-
   select max(date) into v_last_payment
   from public.credit_payments
   where credit_customer_id = v_payment.credit_customer_id;
 
   update public.credit_customers
-  set amount_due = v_new_due, last_payment = v_last_payment
+  set last_payment = v_last_payment
+  where id = v_payment.credit_customer_id;
+
+  select amount_due, prepaid_balance into v_new_due, v_prepaid
+  from public.credit_customers
   where id = v_payment.credit_customer_id;
 
   return jsonb_build_object(
     'credit_customer_id', v_payment.credit_customer_id,
     'deleted_amount', v_payment.amount,
     'deleted_date', v_payment.date,
-    'new_due', v_new_due
+    'new_due', v_new_due,
+    'prepaid_balance', v_prepaid
   );
 end;
 $$;
@@ -2511,6 +2583,7 @@ returns table (
   customer_name text,
   vehicle_no text,
   amount_due numeric,
+  prepaid_balance numeric,
   date date,
   last_payment date,
   notes text
@@ -2521,13 +2594,17 @@ begin
   perform public.require_staff_access();
   return query
   with ranked as (
-    select c.id, c.customer_name, c.vehicle_no, c.amount_due, c.date, c.last_payment, c.notes,
-           row_number() over (partition by lower(trim(c.customer_name)) order by c.amount_due desc nulls last, c.created_at desc) as rn
+    select c.id, c.customer_name, c.vehicle_no, c.amount_due, c.prepaid_balance, c.date, c.last_payment, c.notes,
+           row_number() over (
+             partition by lower(trim(c.customer_name))
+             order by c.amount_due desc nulls last, c.prepaid_balance desc nulls last, c.created_at desc
+           ) as rn
     from public.credit_customers c
   ),
   agg as (
     select lower(trim(r.customer_name)) as name_key,
            sum(r.amount_due) as total_due,
+           sum(r.prepaid_balance) as total_prepaid,
            min(r.date) as min_date,
            max(r.last_payment) as max_last_pay,
            (array_agg(r.notes order by r.amount_due desc nulls last))[1] as first_notes
@@ -2538,16 +2615,23 @@ begin
          r.customer_name::text as customer_name,
          r.vehicle_no::text as vehicle_no,
          a.total_due::numeric as amount_due,
+         a.total_prepaid::numeric as prepaid_balance,
          a.min_date as date,
          a.max_last_pay as last_payment,
          a.first_notes::text as notes
   from ranked r
   join agg a on lower(trim(r.customer_name)) = a.name_key
   where r.rn = 1
-  order by a.total_due desc nulls last;
+  order by
+    case when a.total_prepaid > 0 and a.total_due <= a.total_prepaid then 0 else 1 end,
+    case
+      when a.total_prepaid > 0 and a.total_due <= a.total_prepaid then a.total_prepaid
+      else a.total_due - a.total_prepaid
+    end desc nulls last,
+    r.customer_name;
 end;
 $$;
-comment on function public.get_credit_ledger_aggregated() is 'Credit ledger with one row per customer (grouped by name). id is primary customer row for Settle/Delete.';
+comment on function public.get_credit_ledger_aggregated() is 'Credit ledger with one row per customer (grouped by name). Advance payments listed first.';
 
 -- ============================================================================
 -- AUDIT TRIGGERS (automatic logging of sensitive operations)
