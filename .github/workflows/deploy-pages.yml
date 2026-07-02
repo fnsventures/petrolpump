@@ -7,95 +7,55 @@ on:
       - staging
   workflow_dispatch:
 
-# One Pages deployment at a time. Latest push wins if deploys overlap.
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
-    outputs:
-      target: ${{ steps.target.outputs.name }}
     steps:
-      - name: Resolve deploy target
-        id: target
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
-            echo "name=staging" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=prod" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Build runtime env config
+      - name: Write runtime env config
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          APP_ENV: ${{ steps.target.outputs.name == 'prod' && 'prod' || 'staging' }}
-        run: bash .github/scripts/write-env-config.sh
+          APP_ENV: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+        run: |
+          cat > js/env.js <<EOF
+          window.__APP_CONFIG__ = {
+            SUPABASE_URL: "${SUPABASE_URL}",
+            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
+            APP_ENV: "${APP_ENV}",
+          };
+          EOF
+          sed -i '/^js\/env\.js$/d' .gitignore
 
       - name: Remove custom domain for staging
-        if: steps.target.outputs.name == 'staging'
+        if: github.ref == 'refs/heads/staging'
         run: rm -f CNAME
 
-      - name: Prepare site artifact
-        env:
-          DEPLOY_TARGET: ${{ steps.target.outputs.name }}
-        run: |
-          mkdir -p _site
-          bash .github/scripts/prepare-pages-site.sh _site
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy staging
+        if: github.ref == 'refs/heads/staging'
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: _site
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          destination_dir: staging
+          keep_files: true
+          exclude_assets: .github,supabase,scripts,docs
 
-      - name: Upload site state snapshot
-        uses: actions/upload-artifact@v4
+      - name: Deploy production
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          name: pages-site-state
-          path: _site
-          retention-days: 1
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-  sync-state:
-    needs: [build, deploy]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download site state snapshot
-        uses: actions/download-artifact@v4
-        with:
-          name: pages-site-state
-          path: _site
-
-      - name: Update gh-pages state branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SOURCE_SHA: ${{ github.sha }}
-        run: bash .github/scripts/sync-gh-pages-state.sh _site
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          keep_files: true
+          exclude_assets: .github,supabase,scripts,docs
