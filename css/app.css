@@ -3653,6 +3653,15 @@ body.reports-page main.settings-layout.reports-layout {
   margin-top: 0.75rem;
 }
 
+.credit-overview-table tr.credit-overview-row--overpaid {
+  background: #f0fdf4;
+}
+
+.credit-overview-table tr.credit-overview-row--overpaid .credit-overview-outstanding {
+  color: #15803d;
+  font-weight: 600;
+}
+
 .credit-settle-balance-banner {
   display: flex;
   flex-wrap: wrap;
