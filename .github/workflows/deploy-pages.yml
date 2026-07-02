@@ -1,20 +1,15 @@
 name: Deploy GitHub Pages
 
-run-name: Deploy to ${{ (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod')) == 'staging' && 'staging' || 'production' }}
-
 on:
-  push:
-    branches:
-      - main
-      - staging
+  workflow_run:
+    workflows: [Merge]
+    types: [completed]
   workflow_dispatch:
     inputs:
       target:
         required: true
         type: choice
-        options:
-          - staging
-          - prod
+        options: [staging, prod]
       sha:
         required: false
         type: string
@@ -25,31 +20,70 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
 
 jobs:
+  prepare:
+    name: Prepare deploy
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.name == 'Merge')
+    runs-on: ubuntu-latest
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      deploy: ${{ steps.resolve.outputs.deploy }}
+    steps:
+      - if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: meta
+        with:
+          name: deploy-meta
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ inputs.sha != '' && inputs.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.meta.outcome }}" = "success" ]; then
+            echo "target=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['target'])")" >> "$GITHUB_OUTPUT"
+            echo "sha=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['sha'])")" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build site
+    needs: prepare
+    if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
+    environment: ${{ needs.prepare.outputs.target }}
     env:
-      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
+      TARGET: ${{ needs.prepare.outputs.target }}
+      DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
-      - name: Build site
+      - name: Build and package
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: bash .github/scripts/pages-deploy.sh build "$TARGET"
-
-      - name: Stage deploy script
-        run: mkdir -p _deploy && cp .github/scripts/pages-deploy.sh _deploy/pages-deploy.sh
+        run: |
+          bash .github/scripts/pages-deploy.sh build "$TARGET"
+          mkdir -p bundle
+          cp -a _site bundle/_site
+          cp .github/scripts/pages-deploy.sh bundle/pages-deploy.sh
 
       - uses: actions/configure-pages@v5
 
@@ -59,46 +93,34 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: site-state
-          path: _site
-          retention-days: 1
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deploy-script
-          path: _deploy/pages-deploy.sh
+          name: deploy-bundle
+          path: bundle/
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod')) == 'staging' && 'staging' || 'production' }}
-    needs: build
+    name: Deploy to ${{ needs.prepare.outputs.target == 'staging' && 'staging' || 'production' }}
+    needs: [prepare, build]
+    if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: write
-      pages: write
-      id-token: write
-    env:
-      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
-      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: site-state
-          path: _site
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: deploy-script
-          path: _deploy
+          name: deploy-bundle
+          path: bundle
 
       - name: Update pages-state branch
+        working-directory: bundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: bash _deploy/pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"
+          TARGET: ${{ needs.prepare.outputs.target }}
+          DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+        run: bash pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"

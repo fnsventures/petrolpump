@@ -70,7 +70,15 @@ EOF
     git commit -q -m "deploy ${target}: ${commit_sha}"
     git branch -M pages-state
     git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-    git push -f origin pages-state
+    for attempt in 1 2 3 4 5; do
+      if git push -f origin pages-state; then
+        exit 0
+      fi
+      echo "pages-state push failed, retrying (${attempt}/5)..." >&2
+      sleep $((attempt * 5))
+    done
+    echo "pages-state push failed after 5 attempts" >&2
+    exit 1
     ;;
 
   *)
