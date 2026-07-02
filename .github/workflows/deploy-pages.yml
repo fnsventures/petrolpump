@@ -7,77 +7,119 @@ on:
       - staging
   workflow_dispatch:
 
-# peaceiris pushes to gh-pages, which triggers GitHub's pages-build-deployment
-# workflow. Without serialization, back-to-back staging + main deploys race and
-# cancel each other (deploy-pages stuck in deployment_queued, then canceled).
+# Serialize deploys so staging + main pushes don't race pages-build-deployment.
 concurrency:
-  group: gh-pages-deploy
+  group: github-pages
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  deploy_prod:
-    if: github.ref == 'refs/heads/main'
+  build:
     runs-on: ubuntu-latest
-    environment: prod
+    environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Write runtime env config
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: |
-          cat <<EOF > js/env.js
-          window.__APP_CONFIG__ = {
-            SUPABASE_URL: "${SUPABASE_URL}",
-            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "prod",
-          };
-          EOF
-          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
-          sed -i '/^js\/env\.js$/d' .gitignore
-
-      - name: Deploy to gh-pages (prod)
-        uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          keep_files: true
-
-  deploy_staging:
-    if: github.ref == 'refs/heads/staging'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+          fetch-depth: 0
 
       - name: Write runtime env config
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          APP_ENV: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
         run: |
-          cat <<EOF > js/env.js
+          cat > js/env.js <<EOF
           window.__APP_CONFIG__ = {
             SUPABASE_URL: "${SUPABASE_URL}",
             SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "staging",
+            APP_ENV: "${APP_ENV}",
           };
           EOF
-          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
-          sed -i '/^js\/env\.js$/d' .gitignore
 
       - name: Remove custom domain for staging
+        if: github.ref == 'refs/heads/staging'
         run: rm -f CNAME
 
-      - name: Deploy to gh-pages (staging)
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Build site
+        run: |
+          mkdir -p _site
+          git fetch origin pages-state --depth=1 2>/dev/null || true
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+
+          if git rev-parse origin/pages-state >/dev/null 2>&1; then
+            git archive origin/pages-state | tar -x -C _site
+          elif git rev-parse origin/gh-pages >/dev/null 2>&1; then
+            git archive origin/gh-pages | tar -x -C _site
+          fi
+
+          touch _site/.nojekyll
+          rsync_excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs)
+
+          if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
+            mkdir -p _site/staging
+            rsync -a "${rsync_excludes[@]}" ./ _site/staging/
+          else
+            staging_backup=""
+            if [ -d _site/staging ]; then
+              staging_backup="$(mktemp -d)"
+              mv _site/staging "$staging_backup/staging"
+            fi
+            rsync -a "${rsync_excludes[@]}" ./ _site/
+            if [ -n "$staging_backup" ]; then
+              mv "$staging_backup/staging" _site/staging
+              rmdir "$staging_backup"
+            fi
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          destination_dir: staging
-          keep_files: true
+          path: _site
+
+      - name: Upload site state
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-state
+          path: _site
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Save site state
+        uses: actions/download-artifact@v4
+        with:
+          name: site-state
+          path: _site
+
+      - name: Update pages-state branch
+        run: |
+          cd _site
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "deploy: ${{ github.sha }}"
+          git branch -M pages-state
+          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push -f origin pages-state
