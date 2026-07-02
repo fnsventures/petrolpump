@@ -2242,6 +2242,8 @@ language plpgsql security definer
 as $$
 declare
   v_entry record;
+  v_new_due numeric;
+  v_prepaid numeric;
 begin
   if not public.is_admin() then
     raise exception 'Only an admin can delete credit entries';
@@ -2256,20 +2258,35 @@ begin
   end if;
 
   if coalesce(v_entry.amount_settled, 0) > 0 then
-    raise exception 'Cannot delete a credit entry that has settlements applied. Delete settlements first.';
+    perform set_config('app.skip_credit_sync', 'true', true);
+    begin
+      delete from public.credit_entries where id = p_entry_id;
+      perform public.reallocate_credit_settlements(v_entry.credit_customer_id);
+    exception
+      when others then
+        perform set_config('app.skip_credit_sync', '', true);
+        raise;
+    end;
+    perform set_config('app.skip_credit_sync', '', true);
+  else
+    delete from public.credit_entries where id = p_entry_id;
   end if;
 
-  delete from public.credit_entries where id = p_entry_id;
+  select amount_due, prepaid_balance into v_new_due, v_prepaid
+  from public.credit_customers
+  where id = v_entry.credit_customer_id;
 
   return jsonb_build_object(
     'credit_customer_id', v_entry.credit_customer_id,
-    'amount', v_entry.amount
+    'amount', v_entry.amount,
+    'new_due', v_new_due,
+    'prepaid_balance', v_prepaid
   );
 end;
 $$;
 
 comment on function public.delete_credit_entry(uuid) is
-  'Admin-only: delete an unsettled credit sale entry. amount_due updated via trigger.';
+  'Admin-only: delete a credit sale entry. Settled entries re-allocate remaining payments FIFO.';
 
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)
@@ -2633,6 +2650,98 @@ end;
 $$;
 comment on function public.get_credit_ledger_aggregated() is 'Credit ledger with one row per customer (grouped by name). Advance payments listed first.';
 
+-- Portfolio credit activity for overview page (totals + per-customer breakdown)
+create or replace function public.get_credit_overview_period(
+  p_from date,
+  p_to date
+)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_result jsonb;
+begin
+  perform public.require_staff_access();
+
+  with credit_agg as (
+    select lower(trim(c.customer_name)) as name_key,
+           min(c.customer_name)::text as customer_name,
+           coalesce(sum(e.amount), 0)::numeric as credit_taken,
+           coalesce(sum(greatest(e.amount - e.amount_settled, 0)), 0)::numeric as overdue
+    from public.credit_entries e
+    inner join public.credit_customers c on c.id = e.credit_customer_id
+    where e.transaction_date >= p_from
+      and e.transaction_date <= p_to
+    group by lower(trim(c.customer_name))
+  ),
+  payment_agg as (
+    select lower(trim(c.customer_name)) as name_key,
+           min(c.customer_name)::text as customer_name,
+           coalesce(sum(p.amount), 0)::numeric as settled
+    from public.credit_payments p
+    inner join public.credit_customers c on c.id = p.credit_customer_id
+    where p.date >= p_from
+      and p.date <= p_to
+    group by lower(trim(c.customer_name))
+  ),
+  merged as (
+    select coalesce(c.customer_name, p.customer_name) as customer_name,
+           coalesce(c.credit_taken, 0) as credit_taken,
+           coalesce(p.settled, 0) as settled,
+           coalesce(c.overdue, 0) as overdue
+    from credit_agg c
+    full outer join payment_agg p using (name_key)
+  ),
+  active as (
+    select customer_name, credit_taken, settled, overdue
+    from merged
+    where credit_taken > 0 or settled > 0 or overdue > 0
+  ),
+  totals as (
+    select
+      coalesce((select sum(credit_taken) from credit_agg), 0)::numeric as credit_taken,
+      coalesce((select sum(settled) from payment_agg), 0)::numeric as settled,
+      coalesce((select sum(overdue) from credit_agg), 0)::numeric as overdue
+  ),
+  top_customers as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'customer_name', s.customer_name,
+          'credit_taken', s.credit_taken,
+          'settled', s.settled,
+          'overdue', s.overdue
+        )
+        order by s.credit_taken desc, s.customer_name
+      ),
+      '[]'::jsonb
+    ) as rows
+    from (
+      select customer_name, credit_taken, settled, overdue
+      from active
+      order by credit_taken desc, customer_name
+      limit 50
+    ) s
+  )
+  select jsonb_build_object(
+    'credit_taken', t.credit_taken,
+    'settled', t.settled,
+    'overdue', t.overdue,
+    'customers', tc.rows
+  )
+  into v_result
+  from totals t
+  cross join top_customers tc;
+
+  return v_result;
+end;
+$$;
+comment on function public.get_credit_overview_period(date, date) is
+  'Portfolio credit activity for a date range: totals and per-customer breakdown (one round-trip).';
+
 -- ============================================================================
 -- AUDIT TRIGGERS (automatic logging of sensitive operations)
 -- ============================================================================
@@ -2785,6 +2894,7 @@ grant execute on function public.delete_credit_payment(uuid) to authenticated;
 grant execute on function public.delete_credit_entry(uuid) to authenticated;
 grant execute on function public.delete_day_closing(uuid) to authenticated;
 grant execute on function public.get_credit_ledger_aggregated() to authenticated;
+grant execute on function public.get_credit_overview_period(date, date) to authenticated;
 grant execute on function public.get_open_credit_as_of(date) to authenticated;
 grant execute on function public.get_outstanding_credit_list_as_of(date) to authenticated;
 grant execute on function public.get_customer_credit_summary_as_of(text, date) to authenticated;
