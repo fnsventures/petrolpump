@@ -1,13 +1,27 @@
 name: Deploy GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-      - staging
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+      sha:
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      target:
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      sha:
+        required: false
+        type: string
+        description: Commit to deploy (defaults to branch HEAD)
 
-# One deployable queue: staging and prod never deploy at the same time.
 concurrency:
   group: github-pages
   cancel-in-progress: false
@@ -19,65 +33,74 @@ permissions:
 
 jobs:
   build:
+    name: Build site
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+    environment: ${{ inputs.target }}
     env:
-      TARGET: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+      TARGET: ${{ inputs.target }}
+      DEPLOY_SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
 
       - name: Build site
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: bash .github/scripts/build-pages-site.sh "$TARGET"
+        run: bash .github/scripts/pages-deploy.sh build "$TARGET"
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - name: Stage deploy script
+        run: mkdir -p _deploy && cp .github/scripts/pages-deploy.sh _deploy/pages-deploy.sh
 
-      - name: Upload site
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-      - name: Upload site state
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: site-state
           path: _site
-          retention-days: 7
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-script
+          path: _deploy/pages-deploy.sh
+          retention-days: 1
 
   deploy:
+    name: Deploy to ${{ inputs.target == 'staging' && 'staging' || 'production' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    env:
-      TARGET: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
     permissions:
       contents: write
       pages: write
       id-token: write
+    env:
+      TARGET: ${{ inputs.target }}
+      DEPLOY_SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Save site state
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: site-state
           path: _site
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: deploy-script
+          path: _deploy
 
       - name: Update pages-state branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: bash .github/scripts/save-pages-state.sh "$TARGET" "${{ github.sha }}"
+        run: bash _deploy/pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"
