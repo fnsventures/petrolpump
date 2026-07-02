@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DSR · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/sales-daily.js?v=4"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">DSR</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" aria-label="Main navigation">
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="dsr.html">Meter Reading</a>
+            <a href="sales-daily.html">DSR</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="credit.html">Credit</a>
+            <a href="expenses.html">Expenses</a>
+            <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
+            <a href="invoices.html">Invoices</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="attendance.html">Attendance</a>
+            <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
+            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
+          </div>
+        </div>
+        <button id="logout-button" class="link nav-logout">Logout</button>
+      </nav>
+    </header>
+
+    <main class="settings-layout page-layout-wide">
+      <nav class="settings-nav card" aria-label="DSR sections">
+        <p class="settings-nav-title">DSR</p>
+        <button type="button" class="settings-nav-item is-active" data-section="filters">Date range</button>
+        <button type="button" class="settings-nav-item" data-section="petrol">Petrol</button>
+        <button type="button" class="settings-nav-item" data-section="diesel">Diesel</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card is-visible" data-panel="filters">
+        <div class="card-head snapshot-head">
+          <div>
+            <h2>Day-wise readings</h2>
+            <p class="muted">View meter readings, sales, stock, and variation.</p>
+            <p class="muted"><a href="reports.html?tab=dsr" data-role="admin-only" style="display:none">Tank-wise DSR report (print) →</a></p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field">
+              <label for="sales-start-date">From</label>
+              <input id="sales-start-date" type="date" />
+            </div>
+            <div class="form-field">
+              <label for="sales-end-date">To</label>
+              <input id="sales-end-date" type="date" />
+            </div>
+          </div>
+        </div>
+        </section>
+
+        <section class="settings-panel card" data-panel="petrol" hidden>
+        <h2>Petrol — daily entries</h2>
+        <div class="table-scroll">
+          <table class="dsr-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Sales P1 (L)</th>
+                <th>Sales P2 (L)</th>
+                <th>Total sales (L)</th>
+                <th>Testing (L)</th>
+                <th>Net sale (L)</th>
+                <th>Dip stock (L)</th>
+                <th>Opening stock (L)</th>
+                <th>Receipts (L)</th>
+                <th>Closing stock (L)</th>
+                <th>Variation (L)</th>
+              </tr>
+            </thead>
+            <tbody id="sales-daily-petrol-body">
+              <tr>
+                <td colspan="11" class="muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        </section>
+
+        <section class="settings-panel card" data-panel="diesel" hidden>
+        <h2>Diesel — daily entries</h2>
+        <div class="table-scroll">
+          <table class="dsr-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Sales P1 (L)</th>
+                <th>Sales P2 (L)</th>
+                <th>Total sales (L)</th>
+                <th>Testing (L)</th>
+                <th>Net sale (L)</th>
+                <th>Dip stock (L)</th>
+                <th>Opening stock (L)</th>
+                <th>Receipts (L)</th>
+                <th>Closing stock (L)</th>
+                <th>Variation (L)</th>
+              </tr>
+            </thead>
+            <tbody id="sales-daily-diesel-body">
+              <tr>
+                <td colspan="11" class="muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

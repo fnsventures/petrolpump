@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/login.css" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/auth.js"></script>
+  </head>
+  <body class="login-page">
+    <main class="login-card card">
+      <div class="login-brand">
+        <span class="login-logo" aria-hidden="true">
+          <img src="assets/bpcl-logo.png" alt="" width="48" height="58" decoding="async" />
+        </span>
+        <div class="login-brand-text">
+          <h1 class="login-brand-title">
+            <span class="login-brand-primary">Bishnupriya Fuels</span>
+            <span class="login-brand-venture">— a F&amp;S Ventures</span>
+          </h1>
+          <p class="login-brand-dealer">Authorized BPCL Dealer</p>
+          <p class="login-brand-portal">Operator Portal</p>
+        </div>
+      </div>
+      <p class="muted">Sign in to manage daily operations, credit, billing, and reports.</p>
+
+      <form id="login-form" class="form" autocomplete="on">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          placeholder="operator@fnsventures.in"
+          required
+        />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          placeholder="Enter password"
+          minlength="6"
+          required
+        />
+
+        <button type="submit" id="login-button">Login</button>
+        <p class="muted login-forgot">
+          <a href="#" id="forgot-password-link">Forgot password?</a>
+        </p>
+        <p id="login-error" class="error hidden"></p>
+      </form>
+    </main>
+    <footer class="app-footer app-footer--minimal">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+    </footer>
+  </body>
+</html>

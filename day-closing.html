@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Day closing &amp; short · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/day-closing.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">Day closing &amp; short</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" aria-label="Main navigation">
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="dsr.html">Meter Reading</a>
+            <a href="sales-daily.html">DSR</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="credit.html">Credit</a>
+            <a href="expenses.html">Expenses</a>
+            <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
+            <a href="invoices.html">Invoices</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="attendance.html">Attendance</a>
+            <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
+            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
+          </div>
+        </div>
+        <button id="logout-button" class="link nav-logout">Logout</button>
+      </nav>
+    </header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Day closing sections">
+        <p class="settings-nav-title">Day closing</p>
+        <button type="button" class="settings-nav-item is-active" data-section="close">Close day</button>
+        <button type="button" class="settings-nav-item" data-section="register">Register</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card is-visible dashboard-card day-closing-card" data-panel="close">
+        <h2 class="dashboard-section-title">Day closing &amp; short</h2>
+        <p class="muted">(Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short</p>
+        <p id="dc-no-activity-hint" class="muted hidden">No meter readings, collections, credit, or expenses recorded for this date.</p>
+        <form id="day-closing-form" class="form day-closing-form" autocomplete="off">
+          <div class="form-field">
+            <label for="day-closing-date">Date</label>
+            <input id="day-closing-date" name="date" type="date" required />
+          </div>
+          <div class="day-closing-breakdown">
+            <dl class="dsr-summary-list">
+              <div class="dsr-summary-row">
+                <dt>Total sale (₹)</dt>
+                <dd id="dc-total-sale">—</dd>
+              </div>
+              <div class="dc-breakdown-group" data-breakdown="collection">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
+                      <span>Collection (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-collection">—</dd>
+                </div>
+                <div id="dc-collection-details" class="dc-breakdown-details" hidden></div>
+              </div>
+              <div class="dsr-summary-row">
+                <dt>Short previous (₹)</dt>
+                <dd id="dc-short-previous">—</dd>
+              </div>
+              <div class="dsr-summary-row dc-subtotal">
+                <dt>Subtotal (₹)</dt>
+                <dd id="dc-subtotal">—</dd>
+              </div>
+              <div class="dsr-summary-row">
+                <dt>Night cash (₹)</dt>
+                <dd><input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" aria-label="Hard cash" /></dd>
+              </div>
+              <div class="dsr-summary-row">
+                <dt>Phone pay (₹)</dt>
+                <dd><input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" aria-label="PhonePe/UPI" /></dd>
+              </div>
+              <div class="dc-breakdown-group" data-breakdown="credit">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
+                      <span>Credit today (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-credit-today">—</dd>
+                </div>
+                <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
+              </div>
+              <div class="dc-breakdown-group" data-breakdown="expenses">
+                <div class="dsr-summary-row dc-expandable-row">
+                  <dt>
+                    <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
+                      <span>Expenses today (₹)</span>
+                      <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                    </button>
+                  </dt>
+                  <dd id="dc-expenses-today">—</dd>
+                </div>
+                <div id="dc-expenses-details" class="dc-breakdown-details" hidden></div>
+              </div>
+              <div class="dsr-summary-row dsr-summary-inhand">
+                <dt>Today's short (₹)</dt>
+                <dd id="dc-short-today">—</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="form-field">
+            <label for="dc-remarks">Remarks (optional)</label>
+            <input id="dc-remarks" name="remarks" type="text" placeholder="e.g. Cash verified, bank deposit pending" maxlength="300" />
+          </div>
+          <p id="dc-reference-line" class="muted hidden"></p>
+          <div class="form-actions">
+            <button type="button" id="day-closing-refresh">Refresh</button>
+            <button type="submit" id="day-closing-save">Save day closing</button>
+          </div>
+          <p id="day-closing-already-saved" class="muted hidden">Day closing already saved for this date.</p>
+          <p id="day-closing-success" class="success hidden">Day closing saved. Short computed and stored for next day.</p>
+          <p id="day-closing-error" class="error hidden" role="alert"></p>
+        </form>
+        </section>
+
+        <section class="settings-panel card" data-panel="register" hidden>
+        <div class="card-head snapshot-head">
+          <div>
+            <h2>Day closing register</h2>
+            <p class="muted">Saved closing statements for accounting and future reference. Use date range to filter.</p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field">
+              <label for="dc-register-start">From</label>
+              <input id="dc-register-start" type="date" />
+            </div>
+            <div class="form-field">
+              <label for="dc-register-end">To</label>
+              <input id="dc-register-end" type="date" />
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="dc-register-load">Load</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="day-closing-register-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reference</th>
+                <th>Total sale</th>
+                <th>Collection</th>
+                <th>Short prev</th>
+                <th>Credit</th>
+                <th>Expenses</th>
+                <th>Night cash</th>
+                <th>Phone pay</th>
+                <th>Short</th>
+                <th>Remarks</th>
+                <th id="dc-register-actions-head" class="table-actions" hidden>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="dc-register-body">
+              <tr><td colspan="11" class="muted">Select date range and click Load.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

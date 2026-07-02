@@ -1,0 +1,5 @@
+/* Legacy bundle: imports all split CSS. Prefer loading base + page-specific CSS in HTML. */
+@import url("base.css");
+@import url("app.css");
+@import url("landing.css");
+@import url("login.css");

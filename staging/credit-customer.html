@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content="0;url=credit.html" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var hash = (window.location.hash || "").replace(/^#/, "");
+        var url = "credit.html";
+        var qs = params.toString();
+        if (qs) url += "?" + qs;
+        if (hash) url += "#" + hash;
+        window.location.replace(url);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="credit.html">Credit</a>…</p>
+  </body>
+</html>

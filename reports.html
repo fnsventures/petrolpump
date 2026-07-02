@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reports · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=1"></script>
+    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/dsrQueries.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/reports.js?v=8"></script>
+  </head>
+  <body class="reports-page">
+    <header class="topbar no-print">
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">Reports</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" aria-label="Main navigation">
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="dashboard.html">Dashboard</a>
+            <a href="dsr.html">Meter Reading</a>
+            <a href="sales-daily.html">DSR</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="credit.html">Credit</a>
+            <a href="expenses.html">Expenses</a>
+            <a href="day-closing.html">Day closing &amp; short</a>
+            <a href="billing.html">Billing</a>
+            <a href="invoices.html">Invoices</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="attendance.html">Attendance</a>
+            <a href="salary.html">Salary</a>
+            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+          </div>
+        </div>
+        <div class="nav-group-block">
+          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+          <div class="nav-group" role="menu">
+            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
+            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
+            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
+          </div>
+        </div>
+        <button id="logout-button" class="link nav-logout">Logout</button>
+      </nav>
+    </header>
+
+    <main class="settings-layout page-layout-wide reports-layout no-print">
+      <nav class="settings-nav card" aria-label="Reports sections">
+        <p class="settings-nav-title">Reports</p>
+        <button type="button" class="settings-nav-item is-active" data-section="about">About</button>
+        <button type="button" class="settings-nav-item" data-section="generate">Generate report</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card is-visible" data-panel="about">
+        <h2>Business reports</h2>
+        <p class="muted">
+          Printable registers and accounts — tank-wise DSR, GST sales (fuel and optional billing), trading account, and profit &amp; loss.
+          Fuel GST inward is estimated from stock receipts and buying price (₹/KL, entered on the P&amp;L dashboard).
+        </p>
+        </section>
+
+        <section class="settings-panel card reports-generate-panel" data-panel="generate" hidden>
+          <header class="reports-generate-intro">
+            <h2>Generate report</h2>
+            <p class="muted">Pick a report from the sidebar, set the period, then preview and print. All reports use BPCL letterhead.</p>
+          </header>
+
+          <div class="reports-generate-layout">
+            <aside class="reports-generate-sidebar" aria-label="Report types">
+              <p class="reports-sidebar-title">Report type</p>
+              <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+            </aside>
+
+            <div class="reports-generate-main">
+              <form id="reports-filter-form" class="filter-card" autocomplete="off">
+                <div class="filter-form">
+                  <div class="form-field">
+                    <label for="reports-start">From</label>
+                    <input id="reports-start" type="date" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="reports-end">To</label>
+                    <input id="reports-end" type="date" required />
+                  </div>
+                  <div class="filter-actions">
+                    <button type="submit">Load data</button>
+                  </div>
+                </div>
+                <p id="reports-date-label" class="filter-summary">—</p>
+              </form>
+
+              <div class="reports-output">
+                <div class="reports-output-head">
+                  <div class="reports-output-titles">
+                    <h3 id="reports-active-title" class="reports-active-title">Tank-wise DSR</h3>
+                    <p id="reports-active-desc" class="reports-active-desc muted"></p>
+                  </div>
+                  <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
+                </div>
+                <p id="reports-error" class="error hidden"></p>
+                <div id="reports-preview" class="reports-preview muted">Select dates, click Load data, then choose a report from the sidebar.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Print-only output -->
+    <div id="reports-print-root" class="reports-print-root" aria-hidden="true"></div>
+
+    <footer class="app-footer no-print">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>
