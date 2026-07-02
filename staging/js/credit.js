@@ -717,15 +717,13 @@ function renderOverviewCustomerRows(tbody, rows) {
   tbody.innerHTML = rows
     .map((row) => {
       const detailHref = customerSummaryUrl(row.customer_name, periodFilter);
-      const creditTaken = Number(row.credit_taken) || 0;
-      const settled = Number(row.settled) || 0;
-      const outstanding = overviewPeriodOutstanding(creditTaken, settled);
-      const overpaidClass = settled > creditTaken ? "credit-overview-row--overpaid" : "";
-      return `<tr${overpaidClass ? ` class="${overpaidClass}"` : ""}>
+      const isOverpaid = row.overdue < 0;
+      const rowClass = isOverpaid ? ' class="credit-overview-row--overpaid"' : "";
+      return `<tr${rowClass}>
         <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a></td>
-        <td class="num">${formatCurrency(creditTaken)}</td>
-        <td class="num">${formatCurrency(settled)}</td>
-        <td class="num credit-overview-outstanding">${formatCurrency(outstanding)}</td>
+        <td class="num">${formatCurrency(row.credit_taken)}</td>
+        <td class="num${isOverpaid ? " credit-overview-settled" : ""}">${formatCurrency(row.settled)}</td>
+        <td class="num credit-overview-outstanding">${formatCurrency(row.overdue)}</td>
       </tr>`;
     })
     .join("");
