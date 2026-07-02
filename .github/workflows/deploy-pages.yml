@@ -7,10 +7,10 @@ on:
       - staging
   workflow_dispatch:
 
-# Serialize prod/staging deploys so keep_files merges never overlap.
+# One Pages deployment at a time. Latest push wins if deploys overlap.
 concurrency:
-  group: gh-pages-deploy
-  cancel-in-progress: false
+  group: github-pages
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -20,37 +20,41 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+    environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+    outputs:
+      target: ${{ steps.target.outputs.name }}
     steps:
+      - name: Resolve deploy target
+        id: target
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
+            echo "name=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=prod" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Write runtime env config
+      - name: Build runtime env config
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          APP_ENV: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
-        run: |
-          cat <<EOF > js/env.js
-          window.__APP_CONFIG__ = {
-            SUPABASE_URL: "${SUPABASE_URL}",
-            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "${APP_ENV}",
-          };
-          EOF
+          APP_ENV: ${{ steps.target.outputs.name == 'prod' && 'prod' || 'staging' }}
+        run: bash .github/scripts/write-env-config.sh
 
       - name: Remove custom domain for staging
-        if: github.ref == 'refs/heads/staging'
+        if: steps.target.outputs.name == 'staging'
         run: rm -f CNAME
 
       - name: Prepare site artifact
+        env:
+          DEPLOY_TARGET: ${{ steps.target.outputs.name }}
         run: |
           mkdir -p _site
-          if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
-            bash .github/scripts/prepare-pages-site.sh _site staging
-          else
-            bash .github/scripts/prepare-pages-site.sh _site
-          fi
+          bash .github/scripts/prepare-pages-site.sh _site
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -59,6 +63,13 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+
+      - name: Upload site state snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-site-state
+          path: _site
+          retention-days: 1
 
   deploy:
     needs: build
@@ -70,3 +81,21 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  sync-state:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download site state snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: pages-site-state
+          path: _site
+
+      - name: Update gh-pages state branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: bash .github/scripts/sync-gh-pages-state.sh _site
