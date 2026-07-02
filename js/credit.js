@@ -471,10 +471,6 @@ function updateSettleBalanceBanner() {
 }
 
 function initCustomerSettlePanel() {
-  const today = getLocalDateString();
-  const saleDate = document.getElementById("customer-sale-date");
-  if (saleDate) saleDate.value = today;
-
   updateSettleBalanceBanner();
 
   document.getElementById("settle-fill-full")?.addEventListener("click", () => {
@@ -484,98 +480,6 @@ function initCustomerSettlePanel() {
     amountInput.focus();
     amountInput.select();
   });
-
-  document.getElementById("customer-sale-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void handleCustomerSaleSubmit(event.currentTarget);
-  });
-
-  const vehicleInput = document.getElementById("customer-sale-vehicle");
-  if (vehicleInput && customerVehicleNos.length === 1) {
-    vehicleInput.value = customerVehicleNos[0];
-  }
-}
-
-async function handleCustomerSaleSubmit(form) {
-  const submitBtn = form.querySelector('button[type="submit"]');
-  const successEl = document.getElementById("customer-sale-success");
-  const errorEl = document.getElementById("customer-sale-error");
-  successEl?.classList.add("hidden");
-  errorEl?.classList.add("hidden");
-
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Saving…";
-  }
-
-  const formData = new FormData(form);
-  const transactionDate =
-    formData.get("credit_date")?.trim() || getLocalDateString();
-  const fuelType = (formData.get("fuel_type") || "").trim() || null;
-  const quantityRaw = Number(formData.get("quantity") || 0);
-  const quantity = quantityRaw > 0 ? quantityRaw : null;
-  const amount = Number(formData.get("amount_due") || 0);
-  const notes = (formData.get("notes") || "").trim() || null;
-  const vehicleNo = (formData.get("vehicle_no") || "").trim() || null;
-  const todayStr = getLocalDateString();
-
-  if (!customerName || amount <= 0) {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Save sale";
-    }
-    if (errorEl) {
-      errorEl.textContent = "Amount is required.";
-      errorEl.classList.remove("hidden");
-    }
-    return;
-  }
-  if (transactionDate > todayStr) {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Save sale";
-    }
-    if (errorEl) {
-      errorEl.textContent = "Credit date cannot be in the future.";
-      errorEl.classList.remove("hidden");
-    }
-    return;
-  }
-
-  const { error } = await supabaseClient.rpc("add_credit_entry", {
-    p_customer_name: customerName,
-    p_transaction_date: transactionDate,
-    p_amount: amount,
-    p_vehicle_no: vehicleNo,
-    p_fuel_type: fuelType || undefined,
-    p_quantity: quantity ?? undefined,
-    p_notes: notes,
-    p_mobile: customerContact.mobile || undefined,
-    p_address: customerContact.address || undefined,
-  });
-
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Save sale";
-  }
-
-  if (error) {
-    if (errorEl) {
-      errorEl.textContent = AppError.getUserMessage(error);
-      errorEl.classList.remove("hidden");
-    }
-    AppError.report(error, { context: "handleCustomerSaleSubmit" });
-    return;
-  }
-
-  form.querySelector("#customer-sale-amount") && (form.querySelector("#customer-sale-amount").value = "");
-  form.querySelector("#customer-sale-qty") && (form.querySelector("#customer-sale-qty").value = "");
-  form.querySelector("#customer-sale-notes") && (form.querySelector("#customer-sale-notes").value = "");
-  successEl?.classList.remove("hidden");
-  invalidateCreditCaches();
-  await resolveCustomerIds();
-  await loadCustomerDetail();
-  document.getElementById("customer-sale-amount")?.focus();
 }
 
 function getOverviewDateRange() {
@@ -755,13 +659,31 @@ async function handleQuickPayment() {
   }
 }
 
+function overviewPeriodOutstanding(creditTaken, settled) {
+  return (Number(creditTaken) || 0) - (Number(settled) || 0);
+}
+
 function normalizeOverviewPeriodData(raw) {
   if (!raw || typeof raw !== "object") return { ...OVERVIEW_EMPTY, customers: [] };
+  const creditTaken = Number(raw.credit_taken) || 0;
+  const settled = Number(raw.settled) || 0;
+  const customers = Array.isArray(raw.customers)
+    ? raw.customers.map((row) => {
+        const rowCredit = Number(row.credit_taken) || 0;
+        const rowSettled = Number(row.settled) || 0;
+        return {
+          ...row,
+          credit_taken: rowCredit,
+          settled: rowSettled,
+          overdue: overviewPeriodOutstanding(rowCredit, rowSettled),
+        };
+      })
+    : [];
   return {
-    credit_taken: Number(raw.credit_taken) || 0,
-    settled: Number(raw.settled) || 0,
-    overdue: Number(raw.overdue) || 0,
-    customers: Array.isArray(raw.customers) ? raw.customers : [],
+    credit_taken: creditTaken,
+    settled,
+    overdue: overviewPeriodOutstanding(creditTaken, settled),
+    customers,
   };
 }
 
@@ -795,11 +717,15 @@ function renderOverviewCustomerRows(tbody, rows) {
   tbody.innerHTML = rows
     .map((row) => {
       const detailHref = customerSummaryUrl(row.customer_name, periodFilter);
-      return `<tr>
+      const creditTaken = Number(row.credit_taken) || 0;
+      const settled = Number(row.settled) || 0;
+      const outstanding = overviewPeriodOutstanding(creditTaken, settled);
+      const overpaidClass = settled > creditTaken ? "credit-overview-row--overpaid" : "";
+      return `<tr${overpaidClass ? ` class="${overpaidClass}"` : ""}>
         <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a></td>
-        <td class="num">${formatCurrency(row.credit_taken)}</td>
-        <td class="num">${formatCurrency(row.settled)}</td>
-        <td class="num">${formatCurrency(row.overdue)}</td>
+        <td class="num">${formatCurrency(creditTaken)}</td>
+        <td class="num">${formatCurrency(settled)}</td>
+        <td class="num credit-overview-outstanding">${formatCurrency(outstanding)}</td>
       </tr>`;
     })
     .join("");
@@ -1120,11 +1046,6 @@ async function resolveCustomerIds() {
   updateCustomerBalanceState(totalDue, totalPrepaid);
   applyCustomerBalanceHero(customerNetBalance, customerPrepaidBalance);
   updateSettleBalanceBanner();
-
-  const saleVehicle = document.getElementById("customer-sale-vehicle");
-  if (saleVehicle && customerVehicleNos.length === 1 && !saleVehicle.value.trim()) {
-    saleVehicle.value = customerVehicleNos[0];
-  }
 }
 
 function creditSummaryAssetUrl(path) {
