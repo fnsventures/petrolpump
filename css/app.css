@@ -3653,11 +3653,15 @@ body.reports-page main.settings-layout.reports-layout {
   margin-top: 0.75rem;
 }
 
-.credit-overview-table tr.credit-overview-row--overpaid {
-  background: #f0fdf4;
+.table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid > td {
+  background-color: #f0fdf4;
 }
 
-.credit-overview-table tr.credit-overview-row--overpaid .credit-overview-outstanding {
+.table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid:hover > td {
+  background-color: #dcfce7;
+}
+
+.table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid :is(.credit-overview-settled, .credit-overview-outstanding) {
   color: #15803d;
   font-weight: 600;
 }
