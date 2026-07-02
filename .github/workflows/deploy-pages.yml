@@ -7,17 +7,21 @@ on:
       - staging
   workflow_dispatch:
 
+# peaceiris pushes to gh-pages, which triggers GitHub's pages-build-deployment
+# workflow. Without serialization, back-to-back staging + main deploys race and
+# cancel each other (deploy-pages stuck in deployment_queued, then canceled).
 concurrency:
-  group: github-pages
+  group: gh-pages-deploy
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  deploy:
+  deploy_prod:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+    environment: prod
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,36 +30,54 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          APP_ENV: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
         run: |
-          cat > js/env.js <<EOF
+          cat <<EOF > js/env.js
           window.__APP_CONFIG__ = {
             SUPABASE_URL: "${SUPABASE_URL}",
             SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "${APP_ENV}",
+            APP_ENV: "prod",
           };
           EOF
+          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
+          sed -i '/^js\/env\.js$/d' .gitignore
+
+      - name: Deploy to gh-pages (prod)
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          keep_files: true
+
+  deploy_staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write runtime env config
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          cat <<EOF > js/env.js
+          window.__APP_CONFIG__ = {
+            SUPABASE_URL: "${SUPABASE_URL}",
+            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
+            APP_ENV: "staging",
+          };
+          EOF
+          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
           sed -i '/^js\/env\.js$/d' .gitignore
 
       - name: Remove custom domain for staging
-        if: github.ref == 'refs/heads/staging'
         run: rm -f CNAME
 
-      - name: Deploy staging
-        if: github.ref == 'refs/heads/staging'
+      - name: Deploy to gh-pages (staging)
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./
           destination_dir: staging
           keep_files: true
-          exclude_assets: .github,supabase,scripts,docs
-
-      - name: Deploy production
-        if: github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          keep_files: true
-          exclude_assets: .github,supabase,scripts,docs
