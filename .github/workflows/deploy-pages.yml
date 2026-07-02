@@ -1,14 +1,12 @@
 name: Deploy GitHub Pages
 
+run-name: Deploy to ${{ env.TARGET == 'staging' && 'staging' || 'production' }}
+
 on:
-  workflow_call:
-    inputs:
-      target:
-        required: true
-        type: string
-      sha:
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+      - staging
   workflow_dispatch:
     inputs:
       target:
@@ -31,18 +29,19 @@ permissions:
   pages: write
   id-token: write
 
+env:
+  TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
+  DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
+
 jobs:
   build:
     name: Build site
     runs-on: ubuntu-latest
-    environment: ${{ inputs.target }}
-    env:
-      TARGET: ${{ inputs.target }}
-      DEPLOY_SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+    environment: ${{ env.TARGET }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha != '' && inputs.sha || github.sha }}
+          ref: ${{ env.DEPLOY_SHA }}
 
       - name: Build site
         env:
@@ -72,7 +71,7 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ inputs.target == 'staging' && 'staging' || 'production' }}
+    name: Deploy to ${{ env.TARGET == 'staging' && 'staging' || 'production' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -82,9 +81,6 @@ jobs:
       contents: write
       pages: write
       id-token: write
-    env:
-      TARGET: ${{ inputs.target }}
-      DEPLOY_SHA: ${{ inputs.sha != '' && inputs.sha || github.sha }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
