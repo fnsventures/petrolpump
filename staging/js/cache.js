@@ -18,6 +18,7 @@ const AppCache = (function () {
     // Frequently accessed data - short TTL with stale-while-revalidate
     dashboard_data: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
     credit_summary: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
+    credit_overview: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
     today_sales: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
     recent_activity: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
 
@@ -354,13 +355,14 @@ const CacheInvalidation = (function () {
   const SCOPES = {
     operational: ["dashboard_data", "recent_activity"],
     dsr: ["dashboard_data", "today_sales", "dsr_summary", "profit_loss", "reports_data"],
-    credit: ["credit_summary", "dashboard_data", "recent_activity"],
+    credit: ["credit_summary", "credit_overview", "dashboard_data", "recent_activity"],
     reports: ["reports_data", "profit_loss", "dashboard_data"],
     staff: ["staff_list"],
     pump_settings: ["pump_settings", "reports_data", "profit_loss", "dashboard_data"],
     all_api: [
       "dashboard_data",
       "credit_summary",
+      "credit_overview",
       "today_sales",
       "recent_activity",
       "dsr_summary",

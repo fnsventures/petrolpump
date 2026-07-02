@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -34,6 +34,20 @@ let isAdmin = false;
 let customerSuggestions = [];
 let customerComboboxActiveIndex = -1;
 let customerComboboxMatches = [];
+let quickPaymentCustomerId = null;
+let quickPaymentNetBalance = 0;
+let overviewRequestId = 0;
+
+const OVERVIEW_EMPTY = Object.freeze({
+  credit_taken: 0,
+  settled: 0,
+  overdue: 0,
+  customers: [],
+});
+
+function creditEntryOutstanding(row) {
+  return Math.max(0, Number(row?.amount ?? 0) - Number(row?.amount_settled ?? 0));
+}
 
 function isCustomerView() {
   return Boolean(customerName);
@@ -108,6 +122,72 @@ function customerDetailUrl(row) {
   return `credit.html?${new URLSearchParams({ name: name || "" }).toString()}`;
 }
 
+function customerSummaryUrl(name, period) {
+  const params = new URLSearchParams({ name: name || "" });
+  if (period?.period) {
+    params.set("period", period.period);
+    if (period.period === "custom") {
+      if (period.from) params.set("from", period.from);
+      if (period.to) params.set("to", period.to);
+    }
+  }
+  return `credit.html?${params.toString()}#summary`;
+}
+
+function getOverviewFilterForLinks() {
+  const rangeSelect = document.getElementById("credit-overview-range");
+  const startInput = document.getElementById("credit-overview-start");
+  const endInput = document.getElementById("credit-overview-end");
+  const resolved = readDateRangeFromControls(rangeSelect, startInput, endInput);
+  if (!resolved) return null;
+  return {
+    period: resolved.modeInfo?.mode || "custom",
+    from: resolved.start,
+    to: resolved.end,
+  };
+}
+
+function applyCustomerPeriodFromUrl(params) {
+  const period = (params.get("period") || "").trim();
+  if (!period) return false;
+
+  const allowed = new Set(["today", "this-week", "this-month", "all-time", "custom"]);
+  if (!allowed.has(period)) return false;
+
+  const rangeSelect = document.getElementById("filter-range");
+  const fromInput = document.getElementById("filter-from");
+  const toInput = document.getElementById("filter-to");
+  const customRange = document.getElementById("customer-custom-range");
+  if (!rangeSelect) return false;
+
+  rangeSelect.value = period;
+  if (period === "custom") {
+    const from = (params.get("from") || "").trim();
+    const to = (params.get("to") || "").trim();
+    if (!from || !to) return false;
+    if (fromInput) fromInput.value = from;
+    if (toInput) toInput.value = to;
+  } else {
+    if (fromInput) fromInput.value = "";
+    if (toInput) toInput.value = "";
+  }
+
+  if (typeof setCustomRangeVisibility === "function") {
+    setCustomRangeVisibility(customRange, fromInput, toInput, period === "custom");
+  }
+  if (customRange) customRange.setAttribute("aria-hidden", period === "custom" ? "false" : "true");
+
+  if (typeof setFilterState === "function") {
+    setFilterState("credit_customer_period", {
+      range: period,
+      start: fromInput?.value || undefined,
+      end: toInput?.value || undefined,
+    });
+  }
+
+  return true;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
@@ -156,7 +236,6 @@ function initListView() {
   if (form) {
     form.addEventListener("submit", (event) => handleCreditSubmit(event));
   }
-
   const transactionDateInput = document.getElementById("credit-date");
   if (transactionDateInput && typeof getLocalDateString === "function") {
     transactionDateInput.value = getLocalDateString();
@@ -182,6 +261,8 @@ function initListView() {
 
   initPaginationControls();
   initCustomerCombobox();
+  initOverviewPanel();
+  initRecordSalePanel();
   loadCustomerNames();
   loadCreditLedger(true);
 }
@@ -242,8 +323,13 @@ async function initCustomerView() {
   const settleDate = document.getElementById("settle-date");
   if (settleDate) settleDate.value = today;
 
+  applyCustomerPeriodFromUrl(new URLSearchParams(window.location.search));
   initCustomerViewFilter();
-  document.getElementById("settle-btn")?.addEventListener("click", () => handleSettle());
+  initCustomerSettlePanel();
+  document.getElementById("settle-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void handleSettle();
+  });
 
   creditPager = createBreakdownPager(
     document.getElementById("credit-entries-body"),
@@ -349,10 +435,11 @@ function initCustomerViewFilter() {
     startInput: "filter-from",
     endInput: "filter-to",
     customRange: "customer-custom-range",
-    form: "customer-view-filter",
-    trigger: "auto",
+    applyBtn: "customer-apply-filter",
+    labelEl: "customer-filter-summary",
+    trigger: "apply",
     persist: true,
-    runOnInit: false,
+    runOnInit: true,
     customDefaults: "month-start",
     labelStyle: "dashboard",
     formatLabel: (range) => {
@@ -365,6 +452,415 @@ function initCustomerViewFilter() {
   });
 
   document.getElementById("reset-period-filter")?.addEventListener("click", resetCustomerPeriodFilter);
+}
+
+function updateSettleBalanceBanner() {
+  const labelEl = document.getElementById("settle-balance-label");
+  const valueEl = document.getElementById("settle-balance-value");
+  const fillBtn = document.getElementById("settle-fill-full");
+  if (!valueEl) return;
+
+  const label = getCustomerBalanceLabel(customerNetBalance, customerPrepaidBalance);
+  if (labelEl) labelEl.textContent = label;
+  valueEl.textContent = formatCustomerBalanceDisplay(customerNetBalance, customerPrepaidBalance);
+
+  if (fillBtn) {
+    fillBtn.disabled = customerNetBalance <= 0;
+    fillBtn.hidden = customerNetBalance <= 0;
+  }
+}
+
+function initCustomerSettlePanel() {
+  const today = getLocalDateString();
+  const saleDate = document.getElementById("customer-sale-date");
+  if (saleDate) saleDate.value = today;
+
+  updateSettleBalanceBanner();
+
+  document.getElementById("settle-fill-full")?.addEventListener("click", () => {
+    const amountInput = document.getElementById("settle-amount");
+    if (!amountInput || customerNetBalance <= 0) return;
+    amountInput.value = String(customerNetBalance);
+    amountInput.focus();
+    amountInput.select();
+  });
+
+  document.getElementById("customer-sale-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void handleCustomerSaleSubmit(event.currentTarget);
+  });
+
+  const vehicleInput = document.getElementById("customer-sale-vehicle");
+  if (vehicleInput && customerVehicleNos.length === 1) {
+    vehicleInput.value = customerVehicleNos[0];
+  }
+}
+
+async function handleCustomerSaleSubmit(form) {
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const successEl = document.getElementById("customer-sale-success");
+  const errorEl = document.getElementById("customer-sale-error");
+  successEl?.classList.add("hidden");
+  errorEl?.classList.add("hidden");
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+  }
+
+  const formData = new FormData(form);
+  const transactionDate =
+    formData.get("credit_date")?.trim() || getLocalDateString();
+  const fuelType = (formData.get("fuel_type") || "").trim() || null;
+  const quantityRaw = Number(formData.get("quantity") || 0);
+  const quantity = quantityRaw > 0 ? quantityRaw : null;
+  const amount = Number(formData.get("amount_due") || 0);
+  const notes = (formData.get("notes") || "").trim() || null;
+  const vehicleNo = (formData.get("vehicle_no") || "").trim() || null;
+  const todayStr = getLocalDateString();
+
+  if (!customerName || amount <= 0) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save sale";
+    }
+    if (errorEl) {
+      errorEl.textContent = "Amount is required.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+  if (transactionDate > todayStr) {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save sale";
+    }
+    if (errorEl) {
+      errorEl.textContent = "Credit date cannot be in the future.";
+      errorEl.classList.remove("hidden");
+    }
+    return;
+  }
+
+  const { error } = await supabaseClient.rpc("add_credit_entry", {
+    p_customer_name: customerName,
+    p_transaction_date: transactionDate,
+    p_amount: amount,
+    p_vehicle_no: vehicleNo,
+    p_fuel_type: fuelType || undefined,
+    p_quantity: quantity ?? undefined,
+    p_notes: notes,
+    p_mobile: customerContact.mobile || undefined,
+    p_address: customerContact.address || undefined,
+  });
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Save sale";
+  }
+
+  if (error) {
+    if (errorEl) {
+      errorEl.textContent = AppError.getUserMessage(error);
+      errorEl.classList.remove("hidden");
+    }
+    AppError.report(error, { context: "handleCustomerSaleSubmit" });
+    return;
+  }
+
+  form.querySelector("#customer-sale-amount") && (form.querySelector("#customer-sale-amount").value = "");
+  form.querySelector("#customer-sale-qty") && (form.querySelector("#customer-sale-qty").value = "");
+  form.querySelector("#customer-sale-notes") && (form.querySelector("#customer-sale-notes").value = "");
+  successEl?.classList.remove("hidden");
+  invalidateCreditCaches();
+  await resolveCustomerIds();
+  await loadCustomerDetail();
+  document.getElementById("customer-sale-amount")?.focus();
+}
+
+function getOverviewDateRange() {
+  const range = readDateRangeFromControls(
+    document.getElementById("credit-overview-range"),
+    document.getElementById("credit-overview-start"),
+    document.getElementById("credit-overview-end")
+  );
+  if (range) return { start: range.start, end: range.end };
+  const today = new Date();
+  return getMonthRange(today.getFullYear(), today.getMonth());
+}
+
+function initOverviewPanel() {
+  createDateRangeFilter({
+    storageKey: "credit_overview_period",
+    ranges: ["today", "this-week", "this-month", "custom"],
+    defaultRange: "this-month",
+    rangeSelect: "credit-overview-range",
+    startInput: "credit-overview-start",
+    endInput: "credit-overview-end",
+    customRange: "credit-overview-custom-range",
+    applyBtn: "credit-overview-apply-filter",
+    trigger: "apply",
+    persist: false,
+    runOnInit: true,
+    onApply: () => loadOverviewPeriodActivity(),
+  });
+}
+
+function initRecordSalePanel() {
+  const today = getLocalDateString();
+  const quickDate = document.getElementById("quick-settle-date");
+  if (quickDate) quickDate.value = today;
+
+  document.getElementById("credit-quick-payment-form")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void handleQuickPayment();
+  });
+
+  document.getElementById("quick-settle-fill-full")?.addEventListener("click", () => {
+    const amountInput = document.getElementById("quick-settle-amount");
+    if (!amountInput || quickPaymentNetBalance <= 0) return;
+    amountInput.value = String(quickPaymentNetBalance);
+    amountInput.focus();
+    amountInput.select();
+  });
+
+  const focusRecordForm = () => {
+    if ((location.hash || "").replace(/^#/, "") !== "record") return;
+    window.setTimeout(() => document.getElementById("customer")?.focus(), 50);
+  };
+  focusRecordForm();
+  window.addEventListener("hashchange", focusRecordForm);
+
+  document.getElementById("customer")?.addEventListener("input", () => {
+    syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+  });
+  document.getElementById("customer")?.addEventListener("change", () => {
+    syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+  });
+}
+
+function findCustomerSuggestionByName(name) {
+  const key = normCustomerName(name);
+  if (!key) return null;
+  return customerSuggestions.find((item) => item.nameNorm === key) || null;
+}
+
+function syncQuickPaymentPanel(nameInput) {
+  const panel = document.getElementById("credit-quick-payment");
+  const customerEl = document.getElementById("credit-quick-payment-customer");
+  const balanceEl = document.getElementById("credit-quick-payment-balance");
+  const linkEl = document.getElementById("credit-quick-payment-link");
+  const msgEl = document.getElementById("credit-quick-payment-msg");
+  if (!panel) return;
+
+  msgEl?.classList.add("hidden");
+  const trimmed = (nameInput || "").trim();
+  const suggestion = findCustomerSuggestionByName(trimmed);
+
+  if (!suggestion || suggestion.netBalance <= 0) {
+    panel.classList.add("hidden");
+    panel.hidden = true;
+    quickPaymentCustomerId = null;
+    quickPaymentNetBalance = 0;
+    return;
+  }
+
+  quickPaymentCustomerId = suggestion.primaryId;
+  quickPaymentNetBalance = suggestion.netBalance;
+
+  if (customerEl) customerEl.textContent = suggestion.name;
+  if (balanceEl) balanceEl.textContent = formatCurrency(suggestion.netBalance);
+  if (linkEl) {
+    linkEl.href = `${customerDetailUrl(suggestion.name)}#settle`;
+    linkEl.textContent = "Open customer page";
+  }
+
+  panel.classList.remove("hidden");
+  panel.hidden = false;
+}
+
+async function handleQuickPayment() {
+  const msg = document.getElementById("credit-quick-payment-msg");
+  if (msg) {
+    msg.textContent = "";
+    msg.classList.remove("success", "error");
+    msg.classList.add("hidden");
+  }
+
+  if (!quickPaymentCustomerId) {
+    if (msg) {
+      msg.textContent = "Select an existing customer with outstanding balance.";
+      msg.classList.remove("hidden");
+    }
+    return;
+  }
+
+  const amount = Number(document.getElementById("quick-settle-amount")?.value || 0);
+  const settlementDate =
+    document.getElementById("quick-settle-date")?.value?.trim() || getLocalDateString();
+  const paymentMode = document.getElementById("quick-settle-mode")?.value || "Cash";
+  const todayStr = getLocalDateString();
+  const submitBtn = document.querySelector("#credit-quick-payment-form button[type='submit']");
+
+  if (!amount || amount <= 0) {
+    if (msg) {
+      msg.textContent = "Enter a valid amount.";
+      msg.classList.remove("hidden");
+    }
+    return;
+  }
+  if (settlementDate > todayStr) {
+    if (msg) {
+      msg.textContent = "Settlement date cannot be in the future.";
+      msg.classList.remove("hidden");
+    }
+    return;
+  }
+
+  if (submitBtn) submitBtn.disabled = true;
+
+  const { error } = await supabaseClient.rpc("record_credit_payment", {
+    p_credit_customer_id: quickPaymentCustomerId,
+    p_date: settlementDate,
+    p_amount: amount,
+    p_note: null,
+    p_payment_mode: paymentMode,
+  });
+
+  if (submitBtn) submitBtn.disabled = false;
+
+  if (error) {
+    if (msg) {
+      msg.textContent = AppError.getUserMessage(error);
+      msg.classList.remove("hidden");
+      msg.classList.add("error");
+    }
+    AppError.report(error, { context: "handleQuickPayment", customerId: quickPaymentCustomerId });
+    invalidateCreditCaches();
+    await loadCustomerNames();
+    syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+    return;
+  }
+
+  const amountInput = document.getElementById("quick-settle-amount");
+  if (amountInput) amountInput.value = "";
+  await loadCustomerNames();
+  invalidateAndRefreshCreditPortfolio();
+  syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+
+  if (msg) {
+    msg.classList.remove("hidden");
+    msg.classList.add("success");
+    msg.textContent = "Payment recorded.";
+  }
+}
+
+function normalizeOverviewPeriodData(raw) {
+  if (!raw || typeof raw !== "object") return { ...OVERVIEW_EMPTY, customers: [] };
+  return {
+    credit_taken: Number(raw.credit_taken) || 0,
+    settled: Number(raw.settled) || 0,
+    overdue: Number(raw.overdue) || 0,
+    customers: Array.isArray(raw.customers) ? raw.customers : [],
+  };
+}
+
+function overviewCacheKey(start, end) {
+  return `credit_overview_${start}_${end}`;
+}
+
+function applyOverviewPeriodData(data) {
+  const tbody = document.getElementById("credit-overview-body");
+  const emptyCta = document.getElementById("credit-overview-empty");
+  const tableEl = tbody?.closest("table");
+  if (!tbody) return;
+
+  const normalized = normalizeOverviewPeriodData(data);
+  setOverviewPeriodStats(normalized.credit_taken, normalized.settled, normalized.overdue);
+
+  if (!normalized.customers.length) {
+    tbody.innerHTML = "";
+    tableEl?.classList.add("hidden");
+    emptyCta?.classList.remove("hidden");
+    return;
+  }
+
+  renderOverviewCustomerRows(tbody, normalized.customers);
+  tableEl?.classList.remove("hidden");
+  emptyCta?.classList.add("hidden");
+}
+
+function renderOverviewCustomerRows(tbody, rows) {
+  const periodFilter = getOverviewFilterForLinks();
+  tbody.innerHTML = rows
+    .map((row) => {
+      const detailHref = customerSummaryUrl(row.customer_name, periodFilter);
+      return `<tr>
+        <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a></td>
+        <td class="num">${formatCurrency(row.credit_taken)}</td>
+        <td class="num">${formatCurrency(row.settled)}</td>
+        <td class="num">${formatCurrency(row.overdue)}</td>
+      </tr>`;
+    })
+    .join("");
+}
+
+function setOverviewPeriodStats(creditTaken, settled, overdue) {
+  const set = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = formatCurrency(value);
+  };
+  set("credit-overview-credit-taken", creditTaken);
+  set("credit-overview-settled", settled);
+  set("credit-overview-overdue", overdue);
+}
+
+async function loadOverviewPeriodActivity() {
+  const tbody = document.getElementById("credit-overview-body");
+  const emptyCta = document.getElementById("credit-overview-empty");
+  const tableEl = tbody?.closest("table");
+  if (!tbody) return;
+
+  const { start, end } = getOverviewDateRange();
+  const requestId = ++overviewRequestId;
+  const cacheKey = overviewCacheKey(start, end);
+  const cached =
+    typeof AppCache !== "undefined" && AppCache?.get ? AppCache.get(cacheKey) : null;
+  const hasCached = cached && !cached.isMiss && cached.data;
+
+  if (!hasCached) {
+    tbody.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
+    emptyCta?.classList.add("hidden");
+    tableEl?.classList.remove("hidden");
+  }
+
+  try {
+    const fetchFn = async () => {
+      const { data, error } = await supabaseClient.rpc("get_credit_overview_period", {
+        p_from: start,
+        p_to: end,
+      });
+      if (error) throw error;
+      return normalizeOverviewPeriodData(data);
+    };
+
+    let data;
+    if (typeof AppCache !== "undefined" && AppCache?.getWithSWR) {
+      data = await AppCache.getWithSWR(cacheKey, fetchFn, "credit_overview", (fresh) => {
+        if (requestId !== overviewRequestId) return;
+        applyOverviewPeriodData(fresh);
+      });
+    } else {
+      data = await fetchFn();
+    }
+
+    if (requestId !== overviewRequestId) return;
+    applyOverviewPeriodData(data);
+  } catch (err) {
+    if (requestId !== overviewRequestId) return;
+    tbody.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+    AppError.report(err, { context: "loadOverviewPeriodActivity" });
+  }
 }
 
 function normCustomerName(s) {
@@ -623,6 +1119,12 @@ async function resolveCustomerIds() {
   const totalPrepaid = rows.reduce((s, r) => s + Number(r.prepaid_balance || 0), 0);
   updateCustomerBalanceState(totalDue, totalPrepaid);
   applyCustomerBalanceHero(customerNetBalance, customerPrepaidBalance);
+  updateSettleBalanceBanner();
+
+  const saleVehicle = document.getElementById("customer-sale-vehicle");
+  if (saleVehicle && customerVehicleNos.length === 1 && !saleVehicle.value.trim()) {
+    saleVehicle.value = customerVehicleNos[0];
+  }
 }
 
 function creditSummaryAssetUrl(path) {
@@ -1226,7 +1728,16 @@ async function handleSettle() {
   }
 
   const btn = document.getElementById("settle-btn");
-  if (btn) btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+  }
+  const finishSettleSubmit = () => {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Record payment";
+    }
+  };
 
   if (settleIds.length === 1) {
     const { error } = await supabaseClient.rpc("record_credit_payment", {
@@ -1237,7 +1748,7 @@ async function handleSettle() {
       p_payment_mode: paymentMode,
     });
 
-    if (btn) btn.disabled = false;
+    if (btn) finishSettleSubmit();
 
     if (error) {
       if (msg) msg.textContent = AppError.getUserMessage(error);
@@ -1260,7 +1771,7 @@ async function handleSettle() {
         .maybeSingle();
 
       if (fetchErr) {
-        if (btn) btn.disabled = false;
+        finishSettleSubmit();
         if (msg) msg.textContent = AppError.getUserMessage(fetchErr);
         AppError.report(fetchErr, { context: "creditCustomerSettleFetch" });
         return;
@@ -1279,7 +1790,7 @@ async function handleSettle() {
       });
 
       if (error) {
-        if (btn) btn.disabled = false;
+        finishSettleSubmit();
         if (msg) msg.textContent = AppError.getUserMessage(error);
         AppError.report(error, { context: "creditCustomerSettle", customerId: id });
         invalidateCreditCaches();
@@ -1302,7 +1813,7 @@ async function handleSettle() {
       });
 
       if (error) {
-        if (btn) btn.disabled = false;
+        finishSettleSubmit();
         if (msg) msg.textContent = AppError.getUserMessage(error);
         AppError.report(error, { context: "creditCustomerSettlePrepaid", customerId: primaryId });
         invalidateCreditCaches();
@@ -1312,7 +1823,7 @@ async function handleSettle() {
       }
     }
 
-    if (btn) btn.disabled = false;
+    finishSettleSubmit();
   }
 
   const settleAmountInput = document.getElementById("settle-amount");
@@ -1320,6 +1831,7 @@ async function handleSettle() {
   invalidateCreditCaches();
   await resolveCustomerIds();
   await loadCustomerDetail();
+  document.getElementById("settle-amount")?.focus();
 
   if (msg) {
     msg.classList.add("success");
@@ -1375,7 +1887,7 @@ async function deleteCreditEntry(entryId, btn) {
   const dateStr = btn?.dataset?.date || "";
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   const confirmed = confirm(
-    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOnly unsettled entries can be removed. This cannot be undone.`
+    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`
   );
   if (!confirmed) return;
 
@@ -1394,9 +1906,7 @@ async function deleteCreditEntry(entryId, btn) {
   await resolveCustomerIds();
   await loadCustomerDetail();
   showCustomerDetailMessage(`Credit entry of ${formatCurrency(amount)} deleted.`);
-  if (typeof loadCreditLedger === "function" && !isCustomerView()) {
-    await loadCreditLedger(true);
-  }
+  refreshCreditPortfolioViews();
 }
 
 async function deleteCreditPayment(paymentId, btn) {
@@ -1423,6 +1933,18 @@ async function deleteCreditPayment(paymentId, btn) {
   await resolveCustomerIds();
   await loadCustomerDetail();
   showCustomerDetailMessage(`Settlement of ${formatCurrency(amount)} deleted.`);
+  refreshCreditPortfolioViews();
+}
+
+function refreshCreditPortfolioViews() {
+  if (isCustomerView()) return;
+  loadCreditLedger(true);
+  loadOverviewPeriodActivity();
+}
+
+function invalidateAndRefreshCreditPortfolio() {
+  invalidateCreditCaches();
+  refreshCreditPortfolioViews();
 }
 
 function invalidateCreditCaches() {
@@ -1461,12 +1983,19 @@ function buildCustomerSuggestions(rows) {
       String(b.created_at || "").localeCompare(String(a.created_at || ""))
     );
     const contact = pickContactFromRows(sorted);
+    const totalDue = groupRows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
+    const totalPrepaid = groupRows.reduce((s, r) => s + Number(r.prepaid_balance || 0), 0);
+    const netBalance = totalDue - totalPrepaid;
+    const primary =
+      sorted.find((r) => Number(r.amount_due) > 0) || sorted[0];
     return {
       name: sorted[0].customer_name.trim(),
       nameNorm: key,
       vehicleNo: contact.vehicleNo,
       mobile: contact.mobile,
       address: contact.address,
+      netBalance: Math.max(0, netBalance),
+      primaryId: primary?.id || null,
     };
   });
 
@@ -1544,7 +2073,8 @@ function selectCustomerSuggestion(item) {
   if (addressInput) addressInput.value = item.address || "";
 
   setComboboxOpen(false);
-  vehicleInput?.focus();
+  syncQuickPaymentPanel(item.name);
+  document.getElementById("amount")?.focus();
 }
 
 function initCustomerCombobox() {
@@ -1599,7 +2129,7 @@ async function loadCustomerNames() {
   try {
     const { data, error } = await supabaseClient
       .from("credit_customers")
-      .select("customer_name, vehicle_no, mobile, address, amount_due, created_at")
+      .select("id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance, created_at")
       .order("created_at", { ascending: false });
     if (error) {
       AppError.report(error, { context: "loadCustomerNames" });
@@ -1615,6 +2145,7 @@ async function handleCreditSubmit(event) {
   event.preventDefault();
 
   const form = event.currentTarget;
+  const savedFuel = (form.querySelector("#fuel-type")?.value || "").trim();
   const submitBtn = form.querySelector('button[type="submit"]');
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -1642,7 +2173,7 @@ async function handleCreditSubmit(event) {
   if (!customerNameInput || amount <= 0) {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Save credit entry";
+      submitBtn.textContent = "Save sale";
     }
     AppError.handle(new Error("Customer and amount are required."), { target: errorEl });
     return;
@@ -1652,7 +2183,7 @@ async function handleCreditSubmit(event) {
   if (transactionDate > todayStr) {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Save credit entry";
+      submitBtn.textContent = "Save sale";
     }
     AppError.handle(new Error("Credit date cannot be in the future."), { target: errorEl });
     return;
@@ -1673,7 +2204,7 @@ async function handleCreditSubmit(event) {
   if (error) {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Save credit entry";
+      submitBtn.textContent = "Save sale";
     }
     AppError.handle(error, { target: errorEl });
     return;
@@ -1687,15 +2218,19 @@ async function handleCreditSubmit(event) {
       typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
   }
   const fuelTypeSelect = form.querySelector("#fuel-type");
-  if (fuelTypeSelect) fuelTypeSelect.value = "";
+  if (fuelTypeSelect) fuelTypeSelect.value = savedFuel || "HSD";
+
   if (submitBtn) {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Save credit entry";
+    submitBtn.textContent = "Save sale";
   }
   successEl?.classList.remove("hidden");
-  loadCreditLedger(true);
-  loadCustomerNames();
-  invalidateCreditCaches();
+  invalidateAndRefreshCreditPortfolio();
+  loadCustomerNames().then(() => {
+    syncQuickPaymentPanel(form.querySelector("#customer")?.value || "");
+  });
+
+  form.querySelector("#customer")?.focus();
 }
 
 function initPaginationControls() {
