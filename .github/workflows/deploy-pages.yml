@@ -7,7 +7,7 @@ on:
       - staging
   workflow_dispatch:
 
-# Serialize deploys so staging + main pushes don't race pages-build-deployment.
+# One deployable queue: staging and prod never deploy at the same time.
 concurrency:
   group: github-pages
   cancel-in-progress: false
@@ -21,60 +21,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
+    env:
+      TARGET: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Write runtime env config
+      - name: Build site
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          APP_ENV: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
-        run: |
-          cat > js/env.js <<EOF
-          window.__APP_CONFIG__ = {
-            SUPABASE_URL: "${SUPABASE_URL}",
-            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "${APP_ENV}",
-          };
-          EOF
-
-      - name: Remove custom domain for staging
-        if: github.ref == 'refs/heads/staging'
-        run: rm -f CNAME
-
-      - name: Build site
-        run: |
-          mkdir -p _site
-          git fetch origin pages-state --depth=1 2>/dev/null || true
-          git fetch origin gh-pages --depth=1 2>/dev/null || true
-
-          if git rev-parse origin/pages-state >/dev/null 2>&1; then
-            git archive origin/pages-state | tar -x -C _site
-          elif git rev-parse origin/gh-pages >/dev/null 2>&1; then
-            git archive origin/gh-pages | tar -x -C _site
-          fi
-
-          touch _site/.nojekyll
-          rsync_excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs)
-
-          if [ "${{ github.ref }}" = "refs/heads/staging" ]; then
-            mkdir -p _site/staging
-            rsync -a "${rsync_excludes[@]}" ./ _site/staging/
-          else
-            staging_backup=""
-            if [ -d _site/staging ]; then
-              staging_backup="$(mktemp -d)"
-              mv _site/staging "$staging_backup/staging"
-            fi
-            rsync -a "${rsync_excludes[@]}" ./ _site/
-            if [ -n "$staging_backup" ]; then
-              mv "$staging_backup/staging" _site/staging
-              rmdir "$staging_backup"
-            fi
-          fi
+        run: bash .github/scripts/build-pages-site.sh "$TARGET"
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
@@ -94,13 +53,15 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      TARGET: ${{ github.ref == 'refs/heads/staging' && 'staging' || 'prod' }}
     permissions:
       contents: write
       pages: write
       id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
@@ -113,13 +74,7 @@ jobs:
           path: _site
 
       - name: Update pages-state branch
-        run: |
-          cd _site
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "deploy: ${{ github.sha }}"
-          git branch -M pages-state
-          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          git push -f origin pages-state
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: bash .github/scripts/save-pages-state.sh "$TARGET" "${{ github.sha }}"
