@@ -1,6 +1,6 @@
 name: Deploy GitHub Pages
 
-run-name: Deploy to ${{ env.TARGET == 'staging' && 'staging' || 'production' }}
+run-name: Deploy to ${{ (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod')) == 'staging' && 'staging' || 'production' }}
 
 on:
   push:
@@ -29,15 +29,14 @@ permissions:
   pages: write
   id-token: write
 
-env:
-  TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
-  DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
-
 jobs:
   build:
     name: Build site
     runs-on: ubuntu-latest
-    environment: ${{ env.TARGET }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,7 +70,7 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ env.TARGET == 'staging' && 'staging' || 'production' }}
+    name: Deploy to ${{ (github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod')) == 'staging' && 'staging' || 'production' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -81,6 +80,9 @@ jobs:
       contents: write
       pages: write
       id-token: write
+    env:
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref == 'refs/heads/staging' && 'staging' || 'prod') }}
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha != '' && inputs.sha || github.sha }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
