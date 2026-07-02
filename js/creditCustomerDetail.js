@@ -57,13 +57,11 @@
           const qty = e.quantity != null ? Number(e.quantity).toFixed(3) : "—";
           const settled = Number(e.amount_settled || 0);
           const open = Number(e.amount || 0) - settled;
-          const canDelete = showAdminActions && e.id && settled === 0;
+          const canDelete = showAdminActions && e.id;
           const actions = canDelete
             ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-entry")}</td>`
             : showAdminActions
-              ? settled > 0
-                ? `<td class="table-actions"><span class="muted" title="Delete settlements first">${open > 0 ? "Partial" : "Settled"}</span></td>`
-                : `<td class="table-actions muted">—</td>`
+              ? `<td class="table-actions muted">—</td>`
               : "";
           return `<tr>
             <td>${escapeHtml(formatDisplayDate(e.transaction_date || e.entry_date))}</td>

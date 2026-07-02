@@ -3467,6 +3467,242 @@ body.reports-page main.settings-layout.reports-layout {
   align-items: end;
 }
 
+/* Credit quick entry — record sale form */
+.credit-quick-form {
+  container-type: inline-size;
+  container-name: credit-record-form;
+}
+
+.credit-record-grid {
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 0.75rem 0.65rem;
+}
+
+.credit-record-grid .form-field {
+  margin: 0;
+  min-width: 0;
+}
+
+.credit-record-grid input,
+.credit-record-grid select,
+.credit-record-grid .combobox,
+.credit-record-grid .combobox input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.credit-record-grid input[type="date"] {
+  min-width: 11rem;
+  padding-right: 0.25rem;
+}
+
+.credit-record-grid input[type="date"]::-webkit-calendar-picker-indicator {
+  margin-left: 0.125rem;
+}
+
+.credit-fuel-select {
+  padding-right: 2rem;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2364748b' viewBox='0 0 16 16'%3E%3Cpath d='M1.6 5.6 8 12l6.4-6.4L13 4.2 8 9.2 3 4.2z'/%3E%3C/svg%3E") no-repeat right 0.5rem center / 12px;
+  cursor: pointer;
+}
+
+@container credit-record-form (min-width: 36rem) {
+  .credit-record-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container credit-record-form (min-width: 44rem) {
+  .credit-record-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container credit-record-form (min-width: 48rem) {
+  .credit-record-grid {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(6.5rem, 7.5rem)
+      minmax(11rem, 12rem)
+      minmax(7.5rem, 8.5rem)
+      minmax(4.25rem, 5rem);
+  }
+}
+
+.credit-quick-grid {
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  align-items: end;
+}
+
+.credit-quick-customer {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 720px) {
+  .credit-quick-customer {
+    grid-column: span 2;
+  }
+}
+
+.credit-form-details {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted, #f8fafc);
+}
+
+.credit-form-details summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-primary);
+  user-select: none;
+}
+
+.credit-form-details[open] summary {
+  margin-bottom: 0.65rem;
+}
+
+.credit-details-grid {
+  margin-top: 0.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  align-items: end;
+}
+
+.credit-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.credit-quick-payment {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(0, 112, 192, 0.25);
+  border-radius: var(--radius-md);
+  background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 100%);
+}
+
+.credit-quick-payment-title {
+  margin: 0 0 0.35rem;
+  font-size: var(--heading-sm, 1rem);
+}
+
+.credit-quick-payment-lead {
+  margin: 0 0 0.75rem;
+  font-size: var(--text-sm);
+}
+
+.credit-quick-payment-link {
+  margin-left: 0.35rem;
+  font-size: var(--text-xs);
+}
+
+.credit-quick-payment-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 0.85rem;
+}
+
+.credit-quick-payment-form .form-field {
+  margin: 0;
+  min-width: 7.5rem;
+}
+
+.credit-quick-payment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.credit-quick-payment-actions .form-field-spacer {
+  display: none;
+}
+
+.credit-overview-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.credit-overview-title {
+  margin: 0;
+  font-size: var(--heading-sm, 1.05rem);
+}
+
+.credit-overview-subtitle {
+  margin: 1.25rem 0 0.35rem;
+  font-size: var(--text-sm, 0.9375rem);
+  font-weight: 600;
+}
+
+.credit-overview-period-stats {
+  margin-top: 1rem;
+}
+
+.credit-overview-table {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.credit-settle-balance-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 112, 192, 0.22);
+  background: linear-gradient(145deg, #ffffff 0%, #f0f9ff 55%, #e0f2fe 100%);
+}
+
+.credit-settle-balance-label {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.credit-settle-balance-value {
+  font-size: 1.35rem;
+  color: var(--bpcl-blue-dark, #004a7c);
+}
+
+.credit-dual-entry {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.credit-entry-panel {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.credit-entry-panel-title {
+  margin: 0 0 0.75rem;
+  font-size: var(--heading-sm, 1rem);
+}
+
+.credit-customer-sale-form button[type="submit"],
+.credit-settle-form button[type="submit"] {
+  margin-top: 0.65rem;
+}
+
 .settle-inline-page {
   flex-wrap: wrap;
   margin-top: 0.5rem;
