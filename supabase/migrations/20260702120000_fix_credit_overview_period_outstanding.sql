@@ -21,9 +21,8 @@ begin
            coalesce(sum(e.amount), 0)::numeric as credit_taken
     from public.credit_entries e
     inner join public.credit_customers c on c.id = e.credit_customer_id
-    where e.transaction_date >= p_from
-      and e.transaction_date <= p_to
-    group by lower(trim(c.customer_name))
+    where e.transaction_date between p_from and p_to
+    group by 1
   ),
   payment_agg as (
     select lower(trim(c.customer_name)) as name_key,
@@ -31,9 +30,8 @@ begin
            coalesce(sum(p.amount), 0)::numeric as settled
     from public.credit_payments p
     inner join public.credit_customers c on c.id = p.credit_customer_id
-    where p.date >= p_from
-      and p.date <= p_to
-    group by lower(trim(c.customer_name))
+    where p.date between p_from and p_to
+    group by 1
   ),
   merged as (
     select coalesce(c.customer_name, p.customer_name) as customer_name,
@@ -43,17 +41,11 @@ begin
     from credit_agg c
     full outer join payment_agg p using (name_key)
   ),
-  active as (
-    select customer_name, credit_taken, settled, overdue
-    from merged
-    where credit_taken > 0 or settled > 0
-  ),
   totals as (
-    select
-      coalesce((select sum(credit_taken) from credit_agg), 0)::numeric as credit_taken,
-      coalesce((select sum(settled) from payment_agg), 0)::numeric as settled,
-      coalesce((select sum(credit_taken) from credit_agg), 0)
-        - coalesce((select sum(settled) from payment_agg), 0) as overdue
+    select coalesce(sum(credit_taken), 0)::numeric as credit_taken,
+           coalesce(sum(settled), 0)::numeric as settled,
+           coalesce(sum(credit_taken), 0) - coalesce(sum(settled), 0) as overdue
+    from merged
   ),
   top_customers as (
     select coalesce(
@@ -70,7 +62,8 @@ begin
     ) as rows
     from (
       select customer_name, credit_taken, settled, overdue
-      from active
+      from merged
+      where credit_taken > 0 or settled > 0
       order by credit_taken desc, customer_name
       limit 50
     ) s
