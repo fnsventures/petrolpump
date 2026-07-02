@@ -93,7 +93,7 @@
       <div class="settings-panels">
         <section id="credit-panel-overview" class="settings-panel card is-visible" data-panel="overview">
           <h2>Overview</h2>
-          <p class="muted">Record credit sales and manage outstanding balances. Settlement and full history are on each customer’s detail page.</p>
+          <p class="muted">Portfolio snapshot and period activity. Record sales on Record sale; settlement and full history on each customer’s detail page.</p>
           <div class="stat-grid">
             <div class="stat-card stat-card-highlight">
               <span class="stat-label">Total outstanding</span>
@@ -108,13 +108,84 @@
               <a href="#outstanding" class="stat-link">View outstanding list →</a>
             </div>
           </div>
+
+          <div class="credit-overview-section">
+            <div class="card-head snapshot-head">
+              <div>
+                <h3 class="credit-overview-title">Period activity</h3>
+                <p class="muted">Credit taken, settlements received, and outstanding on sales in the selected period.</p>
+              </div>
+              <div class="snapshot-controls">
+                <div class="form-field">
+                  <label for="credit-overview-range">Period</label>
+                  <select id="credit-overview-range">
+                    <option value="this-month" selected>This month</option>
+                    <option value="this-week">This week</option>
+                    <option value="today">Today</option>
+                    <option value="custom">Custom dates</option>
+                  </select>
+                </div>
+                <div id="credit-overview-custom-range" class="custom-range hidden" aria-hidden="true">
+                  <div class="form-field">
+                    <label for="credit-overview-start">From</label>
+                    <input id="credit-overview-start" type="date" />
+                  </div>
+                  <div class="form-field">
+                    <label for="credit-overview-end">To</label>
+                    <input id="credit-overview-end" type="date" />
+                  </div>
+                </div>
+                <div class="filter-actions">
+                  <button type="button" id="credit-overview-apply-filter">Apply</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="stat-grid stat-grid-inline credit-overview-period-stats">
+              <div class="stat-card stat-card-compact">
+                <span class="stat-label">Credit taken</span>
+                <strong id="credit-overview-credit-taken" class="stat-value">—</strong>
+              </div>
+              <div class="stat-card stat-card-compact">
+                <span class="stat-label">Settled</span>
+                <strong id="credit-overview-settled" class="stat-value">—</strong>
+              </div>
+              <div class="stat-card stat-card-compact">
+                <span class="stat-label">Outstanding</span>
+                <strong id="credit-overview-overdue" class="stat-value">—</strong>
+              </div>
+            </div>
+
+            <h4 class="credit-overview-subtitle">By customer</h4>
+            <p class="muted text-sm">Click a customer to open their account summary for the same period.</p>
+            <div class="table-wrap">
+              <table class="credit-overview-table">
+                <thead>
+                  <tr>
+                    <th>Customer</th>
+                    <th>Credit taken (₹)</th>
+                    <th>Settled (₹)</th>
+                    <th>Outstanding (₹)</th>
+                  </tr>
+                </thead>
+                <tbody id="credit-overview-body">
+                  <tr>
+                    <td colspan="4" class="muted">Loading…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="credit-overview-empty" class="empty-state hidden">
+              <p>No credit activity for this period.</p>
+            </div>
+          </div>
         </section>
 
         <section id="credit-panel-record" class="settings-panel card" data-panel="record" hidden>
         <h2>Record credit sale</h2>
-        <p class="muted">Transaction date is the DSR business date when fuel was dispensed on credit.</p>
-        <form id="credit-form" class="form">
-          <div class="form-grid">
+        <p class="muted">Essential fields first for fast entry. Transaction date is the DSR business date when fuel was dispensed on credit.</p>
+        <form id="credit-form" class="form credit-quick-form" autocomplete="off">
+          <div class="form-grid credit-record-grid">
             <div class="form-field">
               <label for="customer">Customer name</label>
               <div class="combobox" id="customer-combobox">
@@ -141,63 +212,6 @@
             </div>
 
             <div class="form-field">
-              <label for="vehicle">Vehicle no.</label>
-              <input
-                id="vehicle"
-                name="vehicle_no"
-                type="text"
-                placeholder="WB12AB3456"
-                maxlength="32"
-              />
-            </div>
-
-            <div class="form-field">
-              <label for="credit-customer-mobile">Mobile <span class="optional-label">(optional)</span></label>
-              <input
-                id="credit-customer-mobile"
-                name="mobile"
-                type="tel"
-                placeholder="9XXXXXXXXX"
-                maxlength="20"
-                autocomplete="tel"
-              />
-            </div>
-
-            <div class="form-field form-field-span">
-              <label for="credit-customer-address">Address <span class="optional-label">(optional)</span></label>
-              <textarea
-                id="credit-customer-address"
-                name="address"
-                rows="2"
-                placeholder="Customer address"
-                maxlength="500"
-              ></textarea>
-            </div>
-
-            <div class="form-field">
-              <label for="fuel-type">Fuel type <span class="optional-label">(optional)</span></label>
-              <select id="fuel-type" name="fuel_type" aria-describedby="fuel-type-hint">
-                <option value="">—</option>
-                <option value="MS">MS (Petrol)</option>
-                <option value="HSD">HSD (Diesel)</option>
-              </select>
-              <span id="fuel-type-hint" class="field-hint">Defaults to HSD if left blank</span>
-            </div>
-
-            <div class="form-field">
-              <label for="quantity">Quantity (L) <span class="optional-label">(optional)</span></label>
-              <input
-                id="quantity"
-                name="quantity"
-                type="number"
-                step="0.001"
-                min="0"
-                placeholder="—"
-              />
-              <span class="field-hint">Defaults to 1 if left blank</span>
-            </div>
-
-            <div class="form-field">
               <label for="amount">Amount (₹)</label>
               <input
                 id="amount"
@@ -207,6 +221,7 @@
                 min="0.01"
                 placeholder="0"
                 required
+                inputmode="decimal"
               />
             </div>
 
@@ -221,20 +236,117 @@
             </div>
 
             <div class="form-field">
-              <label for="notes">Notes</label>
-              <textarea
-                id="notes"
-                name="notes"
-                rows="2"
-                placeholder="Credit terms, reference, etc."
-              ></textarea>
+              <label for="fuel-type">Fuel</label>
+              <select id="fuel-type" name="fuel_type" class="credit-fuel-select" aria-describedby="fuel-type-hint">
+                <option value="HSD" selected>HSD</option>
+                <option value="MS">MS</option>
+              </select>
+              <span id="fuel-type-hint" class="sr-only">Defaults to HSD (Diesel) when unchanged.</span>
+            </div>
+
+            <div class="form-field">
+              <label for="quantity">Qty (L) <span class="optional-label">(opt.)</span></label>
+              <input
+                id="quantity"
+                name="quantity"
+                type="number"
+                step="0.001"
+                min="0"
+                placeholder="1"
+                inputmode="decimal"
+              />
             </div>
           </div>
 
-          <button type="submit">Save credit entry</button>
+          <details class="credit-form-details" id="credit-form-details">
+            <summary>More details (vehicle, mobile, address, notes)</summary>
+            <div class="form-grid credit-details-grid">
+              <div class="form-field">
+                <label for="vehicle">Vehicle no.</label>
+                <input
+                  id="vehicle"
+                  name="vehicle_no"
+                  type="text"
+                  placeholder="WB12AB3456"
+                  maxlength="32"
+                />
+              </div>
+
+              <div class="form-field">
+                <label for="credit-customer-mobile">Mobile</label>
+                <input
+                  id="credit-customer-mobile"
+                  name="mobile"
+                  type="tel"
+                  placeholder="9XXXXXXXXX"
+                  maxlength="20"
+                  autocomplete="tel"
+                />
+              </div>
+
+              <div class="form-field form-field-span">
+                <label for="credit-customer-address">Address</label>
+                <textarea
+                  id="credit-customer-address"
+                  name="address"
+                  rows="2"
+                  placeholder="Customer address"
+                  maxlength="500"
+                ></textarea>
+              </div>
+
+              <div class="form-field form-field-span">
+                <label for="notes">Notes</label>
+                <textarea
+                  id="notes"
+                  name="notes"
+                  rows="2"
+                  placeholder="Credit terms, reference, etc."
+                ></textarea>
+              </div>
+            </div>
+          </details>
+
+          <div class="form-actions credit-form-actions">
+            <button type="submit">Save sale</button>
+          </div>
           <p id="credit-success" class="success hidden">Credit entry saved.</p>
           <p id="credit-error" class="error hidden"></p>
         </form>
+
+        <div id="credit-quick-payment" class="credit-quick-payment hidden" hidden aria-live="polite">
+          <h3 class="credit-quick-payment-title">Quick payment</h3>
+          <p class="muted credit-quick-payment-lead">
+            <span id="credit-quick-payment-customer"></span>
+            · Outstanding <strong id="credit-quick-payment-balance">—</strong>
+            <a id="credit-quick-payment-link" class="credit-quick-payment-link" href="#">Open customer page</a>
+          </p>
+          <form id="credit-quick-payment-form" class="credit-quick-payment-form" autocomplete="off">
+            <div class="form-field">
+              <label for="quick-settle-date">Payment date</label>
+              <input type="date" id="quick-settle-date" class="settle-date" />
+            </div>
+            <div class="form-field">
+              <label for="quick-settle-mode">Mode</label>
+              <select id="quick-settle-mode" class="settle-mode" aria-label="Payment mode">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Bank">Bank</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="quick-settle-amount">Amount (₹)</label>
+              <input type="number" min="0" step="0.01" id="quick-settle-amount" class="settle-amount" placeholder="Amount" inputmode="decimal" />
+            </div>
+            <div class="form-field credit-quick-payment-actions">
+              <span class="form-field-spacer" aria-hidden="true"></span>
+              <button type="button" id="quick-settle-fill-full" class="button-secondary button-small">Pay full balance</button>
+              <button type="submit" class="settle-confirm">Record payment</button>
+            </div>
+          </form>
+          <p id="credit-quick-payment-msg" class="muted hidden"></p>
+        </div>
+
         </section>
 
         <section id="credit-panel-outstanding" class="settings-panel card" data-panel="outstanding" hidden>
@@ -316,48 +428,49 @@
           aria-label="Activity period and print"
           hidden
         >
-          <div class="filter-card-head">
-            <h2 class="filter-card-title">Activity period</h2>
-            <div class="filter-card-actions">
-              <button
-                type="button"
-                id="customer-summary-print-btn"
-                class="button-secondary customer-summary-print-btn"
-                title="Print account summary for this customer"
-                disabled
-              >
-                Print summary
-              </button>
-              <button type="button" id="reset-period-filter" class="button-secondary">
-                Reset to today
-              </button>
+          <div class="card-head snapshot-head">
+            <div>
+              <h2 class="filter-card-title">Activity period</h2>
+              <p id="customer-filter-summary" class="muted text-sm" aria-live="polite"></p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field form-field-inline">
+                <label for="filter-range">Period</label>
+                <select id="filter-range" aria-describedby="customer-filter-summary">
+                  <option value="this-month" selected>This month</option>
+                  <option value="this-week">This week</option>
+                  <option value="today">Today</option>
+                  <option value="all-time">All time</option>
+                  <option value="custom">Custom dates</option>
+                </select>
+              </div>
+              <div id="customer-custom-range" class="custom-range hidden" aria-hidden="true">
+                <div class="form-field form-field-inline">
+                  <label for="filter-from">From</label>
+                  <input id="filter-from" type="date" />
+                </div>
+                <div class="form-field form-field-inline">
+                  <label for="filter-to">To</label>
+                  <input id="filter-to" type="date" />
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="customer-apply-filter">Apply</button>
+                <button
+                  type="button"
+                  id="customer-summary-print-btn"
+                  class="button-secondary customer-summary-print-btn"
+                  title="Print account summary for this customer"
+                  disabled
+                >
+                  Print summary
+                </button>
+                <button type="button" id="reset-period-filter" class="button-secondary">
+                  Reset to today
+                </button>
+              </div>
             </div>
           </div>
-
-          <form id="customer-view-filter" class="filter-form" autocomplete="off">
-            <div class="form-field form-field-inline">
-              <label for="filter-range">Period</label>
-              <select id="filter-range" aria-describedby="customer-filter-summary">
-                <option value="today">Today</option>
-                <option value="this-week">This week</option>
-                <option value="this-month" selected>This month</option>
-                <option value="all-time">All time</option>
-                <option value="custom">Custom dates</option>
-              </select>
-            </div>
-            <div id="customer-custom-range" class="custom-range hidden" aria-hidden="true">
-              <div class="form-field form-field-inline">
-                <label for="filter-from">From</label>
-                <input id="filter-from" type="date" />
-              </div>
-              <div class="form-field form-field-inline">
-                <label for="filter-to">To</label>
-                <input id="filter-to" type="date" />
-              </div>
-            </div>
-          </form>
-
-          <p id="customer-filter-summary" class="filter-summary muted text-sm" aria-live="polite"></p>
 
           <div class="stat-grid stat-grid-inline customer-toolbar-stats">
             <div class="stat-card stat-card-compact">
@@ -416,20 +529,119 @@
         </section>
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
-          <h2>Record payment</h2>
-          <p class="muted">Payment is allocated to oldest credit first (FIFO). Amounts above the outstanding balance are stored as credit for the customer.</p>
-          <div class="settle-inline settle-inline-page">
-            <label class="settle-date-label" for="settle-date">Payment date</label>
-            <input type="date" class="settle-date" id="settle-date" />
-            <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
-              <option value="Cash">Cash</option>
-              <option value="UPI">UPI</option>
-              <option value="Bank">Bank</option>
-            </select>
-            <input type="number" min="0" step="0.01" class="settle-amount" id="settle-amount" placeholder="Amount (₹)" />
-            <button type="button" class="settle-confirm" id="settle-btn">Record payment</button>
+          <h2>Record sale or payment</h2>
+          <p class="muted">Both forms on one page — record credit sales and settlements without switching tabs. Payments are allocated oldest-first (FIFO).</p>
+
+          <div class="credit-settle-balance-banner" aria-live="polite">
+            <div class="credit-settle-balance-text">
+              <span class="credit-settle-balance-label" id="settle-balance-label">Outstanding</span>
+              <strong id="settle-balance-value" class="credit-settle-balance-value">—</strong>
+            </div>
+            <button type="button" id="settle-fill-full" class="button-secondary button-small">Pay full balance</button>
           </div>
-          <p id="settle-msg" class="muted" aria-live="polite"></p>
+
+          <div class="credit-dual-entry">
+            <article class="credit-entry-panel">
+              <h3 class="credit-entry-panel-title">Record sale</h3>
+              <form id="customer-sale-form" class="form credit-customer-sale-form" autocomplete="off">
+                <div class="form-grid credit-quick-grid">
+                  <div class="form-field">
+                    <label for="customer-sale-vehicle">Vehicle no.</label>
+                    <input
+                      id="customer-sale-vehicle"
+                      name="vehicle_no"
+                      type="text"
+                      placeholder="WB12AB3456"
+                      maxlength="32"
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label for="customer-sale-amount">Amount (₹)</label>
+                    <input
+                      id="customer-sale-amount"
+                      name="amount_due"
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      placeholder="0"
+                      required
+                      inputmode="decimal"
+                    />
+                  </div>
+                  <div class="form-field">
+                    <label for="customer-sale-date">Transaction date</label>
+                    <input id="customer-sale-date" name="credit_date" type="date" />
+                  </div>
+                  <div class="form-field">
+                    <label for="customer-sale-fuel">Fuel</label>
+                    <select id="customer-sale-fuel" name="fuel_type">
+                      <option value="HSD" selected>HSD (Diesel)</option>
+                      <option value="MS">MS (Petrol)</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="customer-sale-qty">Qty (L) <span class="optional-label">(opt.)</span></label>
+                    <input
+                      id="customer-sale-qty"
+                      name="quantity"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="1"
+                      inputmode="decimal"
+                    />
+                  </div>
+                  <div class="form-field form-field-span">
+                    <label for="customer-sale-notes">Notes</label>
+                    <input
+                      id="customer-sale-notes"
+                      name="notes"
+                      type="text"
+                      maxlength="200"
+                      placeholder="Optional reference"
+                    />
+                  </div>
+                </div>
+                <button type="submit">Save sale</button>
+                <p id="customer-sale-success" class="success hidden">Sale recorded.</p>
+                <p id="customer-sale-error" class="error hidden"></p>
+              </form>
+            </article>
+
+            <article class="credit-entry-panel">
+              <h3 class="credit-entry-panel-title">Record payment</h3>
+              <form id="settle-form" class="form credit-settle-form" autocomplete="off">
+                <div class="form-grid credit-quick-grid">
+                  <div class="form-field">
+                    <label for="settle-date">Payment date</label>
+                    <input type="date" class="settle-date" id="settle-date" />
+                  </div>
+                  <div class="form-field">
+                    <label for="settle-mode">Mode</label>
+                    <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Bank">Bank</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="settle-amount">Amount (₹)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="settle-amount"
+                      id="settle-amount"
+                      placeholder="0"
+                      inputmode="decimal"
+                    />
+                  </div>
+                </div>
+                <button type="submit" class="settle-confirm" id="settle-btn">Record payment</button>
+                <p id="settle-msg" class="muted" aria-live="polite"></p>
+              </form>
+            </article>
+          </div>
         </section>
 
         <section class="settings-panel card" data-panel="credit" hidden>
