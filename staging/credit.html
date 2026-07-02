@@ -529,8 +529,8 @@
         </section>
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
-          <h2>Record sale or payment</h2>
-          <p class="muted">Both forms on one page — record credit sales and settlements without switching tabs. Payments are allocated oldest-first (FIFO).</p>
+          <h2>Record payment</h2>
+          <p class="muted">Record a settlement against this customer&rsquo;s outstanding balance. Payments are allocated oldest-first (FIFO).</p>
 
           <div class="credit-settle-balance-banner" aria-live="polite">
             <div class="credit-settle-balance-text">
@@ -540,108 +540,36 @@
             <button type="button" id="settle-fill-full" class="button-secondary button-small">Pay full balance</button>
           </div>
 
-          <div class="credit-dual-entry">
-            <article class="credit-entry-panel">
-              <h3 class="credit-entry-panel-title">Record sale</h3>
-              <form id="customer-sale-form" class="form credit-customer-sale-form" autocomplete="off">
-                <div class="form-grid credit-quick-grid">
-                  <div class="form-field">
-                    <label for="customer-sale-vehicle">Vehicle no.</label>
-                    <input
-                      id="customer-sale-vehicle"
-                      name="vehicle_no"
-                      type="text"
-                      placeholder="WB12AB3456"
-                      maxlength="32"
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label for="customer-sale-amount">Amount (₹)</label>
-                    <input
-                      id="customer-sale-amount"
-                      name="amount_due"
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      placeholder="0"
-                      required
-                      inputmode="decimal"
-                    />
-                  </div>
-                  <div class="form-field">
-                    <label for="customer-sale-date">Transaction date</label>
-                    <input id="customer-sale-date" name="credit_date" type="date" />
-                  </div>
-                  <div class="form-field">
-                    <label for="customer-sale-fuel">Fuel</label>
-                    <select id="customer-sale-fuel" name="fuel_type">
-                      <option value="HSD" selected>HSD (Diesel)</option>
-                      <option value="MS">MS (Petrol)</option>
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label for="customer-sale-qty">Qty (L) <span class="optional-label">(opt.)</span></label>
-                    <input
-                      id="customer-sale-qty"
-                      name="quantity"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      placeholder="1"
-                      inputmode="decimal"
-                    />
-                  </div>
-                  <div class="form-field form-field-span">
-                    <label for="customer-sale-notes">Notes</label>
-                    <input
-                      id="customer-sale-notes"
-                      name="notes"
-                      type="text"
-                      maxlength="200"
-                      placeholder="Optional reference"
-                    />
-                  </div>
-                </div>
-                <button type="submit">Save sale</button>
-                <p id="customer-sale-success" class="success hidden">Sale recorded.</p>
-                <p id="customer-sale-error" class="error hidden"></p>
-              </form>
-            </article>
-
-            <article class="credit-entry-panel">
-              <h3 class="credit-entry-panel-title">Record payment</h3>
-              <form id="settle-form" class="form credit-settle-form" autocomplete="off">
-                <div class="form-grid credit-quick-grid">
-                  <div class="form-field">
-                    <label for="settle-date">Payment date</label>
-                    <input type="date" class="settle-date" id="settle-date" />
-                  </div>
-                  <div class="form-field">
-                    <label for="settle-mode">Mode</label>
-                    <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
-                      <option value="Cash">Cash</option>
-                      <option value="UPI">UPI</option>
-                      <option value="Bank">Bank</option>
-                    </select>
-                  </div>
-                  <div class="form-field">
-                    <label for="settle-amount">Amount (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="settle-amount"
-                      id="settle-amount"
-                      placeholder="0"
-                      inputmode="decimal"
-                    />
-                  </div>
-                </div>
-                <button type="submit" class="settle-confirm" id="settle-btn">Record payment</button>
-                <p id="settle-msg" class="muted" aria-live="polite"></p>
-              </form>
-            </article>
-          </div>
+          <form id="settle-form" class="form credit-settle-form" autocomplete="off">
+            <div class="form-grid credit-quick-grid">
+              <div class="form-field">
+                <label for="settle-date">Payment date</label>
+                <input type="date" class="settle-date" id="settle-date" />
+              </div>
+              <div class="form-field">
+                <label for="settle-mode">Mode</label>
+                <select class="settle-mode" id="settle-mode" aria-label="Payment mode">
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Bank">Bank</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="settle-amount">Amount (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  class="settle-amount"
+                  id="settle-amount"
+                  placeholder="0"
+                  inputmode="decimal"
+                />
+              </div>
+            </div>
+            <button type="submit" class="settle-confirm" id="settle-btn">Record payment</button>
+            <p id="settle-msg" class="muted" aria-live="polite"></p>
+          </form>
         </section>
 
         <section class="settings-panel card" data-panel="credit" hidden>

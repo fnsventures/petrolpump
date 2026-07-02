@@ -68,6 +68,11 @@
   --topbar-height: 3.75rem;
 }
 
+/* Reserve scrollbar space so layout/background don't shift when content height changes */
+html {
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -79,10 +84,19 @@ body {
 
 /* App shell: subtle depth without distracting from data */
 body:not(.login-page):not(.landing-page) {
+  position: relative;
+  background-color: #f8fafc;
+}
+
+body:not(.login-page):not(.landing-page)::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(ellipse 100% 60% at 50% -8%, rgba(0, 112, 192, 0.06), transparent 55%),
     linear-gradient(180deg, #f8fafc 0%, #f1f5f9 48%, #eef2f7 100%);
-  background-attachment: fixed;
 }
 
 body:not(.login-page):not(.landing-page) main {
