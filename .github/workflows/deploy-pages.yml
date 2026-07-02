@@ -1,5 +1,7 @@
 name: Deploy GitHub Pages
 
+run-name: ${{ github.event_name == 'workflow_run' && format('Deploy after {0}', github.event.workflow_run.display_title) || format('Manual deploy ({0})', inputs.target) }}
+
 on:
   workflow_run:
     workflows: [Merge]
@@ -28,10 +30,7 @@ permissions:
 jobs:
   prepare:
     name: Prepare deploy
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.name == 'Merge')
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       target: ${{ steps.resolve.outputs.target }}
@@ -98,7 +97,7 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: Deploy to ${{ needs.prepare.outputs.target == 'staging' && 'staging' || 'production' }}
+    name: Publish site
     needs: [prepare, build]
     if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
