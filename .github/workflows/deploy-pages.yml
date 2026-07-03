@@ -1,83 +1,127 @@
 name: Deploy GitHub Pages
 
-on:
-  push:
-    branches:
-      - main
-      - staging
-  workflow_dispatch:
+run-name: ${{ github.event_name == 'workflow_run' && format('Deploy after {0}', github.event.workflow_run.display_title) || format('Manual deploy ({0})', inputs.target) }}
 
-# peaceiris pushes to gh-pages, which triggers GitHub's pages-build-deployment
-# workflow. Without serialization, back-to-back staging + main deploys race and
-# cancel each other (deploy-pages stuck in deployment_queued, then canceled).
+on:
+  workflow_run:
+    workflows: [Merge]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      target:
+        required: true
+        type: choice
+        options: [staging, prod]
+      sha:
+        required: false
+        type: string
+        description: Commit to deploy (defaults to branch HEAD)
+
 concurrency:
-  group: gh-pages-deploy
+  group: github-pages
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
-  deploy_prod:
-    if: github.ref == 'refs/heads/main'
+  prepare:
+    name: Prepare deploy
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    environment: prod
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      deploy: ${{ steps.resolve.outputs.deploy }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        id: meta
+        with:
+          name: deploy-meta
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Write runtime env config
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ inputs.sha != '' && inputs.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.meta.outcome }}" = "success" ]; then
+            echo "target=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['target'])")" >> "$GITHUB_OUTPUT"
+            echo "sha=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['sha'])")" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build site
+    needs: prepare
+    if: needs.prepare.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.prepare.outputs.target }}
+    env:
+      TARGET: ${{ needs.prepare.outputs.target }}
+      DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Build and package
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          cat <<EOF > js/env.js
-          window.__APP_CONFIG__ = {
-            SUPABASE_URL: "${SUPABASE_URL}",
-            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "prod",
-          };
-          EOF
-          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
-          sed -i '/^js\/env\.js$/d' .gitignore
+          bash .github/scripts/pages-deploy.sh build "$TARGET"
+          mkdir -p bundle
+          cp -a _site bundle/_site
+          cp .github/scripts/pages-deploy.sh bundle/pages-deploy.sh
 
-      - name: Deploy to gh-pages (prod)
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          keep_files: true
+          path: _site
 
-  deploy_staging:
-    if: github.ref == 'refs/heads/staging'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deploy-bundle
+          path: bundle/
+          retention-days: 1
+
+  deploy:
+    name: Publish site
+    needs: [prepare, build]
+    if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
-    environment: staging
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - id: deployment
+        uses: actions/deploy-pages@v4
 
-      - name: Write runtime env config
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: |
-          cat <<EOF > js/env.js
-          window.__APP_CONFIG__ = {
-            SUPABASE_URL: "${SUPABASE_URL}",
-            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "staging",
-          };
-          EOF
-          # peaceiris/actions-gh-pages respects .gitignore; env.js must ship to Pages.
-          sed -i '/^js\/env\.js$/d' .gitignore
-
-      - name: Remove custom domain for staging
-        run: rm -f CNAME
-
-      - name: Deploy to gh-pages (staging)
-        uses: peaceiris/actions-gh-pages@v4
+      - uses: actions/download-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
-          destination_dir: staging
-          keep_files: true
+          name: deploy-bundle
+          path: bundle
+
+      - name: Update pages-state branch
+        working-directory: bundle
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET: ${{ needs.prepare.outputs.target }}
+          DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+        run: bash pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"
