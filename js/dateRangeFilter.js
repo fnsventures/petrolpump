@@ -84,7 +84,7 @@ function formatDateRangeLabel(range, modeInfo, opts = {}) {
  * @param {string|HTMLElement} [config.applyBtn]
  * @param {string|HTMLElement} [config.labelEl]
  * @param {'auto'|'apply'|'form'|'manual'} [config.trigger='auto'] - when onApply runs
- * @param {boolean} [config.persist=true]
+ * @param {boolean} [config.persist=true] - save range to localStorage
  * @param {boolean} [config.runOnInit=true]
  * @param {boolean} [config.reloadOnCustomInput=true] - auto mode: reload when custom dates change
  * @param {'dashboard'|'compact'} [config.labelStyle='dashboard']

@@ -390,6 +390,121 @@ function setFilterState(key, state) {
   } catch (_) {}
 }
 
+/** Allowed `range` value for single-date inputs stored via {@link savePersistedDate}. */
+const SINGLE_DATE_FILTER_RANGE = new Set(["date"]);
+
+/** localStorage keys for record-form date inputs (single-date persistence). */
+const RECORD_DATE_KEYS = {
+  expense: "record_expense_date",
+  creditTransaction: "record_credit_transaction_date",
+  creditQuickSettle: "record_credit_quick_settle_date",
+  creditSettle: "record_credit_settle_date",
+  salaryPayment: "record_salary_payment_date",
+  invoiceUpload: "record_invoice_upload_date",
+  billingInvoice: "record_billing_invoice_date",
+  attendance: "record_attendance_date",
+  dsrPetrol: "record_dsr_petrol_date",
+  dsrDiesel: "record_dsr_diesel_date",
+};
+
+/**
+ * Read a persisted single-date value (dashboard snapshot, record forms, etc.).
+ * @param {string} storageKey
+ * @param {string} [fallback]
+ * @returns {string}
+ */
+function getPersistedDate(storageKey, fallback) {
+  const stored =
+    typeof getValidFilterState === "function"
+      ? getValidFilterState(storageKey, SINGLE_DATE_FILTER_RANGE)
+      : null;
+  return stored?.start || fallback || getLocalDateString();
+}
+
+/**
+ * Persist a single-date value using the shared filter-state format.
+ * @param {string} storageKey
+ * @param {string} dateStr - YYYY-MM-DD
+ */
+function savePersistedDate(storageKey, dateStr) {
+  if (dateStr && typeof setFilterState === "function") {
+    setFilterState(storageKey, { range: "date", start: dateStr });
+  }
+}
+
+/**
+ * Restore and auto-save a single date input (record forms, snapshot pickers).
+ * Priority: URL param → localStorage → current value → fallback (today).
+ *
+ * @param {HTMLInputElement|string} inputRef
+ * @param {string} storageKey
+ * @param {{ fallback?: string, urlParam?: string, saveOnChange?: boolean, onChange?: (dateStr: string) => void }} [opts]
+ * @returns {string} resolved date
+ */
+function initPersistedDateInput(inputRef, storageKey, opts = {}) {
+  const input = typeof inputRef === "string" ? document.getElementById(inputRef) : inputRef;
+  const fallback = opts.fallback || getLocalDateString();
+  if (!input) return fallback;
+
+  let dateStr = null;
+  if (opts.urlParam) {
+    const fromUrl = new URLSearchParams(window.location.search).get(opts.urlParam);
+    if (fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl)) dateStr = fromUrl;
+  }
+  if (!dateStr) {
+    const stored = getPersistedDate(storageKey, "");
+    if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) dateStr = stored;
+  }
+  if (!dateStr) {
+    dateStr =
+      input.value && /^\d{4}-\d{2}-\d{2}$/.test(input.value) ? input.value : fallback;
+  }
+
+  input.value = dateStr;
+  savePersistedDate(storageKey, dateStr);
+
+  if (opts.saveOnChange !== false) {
+    input.addEventListener("change", () => {
+      const value = input.value || fallback;
+      savePersistedDate(storageKey, value);
+      if (typeof opts.onChange === "function") opts.onChange(value);
+    });
+  }
+
+  return dateStr;
+}
+
+/**
+ * Reset a form without losing chosen field values (e.g. date after record save).
+ * @param {HTMLFormElement} form
+ * @param {Record<string, string>} fieldValues - element id or name → value
+ */
+function resetFormKeepingFields(form, fieldValues) {
+  if (!form || !fieldValues) return;
+  form.reset();
+  for (const [key, value] of Object.entries(fieldValues)) {
+    if (value == null) continue;
+    const el =
+      form.querySelector(key.startsWith("#") ? key : `#${key}`) ||
+      form.querySelector(`[name="${key}"]`);
+    if (el && "value" in el) el.value = value;
+  }
+}
+
+/**
+ * After a successful record save: reset the form, restore fields, and sync date keys.
+ * @param {HTMLFormElement} form
+ * @param {Record<string, string>} fieldValues
+ * @param {Record<string, string>} [dateStorageKeys] - field key → storage key
+ */
+function finishRecordFormSave(form, fieldValues, dateStorageKeys = {}) {
+  resetFormKeepingFields(form, fieldValues);
+  for (const [fieldKey, storageKey] of Object.entries(dateStorageKeys)) {
+    const value = fieldValues[fieldKey];
+    if (value && storageKey) savePersistedDate(storageKey, value);
+  }
+}
+
 /**
  * Get today's date as YYYY-MM-DD in the user's local timezone.
  * Use this for "today" in credit payments and day closing so the same calendar day is used.
@@ -492,6 +607,13 @@ window.formatCurrency = formatCurrency;
 window.getFilterState = getFilterState;
 window.getValidFilterState = getValidFilterState;
 window.setFilterState = setFilterState;
+window.SINGLE_DATE_FILTER_RANGE = SINGLE_DATE_FILTER_RANGE;
+window.RECORD_DATE_KEYS = RECORD_DATE_KEYS;
+window.getPersistedDate = getPersistedDate;
+window.savePersistedDate = savePersistedDate;
+window.initPersistedDateInput = initPersistedDateInput;
+window.resetFormKeepingFields = resetFormKeepingFields;
+window.finishRecordFormSave = finishRecordFormSave;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
 window.withProgress = withProgress;

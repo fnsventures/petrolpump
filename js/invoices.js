@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getMonthRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getMonthRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const dateInput = document.getElementById("invoice-date");
-  if (dateInput) dateInput.value = getLocalDateString();
+  if (dateInput) initPersistedDateInput(dateInput, RECORD_DATE_KEYS.invoiceUpload);
 
   initInvoiceFilter();
   bindUploadForm();
@@ -221,9 +221,10 @@ function bindUploadForm() {
       if (!res.ok) throw new Error(payload.error || `Upload failed (${res.status})`);
 
       successEl?.classList.remove("hidden");
-      form.reset();
-      const dateInput = document.getElementById("invoice-date");
-      if (dateInput) dateInput.value = getLocalDateString();
+      const savedDate = document.getElementById("invoice-date")?.value;
+      finishRecordFormSave(form, { invoiceDate: savedDate }, {
+        invoiceDate: RECORD_DATE_KEYS.invoiceUpload,
+      });
       if (fileInput) fileInput.value = "";
       loadInvoices();
     } catch (err) {
@@ -266,7 +267,6 @@ function initInvoiceFilter() {
     customRange: "invoice-custom-range",
     applyBtn: "invoice-apply-filter",
     trigger: "apply",
-    persist: false,
     runOnInit: false,
     onApply: () => loadInvoices(),
   });

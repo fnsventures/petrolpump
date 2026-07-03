@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput */
 
 /**
  * Generate cache key for dashboard data queries
@@ -558,20 +558,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   const snapshotDateInput = document.getElementById("snapshot-date");
   const todayStr = getLocalDateString();
 
-  const SNAPSHOT_RANGE = new Set(["date"]);
-  const storedSnapshot = typeof window.getValidFilterState === "function"
-    ? window.getValidFilterState("dashboard_snapshot", SNAPSHOT_RANGE)
-    : null;
-  const snapshotDateStr = storedSnapshot?.start || todayStr;
-  updateHeroDate(snapshotDateStr);
+  const updateSalesDailyLink = () => {
+    const link = document.getElementById("sales-daily-link");
+    if (link) link.href = "sales-daily.html?date=" + (snapshotDateInput?.value || todayStr);
+  };
 
+  let snapshotDateStr = todayStr;
   if (snapshotDateInput) {
-    snapshotDateInput.value = snapshotDateStr;
-    window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: snapshotDateStr });
-    const updateSalesDailyLink = () => {
-      const link = document.getElementById("sales-daily-link");
-      if (link) link.href = "sales-daily.html?date=" + (snapshotDateInput.value || todayStr);
+    const onSnapshotDate = async (dateValue) => {
+      updateHeroDate(dateValue);
+      updateSalesDailyLink();
+      await Promise.all([
+        loadTodaySales(dateValue),
+        loadCreditSummary(dateValue),
+        loadHeroStock(dateValue),
+      ]);
     };
+    snapshotDateStr = initPersistedDateInput(snapshotDateInput, "dashboard_snapshot", {
+      onChange: onSnapshotDate,
+    });
+    updateHeroDate(snapshotDateStr);
     updateSalesDailyLink();
     const salesDailyLink = document.getElementById("sales-daily-link");
     if (salesDailyLink) {
@@ -581,17 +587,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         } catch (_) {}
       });
     }
-    snapshotDateInput.addEventListener("change", async () => {
-      const dateValue = snapshotDateInput.value || todayStr;
-      updateHeroDate(dateValue);
-      window.setFilterState && window.setFilterState("dashboard_snapshot", { range: "date", start: dateValue });
-      updateSalesDailyLink();
-      await Promise.all([
-        loadTodaySales(dateValue),
-        loadCreditSummary(dateValue),
-        loadHeroStock(dateValue),
-      ]);
-    });
   }
 
   const snapshotCard = document.getElementById("snapshot-card");

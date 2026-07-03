@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, getValidFilterState, setFilterState */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -8,32 +8,6 @@ let dcDetailsCache = { date: null, collection: null, credit: null, expenses: nul
 let expenseCategoryLabels = null;
 
 const DC_DETAIL_KINDS = ["collection", "credit", "expenses"];
-const DAY_CLOSING_DATE_RANGE = new Set(["date"]);
-
-function saveDayClosingDateFilter(dateStr) {
-  if (dateStr && typeof setFilterState === "function") {
-    setFilterState("day_closing_close", { range: "date", start: dateStr });
-  }
-}
-
-function resolveDayClosingDateInput(dateInput, todayStr) {
-  const dateParam = new URLSearchParams(window.location.search).get("date");
-  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    dateInput.value = dateParam;
-  } else {
-    const stored =
-      typeof getValidFilterState === "function"
-        ? getValidFilterState("day_closing_close", DAY_CLOSING_DATE_RANGE)
-        : null;
-    if (stored?.start) {
-      dateInput.value = stored.start;
-    } else if (!dateInput.value) {
-      dateInput.value = todayStr;
-    }
-  }
-  saveDayClosingDateFilter(dateInput.value);
-  return dateInput.value || todayStr;
-}
 const DC_LEGACY_EXPENSE_LABELS = {
   miscellanious: "Miscellaneous",
   mstest: "Miscellaneous",
@@ -429,12 +403,10 @@ async function initializeDayClosing() {
   if (!dateInput || !form) return;
 
   const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
-  resolveDayClosingDateInput(dateInput, todayStr);
-
-  dateInput.addEventListener("change", () => {
-    const dateStr = dateInput.value || todayStr;
-    saveDayClosingDateFilter(dateStr);
-    loadDayClosingBreakdown(dateStr);
+  const dateStr = initPersistedDateInput(dateInput, "day_closing_close", {
+    urlParam: "date",
+    fallback: todayStr,
+    onChange: (value) => loadDayClosingBreakdown(value),
   });
 
   const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
@@ -511,7 +483,7 @@ async function initializeDayClosing() {
       }
       if (errorEl) errorEl.classList.add("hidden");
       dateInput.value = dateStr;
-      saveDayClosingDateFilter(dateStr);
+      savePersistedDate("day_closing_close", dateStr);
       await loadDayClosingBreakdown(dateStr);
       // Invalidate cache so dashboard day-closing banners and data reflect immediately
       if (typeof CacheInvalidation !== "undefined") {

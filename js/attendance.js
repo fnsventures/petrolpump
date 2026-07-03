@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -167,7 +167,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   if (attendanceDateInput) {
-    attendanceDateInput.value = getLocalDateString();
+    initPersistedDateInput(attendanceDateInput, RECORD_DATE_KEYS.attendance);
   }
   const now = new Date();
   if (historyMonthInput) {
