@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -237,8 +237,8 @@ function initListView() {
     form.addEventListener("submit", (event) => handleCreditSubmit(event));
   }
   const transactionDateInput = document.getElementById("credit-date");
-  if (transactionDateInput && typeof getLocalDateString === "function") {
-    transactionDateInput.value = getLocalDateString();
+  if (transactionDateInput) {
+    initPersistedDateInput(transactionDateInput, RECORD_DATE_KEYS.creditTransaction);
   }
 
   const onCreditSearch = debounce((value) => {
@@ -319,9 +319,8 @@ async function initCustomerView() {
   if (titleEl) titleEl.textContent = customerName;
   document.title = `${customerName} · Credit · Bishnupriya Fuels`;
 
-  const today = getLocalDateString();
   const settleDate = document.getElementById("settle-date");
-  if (settleDate) settleDate.value = today;
+  if (settleDate) initPersistedDateInput(settleDate, RECORD_DATE_KEYS.creditSettle);
 
   applyCustomerPeriodFromUrl(new URLSearchParams(window.location.search));
   initCustomerViewFilter();
@@ -504,16 +503,13 @@ function initOverviewPanel() {
     customRange: "credit-overview-custom-range",
     applyBtn: "credit-overview-apply-filter",
     trigger: "apply",
-    persist: false,
     runOnInit: true,
     onApply: () => loadOverviewPeriodActivity(),
   });
 }
 
 function initRecordSalePanel() {
-  const today = getLocalDateString();
-  const quickDate = document.getElementById("quick-settle-date");
-  if (quickDate) quickDate.value = today;
+  initPersistedDateInput("quick-settle-date", RECORD_DATE_KEYS.creditQuickSettle);
 
   document.getElementById("credit-quick-payment-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -648,6 +644,7 @@ async function handleQuickPayment() {
 
   const amountInput = document.getElementById("quick-settle-amount");
   if (amountInput) amountInput.value = "";
+  savePersistedDate(RECORD_DATE_KEYS.creditQuickSettle, settlementDate);
   await loadCustomerNames();
   invalidateAndRefreshCreditPortfolio();
   syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
@@ -1747,6 +1744,7 @@ async function handleSettle() {
 
   const settleAmountInput = document.getElementById("settle-amount");
   if (settleAmountInput) settleAmountInput.value = "";
+  savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
   invalidateCreditCaches();
   await resolveCustomerIds();
   await loadCustomerDetail();
@@ -2129,13 +2127,10 @@ async function handleCreditSubmit(event) {
     return;
   }
 
-  form.reset();
+  finishRecordFormSave(form, { credit_date: transactionDate }, {
+    credit_date: RECORD_DATE_KEYS.creditTransaction,
+  });
   setComboboxOpen(false);
-  const transactionDateInput = form.querySelector("#credit-date");
-  if (transactionDateInput) {
-    transactionDateInput.value =
-      typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
-  }
   const fuelTypeSelect = form.querySelector("#fuel-type");
   if (fuelTypeSelect) fuelTypeSelect.value = savedFuel || "HSD";
 

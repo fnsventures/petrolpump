@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateInput = document.getElementById("expense-date");
 
   if (dateInput) {
-    dateInput.value = getLocalDateString();
+    initPersistedDateInput(dateInput, RECORD_DATE_KEYS.expense);
   }
 
   if (form) {
@@ -105,10 +105,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const savedDate = payload.date;
-      form.reset();
-      if (dateInput) {
-        dateInput.value = savedDate;
-      }
+      finishRecordFormSave(form, { date: savedDate }, { date: RECORD_DATE_KEYS.expense });
       successEl?.classList.remove("hidden");
       loadExpenses(true);
       // Invalidate cache so dashboard reflects new expense immediately
@@ -180,7 +177,6 @@ function initExpenseFilter() {
     customRange: "expense-custom-range",
     applyBtn: "expense-apply-filter",
     trigger: "apply",
-    persist: false,
     runOnInit: false,
     onApply: () => loadExpenses(true),
   });

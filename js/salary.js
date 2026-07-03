@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -529,7 +529,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const detailAddPaymentBtn = document.getElementById("salary-detail-add-payment");
 
   if (paymentDateInput) {
-    paymentDateInput.value = getLocalDateString();
+    initPersistedDateInput(paymentDateInput, RECORD_DATE_KEYS.salaryPayment);
   }
 
   const now = new Date();
@@ -1241,12 +1241,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       resetSubmitBtn();
 
-      paymentForm.reset();
-      paymentDateInput.value = getLocalDateString();
-      writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, getSelectedMonth());
-      fillStaffSelect(paymentStaffSelect);
+      const savedDate = date;
+      const savedSalaryMonth = salaryMonthVal;
+      const savedStaffId = staffId;
+
+      finishRecordFormSave(
+        paymentForm,
+        { date: savedDate },
+        { date: RECORD_DATE_KEYS.salaryPayment }
+      );
+      if (savedSalaryMonth) {
+        writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, savedSalaryMonth);
+      }
+
       paymentSuccess?.classList.remove("hidden");
       await refreshAll();
+
+      if (paymentStaffSelect && savedStaffId && staffList.some((s) => s.id === savedStaffId)) {
+        paymentStaffSelect.value = savedStaffId;
+      }
+      updatePaymentMonthHint();
       if (typeof AppCache !== "undefined" && AppCache) {
         CacheInvalidation.invalidate("operational");
       }

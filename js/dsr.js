@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation, AdminDelete */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -322,7 +322,7 @@ function initReadingForm(product) {
   const form = document.getElementById(`dsr-form-${product}`);
   if (!form) return;
 
-  setDefaultDate(form);
+  initMeterFormDate(form, product);
 
   const dateInput = form.querySelector("input[name='date']");
   if (dateInput) {
@@ -468,8 +468,9 @@ function initReadingForm(product) {
       sessionStorage.setItem("pl_todo_pending", "1");
     }
 
-    form.reset();
-    setDefaultDate(form);
+    finishRecordFormSave(form, { date: payload.date }, {
+      date: meterDateStorageKey(product),
+    });
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save meter entry";
@@ -870,11 +871,13 @@ async function prefillOpeningFromPreviousDay(product, form) {
   updateDerivedFields(form);
 }
 
-function setDefaultDate(form) {
-  const dateInput = form.querySelector("input[type='date']");
-  if (dateInput && !dateInput.value) {
-    dateInput.value = getLocalDateString();
-  }
+function meterDateStorageKey(product) {
+  return product === "petrol" ? RECORD_DATE_KEYS.dsrPetrol : RECORD_DATE_KEYS.dsrDiesel;
+}
+
+function initMeterFormDate(form, product) {
+  const dateInput = form.querySelector("input[name='date']");
+  if (dateInput) initPersistedDateInput(dateInput, meterDateStorageKey(product));
 }
 
 function toNumber(value) {

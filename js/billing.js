@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS */
 
 let productsCache = [];
 let currentAuth = null;
@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyStationLetterhead();
 
   const dateInput = document.getElementById("invoice-date");
-  if (dateInput) dateInput.value = getLocalDateString();
+  if (dateInput) initPersistedDateInput(dateInput, RECORD_DATE_KEYS.billingInvoice);
 
   const partyInput = document.getElementById("party-name");
   const billing = PumpSettings.getCachedSync().billing || {};
@@ -479,9 +479,10 @@ function resetSaveButtons() {
 
 function resetForm() {
   const form = document.getElementById("invoice-form");
-  form?.reset();
-  const dateInput = document.getElementById("invoice-date");
-  if (dateInput) dateInput.value = getLocalDateString();
+  const savedDate = document.getElementById("invoice-date")?.value || getLocalDateString();
+  finishRecordFormSave(form, { invoice_date: savedDate }, {
+    invoice_date: RECORD_DATE_KEYS.billingInvoice,
+  });
   const tbody = document.getElementById("items-body");
   if (tbody) tbody.innerHTML = "";
   itemCounter = 0;
@@ -631,7 +632,6 @@ function initFilterHandlers() {
     customRange: "invoice-custom-range",
     applyBtn: "invoice-apply-filter",
     trigger: "apply",
-    persist: false,
     runOnInit: false,
     onApply: () => loadInvoices(true),
   });
