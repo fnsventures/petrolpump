@@ -16,7 +16,11 @@
 
   function extractReceiptRows(rows) {
     return (rows ?? [])
-      .filter((row) => Number(row.receipts ?? 0) > 0 && row.buying_price_per_litre != null)
+      .filter((row) => {
+        if (Number(row.receipts ?? 0) <= 0) return false;
+        const rate = Number(row.buying_price_per_litre);
+        return Number.isFinite(rate) && rate > 0;
+      })
       .sort((a, b) => b.date.localeCompare(a.date));
   }
 
@@ -51,10 +55,30 @@
   async function fetchExpenses(startDate, endDate, select) {
     const { data, error } = await supabaseClient
       .from("expenses")
-      .select(select || "date, amount")
+      .select(select || "date, category, amount")
       .gte("date", startDate)
       .lte("date", endDate);
     return { data: data ?? [], error };
+  }
+
+  /** Lube/billing invoice totals for P&L (matches Reports trading account). */
+  async function fetchLubeSales(startDate, endDate) {
+    const { data, error } = await supabaseClient
+      .from("invoices")
+      .select("invoice_date, total_amount")
+      .gte("invoice_date", startDate)
+      .lte("invoice_date", endDate);
+    if (error) return { total: 0, byDate: new Map(), error };
+
+    const byDate = new Map();
+    let total = 0;
+    (data ?? []).forEach((row) => {
+      const amount = Number(row.total_amount ?? 0);
+      total += amount;
+      const key = row.invoice_date;
+      byDate.set(key, (byDate.get(key) ?? 0) + amount);
+    });
+    return { total, byDate, error: null };
   }
 
   /** Merge DSR meter rows with dsr_stock dip/opening fields (date + product key). */
@@ -79,6 +103,7 @@
     extractReceiptRows,
     fetchDsrRows,
     fetchExpenses,
+    fetchLubeSales,
     mergeDsrStock,
   };
 })(typeof window !== "undefined" ? window : globalThis);

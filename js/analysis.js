@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, buildEffectiveBuyingMap, computeFuelRowMargin, isTestingExpenseCategory */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, buildEffectiveBuyingMap, computeFuelRowMargin, isTestingExpenseCategory, computeProfitLossSummary, initDocsAccordion */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -28,27 +28,42 @@ function formatPercent(value) {
 
 
 async function fetchAnalysisData(startDate, endDate) {
-  const [dsrBundle, expenseResult] = await Promise.all([
+  const [dsrBundle, expenseResult, lubeResult] = await Promise.all([
     DsrQueries.fetchDsrRows(startDate, endDate),
     DsrQueries.fetchExpenses(startDate, endDate),
+    DsrQueries.fetchLubeSales(startDate, endDate),
   ]);
 
   if (dsrBundle.error) throw dsrBundle.error;
   if (expenseResult.error) throw expenseResult.error;
+  if (lubeResult.error) throw lubeResult.error;
 
   return {
     dsrData: dsrBundle.data ?? [],
     expenseData: expenseResult.data ?? [],
     receiptRows: dsrBundle.receiptRows ?? [],
+    lubeSales: lubeResult.total,
+    lubeByDate: lubeResult.byDate,
   };
+}
+
+/** Period totals via shared P&L helper (same as Dashboard and Reports P&L). */
+function computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales) {
+  return computeProfitLossSummary({
+    dsrRows: dsrData,
+    receiptRows,
+    expenseRows: expenseData,
+    lubeSales,
+    requireAllBuying: true,
+  });
 }
 
 /**
  * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹), petrol L, diesel L.
  * Cost uses landed buying rate: (pre-VAT + delivery/L) × (1 + VAT%). Profit = sales − cost − expenses (testing excluded).
  */
-function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate) {
-  const getEffectiveBuying = buildEffectiveBuyingMap(receiptRows);
+function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate, lubeByDate, canCalculate = true) {
+  const getEffectiveBuying = canCalculate ? buildEffectiveBuyingMap(receiptRows) : () => null;
   const byDate = new Map();
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T00:00:00`);
@@ -59,6 +74,7 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
       salesRupees: 0,
       costRupees: 0,
       expenseRupees: 0,
+      lubeRupees: 0,
       petrolL: 0,
       dieselL: 0,
       petrolRupees: 0,
@@ -83,18 +99,29 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate)
     }
   });
 
+  (lubeByDate ?? new Map()).forEach((amount, key) => {
+    if (!byDate.has(key)) return;
+    const entry = byDate.get(key);
+    entry.lubeRupees += amount;
+    entry.salesRupees += amount;
+  });
+
   (expenseData ?? []).forEach((row) => {
     const key = row.date;
     if (!byDate.has(key)) return;
-    if (isTestingExpenseCategory(row.category)) return;
-    byDate.get(key).expenseRupees += Number(row.amount ?? 0);
+    if (isTestingExpenseCategory(row.category, row.description)) return;
+    const amount = Number(row.amount ?? 0);
+    if (!Number.isFinite(amount)) return;
+    byDate.get(key).expenseRupees += amount;
   });
 
   const series = Array.from(byDate.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([, v]) => ({
       ...v,
-      profitRupees: v.salesRupees - v.costRupees - v.expenseRupees,
+      profitRupees: canCalculate
+        ? v.salesRupees - v.costRupees - v.expenseRupees
+        : null,
     }));
 
   return series;
@@ -173,13 +200,26 @@ function setKpiGrowth(id, value) {
   setStatTone(el, value, true);
 }
 
+function renderBuyingAlert(pl) {
+  const alertEl = document.getElementById("analysis-buying-alert");
+  if (!alertEl) return;
+  const missing = pl?.missingBuyingPrice ?? [];
+  if (missing.length > 0) {
+    alertEl.classList.remove("hidden");
+    alertEl.textContent = `${missing.length} receipt day(s) need a buying price before net profit can be calculated. Enter pre-VAT ₹/KL on the Dashboard P&L.`;
+  } else {
+    alertEl.classList.add("hidden");
+    alertEl.textContent = "";
+  }
+}
+
 function renderKPIs(totals, growthPercent, insights) {
   const growthNoteEl = document.getElementById("analysis-growth-note");
 
   setKpiCurrency("analysis-total-sales", totals.salesRupees);
   setKpiCurrency("analysis-total-expenses", totals.expenseRupees);
-  setKpiCurrency("analysis-profit", totals.profitRupees);
-  setStatTone(document.getElementById("analysis-profit"), totals.profitRupees, false);
+  setKpiCurrency("analysis-profit", totals.canCalculate ? totals.profitRupees : null);
+  setStatTone(document.getElementById("analysis-profit"), totals.canCalculate ? totals.profitRupees : null, false);
 
   const growthEl = document.getElementById("analysis-growth");
   if (growthEl) {
@@ -287,6 +327,12 @@ function renderInsights(series, totals, insights) {
   if (insights.profitMarginPct != null && Number.isFinite(insights.profitMarginPct)) {
     items.push(`Net profit margin: ${formatPercent(insights.profitMarginPct)}`);
   }
+  if (totals.lubeSalesRupees > 0) {
+    items.push(`Includes ${formatCurrency(totals.lubeSalesRupees)} lube/billing in sales and net profit.`);
+  }
+  if (!totals.canCalculate) {
+    items.push("Net profit unavailable — enter buying prices on receipt days in Dashboard P&L.");
+  }
   if (insights.profitGrowthPercent != null && Number.isFinite(insights.profitGrowthPercent)) {
     const dir = insights.profitGrowthPercent >= 0 ? "up" : "down";
     items.push(`Profit ${dir} ${formatPercent(Math.abs(insights.profitGrowthPercent))} vs previous period — ${insights.profitGrowthPercent >= 0 ? "keep it up" : "review costs and pricing"}.`);
@@ -358,7 +404,7 @@ function renderCharts(series, totals) {
   });
   const salesData = series.map((d) => d.salesRupees);
   const expenseData = series.map((d) => d.expenseRupees);
-  const profitData = series.map((d) => d.profitRupees);
+  const profitData = series.map((d) => (d.profitRupees != null ? d.profitRupees : null));
   const petrolRevenueData = series.map((d) => d.petrolRupees ?? 0);
   const dieselRevenueData = series.map((d) => d.dieselRupees ?? 0);
 
@@ -480,10 +526,11 @@ function renderCharts(series, totals) {
 
 function computeInsights(series, totals, profitGrowthPercent) {
   const numDays = series.length;
+  const canCalculate = totals.canCalculate === true;
   const daysWithSales = series.filter((d) => d.salesRupees > 0).length;
   const avgDailySales = numDays > 0 ? totals.salesRupees / numDays : null;
   const profitMarginPct =
-    totals.salesRupees > 0
+    totals.canCalculate && totals.salesRupees > 0 && totals.profitRupees != null
       ? (totals.profitRupees / totals.salesRupees) * 100
       : null;
   const petrolL = series.reduce((s, d) => s + d.petrolL, 0);
@@ -498,28 +545,46 @@ function computeInsights(series, totals, profitGrowthPercent) {
       ? series.reduce((a, b) => (b.salesRupees > a.salesRupees ? b : a), series[0])
       : null;
   const worstProfitDay =
-    series.length > 0
-      ? series.reduce((a, b) => (b.profitRupees < a.profitRupees ? b : a), series[0])
+    canCalculate && series.some((d) => d.profitRupees != null)
+      ? series.reduce(
+          (a, b) =>
+            (b.profitRupees ?? Infinity) < (a.profitRupees ?? Infinity) ? b : a,
+          series[0]
+        )
       : null;
-  const daysProfitable = series.filter((d) => d.profitRupees > 0).length;
-  const lossDays = series.filter((d) => d.profitRupees < 0).length;
+  const daysProfitable = canCalculate
+    ? series.filter((d) => d.profitRupees != null && d.profitRupees > 0).length
+    : null;
+  const lossDays = canCalculate
+    ? series.filter((d) => d.profitRupees != null && d.profitRupees < 0).length
+    : null;
   const petrolRevenue = series.reduce((s, d) => s + (d.petrolRupees ?? 0), 0);
   const dieselRevenue = series.reduce((s, d) => s + (d.dieselRupees ?? 0), 0);
   const totalRevenue = petrolRevenue + dieselRevenue;
   const petrolSharePct = totalRevenue > 0 ? (petrolRevenue / totalRevenue) * 100 : null;
   const dieselSharePct = totalRevenue > 0 ? (dieselRevenue / totalRevenue) * 100 : null;
 
-  const fuelCostRupees = totals.costRupees;
-  const grossProfitRupees = totals.salesRupees - fuelCostRupees;
+  const fuelCostRupees = totals.canCalculate ? totals.costRupees : null;
+  const grossProfitRupees = totals.canCalculate ? totals.grossProfitRupees : null;
   const grossMarginPct =
-    totals.salesRupees > 0 ? (grossProfitRupees / totals.salesRupees) * 100 : null;
+    totals.canCalculate && totals.salesRupees > 0 && grossProfitRupees != null
+      ? (grossProfitRupees / totals.salesRupees) * 100
+      : null;
   const costRatioPct =
-    totals.salesRupees > 0 ? (fuelCostRupees / totals.salesRupees) * 100 : null;
-  const avgDailyProfit = numDays > 0 ? totals.profitRupees / numDays : null;
+    totals.canCalculate && totals.salesRupees > 0 && fuelCostRupees != null
+      ? (fuelCostRupees / totals.salesRupees) * 100
+      : null;
+  const avgDailyProfit =
+    totals.canCalculate && numDays > 0 && totals.profitRupees != null
+      ? totals.profitRupees / numDays
+      : null;
   const avgDailyExpenses = numDays > 0 ? totals.expenseRupees / numDays : null;
   const avgDailyVolume = numDays > 0 && totalVolumeL > 0 ? totalVolumeL / numDays : null;
-  const revenuePerLitre = totalVolumeL > 0 ? totals.salesRupees / totalVolumeL : null;
-  const profitPerLitre = totalVolumeL > 0 ? totals.profitRupees / totalVolumeL : null;
+  const revenuePerLitre = totalVolumeL > 0 ? totals.fuelSalesRupees / totalVolumeL : null;
+  const profitPerLitre =
+    totals.canCalculate && totalVolumeL > 0 && totals.profitRupees != null
+      ? totals.profitRupees / totalVolumeL
+      : null;
 
   return {
     numDays,
@@ -563,39 +628,55 @@ async function loadAndRender(range) {
   try {
     await loadChartJs();
 
-    const { dsrData, expenseData, receiptRows } = await fetchAnalysisData(range.start, range.end);
-    const series = buildDailySeries(dsrData, expenseData, receiptRows, range.start, range.end);
+    const { dsrData, expenseData, receiptRows, lubeSales, lubeByDate } = await fetchAnalysisData(
+      range.start,
+      range.end
+    );
+    const pl = computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales);
+    const series = buildDailySeries(
+      dsrData,
+      expenseData,
+      receiptRows,
+      range.start,
+      range.end,
+      lubeByDate,
+      pl.canCalculate
+    );
 
     const totals = {
-      salesRupees: series.reduce((s, d) => s + d.salesRupees, 0),
-      costRupees: series.reduce((s, d) => s + (d.costRupees ?? 0), 0),
-      expenseRupees: series.reduce((s, d) => s + d.expenseRupees, 0),
-      profitRupees: 0,
+      salesRupees: pl.revenue + pl.lubeSales,
+      fuelSalesRupees: pl.revenue,
+      lubeSalesRupees: pl.lubeSales,
+      costRupees: pl.costOfGoods,
+      grossProfitRupees: pl.grossProfit,
+      expenseRupees: pl.totalExpenses,
+      profitRupees: pl.netProfit,
+      canCalculate: pl.canCalculate,
     };
-    totals.profitRupees = totals.salesRupees - totals.costRupees - totals.expenseRupees;
-
     let growthPercent = null;
     let profitGrowthPercent = null;
     try {
       const prev = getPreviousPeriodStartEnd(range.start, range.end);
       const prevData = await fetchAnalysisData(prev.start, prev.end);
-      const prevSeries = buildDailySeries(
+      const prevPl = computePeriodTotals(
         prevData.dsrData,
         prevData.expenseData,
         prevData.receiptRows,
-        prev.start,
-        prev.end
+        prevData.lubeSales
       );
-      const prevSales = prevSeries.reduce((s, d) => s + d.salesRupees, 0);
-      const prevProfit = prevSeries.reduce((s, d) => s + (d.profitRupees ?? 0), 0);
+      const prevSales = prevPl.revenue + prevPl.lubeSales;
+      const prevProfit = prevPl.canCalculate ? prevPl.netProfit : null;
       growthPercent = computeGrowthPercent(totals.salesRupees, prevSales);
-      profitGrowthPercent = computeGrowthPercent(totals.profitRupees, prevProfit);
+      if (totals.canCalculate && prevPl.canCalculate && prevProfit != null && totals.profitRupees != null) {
+        profitGrowthPercent = computeGrowthPercent(totals.profitRupees, prevProfit);
+      }
     } catch {
       // no prior data or error
     }
 
     const insights = computeInsights(series, totals, profitGrowthPercent);
 
+    renderBuyingAlert(pl);
     renderKPIs(totals, growthPercent, insights);
     renderInsights(series, totals, insights);
     renderCharts(series, totals);
@@ -623,6 +704,8 @@ function loadChartJs() {
 
 async function initAnalysisPage() {
   if (!document.getElementById("analysis-range")) return;
+
+  initDocsAccordion(document.querySelector(".analysis-docs-accordion"));
 
   const filterApi = createDateRangeFilter({
     storageKey: "analysis",

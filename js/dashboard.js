@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput, DsrQueries */
 
 /**
  * Generate cache key for dashboard data queries
@@ -1133,10 +1133,10 @@ function renderDsrSummary(data, elements, range) {
     dieselVariation = dieselLast - dieselFirst;
     hasVariation = firstDayDsr.length > 0 && lastDayDsrForVar.length > 0;
   }
-  const expenseTotal = (expenseData ?? []).reduce(
-    (sum, row) => sum + Number(row.amount ?? 0),
-    0
-  );
+  const expenseTotal = (expenseData ?? []).reduce((sum, row) => {
+    const amount = Number(row.amount ?? 0);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
 
   // Get rates from DSR data (use the latest non-zero rate)
   const petrolRates = (dsrData ?? [])
@@ -1176,14 +1176,17 @@ function renderDsrSummary(data, elements, range) {
     applyVariationTone(dieselVariationEl, dieselVariation, canShowVariation);
   }
 
-  // Day summary: total sale (₹, incl. testing), expenses, in hand
+  // Day summary: total sale (₹, incl. testing), expenses, net cash (single-day only; matches day closing)
   const totalSaleRupees = hasDsr ? calculateDsrSaleRupees(dsrData, { includeTesting: true }) : 0;
-  const creditOutstandingInRange = (creditData ?? []).reduce((sum, row) => {
+  const isSingleDay = range && range.start === range.end;
+  const creditGivenInRange = (creditData ?? []).reduce((sum, row) => {
     const amt = Number(row.amount ?? 0);
-    const settled = Number(row.amount_settled ?? 0);
-    return sum + Math.max(0, amt - settled);
+    return sum + (Number.isFinite(amt) ? amt : 0);
   }, 0);
-  const inHand = totalSaleRupees - expenseTotal - creditOutstandingInRange;
+  const inHand =
+    isSingleDay && (hasDsr || hasExpense)
+      ? totalSaleRupees - expenseTotal - creditGivenInRange
+      : null;
 
   if (totalNetSaleEl) {
     totalNetSaleEl.textContent = hasDsr ? formatCurrency(totalSaleRupees) : "—";
@@ -1192,13 +1195,16 @@ function renderDsrSummary(data, elements, range) {
     summaryExpenseEl.textContent = hasExpense ? formatCurrency(expenseTotal) : "—";
   }
   if (summaryCreditEl) {
-    summaryCreditEl.textContent = formatCurrency(creditOutstandingInRange);
+    summaryCreditEl.textContent =
+      creditData?.length || creditGivenInRange > 0 ? formatCurrency(creditGivenInRange) : formatCurrency(0);
   }
   if (inHandEl) {
-    inHandEl.textContent = hasDsr || hasExpense ? formatCurrency(inHand) : "—";
+    inHandEl.textContent = inHand != null ? formatCurrency(inHand) : "—";
     inHandEl.classList.remove("stat-positive", "stat-negative");
-    if (inHand > 0) inHandEl.classList.add("stat-positive");
-    else if (inHand < 0) inHandEl.classList.add("stat-negative");
+    if (inHand != null) {
+      if (inHand > 0) inHandEl.classList.add("stat-positive");
+      else if (inHand < 0) inHandEl.classList.add("stat-negative");
+    }
   }
   scheduleAutoFitStats();
 }
@@ -1356,6 +1362,7 @@ async function loadProfitLossSummary(range) {
   const [
     { data: allDsrData, error: dsrError },
     { data: expenseData, error: expenseError },
+    lubeResult,
   ] = await Promise.all([
     supabaseClient
       .from("dsr")
@@ -1363,19 +1370,15 @@ async function loadProfitLossSummary(range) {
       .gte("date", RECEIPT_HISTORY_START)
       .lte("date", range.end),
     supabaseClient.from("expenses").select("*").gte("date", range.start).lte("date", range.end),
+    DsrQueries.fetchLubeSales(range.start, range.end),
   ]);
   if (dsrError) AppError.report(dsrError, { context: "profitLossSummary", type: "dsr" });
   if (expenseError) AppError.report(expenseError, { context: "profitLossSummary", type: "expense" });
+  if (lubeResult.error) AppError.report(lubeResult.error, { context: "profitLossSummary", type: "lube" });
 
   const allDsr = allDsrData ?? [];
   const dsrRows = allDsr.filter((row) => row.date >= range.start && row.date <= range.end);
-  const receiptRows = allDsr
-    .filter(
-      (row) =>
-        Number(row.receipts ?? 0) > 0 &&
-        row.buying_price_per_litre != null
-    )
-    .sort((a, b) => b.date.localeCompare(a.date));
+  const receiptRows = DsrQueries.extractReceiptRows(allDsr);
 
   const hasDsr = !dsrError;
   const hasExpense = !expenseError;
@@ -1383,6 +1386,7 @@ async function loadProfitLossSummary(range) {
     dsrRows,
     receiptRows,
     expenseRows: expenseData,
+    lubeSales: lubeResult.total,
   });
   const income = { total: pl.revenue, missingRates: pl.missingRates };
   const missingBuyingPrice = pl.missingBuyingPrice;
@@ -1457,10 +1461,19 @@ async function loadProfitLossSummary(range) {
       hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
   }
   if (incomeNoteEl) {
-    incomeNoteEl.textContent =
-      income.missingRates > 0
-        ? "Some DSR entries are missing rates, so income totals may be partial."
-        : "";
+    const parts = [];
+    if (income.missingRates > 0) {
+      parts.push("Some DSR entries are missing rates, so income totals may be partial.");
+    }
+    if (pl.lubeSales > 0) {
+      parts.push(`Lube/billing sales (${formatCurrency(pl.lubeSales)}) included in net profit.`);
+    }
+    incomeNoteEl.textContent = parts.join(" ");
+  }
+  const plMethodologyEl = document.getElementById("pl-methodology-note");
+  if (plMethodologyEl) {
+    plMethodologyEl.textContent =
+      "Net profit = fuel gross profit + lube/billing − operating expenses. Net sale (above) is fuel only; lube/billing adds to net profit when present. Fuel uses net litres (meter minus testing). MS/HS and density testing expenses excluded. Same formula as Analysis and Reports P&L.";
   }
   scheduleAutoFitStats();
 }
