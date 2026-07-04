@@ -15,7 +15,7 @@ on:
       sha:
         required: false
         type: string
-        description: Commit to deploy (defaults to branch HEAD)
+        description: Commit to deploy (defaults to staging or main branch HEAD)
 
 concurrency:
   group: github-pages
@@ -46,11 +46,26 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target == 'staging' && 'staging' || 'main' }}
+          fetch-depth: 1
+
+      - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
+        id: branch_head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - id: resolve
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ inputs.sha }}" ]; then
+              sha="${{ inputs.sha }}"
+            else
+              sha="${{ steps.branch_head.outputs.sha }}"
+            fi
             echo "target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
-            echo "sha=${{ inputs.sha != '' && inputs.sha || github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           elif [ "${{ steps.meta.outcome }}" = "success" ]; then
             echo "target=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['target'])")" >> "$GITHUB_OUTPUT"
