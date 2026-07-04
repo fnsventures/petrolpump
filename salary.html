@@ -22,7 +22,7 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js"></script>
-    <script defer src="js/salary.js?v=12"></script>
+    <script defer src="js/salary.js?v=14"></script>
   </head>
   <body class="salary-page">
     <header class="topbar">
@@ -246,23 +246,26 @@
 
         <dl class="salary-detail-meta" id="salary-detail-stats"></dl>
 
-        <div id="salary-detail-na-banner" class="salary-na-banner hidden" role="status" aria-live="polite"></div>
-
-        <div id="salary-detail-admin-na" class="salary-detail-admin-na hidden">
-          <h3 class="salary-detail-section-title">Month status (admin)</h3>
-          <p class="muted">Mark this month as not applicable when the employee had no salary — e.g. full-month leave, resigned, or not yet joined.</p>
-          <div class="form-field">
-            <label for="salary-na-note">Reason (optional)</label>
-            <input id="salary-na-note" type="text" maxlength="200" placeholder="e.g. Full month leave, Joined from August" />
-          </div>
-          <div class="salary-detail-admin-na-actions">
-            <button type="button" id="salary-detail-mark-na" class="button-secondary">Mark month as N/A</button>
-            <button type="button" id="salary-detail-restore-na" class="button-secondary hidden">Restore active month</button>
-          </div>
-        </div>
-
         <div class="salary-detail-payments">
-          <h3 class="salary-detail-section-title">Payments this month</h3>
+          <div class="salary-detail-payments-head">
+            <h3 class="salary-detail-section-title">Payments this month</h3>
+            <div class="salary-detail-payments-tools">
+              <div id="salary-detail-na-banner" class="salary-detail-na-tools hidden" role="status" aria-live="polite">
+                <span id="salary-detail-na-banner-text" class="salary-detail-na-text"></span>
+                <button type="button" id="salary-detail-restore-na" class="button-secondary button-small hidden">Restore</button>
+              </div>
+              <div id="salary-detail-admin-na" class="salary-detail-na-tools hidden" aria-label="Mark month not applicable">
+                <input
+                  id="salary-na-note"
+                  type="text"
+                  maxlength="200"
+                  aria-label="Reason for marking month not applicable (optional)"
+                  placeholder="Reason (optional)"
+                />
+                <button type="button" id="salary-detail-mark-na" class="button-secondary button-small">Mark N/A</button>
+              </div>
+            </div>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
