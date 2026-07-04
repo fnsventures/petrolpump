@@ -21,7 +21,6 @@
     <script defer src="js/utils.js?v=8"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
-    <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/reports.js?v=8"></script>
   </head>
@@ -71,23 +70,30 @@
       </nav>
     </header>
 
-    <main class="settings-layout page-layout-wide reports-layout no-print">
-      <nav class="settings-nav card" aria-label="Reports sections">
-        <p class="settings-nav-title">Reports</p>
-        <button type="button" class="settings-nav-item is-active" data-section="about">About</button>
-        <button type="button" class="settings-nav-item" data-section="generate">Generate report</button>
-      </nav>
-      <div class="settings-panels">
-        <section class="settings-panel card reports-about-panel is-visible" data-panel="about">
-          <header class="reports-about-head">
-            <p class="reports-about-eyebrow">Documentation</p>
-            <h2>Reports guide</h2>
-            <p class="muted reports-about-lead">
-              Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
-            </p>
+    <main class="reports-layout page-layout-wide no-print">
+      <section class="card reports-generate-panel">
+          <header class="reports-generate-intro">
+            <h2>Generate report</h2>
+            <p class="muted">Pick a report from the sidebar, set the period, then preview and print. All reports use BPCL letterhead.</p>
           </header>
 
-          <div class="reports-about-accordion" role="region" aria-label="Reports documentation">
+          <div class="reports-generate-layout">
+            <aside class="reports-generate-sidebar" aria-label="Report types and documentation">
+              <div class="reports-sidebar-catalog">
+                <p class="reports-sidebar-title">Report type</p>
+                <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+              </div>
+
+              <div class="reports-sidebar-about" id="reports-about">
+                <header class="reports-about-head">
+                  <p class="reports-about-eyebrow">Documentation</p>
+                  <h3 class="reports-about-sidebar-title">Reports guide</h3>
+                  <p class="muted reports-about-lead reports-about-lead--sidebar">
+                    Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
+                  </p>
+                </header>
+
+                <div class="reports-about-accordion" role="region" aria-label="Reports documentation">
             <details class="reports-about-item" open>
               <summary>
                 <span class="reports-about-summary-text">
@@ -303,19 +309,8 @@
                 </p>
               </div>
             </details>
-          </div>
-        </section>
-
-        <section class="settings-panel card reports-generate-panel" data-panel="generate" hidden>
-          <header class="reports-generate-intro">
-            <h2>Generate report</h2>
-            <p class="muted">Pick a report from the sidebar, set the period, then preview and print. All reports use BPCL letterhead.</p>
-          </header>
-
-          <div class="reports-generate-layout">
-            <aside class="reports-generate-sidebar" aria-label="Report types">
-              <p class="reports-sidebar-title">Report type</p>
-              <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+                </div>
+              </div>
             </aside>
 
             <div class="reports-generate-main">
@@ -350,7 +345,6 @@
             </div>
           </div>
         </section>
-      </div>
     </main>
 
     <!-- Print-only output -->
