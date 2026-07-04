@@ -2722,21 +2722,18 @@ table.attendance-matrix {
   margin-bottom: 0;
 }
 
-body.reports-page main.reports-layout {
-  width: min(98vw, 1680px);
-  max-width: none;
-  margin: 0 auto;
-  padding: 1rem 1.25rem 2rem;
+.reports-guide-panel {
+  padding: var(--space-5);
+  margin-bottom: 0;
 }
 
-.reports-layout.page-layout-wide .reports-generate-panel.card {
+.reports-guide-panel .reports-about-head h2 {
+  margin: 0 0 0.5rem;
+}
+
+.page-layout-wide.reports-panels .reports-generate-panel,
+.page-layout-wide.reports-panels .reports-guide-panel {
   padding: 1.35rem 1.5rem 1.5rem;
-}
-
-.page-layout-wide.reports-layout .reports-generate-layout {
-  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
-  gap: var(--space-5);
-  align-items: start;
 }
 
 .reports-generate-intro h2 {
@@ -2749,60 +2746,6 @@ body.reports-page main.reports-layout {
 
 .reports-about-panel {
   padding: var(--space-5);
-}
-
-.reports-sidebar-about {
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
-.reports-sidebar-about .reports-about-head {
-  margin-bottom: var(--space-2);
-}
-
-.reports-about-sidebar-title {
-  margin: 0 0 0.35rem;
-  font-size: var(--heading-sm);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.reports-about-lead--sidebar {
-  font-size: var(--text-sm);
-  max-width: none;
-  line-height: 1.5;
-}
-
-.reports-sidebar-about .reports-about-accordion {
-  margin-top: var(--space-3);
-  gap: 0.35rem;
-}
-
-.reports-sidebar-about .reports-about-item > summary {
-  padding: 0.65rem 0.75rem;
-}
-
-.reports-sidebar-about .reports-about-summary-title {
-  font-size: var(--text-sm);
-}
-
-.reports-sidebar-about .reports-about-summary-desc {
-  font-size: 0.75rem;
-}
-
-.reports-sidebar-about .reports-about-item-body {
-  padding: 0 0.75rem 0.75rem;
-  font-size: var(--text-sm);
-}
-
-.reports-sidebar-about .reports-about-item--nested > summary {
-  padding: 0.55rem 0.65rem;
-}
-
-.reports-sidebar-about .reports-about-formula,
-.reports-sidebar-about .reports-about-callout {
-  font-size: var(--text-sm);
 }
 
 .reports-about-head h2 {
@@ -3072,16 +3015,23 @@ body.reports-page main.reports-layout {
   align-items: start;
 }
 
-.reports-generate-sidebar {
+.page-layout-wide .reports-generate-layout {
+  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+  gap: var(--space-5);
+}
+
+.reports-catalog-aside {
   position: sticky;
   top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
-  padding: var(--space-3);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-xs);
   max-height: calc(100vh - var(--topbar-height, 3.75rem) - 6rem);
   overflow-y: auto;
+}
+
+.reports-generate-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
 }
 
 .reports-sidebar-title {
@@ -3139,12 +3089,6 @@ body.reports-page main.reports-layout {
   box-shadow: inset 3px 0 0 var(--bpcl-blue, #0070c0);
 }
 
-.reports-generate-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
 
 .reports-output {
   min-width: 0;
@@ -3184,9 +3128,10 @@ body.reports-page main.reports-layout {
     grid-template-columns: 1fr;
   }
 
-  .reports-generate-sidebar {
+  .reports-catalog-aside {
     position: static;
     max-height: none;
+    overflow-y: visible;
   }
 
   .reports-catalog-nav {
@@ -3247,7 +3192,7 @@ body.reports-page main.reports-layout {
   margin-bottom: var(--space-4);
 }
 
-.page-layout-wide.reports-layout .report-preview-inner {
+.page-layout-wide.reports-panels .report-preview-inner {
   font-size: var(--text-sm);
 }
 
@@ -3427,7 +3372,7 @@ body.reports-page main.reports-layout {
   body.reports-page .no-print,
   body.reports-page header.topbar,
   body.reports-page footer.app-footer,
-  body.reports-page main.reports-layout,
+  body.reports-page main.settings-layout,
   body.reports-page .reports-print-root[aria-hidden="true"] {
     display: none !important;
   }
@@ -4590,8 +4535,7 @@ main.settings-layout.dashboard-page-layout {
   overflow: hidden;
 }
 
-.settings-nav.card::before,
-.reports-generate-sidebar::before {
+.settings-nav.card::before {
   content: "";
   display: block;
   height: 3px;
@@ -4604,10 +4548,6 @@ main.settings-layout.dashboard-page-layout {
     var(--bpcl-yellow) 100%
   );
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
-.reports-generate-sidebar::before {
-  margin: calc(-1 * var(--space-3) - 3px) calc(-1 * var(--space-3)) var(--space-2);
 }
 
 body.dashboard-page .highlight-card.clickable-card:hover {

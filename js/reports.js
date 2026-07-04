@@ -253,6 +253,12 @@ function initReportsPage() {
   setActiveReportTab(activeReport);
   preloadReportPrintCss();
   initReportsAboutAccordion();
+  initPageSections({
+    navItemSelector: ".reports-nav .settings-nav-item",
+    panelSelector: ".reports-panels .settings-panel",
+    defaultSection: "generate",
+    validSections: ["generate", "about"],
+  });
 
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
@@ -264,6 +270,7 @@ function initReportsPage() {
     const btn = e.target.closest(".reports-pick");
     if (!btn?.dataset.report) return;
     setActiveReportTab(btn.dataset.report);
+    document.querySelector(".reports-output")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (!cachedData) {
       const preview = document.getElementById("reports-preview");
       if (preview) preview.innerHTML = "<p class=\"muted\">Loading report data…</p>";
@@ -292,8 +299,9 @@ function initReportsPage() {
 
 function syncReportsAboutHash() {
   if ((location.hash || "").replace(/^#/, "") !== "about") return;
-  const el = document.getElementById("reports-about");
-  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  const panel = document.getElementById("reports-about");
+  if (panel?.hidden) return;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function ensureReportsDataLoaded() {
@@ -1525,11 +1533,13 @@ async function runReportPrint() {
 function renderActiveReport() {
   const preview = document.getElementById("reports-preview");
   const printRoot = document.getElementById("reports-print-root");
+  const label = findReportMeta(activeReport);
 
   if (!cachedData || !cachedRange) {
-    if (preview && preview.textContent !== "Loading…") {
+    if (preview && preview.textContent !== "Loading…" && preview.textContent !== "Loading report data…") {
+      const title = label?.title ? escapeHtml(label.title) : "this report";
       preview.innerHTML =
-        "<p class=\"muted\">Select dates and click <strong>Load data</strong> to generate this report.</p>";
+        `<p class="muted">Select dates and click <strong>Load data</strong> to preview <strong>${title}</strong>.</p>`;
       preview.classList.add("muted");
     }
     if (printRoot) {

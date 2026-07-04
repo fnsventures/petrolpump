@@ -22,6 +22,7 @@
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/auth.js"></script>
+    <script defer src="js/pageSections.js"></script>
     <script defer src="js/reports.js?v=8"></script>
   </head>
   <body class="reports-page">
@@ -70,30 +71,69 @@
       </nav>
     </header>
 
-    <main class="reports-layout page-layout-wide no-print">
-      <section class="card reports-generate-panel">
+    <main class="settings-layout page-layout-wide no-print">
+      <nav class="settings-nav card reports-nav" aria-label="Reports sections">
+        <p class="settings-nav-title">Reports</p>
+        <button type="button" class="settings-nav-item is-active" data-section="generate">Generate report</button>
+        <button type="button" class="settings-nav-item" data-section="about">Report guide</button>
+      </nav>
+
+      <div class="settings-panels reports-panels">
+        <section class="settings-panel card reports-generate-panel is-visible" data-panel="generate" aria-label="Generate report">
           <header class="reports-generate-intro">
             <h2>Generate report</h2>
-            <p class="muted">Pick a report from the sidebar, set the period, then preview and print. All reports use BPCL letterhead.</p>
+            <p class="muted">Pick a report, set the period, then preview and print. All reports use BPCL letterhead.</p>
           </header>
 
           <div class="reports-generate-layout">
-            <aside class="reports-generate-sidebar" aria-label="Report types and documentation">
-              <div class="reports-sidebar-catalog">
-                <p class="reports-sidebar-title">Report type</p>
-                <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+            <aside class="reports-catalog-aside" aria-label="Report types">
+              <p class="reports-sidebar-title">Report type</p>
+              <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+            </aside>
+
+            <div class="reports-generate-main">
+              <form id="reports-filter-form" class="filter-card" autocomplete="off">
+                <div class="filter-form">
+                  <div class="form-field">
+                    <label for="reports-start">From</label>
+                    <input id="reports-start" type="date" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="reports-end">To</label>
+                    <input id="reports-end" type="date" required />
+                  </div>
+                  <div class="filter-actions">
+                    <button type="submit">Load data</button>
+                  </div>
+                </div>
+                <p id="reports-date-label" class="filter-summary">—</p>
+              </form>
+
+              <div class="reports-output">
+                <div class="reports-output-head">
+                  <div class="reports-output-titles">
+                    <h3 id="reports-active-title" class="reports-active-title">Tank-wise DSR</h3>
+                    <p id="reports-active-desc" class="reports-active-desc muted"></p>
+                  </div>
+                  <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
+                </div>
+                <p id="reports-error" class="error hidden"></p>
+                <div id="reports-preview" class="reports-preview muted">Select dates, click Load data, then choose a report type.</div>
               </div>
+            </div>
+          </div>
+        </section>
 
-              <div class="reports-sidebar-about" id="reports-about">
-                <header class="reports-about-head">
-                  <p class="reports-about-eyebrow">Documentation</p>
-                  <h3 class="reports-about-sidebar-title">Reports guide</h3>
-                  <p class="muted reports-about-lead reports-about-lead--sidebar">
-                    Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
-                  </p>
-                </header>
+        <section class="settings-panel card reports-guide-panel" data-panel="about" id="reports-about" aria-label="Report guide" hidden>
+          <header class="reports-about-head">
+            <p class="reports-about-eyebrow">Documentation</p>
+            <h2>Report guide</h2>
+            <p class="muted reports-about-lead">
+              Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
+            </p>
+          </header>
 
-                <div class="reports-about-accordion" role="region" aria-label="Reports documentation">
+          <div class="reports-about-accordion" role="region" aria-label="Reports documentation sections">
             <details class="reports-about-item" open>
               <summary>
                 <span class="reports-about-summary-text">
@@ -309,42 +349,9 @@
                 </p>
               </div>
             </details>
-                </div>
-              </div>
-            </aside>
-
-            <div class="reports-generate-main">
-              <form id="reports-filter-form" class="filter-card" autocomplete="off">
-                <div class="filter-form">
-                  <div class="form-field">
-                    <label for="reports-start">From</label>
-                    <input id="reports-start" type="date" required />
-                  </div>
-                  <div class="form-field">
-                    <label for="reports-end">To</label>
-                    <input id="reports-end" type="date" required />
-                  </div>
-                  <div class="filter-actions">
-                    <button type="submit">Load data</button>
-                  </div>
-                </div>
-                <p id="reports-date-label" class="filter-summary">—</p>
-              </form>
-
-              <div class="reports-output">
-                <div class="reports-output-head">
-                  <div class="reports-output-titles">
-                    <h3 id="reports-active-title" class="reports-active-title">Tank-wise DSR</h3>
-                    <p id="reports-active-desc" class="reports-active-desc muted"></p>
-                  </div>
-                  <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
-                </div>
-                <p id="reports-error" class="error hidden"></p>
-                <div id="reports-preview" class="reports-preview muted">Select dates, click Load data, then choose a report from the sidebar.</div>
-              </div>
-            </div>
           </div>
         </section>
+      </div>
     </main>
 
     <!-- Print-only output -->
