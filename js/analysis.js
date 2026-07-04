@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, buildEffectiveBuyingMap, computeFuelRowMargin, isTestingExpenseCategory, computeProfitLossSummary, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, computeProfitLossSummary, initDocsAccordion */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -48,13 +48,14 @@ async function fetchAnalysisData(startDate, endDate) {
 }
 
 /** Period totals via shared P&L helper (same as Dashboard and Reports P&L). */
-function computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales) {
+function computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales, buyingContext) {
   return computeProfitLossSummary({
     dsrRows: dsrData,
     receiptRows,
     expenseRows: expenseData,
     lubeSales,
     requireAllBuying: true,
+    buyingContext,
   });
 }
 
@@ -62,8 +63,16 @@ function computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales) {
  * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹), petrol L, diesel L.
  * Cost uses landed buying rate: (pre-VAT + delivery/L) × (1 + VAT%). Profit = sales − cost − expenses (testing excluded).
  */
-function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate, lubeByDate, canCalculate = true) {
-  const getEffectiveBuying = canCalculate ? buildEffectiveBuyingMap(receiptRows) : () => null;
+function buildDailySeries(
+  dsrData,
+  expenseData,
+  startDate,
+  endDate,
+  lubeByDate,
+  canCalculate = true,
+  buyingContext = null
+) {
+  const buyingCtx = canCalculate ? buyingContext : null;
   const byDate = new Map();
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T00:00:00`);
@@ -79,13 +88,15 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate,
       dieselL: 0,
       petrolRupees: 0,
       dieselRupees: 0,
+      petrolGrossProfit: 0,
+      dieselGrossProfit: 0,
     });
   }
 
   (dsrData ?? []).forEach((row) => {
     const key = row.date;
     if (!byDate.has(key)) return;
-    const { revenue, cost, litres } = computeFuelRowMargin(row, getEffectiveBuying);
+    const { revenue, cost, grossProfit, litres } = computeFuelRowMargin(row, buyingCtx);
     if (litres <= 0) return;
     const entry = byDate.get(key);
     entry.salesRupees += revenue;
@@ -93,9 +104,11 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate,
     if (normalizeProduct(row.product) === "petrol") {
       entry.petrolL += litres;
       entry.petrolRupees += revenue;
+      entry.petrolGrossProfit += grossProfit;
     } else {
       entry.dieselL += litres;
       entry.dieselRupees += revenue;
+      entry.dieselGrossProfit += grossProfit;
     }
   });
 
@@ -125,6 +138,35 @@ function buildDailySeries(dsrData, expenseData, receiptRows, startDate, endDate,
     }));
 
   return series;
+}
+
+/** Per-litre selling, landed buying, and gross margin by product (MS / HSD). */
+function computeProductPerLitreMetrics(dsrData, buyingContext, canCalculate) {
+  const byProduct = {
+    petrol: { revenue: 0, cost: 0, grossProfit: 0, litres: 0 },
+    diesel: { revenue: 0, cost: 0, grossProfit: 0, litres: 0 },
+  };
+  const buyingCtx = canCalculate && buyingContext ? buyingContext : null;
+  for (const row of dsrData ?? []) {
+    const product = normalizeProduct(row.product);
+    if (product !== "petrol" && product !== "diesel") continue;
+    const { revenue, cost, grossProfit, litres } = computeFuelRowMargin(row, buyingCtx);
+    if (litres <= 0) continue;
+    byProduct[product].revenue += revenue;
+    byProduct[product].cost += cost;
+    byProduct[product].grossProfit += grossProfit;
+    byProduct[product].litres += litres;
+  }
+  const petrolL = byProduct.petrol.litres;
+  const dieselL = byProduct.diesel.litres;
+  return {
+    petrolSellingPerLitre: petrolL > 0 ? byProduct.petrol.revenue / petrolL : null,
+    dieselSellingPerLitre: dieselL > 0 ? byProduct.diesel.revenue / dieselL : null,
+    petrolBuyingPerLitre: buyingCtx && petrolL > 0 ? byProduct.petrol.cost / petrolL : null,
+    dieselBuyingPerLitre: buyingCtx && dieselL > 0 ? byProduct.diesel.cost / dieselL : null,
+    petrolGrossMarginPerLitre: buyingCtx && petrolL > 0 ? byProduct.petrol.grossProfit / petrolL : null,
+    dieselGrossMarginPerLitre: buyingCtx && dieselL > 0 ? byProduct.diesel.grossProfit / dieselL : null,
+  };
 }
 
 /**
@@ -241,7 +283,16 @@ function renderKPIs(totals, growthPercent, insights) {
   setKpiPercent("analysis-cost-ratio", insights.costRatioPct, false);
   setKpiCurrency("analysis-avg-daily-profit", insights.avgDailyProfit);
   setKpiCurrency("analysis-avg-daily-expenses", insights.avgDailyExpenses);
-  setKpiCurrency("analysis-revenue-per-litre", insights.revenuePerLitre);
+  setKpiCurrency("analysis-petrol-selling-per-litre", insights.petrolSellingPerLitre);
+  setKpiCurrency("analysis-diesel-selling-per-litre", insights.dieselSellingPerLitre);
+  setKpiCurrency("analysis-petrol-buying-per-litre", insights.petrolBuyingPerLitre);
+  setKpiCurrency("analysis-diesel-buying-per-litre", insights.dieselBuyingPerLitre);
+  setKpiCurrency("analysis-gross-margin-per-litre", insights.grossMarginPerLitre);
+  setStatTone(document.getElementById("analysis-gross-margin-per-litre"), insights.grossMarginPerLitre, false);
+  setKpiCurrency("analysis-petrol-gross-margin-per-litre", insights.petrolGrossMarginPerLitre);
+  setStatTone(document.getElementById("analysis-petrol-gross-margin-per-litre"), insights.petrolGrossMarginPerLitre, false);
+  setKpiCurrency("analysis-diesel-gross-margin-per-litre", insights.dieselGrossMarginPerLitre);
+  setStatTone(document.getElementById("analysis-diesel-gross-margin-per-litre"), insights.dieselGrossMarginPerLitre, false);
   setKpiCurrency("analysis-profit-per-litre", insights.profitPerLitre);
   setStatTone(document.getElementById("analysis-profit-per-litre"), insights.profitPerLitre, false);
 
@@ -302,6 +353,9 @@ function renderInsights(series, totals, insights) {
   }
   if (insights.grossMarginPct != null && Number.isFinite(insights.grossMarginPct)) {
     items.push(`Gross margin (before expenses): ${formatPercent(insights.grossMarginPct)}`);
+  }
+  if (insights.grossMarginPerLitre != null && insights.totalVolumeL > 0) {
+    items.push(`Gross margin per litre: ${formatCurrency(insights.grossMarginPerLitre)}/L before operating expenses`);
   }
   if (insights.profitPerLitre != null && insights.totalVolumeL > 0) {
     items.push(`Net profit per litre: ${formatCurrency(insights.profitPerLitre)}/L across ${formatQuantity(insights.totalVolumeL)} L sold`);
@@ -366,6 +420,24 @@ function updateAnalysisPeriodLabel(range) {
 function goToAnalysisSection(sectionId) {
   const btn = document.querySelector(`.settings-nav-item[data-section="${sectionId}"]`);
   if (btn) btn.click();
+}
+
+function animateMetricsPanel() {
+  const panel = document.querySelector('.analysis-metrics-panel[data-panel="metrics"]');
+  if (!panel || panel.hidden) return;
+  panel.classList.remove("is-animate-in");
+  void panel.offsetWidth;
+  panel.classList.add("is-animate-in");
+}
+
+function wireMetricsPanelAnimation() {
+  document.querySelectorAll(".settings-nav-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.section === "metrics") {
+        requestAnimationFrame(() => animateMetricsPanel());
+      }
+    });
+  });
 }
 
 function resizeAnalysisCharts() {
@@ -580,7 +652,16 @@ function computeInsights(series, totals, profitGrowthPercent) {
       : null;
   const avgDailyExpenses = numDays > 0 ? totals.expenseRupees / numDays : null;
   const avgDailyVolume = numDays > 0 && totalVolumeL > 0 ? totalVolumeL / numDays : null;
-  const revenuePerLitre = totalVolumeL > 0 ? totals.fuelSalesRupees / totalVolumeL : null;
+  const petrolGrossProfitTotal = series.reduce((s, d) => s + (d.petrolGrossProfit ?? 0), 0);
+  const dieselGrossProfitTotal = series.reduce((s, d) => s + (d.dieselGrossProfit ?? 0), 0);
+  const grossMarginPerLitre =
+    totals.canCalculate && totalVolumeL > 0 && grossProfitRupees != null
+      ? grossProfitRupees / totalVolumeL
+      : null;
+  const petrolGrossMarginPerLitre =
+    totals.canCalculate && petrolL > 0 ? petrolGrossProfitTotal / petrolL : null;
+  const dieselGrossMarginPerLitre =
+    totals.canCalculate && dieselL > 0 ? dieselGrossProfitTotal / dieselL : null;
   const profitPerLitre =
     totals.canCalculate && totalVolumeL > 0 && totals.profitRupees != null
       ? totals.profitRupees / totalVolumeL
@@ -601,7 +682,13 @@ function computeInsights(series, totals, profitGrowthPercent) {
     costRatioPct,
     avgDailyProfit,
     avgDailyExpenses,
-    revenuePerLitre,
+    petrolSellingPerLitre: null,
+    dieselSellingPerLitre: null,
+    petrolBuyingPerLitre: null,
+    dieselBuyingPerLitre: null,
+    grossMarginPerLitre,
+    petrolGrossMarginPerLitre,
+    dieselGrossMarginPerLitre,
     profitPerLitre,
     bestDayAmount: bestDay ? bestDay.salesRupees : null,
     bestDayDate: bestDay?.date ? formatDayLabel(bestDay.date) : null,
@@ -626,21 +713,23 @@ async function loadAndRender(range) {
   if (applyBtn) applyBtn.disabled = true;
 
   try {
+    await loadPumpSettings();
     await loadChartJs();
 
     const { dsrData, expenseData, receiptRows, lubeSales, lubeByDate } = await fetchAnalysisData(
       range.start,
       range.end
     );
-    const pl = computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales);
+    const buyingContext = createBuyingRateContext(receiptRows);
+    const pl = computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales, buyingContext);
     const series = buildDailySeries(
       dsrData,
       expenseData,
-      receiptRows,
       range.start,
       range.end,
       lubeByDate,
-      pl.canCalculate
+      pl.canCalculate,
+      buyingContext
     );
 
     const totals = {
@@ -658,11 +747,13 @@ async function loadAndRender(range) {
     try {
       const prev = getPreviousPeriodStartEnd(range.start, range.end);
       const prevData = await fetchAnalysisData(prev.start, prev.end);
+      const prevBuyingContext = createBuyingRateContext(prevData.receiptRows);
       const prevPl = computePeriodTotals(
         prevData.dsrData,
         prevData.expenseData,
         prevData.receiptRows,
-        prevData.lubeSales
+        prevData.lubeSales,
+        prevBuyingContext
       );
       const prevSales = prevPl.revenue + prevPl.lubeSales;
       const prevProfit = prevPl.canCalculate ? prevPl.netProfit : null;
@@ -675,12 +766,20 @@ async function loadAndRender(range) {
     }
 
     const insights = computeInsights(series, totals, profitGrowthPercent);
+    const productPerLitre = computeProductPerLitreMetrics(dsrData, buyingContext, pl.canCalculate);
+    insights.petrolSellingPerLitre = productPerLitre.petrolSellingPerLitre;
+    insights.dieselSellingPerLitre = productPerLitre.dieselSellingPerLitre;
+    insights.petrolBuyingPerLitre = productPerLitre.petrolBuyingPerLitre;
+    insights.dieselBuyingPerLitre = productPerLitre.dieselBuyingPerLitre;
+    insights.petrolGrossMarginPerLitre = productPerLitre.petrolGrossMarginPerLitre;
+    insights.dieselGrossMarginPerLitre = productPerLitre.dieselGrossMarginPerLitre;
 
     renderBuyingAlert(pl);
     renderKPIs(totals, growthPercent, insights);
     renderInsights(series, totals, insights);
     renderCharts(series, totals);
     goToAnalysisSection("metrics");
+    animateMetricsPanel();
   } catch (err) {
     AppError.report(err, { context: "loadAndRender" });
     if (label) label.textContent = "Could not load analysis. Check connection and try again.";
@@ -734,6 +833,7 @@ async function initAnalysisPage() {
   previewPeriodLabel();
 
   wireChartsSectionResize();
+  wireMetricsPanelAnimation();
 
   try {
     await loadChartJs();
