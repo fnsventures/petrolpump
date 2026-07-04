@@ -436,7 +436,7 @@
         <!-- Expenses -->
         <section id="settings-panel-expenses" class="settings-panel card" data-panel="expenses" hidden>
           <h2>Expense categories</h2>
-          <p class="muted">Categories in the Expenses form. Cannot delete if used by existing expenses.</p>
+          <p class="muted">Categories and order shown in the Expenses form and reports. Drag rows to reorder; Edit changes the display name only. Cannot delete if used by existing expenses.</p>
           <form id="expense-category-add-form" class="form">
             <div class="form-grid" style="grid-template-columns: 1fr auto;">
               <div class="form-field">
@@ -451,9 +451,9 @@
             <p id="expense-category-add-success" class="success hidden">Category added.</p>
           </form>
           <table class="margin-top">
-            <thead><tr><th>Category</th><th>Action</th></tr></thead>
+            <thead><tr><th class="expense-cat-drag-col" aria-label="Reorder"></th><th>Category</th><th>Action</th></tr></thead>
             <tbody id="settings-expense-categories">
-              <tr><td colspan="2" class="muted">Loading…</td></tr>
+              <tr><td colspan="3" class="muted">Loading…</td></tr>
             </tbody>
           </table>
         </section>
