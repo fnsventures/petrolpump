@@ -75,12 +75,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   applyRoleVisibility(auth.role);
 
-  if (typeof initPageSections === "function") {
-    const hash = (location.hash || "").replace(/^#/, "");
-    const defaultSection = hash === "generate" ? "generate" : "about";
-    initPageSections({ defaultSection, validSections: ["about", "generate"] });
-  }
-
   await loadPumpSettings();
   initReportsPage();
 });
@@ -264,7 +258,6 @@ function initReportsPage() {
   const tab = params.get("tab");
   if (tab && findReportMeta(tab)) {
     setActiveReportTab(tab);
-    openGenerateSection();
   }
 
   document.getElementById("reports-catalog")?.addEventListener("click", async (e) => {
@@ -292,21 +285,15 @@ function initReportsPage() {
     handleReportPrintClick();
   });
 
-  const initialSection = (location.hash || "").replace(/^#/, "") || "about";
-  const hasReportTab = Boolean(params.get("tab") && findReportMeta(params.get("tab")));
-  if (initialSection === "generate" || hasReportTab) {
-    ensureReportsDataLoaded();
-  }
+  ensureReportsDataLoaded();
+  syncReportsAboutHash();
+  window.addEventListener("hashchange", syncReportsAboutHash);
+}
 
-  document.querySelectorAll('.settings-nav-item[data-section="generate"]').forEach((btn) => {
-    btn.addEventListener("click", () => ensureReportsDataLoaded());
-  });
-
-  window.addEventListener("hashchange", () => {
-    if ((location.hash || "").replace(/^#/, "") === "generate") {
-      ensureReportsDataLoaded();
-    }
-  });
+function syncReportsAboutHash() {
+  if ((location.hash || "").replace(/^#/, "") !== "about") return;
+  const el = document.getElementById("reports-about");
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function ensureReportsDataLoaded() {
@@ -316,11 +303,6 @@ function ensureReportsDataLoaded() {
     reportsLoadInFlight = null;
   });
   return reportsLoadInFlight;
-}
-
-function openGenerateSection() {
-  const btn = document.querySelector('.settings-nav-item[data-section="generate"]');
-  if (btn) btn.click();
 }
 
 function renderReportCatalog() {

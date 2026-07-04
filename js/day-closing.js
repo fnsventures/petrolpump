@@ -82,17 +82,37 @@ async function loadExpenseCategoryLabels() {
   return expenseCategoryLabels;
 }
 
-function renderDayClosingDetailTable(rows, columns) {
+function renderDayClosingDetailTable(rows, columns, kind) {
   if (!rows.length) {
     return '<p class="muted">No entries for this date.</p>';
   }
-  const head = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("");
+  const showActions = isAdmin && (kind === "collection" || kind === "credit");
+  const head = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("")
+    + (showActions ? '<th class="table-actions">Actions</th>' : "");
   const body = rows.map((row) => {
     const cells = columns.map((col) => {
       const value = typeof col.format === "function" ? col.format(row) : (row[col.key] ?? "—");
       return `<td>${typeof value === "string" && col.escape !== false ? escapeHtml(String(value)) : value}</td>`;
     }).join("");
-    return `<tr>${cells}</tr>`;
+    let actions = "";
+    if (showActions) {
+      if (kind === "collection" && row.id) {
+        actions = `<td class="table-actions">${AdminDelete.buttonHtml({
+          selector: "dc-delete-payment",
+          data: { paymentId: row.id, amount: String(row.amount ?? ""), date: row.date || "" },
+          title: "Delete settlement (admin)",
+        })}</td>`;
+      } else if (kind === "credit" && row.id && !row.legacy) {
+        actions = `<td class="table-actions">${AdminDelete.buttonHtml({
+          selector: "dc-delete-credit",
+          data: { entryId: row.id, amount: String(row.amount ?? ""), date: row.date || "" },
+          title: "Delete credit sale (admin)",
+        })}</td>`;
+      } else {
+        actions = '<td class="table-actions muted">—</td>';
+      }
+    }
+    return `<tr>${cells}${actions}</tr>`;
   }).join("");
   return `<table class="dc-breakdown-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -100,11 +120,13 @@ function renderDayClosingDetailTable(rows, columns) {
 async function fetchCollectionDetails(dateStr) {
   const { data, error } = await supabaseClient
     .from("credit_payments")
-    .select("amount, payment_mode, credit_customers(customer_name)")
+    .select("id, amount, payment_mode, date, credit_customers(customer_name)")
     .eq("date", dateStr)
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data || []).map((row) => ({
+    id: row.id ?? null,
+    date: row.date || dateStr,
     customer: row.credit_customers?.customer_name || "—",
     mode: row.payment_mode || "—",
     amount: Number(row.amount ?? 0),
@@ -115,7 +137,7 @@ async function fetchCreditTodayDetails(dateStr) {
   const [entriesRes, legacyRes] = await Promise.all([
     supabaseClient
       .from("credit_entries")
-      .select("credit_customer_id, amount, fuel_type, quantity, credit_customers(customer_name)")
+      .select("id, credit_customer_id, amount, fuel_type, quantity, transaction_date, credit_customers(customer_name)")
       .eq("transaction_date", dateStr)
       .order("created_at", { ascending: true }),
     supabaseClient
@@ -128,6 +150,8 @@ async function fetchCreditTodayDetails(dateStr) {
   if (legacyRes.error) throw legacyRes.error;
 
   const entryRows = (entriesRes.data || []).map((row) => ({
+    id: row.id ?? null,
+    date: row.transaction_date || dateStr,
     customer: row.credit_customers?.customer_name || "—",
     fuel: row.fuel_type || "—",
     quantity: Number(row.quantity ?? 0),
@@ -195,7 +219,7 @@ async function loadDayClosingDetail(kind, dateStr) {
   panel.innerHTML = '<p class="muted">Loading…</p>';
   try {
     const rows = await DC_DETAIL_FETCHERS[kind](dateStr);
-    const html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind]);
+    const html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind);
     dcDetailsCache.date = dateStr;
     dcDetailsCache[kind] = html;
     panel.innerHTML = html;
@@ -524,6 +548,18 @@ async function initializeDayClosing() {
     }
   });
 
+  initDayClosingCreditDeleteHandlers();
+
+  window.addEventListener("storage", (e) => {
+    if (e.key !== "credit-updated") return;
+    const dateStr = dateInput.value?.trim();
+    if (!dateStr) return;
+    dcDetailsCache = { date: dateStr, collection: null, credit: null, expenses: null };
+    loadDayClosingBreakdown(dateStr).catch((err) => {
+      AppError.report(err, { context: "creditUpdatedRefreshDayClosing" });
+    });
+  });
+
   loadExpenseCategoryLabels().catch((err) => {
     AppError.report(err, { context: "loadExpenseCategoryLabels" });
   });
@@ -613,6 +649,103 @@ async function initializeDayClosing() {
       }
     });
   }
+}
+
+function broadcastCreditUpdated() {
+  try {
+    localStorage.setItem("credit-updated", String(Date.now()));
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function initDayClosingCreditDeleteHandlers() {
+  if (!isAdmin || document.body.dataset.dcCreditDeleteBound) return;
+  document.body.dataset.dcCreditDeleteBound = "1";
+
+  document.addEventListener("click", async (e) => {
+    const paymentBtn = e.target.closest?.(".dc-delete-payment");
+    const creditBtn = e.target.closest?.(".dc-delete-credit");
+    const btn = paymentBtn || creditBtn;
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const dateInput = document.getElementById("day-closing-date");
+    const dateStr = dateInput?.value?.trim() || "";
+
+    if (paymentBtn) {
+      const paymentId = btn.getAttribute("data-payment-id");
+      if (!paymentId) return;
+      await deleteDayClosingPayment(paymentId, btn, dateStr);
+      return;
+    }
+
+    const entryId = btn.getAttribute("data-entry-id");
+    if (!entryId) return;
+    await deleteDayClosingCreditEntry(entryId, btn, dateStr);
+  });
+}
+
+async function deleteDayClosingPayment(paymentId, btn, dateStr) {
+  const amount = Number(btn?.dataset?.amount || 0);
+  const dateLabel = btn?.dataset?.date || dateStr || "this date";
+
+  await AdminDelete.execute({
+    btn,
+    auth: isAdmin ? { role: "admin" } : null,
+    actionLabel: "delete credit settlements",
+    confirmMessage: `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from collection, day closing, and short. This cannot be undone.`,
+    deleteFn: () => supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId }),
+    cacheScope: "operational",
+    onSuccess: async () => {
+      if (typeof CacheInvalidation !== "undefined") {
+        CacheInvalidation.invalidate("credit");
+      }
+      broadcastCreditUpdated();
+      dcDetailsCache.collection = null;
+      dcDetailsCache.credit = null;
+      if (dateStr) await loadDayClosingBreakdown(dateStr);
+      if (dateStr) {
+        const { toggle } = getDcDetailElements("collection");
+        if (toggle?.getAttribute("aria-expanded") === "true") {
+          await loadDayClosingDetail("collection", dateStr);
+        }
+      }
+    },
+    errorContext: { context: "deleteDayClosingPayment", paymentId },
+  });
+}
+
+async function deleteDayClosingCreditEntry(entryId, btn, dateStr) {
+  const amount = Number(btn?.dataset?.amount || 0);
+  const dateLabel = btn?.dataset?.date || dateStr || "this date";
+
+  await AdminDelete.execute({
+    btn,
+    auth: isAdmin ? { role: "admin" } : null,
+    actionLabel: "delete credit entries",
+    confirmMessage: `Delete credit sale of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from credit today, day closing, and short. This cannot be undone.`,
+    deleteFn: () => supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId }),
+    cacheScope: "operational",
+    onSuccess: async () => {
+      if (typeof CacheInvalidation !== "undefined") {
+        CacheInvalidation.invalidate("credit");
+      }
+      broadcastCreditUpdated();
+      dcDetailsCache.collection = null;
+      dcDetailsCache.credit = null;
+      if (dateStr) await loadDayClosingBreakdown(dateStr);
+      if (dateStr) {
+        const { toggle } = getDcDetailElements("credit");
+        if (toggle?.getAttribute("aria-expanded") === "true") {
+          await loadDayClosingDetail("credit", dateStr);
+        }
+      }
+    },
+    errorContext: { context: "deleteDayClosingCreditEntry", entryId },
+  });
 }
 
 async function deleteDayClosing(btn, reloadBtn) {

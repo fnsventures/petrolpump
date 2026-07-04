@@ -87,7 +87,12 @@ function ledgerRowNetBalance(row) {
   return ledgerRowAmountDue(row) - ledgerRowPrepaid(row);
 }
 
+function ledgerRowIsFullyCleared(row) {
+  return ledgerRowAmountDue(row) <= 0 && ledgerRowPrepaid(row) <= 0;
+}
+
 function ledgerRowIsListed(row) {
+  if (isAdmin) return true;
   return ledgerRowAmountDue(row) > 0 || ledgerRowPrepaid(row) > 0;
 }
 
@@ -1867,6 +1872,7 @@ function invalidateAndRefreshCreditPortfolio() {
 function invalidateCreditCaches() {
   if (typeof AppCache !== "undefined" && AppCache) {
     CacheInvalidation.invalidate("credit");
+    CacheInvalidation.invalidate("operational");
   }
   try {
     localStorage.setItem("credit-updated", String(Date.now()));
@@ -2183,11 +2189,12 @@ function getFilteredLedger() {
 }
 
 function updateSummaryStats(filtered) {
-  const total = filtered.reduce((s, r) => s + Math.max(0, ledgerRowNetBalance(r)), 0);
+  const withBalance = filtered.filter((r) => !ledgerRowIsFullyCleared(r));
+  const total = withBalance.reduce((s, r) => s + Math.max(0, ledgerRowNetBalance(r)), 0);
   const totalEl = document.getElementById("credit-total-outstanding");
   const countEl = document.getElementById("credit-customer-count");
   if (totalEl) totalEl.textContent = formatCurrency(total);
-  if (countEl) countEl.textContent = String(filtered.length);
+  if (countEl) countEl.textContent = String(withBalance.length);
 }
 
 function renderLedgerBalanceCell(net, prepaid, isAdvance) {
@@ -2196,11 +2203,15 @@ function renderLedgerBalanceCell(net, prepaid, isAdvance) {
   return `<td class="num ${amountClass}" data-amount="${net}">${display}</td>`;
 }
 
-function renderLedgerCustomerCell(row, detailHref, isAdvance) {
+function renderLedgerCustomerCell(row, detailHref, isAdvance, isFullyCleared) {
   const advanceTag = isAdvance
     ? '<span class="credit-advance-tag">Advance payment</span>'
     : "";
-  return `<td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${advanceTag}</td>`;
+  const settledTag =
+    isFullyCleared && isAdmin
+      ? '<span class="credit-settled-tag">Settled</span>'
+      : "";
+  return `<td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${advanceTag}${settledTag}</td>`;
 }
 
 function renderLedgerPage(resetTable) {
@@ -2212,9 +2223,16 @@ function renderLedgerPage(resetTable) {
   updateSummaryStats(filtered);
 
   if (filtered.length === 0) {
-    const msg = creditPagination.searchQuery
-      ? "No matching customers with outstanding or advance balance."
-      : "No outstanding or advance balances — all customers are cleared.";
+    let msg;
+    if (creditPagination.searchQuery) {
+      msg = isAdmin
+        ? "No matching credit customers."
+        : "No matching customers with outstanding or advance balance.";
+    } else if (creditPagination.ledgerData.length === 0) {
+      msg = "No credit customers yet.";
+    } else {
+      msg = "No outstanding or advance balances — all customers are cleared.";
+    }
     tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${escapeHtml(msg)}</p>${
       creditPagination.searchQuery
         ? ""
@@ -2240,8 +2258,9 @@ function renderLedgerPage(resetTable) {
     const prepaid = ledgerRowPrepaid(row);
     const net = ledgerRowNetBalance(row);
     const isAdvance = customerHasAdvance(net, prepaid);
+    const isFullyCleared = ledgerRowIsFullyCleared(row);
     tr.innerHTML = `
-      ${renderLedgerCustomerCell(row, detailHref, isAdvance)}
+      ${renderLedgerCustomerCell(row, detailHref, isAdvance, isFullyCleared)}
       <td>${escapeHtml(row.vehicle_no ?? "—")}</td>
       ${renderLedgerBalanceCell(net, prepaid, isAdvance)}
       <td>${formatDisplayDate(row.last_payment)}</td>
