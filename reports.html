@@ -78,12 +78,232 @@
         <button type="button" class="settings-nav-item" data-section="generate">Generate report</button>
       </nav>
       <div class="settings-panels">
-        <section class="settings-panel card is-visible" data-panel="about">
-        <h2>Business reports</h2>
-        <p class="muted">
-          Printable registers and accounts — tank-wise DSR, GST sales (fuel and optional billing), trading account, and profit &amp; loss.
-          Fuel GST inward is estimated from stock receipts and buying price (₹/KL, entered on the P&amp;L dashboard).
-        </p>
+        <section class="settings-panel card reports-about-panel is-visible" data-panel="about">
+          <header class="reports-about-head">
+            <p class="reports-about-eyebrow">Documentation</p>
+            <h2>Reports guide</h2>
+            <p class="muted reports-about-lead">
+              Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
+            </p>
+          </header>
+
+          <div class="reports-about-accordion" role="region" aria-label="Reports documentation">
+            <details class="reports-about-item" open>
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Report catalogue</span>
+                  <span class="reports-about-summary-desc muted">Available report types and their purpose</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <div class="reports-about-nested">
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Tank-wise DSR</span>
+                        <span class="reports-about-summary-desc muted">Operations · daily pump register</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Daily pump sales, stock dips, receipts, testing litres, and rates split by tank and nozzle. Used for stock reconciliation and audit trail.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GST — Sales</span>
+                        <span class="reports-about-summary-desc muted">Compliance · outward supply</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Month-wise nil-rated petrol and diesel (quantity × daily selling price). Billing/lube invoices included when enabled in Settings.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GST — Purchases</span>
+                        <span class="reports-about-summary-desc muted">Compliance · fuel inward</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Receipt-wise inward fuel register. VAT/LST estimated from stored pre-VAT buying rates (₹/KL on Dashboard P&amp;L) plus delivery.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Trading account</span>
+                        <span class="reports-about-summary-desc muted">Accounts · stock-based</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Period trading view with opening/closing stock at cost. Produces <strong>gross income</strong> as the balancing figure — see the dedicated section below.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Profit &amp; Loss</span>
+                        <span class="reports-about-summary-desc muted">Accounts · margin-based</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Margin-based net profit for the period. Uses the same formula as Dashboard P&amp;L and Analysis.</p>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Trading account</span>
+                  <span class="reports-about-summary-desc muted">Stock-based debit and credit layout</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  A traditional trading account listing what came in against what went out for the selected period.
+                  Debit and credit totals must match.
+                </p>
+                <div class="reports-about-callout">
+                  <p class="reports-about-callout-label">Layout</p>
+                  <dl class="reports-about-split-dl">
+                    <div>
+                      <dt>Credit</dt>
+                      <dd>Sales (petrol + diesel + lube/billing) + Closing stock at cost</dd>
+                    </div>
+                    <div>
+                      <dt>Debit</dt>
+                      <dd>Opening stock at cost + Purchases (fuel receipts) + Gross income c/d</dd>
+                    </div>
+                  </dl>
+                </div>
+                <ul class="reports-about-list muted">
+                  <li>Fuel sales: <strong>net litres</strong> (meter minus testing) × selling rate.</li>
+                  <li>Stock valued at landed buying rate from receipt days (pre-VAT ₹/KL + VAT + delivery).</li>
+                  <li>Lube/billing: invoice totals in the period.</li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Gross income</span>
+                  <span class="reports-about-summary-desc muted">Balancing figure · trading account only</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  <strong>Gross income</strong> appears only on the trading account as “Gross income c/d” on the debit side.
+                  It is the amount that balances debit and credit — not the same as net profit.
+                </p>
+                <div class="reports-about-formula" role="note">
+                  <span class="reports-about-formula-label">Formula</span>
+                  Gross income = Sales + Closing stock (at cost) − Opening stock (at cost) − Purchases
+                </div>
+                <p class="muted">
+                  Trading result from stock movement and sales, <em>before</em> operating expenses (rent, salary, electricity, etc.).
+                  Answers “how did trading perform?” — not “what is cash profit after all bills?”
+                </p>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Profit &amp; loss (net profit)</span>
+                  <span class="reports-about-summary-desc muted">Margin-based · Dashboard &amp; Analysis</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  Margin-based P&amp;L for the period. Identical calculation on <strong>Dashboard → P&amp;L</strong>,
+                  <strong>Analysis</strong>, and this report when the date range and buying prices match.
+                </p>
+                <div class="reports-about-formula" role="note">
+                  <span class="reports-about-formula-label">Formula</span>
+                  Fuel gross profit = net litres × (selling rate − landed buying rate)<br />
+                  Gross profit = fuel gross profit + lube/billing sales<br />
+                  Net profit = gross profit − operating expenses
+                </div>
+                <dl class="reports-about-rules">
+                  <div>
+                    <dt>Included</dt>
+                    <dd>Fuel margin, lube/billing invoices, logged operating expenses.</dd>
+                  </div>
+                  <div>
+                    <dt>Excluded</dt>
+                    <dd>MS/HS testing and density test expenses (handled in day closing).</dd>
+                  </div>
+                  <div>
+                    <dt>Requires</dt>
+                    <dd>Pre-VAT ₹/KL on every receipt day in range — otherwise net profit shows “—”.</dd>
+                  </div>
+                </dl>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Comparing figures</span>
+                  <span class="reports-about-summary-desc muted">Gross income vs gross profit vs net profit</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <table class="report-table reports-about-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Term</th>
+                      <th scope="col">Source</th>
+                      <th scope="col">Meaning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Gross income</strong></td>
+                      <td>Trading account</td>
+                      <td>Stock-based trading result; opening/closing dip stock at cost.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Gross profit</strong></td>
+                      <td>P&amp;L · Dashboard · Analysis</td>
+                      <td>Per-litre fuel margin plus lube/billing; no stock adjustment.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Net profit</strong></td>
+                      <td>P&amp;L · Dashboard · Analysis</td>
+                      <td>Gross profit minus operating expenses (testing excluded).</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p class="muted reports-about-note">
+                  <strong>Gross income ≠ net profit</strong> for the same period — expected. Gross income ignores operating expenses; net profit subtracts them.
+                  P&amp;L net profit should match across Dashboard, Analysis, and Reports when dates and buying prices align.
+                </p>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Dashboard day summary</span>
+                  <span class="reports-about-summary-desc muted">Day-closing cash view · not P&amp;L</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p class="muted">
+                  The Dashboard <strong>Day summary</strong> is a single-date cash reconciliation: total sale ₹ includes testing litres;
+                  expenses include all categories. It supports day closing and in-hand cash — not margin-based net profit.
+                  Use Dashboard P&amp;L, Analysis, or Reports P&amp;L for profit calculations.
+                </p>
+              </div>
+            </details>
+          </div>
         </section>
 
         <section class="settings-panel card reports-generate-panel" data-panel="generate" hidden>
