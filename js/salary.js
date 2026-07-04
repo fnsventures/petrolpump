@@ -615,6 +615,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const detailPrintBtn = document.getElementById("salary-detail-print-slip");
   const detailAddPaymentBtn = document.getElementById("salary-detail-add-payment");
   const detailNaBanner = document.getElementById("salary-detail-na-banner");
+  const detailNaBannerText = document.getElementById("salary-detail-na-banner-text");
   const detailAdminNa = document.getElementById("salary-detail-admin-na");
   const detailNaNoteInput = document.getElementById("salary-na-note");
   const detailMarkNaBtn = document.getElementById("salary-detail-mark-na");
@@ -808,28 +809,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (detailNaBanner) {
       if (ctx.isNa) {
         const reason = exclusion?.note?.trim();
-        detailNaBanner.innerHTML = `<strong>Not applicable</strong> — no salary for ${escapeHtml(monthLabel)}.${
-          reason ? ` Reason: ${escapeHtml(reason)}.` : ""
-        } Excluded from payroll totals.`;
+        if (detailNaBannerText) {
+          detailNaBannerText.textContent = reason
+            ? `Not applicable for ${monthLabel} — ${reason}`
+            : `Not applicable for ${monthLabel}. Excluded from payroll totals.`;
+        }
         detailNaBanner.classList.remove("hidden");
       } else {
         detailNaBanner.classList.add("hidden");
-        detailNaBanner.textContent = "";
+        if (detailNaBannerText) detailNaBannerText.textContent = "";
       }
     }
 
     if (detailAdminNa) {
-      detailAdminNa.classList.toggle("hidden", !isAdmin || !monthExclusionsSupported);
+      detailAdminNa.classList.toggle(
+        "hidden",
+        !isAdmin || !monthExclusionsSupported || ctx.isNa
+      );
     }
     if (detailNaNoteInput) {
-      detailNaNoteInput.value = exclusion?.note?.trim() || "";
-      detailNaNoteInput.disabled = !!ctx.isNa;
+      detailNaNoteInput.value = "";
+      detailNaNoteInput.disabled = false;
     }
     if (detailMarkNaBtn) {
-      detailMarkNaBtn.classList.toggle("hidden", !!ctx.isNa);
+      detailMarkNaBtn.classList.remove("hidden");
     }
     if (detailRestoreNaBtn) {
-      detailRestoreNaBtn.classList.toggle("hidden", !ctx.isNa);
+      detailRestoreNaBtn.classList.toggle("hidden", !ctx.isNa || !isAdmin);
     }
 
     const balanceValue = ctx.isNa ? "—" : formatCurrency(ctx.pending);
