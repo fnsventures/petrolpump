@@ -22,7 +22,7 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js"></script>
-    <script defer src="js/salary.js?v=10"></script>
+    <script defer src="js/salary.js?v=12"></script>
   </head>
   <body class="salary-page">
     <header class="topbar">
@@ -135,7 +135,7 @@
           <div class="card-head snapshot-head">
             <div>
               <h2>Monthly salary summary</h2>
-              <p class="muted">Pay period summary — tracks salary owed and paid for each calendar month, regardless of when cash was disbursed. Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
+              <p class="muted">Pay period summary — tracks salary owed and paid for each calendar month, regardless of when cash was disbursed. Admins can mark a staff month as <strong>not applicable</strong> (e.g. full-month leave or before joining) from salary details. Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field month-year-filter">
@@ -245,6 +245,21 @@
         </div>
 
         <dl class="salary-detail-meta" id="salary-detail-stats"></dl>
+
+        <div id="salary-detail-na-banner" class="salary-na-banner hidden" role="status" aria-live="polite"></div>
+
+        <div id="salary-detail-admin-na" class="salary-detail-admin-na hidden">
+          <h3 class="salary-detail-section-title">Month status (admin)</h3>
+          <p class="muted">Mark this month as not applicable when the employee had no salary — e.g. full-month leave, resigned, or not yet joined.</p>
+          <div class="form-field">
+            <label for="salary-na-note">Reason (optional)</label>
+            <input id="salary-na-note" type="text" maxlength="200" placeholder="e.g. Full month leave, Joined from August" />
+          </div>
+          <div class="salary-detail-admin-na-actions">
+            <button type="button" id="salary-detail-mark-na" class="button-secondary">Mark month as N/A</button>
+            <button type="button" id="salary-detail-restore-na" class="button-secondary hidden">Restore active month</button>
+          </div>
+        </div>
 
         <div class="salary-detail-payments">
           <h3 class="salary-detail-section-title">Payments this month</h3>

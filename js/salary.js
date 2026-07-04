@@ -37,12 +37,59 @@ function isMissingSalaryPaymentIdColumn(error) {
   return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
 }
 
+function isMissingSalaryMonthExclusionsTable(error) {
+  const msg = String(error?.message || "");
+  return (
+    /salary_month_exclusions/i.test(msg) ||
+    error?.code === "PGRST204" ||
+    error?.code === "42P01"
+  );
+}
+
+const SALARY_NA_STATUS = {
+  label: "Not applicable",
+  className: "salary-status--na",
+};
+
+function getStaffSalaryMonthContext(staff, paid, exclusion) {
+  if (exclusion) {
+    return {
+      isNa: true,
+      label: SALARY_NA_STATUS.label,
+      className: SALARY_NA_STATUS.className,
+      payable: null,
+      pending: null,
+      advance: 0,
+      paid: Number(paid ?? 0),
+      exclusion,
+    };
+  }
+  const status = salaryStatusInfo(staff.monthly_salary, paid, staff);
+  const { salary: payable, pending } = computeSalaryBalance(staff.monthly_salary, paid, staff);
+  return {
+    isNa: false,
+    label: status.label,
+    className: status.className,
+    payable,
+    pending: status.pending,
+    advance: status.advance,
+    paid: Number(paid ?? 0),
+    exclusion: null,
+  };
+}
+
+function formatSalaryAmount(value) {
+  return value == null ? "—" : formatCurrency(value);
+}
+
 function formatMonthLabel(monthValue) {
   if (!monthValue) return "—";
   const [year, month] = monthValue.split("-").map(Number);
   const d = new Date(year, month - 1, 1);
   return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
+
+const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=1";
 
 function slipAssetUrl(path) {
   return new URL(path, window.location.href).href;
@@ -445,16 +492,58 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
     </article>`;
 }
 
+let salarySlipPrintCssCache = null;
+
+async function getSalarySlipPrintCssText() {
+  if (salarySlipPrintCssCache) return salarySlipPrintCssCache;
+  const url = slipAssetUrl(SALARY_SLIP_PRINT_CSS);
+  const res = await fetch(url, { cache: "default" });
+  if (!res.ok) throw new Error("Could not load salary slip print styles.");
+  salarySlipPrintCssCache = await res.text();
+  return salarySlipPrintCssCache;
+}
+
+async function waitForSalarySlipPrintReady(doc, win) {
+  await new Promise((resolve) => {
+    const timeout = window.setTimeout(resolve, 5000);
+    const finish = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    if (win.document.readyState === "complete") {
+      finish();
+    } else {
+      win.addEventListener("load", finish, { once: true });
+    }
+  });
+
+  const logo = doc.querySelector(".salary-slip-logo");
+  if (logo && !logo.complete) {
+    await new Promise((resolve) => {
+      logo.addEventListener("load", resolve, { once: true });
+      logo.addEventListener("error", resolve, { once: true });
+      window.setTimeout(resolve, 2500);
+    });
+  }
+
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  void doc.body.offsetHeight;
+}
+
 async function runSalarySlipPrint(staff, staffPayments, monthValue) {
-  const sheetHtml = buildSalarySlipHtml(staff, staffPayments, monthValue);
+  const [sheetHtml, cssText] = await Promise.all([
+    Promise.resolve(buildSalarySlipHtml(staff, staffPayments, monthValue)),
+    getSalarySlipPrintCssText(),
+  ]);
   const iframe = document.createElement("iframe");
   iframe.setAttribute("title", "Salary slip print");
   iframe.style.cssText =
-    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
+    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
   document.body.appendChild(iframe);
 
   const doc = iframe.contentDocument;
-  if (!doc) {
+  const win = iframe.contentWindow;
+  if (!doc || !win) {
     iframe.remove();
     throw new Error("Print frame unavailable");
   }
@@ -465,7 +554,7 @@ async function runSalarySlipPrint(staff, staffPayments, monthValue) {
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(staff.name || "Staff")} · Salary slip</title>
-  <link rel="stylesheet" href="${slipAssetUrl(SALARY_SLIP_PRINT_CSS)}" />
+  <style>${cssText.replace(/<\/style/gi, "<\\/style")}</style>
 </head>
 <body>
   ${sheetHtml}
@@ -473,19 +562,17 @@ async function runSalarySlipPrint(staff, staffPayments, monthValue) {
 </html>`);
   doc.close();
 
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  const win = iframe.contentWindow;
-  if (!win) {
+  try {
+    await waitForSalarySlipPrintReady(doc, win);
+    const cleanup = () => iframe.remove();
+    win.addEventListener("afterprint", cleanup, { once: true });
+    win.focus();
+    win.print();
+    window.setTimeout(cleanup, 5000);
+  } catch (err) {
     iframe.remove();
-    throw new Error("Print frame unavailable");
+    throw err;
   }
-
-  const cleanup = () => iframe.remove();
-  win.addEventListener("afterprint", cleanup, { once: true });
-  win.focus();
-  win.print();
-  window.setTimeout(cleanup, 3000);
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -527,6 +614,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const detailDismiss = document.getElementById("salary-detail-dismiss");
   const detailPrintBtn = document.getElementById("salary-detail-print-slip");
   const detailAddPaymentBtn = document.getElementById("salary-detail-add-payment");
+  const detailNaBanner = document.getElementById("salary-detail-na-banner");
+  const detailAdminNa = document.getElementById("salary-detail-admin-na");
+  const detailNaNoteInput = document.getElementById("salary-na-note");
+  const detailMarkNaBtn = document.getElementById("salary-detail-mark-na");
+  const detailRestoreNaBtn = document.getElementById("salary-detail-restore-na");
 
   if (paymentDateInput) {
     initPersistedDateInput(paymentDateInput, RECORD_DATE_KEYS.salaryPayment);
@@ -543,6 +635,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let staffList = [];
   let monthPayments = [];
+  let monthExclusions = new Map();
+  let monthExclusionsSupported = true;
   let detailStaffId = null;
 
   const historyActionsHead = document.getElementById("salary-history-actions-head");
@@ -696,7 +790,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const paidMap = paidByStaffInRange(monthPayments);
     const paid = paidMap.get(staffId) || 0;
-    const status = salaryStatusInfo(staff.monthly_salary, paid, staff);
+    const exclusion = monthExclusions.get(staffId) || null;
+    const ctx = getStaffSalaryMonthContext(staff, paid, exclusion);
     const list = paymentsForEmployee(monthPayments, staffId);
     const monthLabel = formatMonthLabel(monthValue);
 
@@ -710,23 +805,57 @@ document.addEventListener("DOMContentLoaded", async () => {
       subtitleEl.textContent = `${staff.role_display || "Staff"} · ${monthLabel}`;
     }
 
-    const balanceValue = formatCurrency(status.pending);
-    const balanceClass = status.pending <= 0.009 ? "salary-detail-balance is-clear" : "salary-detail-balance";
+    if (detailNaBanner) {
+      if (ctx.isNa) {
+        const reason = exclusion?.note?.trim();
+        detailNaBanner.innerHTML = `<strong>Not applicable</strong> — no salary for ${escapeHtml(monthLabel)}.${
+          reason ? ` Reason: ${escapeHtml(reason)}.` : ""
+        } Excluded from payroll totals.`;
+        detailNaBanner.classList.remove("hidden");
+      } else {
+        detailNaBanner.classList.add("hidden");
+        detailNaBanner.textContent = "";
+      }
+    }
+
+    if (detailAdminNa) {
+      detailAdminNa.classList.toggle("hidden", !isAdmin || !monthExclusionsSupported);
+    }
+    if (detailNaNoteInput) {
+      detailNaNoteInput.value = exclusion?.note?.trim() || "";
+      detailNaNoteInput.disabled = !!ctx.isNa;
+    }
+    if (detailMarkNaBtn) {
+      detailMarkNaBtn.classList.toggle("hidden", !!ctx.isNa);
+    }
+    if (detailRestoreNaBtn) {
+      detailRestoreNaBtn.classList.toggle("hidden", !ctx.isNa);
+    }
+
+    const balanceValue = ctx.isNa ? "—" : formatCurrency(ctx.pending);
+    const balanceClass =
+      ctx.isNa || ctx.pending <= 0.009 ? "salary-detail-balance is-clear" : "salary-detail-balance";
 
     const pf = computePfBreakdown(staff.monthly_salary, staff);
     const pfNo = staff.pf_number?.trim();
 
     if (statsEl) {
       statsEl.innerHTML = `
-        <div><dt>Gross salary</dt><dd>${formatCurrency(staff.monthly_salary)}</dd></div>
-        <div><dt>Net (after PF)</dt><dd>${formatCurrency(pf.netSalary)}</dd></div>
-        <div><dt>PF contribution</dt><dd>${pf.fixedAmount > 0 ? formatCurrency(pf.fixedAmount) : '<span class="muted">Not set — <a href="staff.html">Staff</a></span>'}</dd></div>
-        <div><dt>Employer PF</dt><dd>${formatCurrency(pf.employerPf)}</dd></div>
+        <div><dt>Gross salary</dt><dd>${ctx.isNa ? "—" : formatCurrency(staff.monthly_salary)}</dd></div>
+        <div><dt>Net (after PF)</dt><dd>${ctx.isNa ? "—" : formatCurrency(pf.netSalary)}</dd></div>
+        <div><dt>PF contribution</dt><dd>${
+          ctx.isNa
+            ? "—"
+            : pf.fixedAmount > 0
+              ? formatCurrency(pf.fixedAmount)
+              : '<span class="muted">Not set — <a href="staff.html">Staff</a></span>'
+        }</dd></div>
+        <div><dt>Employer PF</dt><dd>${ctx.isNa ? "—" : formatCurrency(pf.employerPf)}</dd></div>
         <div><dt>PF / UAN</dt><dd>${pfNo ? escapeHtml(pfNo) : '<span class="muted">Not set</span>'}</dd></div>
         <div><dt>Mobile</dt><dd>${staff.phone_number ? escapeHtml(staff.phone_number) : '<span class="muted">—</span>'}</dd></div>
         <div><dt>Paid this month</dt><dd>${formatCurrency(paid)}</dd></div>
         <div><dt>Remaining</dt><dd class="${balanceClass}">${balanceValue}</dd></div>
-        <div><dt>Status</dt><dd><span class="salary-status ${status.className}">${escapeHtml(status.label)}</span></dd></div>
+        <div><dt>Status</dt><dd><span class="salary-status ${ctx.className}">${escapeHtml(ctx.label)}</span></dd></div>
       `;
     }
 
@@ -750,8 +879,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     if (detailPrintBtn) {
-      detailPrintBtn.disabled = false;
+      detailPrintBtn.disabled = ctx.isNa;
+      detailPrintBtn.title = ctx.isNa ? "Salary slip is not available for N/A months" : "";
       detailPrintBtn.onclick = async () => {
+        if (ctx.isNa) return;
         try {
           await runSalarySlipPrint(staff, list, monthValue);
         } catch (err) {
@@ -759,6 +890,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
         }
       };
+    }
+
+    if (detailAddPaymentBtn) {
+      detailAddPaymentBtn.disabled = ctx.isNa;
+      detailAddPaymentBtn.title = ctx.isNa
+        ? "Restore this month before recording payment"
+        : "";
     }
   }
 
@@ -840,6 +978,118 @@ document.addEventListener("DOMContentLoaded", async () => {
     return data ?? [];
   }
 
+  async function loadSalaryMonthExclusions(monthValue) {
+    if (!monthExclusionsSupported) return new Map();
+
+    const salaryMonth = normalizeSalaryMonth(monthValue);
+    if (!salaryMonth) return new Map();
+
+    const { data, error } = await supabaseClient
+      .from("salary_month_exclusions")
+      .select("id, employee_id, note, salary_month")
+      .eq("salary_month", salaryMonth);
+
+    if (error) {
+      if (isMissingSalaryMonthExclusionsTable(error)) {
+        monthExclusionsSupported = false;
+        return new Map();
+      }
+      AppError.report(error, { context: "loadSalaryMonthExclusions" });
+      return new Map();
+    }
+
+    return new Map((data ?? []).map((row) => [row.employee_id, row]));
+  }
+
+  async function markSalaryMonthNa(staffId, monthValue, note) {
+    if (!isAdmin) {
+      alert("Only an admin can mark a salary month as not applicable.");
+      return false;
+    }
+    if (!monthExclusionsSupported) {
+      alert("Salary month exclusions are not available yet. Apply the latest database migration.");
+      return false;
+    }
+
+    const staff = staffList.find((s) => s.id === staffId);
+    if (!staff) return false;
+
+    const salaryMonth = normalizeSalaryMonth(monthValue);
+    if (!salaryMonth) return false;
+
+    const paid = paidByStaffInRange(monthPayments).get(staffId) || 0;
+    const monthLabel = formatMonthLabel(monthValue);
+    let msg = `Mark ${staff.name} as not applicable for ${monthLabel}?\n\nThey will be excluded from payroll totals for this month.`;
+    if (paid > 0.009) {
+      msg += `\n\n${formatCurrency(paid)} is already recorded for this month. Payments stay in history but the month remains excluded from totals.`;
+    }
+    if (!confirm(msg)) return false;
+
+    const payload = {
+      employee_id: staffId,
+      salary_month: salaryMonth,
+      note: note?.trim() || null,
+    };
+    if (auth.session?.user?.id) payload.created_by = auth.session.user.id;
+
+    const { error } = await supabaseClient.from("salary_month_exclusions").upsert(payload, {
+      onConflict: "employee_id,salary_month",
+    });
+
+    if (error) {
+      alert(AppError.getUserMessage(error));
+      AppError.report(error, { context: "markSalaryMonthNa", staffId, monthValue });
+      return false;
+    }
+
+    if (typeof AppCache !== "undefined" && AppCache) {
+      CacheInvalidation.invalidate("operational");
+    }
+    await refreshAll();
+    return true;
+  }
+
+  async function restoreSalaryMonth(staffId, monthValue) {
+    if (!isAdmin) {
+      alert("Only an admin can restore a salary month.");
+      return false;
+    }
+    if (!monthExclusionsSupported) return false;
+
+    const staff = staffList.find((s) => s.id === staffId);
+    if (!staff) return false;
+
+    const salaryMonth = normalizeSalaryMonth(monthValue);
+    if (!salaryMonth) return false;
+
+    const monthLabel = formatMonthLabel(monthValue);
+    if (
+      !confirm(
+        `Restore ${staff.name} for ${monthLabel}?\n\nThey will rejoin payroll totals for this month based on their configured salary.`
+      )
+    ) {
+      return false;
+    }
+
+    const { error } = await supabaseClient
+      .from("salary_month_exclusions")
+      .delete()
+      .eq("employee_id", staffId)
+      .eq("salary_month", salaryMonth);
+
+    if (error) {
+      alert(AppError.getUserMessage(error));
+      AppError.report(error, { context: "restoreSalaryMonth", staffId, monthValue });
+      return false;
+    }
+
+    if (typeof AppCache !== "undefined" && AppCache) {
+      CacheInvalidation.invalidate("operational");
+    }
+    await refreshAll();
+    return true;
+  }
+
   async function getPaymentsForSalaryMonth(monthValue) {
     if (monthValue === getSelectedMonth() && monthPayments.length) {
       return monthPayments;
@@ -857,6 +1107,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     const staff = staffList.find((s) => s.id === staffId);
     if (!staff) return;
+
+    const exclusion = monthExclusions.get(staffId);
+    if (exclusion) {
+      paymentMonthHint.textContent = `${formatMonthLabel(monthVal)}: marked not applicable${
+        exclusion.note?.trim() ? ` (${exclusion.note.trim()})` : ""
+      }. Restore the month in salary details before recording payment.`;
+      paymentMonthHint.classList.remove("hidden");
+      return;
+    }
 
     const payments = await getPaymentsForSalaryMonth(monthVal);
     const balance = getStaffBalanceForMonth(staffId, payments, staffList);
@@ -919,13 +1178,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     monthPayments = await loadPaymentsForSalaryMonth(monthValue);
+    monthExclusions = await loadSalaryMonthExclusions(monthValue);
     const paidMap = paidByStaffInRange(monthPayments);
 
     let totalPayroll = 0;
     let totalPaid = 0;
     let totalPending = 0;
+    let naCount = 0;
 
     staffList.forEach((s) => {
+      const exclusion = monthExclusions.get(s.id);
+      if (exclusion) {
+        naCount += 1;
+        return;
+      }
       const gross = Number(s.monthly_salary ?? 0);
       const paid = paidMap.get(s.id) || 0;
       const { salary: payable, pending } = computeSalaryBalance(gross, paid, s);
@@ -938,29 +1204,51 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (kpiPaid) kpiPaid.textContent = formatCurrency(totalPaid);
     if (kpiPending) kpiPending.textContent = formatCurrency(totalPending);
 
+    const kpiGrid = document.querySelector(".salary-kpi-grid");
+    let kpiNote = document.getElementById("salary-kpi-note");
+    if (naCount > 0) {
+      if (!kpiNote && kpiGrid) {
+        kpiNote = document.createElement("p");
+        kpiNote.id = "salary-kpi-note";
+        kpiNote.className = "muted salary-kpi-note";
+        kpiGrid.insertAdjacentElement("afterend", kpiNote);
+      }
+      if (kpiNote) {
+        kpiNote.textContent = `${naCount} staff excluded as not applicable for ${formatMonthLabel(monthValue)}.`;
+        kpiNote.classList.remove("hidden");
+      }
+    } else if (kpiNote) {
+      kpiNote.classList.add("hidden");
+      kpiNote.textContent = "";
+    }
+
     tbody.innerHTML = staffList
       .map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const status = salaryStatusInfo(s.monthly_salary, paid, s);
-        const { salary: payable } = computeSalaryBalance(s.monthly_salary, paid, s);
-        const remaining =
-          status.advance > 0.009
-            ? `<span class="muted">Advance ${formatCurrency(status.advance)}</span>`
-            : formatCurrency(status.pending);
+        const exclusion = monthExclusions.get(s.id) || null;
+        const ctx = getStaffSalaryMonthContext(s, paid, exclusion);
+        const remaining = ctx.isNa
+          ? "—"
+          : ctx.advance > 0.009
+            ? `<span class="muted">Advance ${formatCurrency(ctx.advance)}</span>`
+            : formatCurrency(ctx.pending);
         const name = escapeHtml(s.name);
         const role = escapeHtml(s.role_display ?? "—");
+        const rowClass = ctx.isNa ? "salary-row--na" : "";
+        const payDisabled = ctx.isNa ? " disabled title=\"Month marked not applicable\"" : "";
+        const slipDisabled = ctx.isNa ? " disabled title=\"Salary slip not available for N/A months\"" : "";
         return `
-          <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
+          <tr data-staff-id="${escapeHtml(s.id)}" class="${rowClass}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
-            <td class="num">${formatCurrency(payable)}</td>
+            <td class="num">${formatSalaryAmount(ctx.payable)}</td>
             <td class="num">${formatCurrency(paid)}</td>
             <td class="num">${remaining}</td>
-            <td><span class="salary-status ${status.className}">${escapeHtml(status.label)}</span></td>
+            <td><span class="salary-status ${ctx.className}">${escapeHtml(ctx.label)}</span></td>
             <td class="table-actions">
               <button type="button" class="button-secondary button-small salary-view-btn" data-staff-id="${escapeHtml(s.id)}">Details</button>
-              <button type="button" class="button-secondary button-small salary-slip-btn" data-staff-id="${escapeHtml(s.id)}">Slip</button>
-              <button type="button" class="button-secondary button-small add-payment-btn" data-staff-id="${escapeHtml(s.id)}">Pay</button>
+              <button type="button" class="button-secondary button-small salary-slip-btn" data-staff-id="${escapeHtml(s.id)}"${slipDisabled}>Slip</button>
+              <button type="button" class="button-secondary button-small add-payment-btn" data-staff-id="${escapeHtml(s.id)}"${payDisabled}>Pay</button>
             </td>
           </tr>
         `;
@@ -993,9 +1281,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     tbody.querySelectorAll(".salary-slip-btn").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
+        if (btn.disabled) return;
         const staffId = btn.getAttribute("data-staff-id");
         const staff = staffList.find((s) => s.id === staffId);
-        if (!staff) return;
+        if (!staff || monthExclusions.has(staffId)) return;
         const list = paymentsForEmployee(monthPayments, staffId);
         try {
           await runSalarySlipPrint(staff, list, monthValue);
@@ -1009,7 +1298,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     tbody.querySelectorAll(".add-payment-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        prefillPayment(btn.getAttribute("data-staff-id"));
+        if (btn.disabled) return;
+        const staffId = btn.getAttribute("data-staff-id");
+        if (monthExclusions.has(staffId)) {
+          alert("This month is marked not applicable. Open details and restore the month before recording payment.");
+          return;
+        }
+        prefillPayment(staffId);
       });
     });
 
@@ -1155,6 +1450,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       const staff = staffList.find((s) => s.id === staffId);
+
+      if (monthExclusions.has(staffId)) {
+        resetSubmitBtn();
+        paymentError?.classList.remove("hidden");
+        if (paymentError) {
+          paymentError.textContent = `${staff?.name || "This staff member"} is marked not applicable for ${formatMonthLabel(salaryMonthVal)}. Restore the month in salary details first.`;
+        }
+        return;
+      }
       const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
       const balance = getStaffBalanceForMonth(staffId, payments, staffList);
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
@@ -1309,6 +1613,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!monthVal) return;
       await loadStaffMembers();
       const payments = await loadPaymentsForSalaryMonth(monthVal);
+      const exclusions = await loadSalaryMonthExclusions(monthVal);
       const paidMap = paidByStaffInRange(payments);
       const headers = [
         "Name",
@@ -1317,20 +1622,25 @@ document.addEventListener("DOMContentLoaded", async () => {
         "Paid this month (₹)",
         "Remaining (₹)",
         "Status",
+        "N/A reason",
       ];
       const rows = staffList.map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const status = salaryStatusInfo(s.monthly_salary, paid, s);
-        const { salary: payable } = computeSalaryBalance(s.monthly_salary, paid, s);
-        const remaining =
-          status.advance > 0.009 ? `Advance ${status.advance}` : String(status.pending);
+        const exclusion = exclusions.get(s.id) || null;
+        const ctx = getStaffSalaryMonthContext(s, paid, exclusion);
+        const remaining = ctx.isNa
+          ? "N/A"
+          : ctx.advance > 0.009
+            ? `Advance ${ctx.advance}`
+            : String(ctx.pending);
         return [
           String(s.name ?? "").replace(/"/g, '""'),
           String(s.role_display ?? "").replace(/"/g, '""'),
-          String(payable),
+          ctx.isNa ? "N/A" : String(ctx.payable),
           String(paid),
           remaining,
-          status.label,
+          ctx.label,
+          String(exclusion?.note ?? "").replace(/"/g, '""'),
         ];
       });
       const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
@@ -1348,8 +1658,38 @@ document.addEventListener("DOMContentLoaded", async () => {
   detailBackdrop?.addEventListener("click", closeDetailModal);
   detailAddPaymentBtn?.addEventListener("click", () => {
     if (detailStaffId) {
+      if (monthExclusions.has(detailStaffId)) {
+        alert("This month is marked not applicable. Restore it before recording payment.");
+        return;
+      }
       closeDetailModal();
       prefillPayment(detailStaffId);
+    }
+  });
+
+  detailMarkNaBtn?.addEventListener("click", async () => {
+    if (!detailStaffId) return;
+    detailMarkNaBtn.disabled = true;
+    try {
+      const ok = await markSalaryMonthNa(
+        detailStaffId,
+        getSelectedMonth(),
+        detailNaNoteInput?.value || ""
+      );
+      if (ok) openDetailModal(detailStaffId, getSelectedMonth());
+    } finally {
+      detailMarkNaBtn.disabled = false;
+    }
+  });
+
+  detailRestoreNaBtn?.addEventListener("click", async () => {
+    if (!detailStaffId) return;
+    detailRestoreNaBtn.disabled = true;
+    try {
+      const ok = await restoreSalaryMonth(detailStaffId, getSelectedMonth());
+      if (ok) openDetailModal(detailStaffId, getSelectedMonth());
+    } finally {
+      detailRestoreNaBtn.disabled = false;
     }
   });
 
