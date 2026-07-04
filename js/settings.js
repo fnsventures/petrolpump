@@ -605,6 +605,17 @@ function initUsersForm() {
 
 // ─── Expense categories ──────────────────────────────────────────────────────
 
+let expenseCategoryCache = [];
+
+const EXPENSE_CAT_DRAG_HANDLE_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+  <circle cx="5" cy="4" r="1.25" fill="currentColor"/>
+  <circle cx="11" cy="4" r="1.25" fill="currentColor"/>
+  <circle cx="5" cy="8" r="1.25" fill="currentColor"/>
+  <circle cx="11" cy="8" r="1.25" fill="currentColor"/>
+  <circle cx="5" cy="12" r="1.25" fill="currentColor"/>
+  <circle cx="11" cy="12" r="1.25" fill="currentColor"/>
+</svg>`;
+
 function slugifyCategoryName(label) {
   return (
     String(label || "")
@@ -616,8 +627,74 @@ function slugifyCategoryName(label) {
   );
 }
 
+function expenseCategoryDragHandleHtml(label) {
+  return `<span class="expense-cat-drag-handle" role="button" tabindex="0" aria-label="Drag to reorder ${escapeHtml(label)}" title="Drag to reorder">${EXPENSE_CAT_DRAG_HANDLE_SVG}</span>`;
+}
+
+function expenseCategoryRowHtml(row) {
+  return `
+    <tr data-category-id="${escapeHtml(row.id)}">
+      <td class="expense-cat-drag-col">${expenseCategoryDragHandleHtml(row.label)}</td>
+      <td class="expense-cat-label">${escapeHtml(row.label)}</td>
+      <td class="expense-cat-actions">
+        <button type="button" class="button-secondary button-small edit-expense-category" data-id="${escapeHtml(row.id)}" data-label="${escapeHtml(row.label)}">Edit</button>
+        ${AdminDelete.buttonHtml({
+          selector: "delete-expense-category",
+          data: { id: row.id, name: row.name, label: row.label },
+          title: "Delete category",
+          small: true,
+        })}
+      </td>
+    </tr>`;
+}
+
+function renderExpenseCategories(rows) {
+  const tbody = document.getElementById("settings-expense-categories");
+  if (!tbody) return;
+  if (!rows.length) {
+    tbody.innerHTML = "<tr><td colspan=\"3\" class=\"muted\">No categories.</td></tr>";
+    return;
+  }
+  tbody.innerHTML = rows.map(expenseCategoryRowHtml).join("");
+}
+
+function getNextExpenseCategorySortOrder() {
+  if (!expenseCategoryCache.length) return 1;
+  return Math.max(...expenseCategoryCache.map((row) => row.sort_order)) + 1;
+}
+
 function initExpenseCategories() {
+  const tbody = document.getElementById("settings-expense-categories");
+  initExpenseCategoryDragSort(tbody);
   loadExpenseCategories();
+  tbody?.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+    const editBtn = t.closest(".edit-expense-category");
+    if (editBtn) {
+      e.preventDefault();
+      startEditExpenseCategory(editBtn);
+      return;
+    }
+    const saveBtn = t.closest(".save-expense-category");
+    if (saveBtn) {
+      e.preventDefault();
+      void saveExpenseCategoryLabel(saveBtn);
+      return;
+    }
+    const cancelBtn = t.closest(".cancel-expense-category");
+    if (cancelBtn) {
+      e.preventDefault();
+      renderExpenseCategories(expenseCategoryCache);
+      return;
+    }
+    const deleteBtn = t.closest(".delete-expense-category");
+    if (deleteBtn) {
+      e.preventDefault();
+      void handleDeleteExpenseCategory(deleteBtn);
+    }
+  });
+
   const addForm = document.getElementById("expense-category-add-form");
   const labelInput = document.getElementById("expense-category-label");
   const addError = document.getElementById("expense-category-add-error");
@@ -636,11 +713,16 @@ function initExpenseCategories() {
         if (addError) { addError.textContent = "Enter a category name."; addError.classList.remove("hidden"); }
         return;
       }
-      const { error } = await supabaseClient.from("expense_categories").insert({
-        name: slugifyCategoryName(label),
-        label: label.slice(0, 80),
-        sort_order: 999,
-      });
+      const nextOrder = getNextExpenseCategorySortOrder();
+      const { data: inserted, error } = await supabaseClient
+        .from("expense_categories")
+        .insert({
+          name: slugifyCategoryName(label),
+          label: label.slice(0, 80),
+          sort_order: nextOrder,
+        })
+        .select("id, name, label, sort_order")
+        .single();
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Add"; }
       if (error) {
         if (error.code === "23505" && addError) {
@@ -649,9 +731,10 @@ function initExpenseCategories() {
         } else AppError.handle(error, { target: addError });
         return;
       }
+      expenseCategoryCache = [...expenseCategoryCache, inserted];
       addForm.reset();
       addSuccess?.classList.remove("hidden");
-      loadExpenseCategories();
+      renderExpenseCategories(expenseCategoryCache);
     });
   }
 }
@@ -661,35 +744,150 @@ async function loadExpenseCategories() {
   if (!tbody) return;
   const { data, error } = await supabaseClient
     .from("expense_categories")
-    .select("id, name, label")
+    .select("id, name, label, sort_order")
     .order("sort_order", { ascending: true })
     .order("label", { ascending: true });
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="2" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="3" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+    expenseCategoryCache = [];
     return;
   }
-  if (!data?.length) {
-    tbody.innerHTML = "<tr><td colspan=\"2\" class=\"muted\">No categories.</td></tr>";
-    return;
-  }
-  tbody.innerHTML = data
-    .map(
-      (row) => `
-    <tr>
-      <td>${escapeHtml(row.label)}</td>
-      <td>${AdminDelete.buttonHtml({
-        selector: "delete-expense-category",
-        data: { id: row.id, name: row.name, label: row.label },
-        title: "Delete category",
-        small: false,
-      })}</td>
-    </tr>`
-    )
-    .join("");
-  tbody.querySelectorAll(".delete-expense-category").forEach((btn) => {
-    btn.addEventListener("click", () => handleDeleteExpenseCategory(btn));
+  expenseCategoryCache = data ?? [];
+  renderExpenseCategories(expenseCategoryCache);
+}
+
+function initExpenseCategoryDragSort(tbody) {
+  if (!tbody || tbody.dataset.dragSortBound) return;
+  tbody.dataset.dragSortBound = "1";
+
+  let dragState = null;
+
+  const finishDrag = async (e) => {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const { row, handle } = dragState;
+    row.classList.remove("expense-cat-dragging");
+    tbody.classList.remove("expense-cat-sort-active");
+    try {
+      handle.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+    dragState = null;
+    const orderedIds = [...tbody.querySelectorAll("tr[data-category-id]")].map((tr) => tr.dataset.categoryId);
+    await persistExpenseCategoryOrder(orderedIds);
+  };
+
+  tbody.addEventListener("pointerdown", (e) => {
+    const handle = e.target.closest(".expense-cat-drag-handle");
+    if (!handle) return;
+    const row = handle.closest("tr[data-category-id]");
+    if (!row || row.classList.contains("is-editing")) return;
+    e.preventDefault();
+    handle.setPointerCapture(e.pointerId);
+    dragState = { row, handle, pointerId: e.pointerId };
+    row.classList.add("expense-cat-dragging");
+    tbody.classList.add("expense-cat-sort-active");
   });
+
+  tbody.addEventListener("pointermove", (e) => {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    e.preventDefault();
+    const target = document.elementFromPoint(e.clientX, e.clientY);
+    const overRow = target?.closest?.("tr[data-category-id]");
+    if (!overRow || overRow === dragState.row || overRow.classList.contains("is-editing")) return;
+    const rect = overRow.getBoundingClientRect();
+    const insertBefore = e.clientY < rect.top + rect.height / 2;
+    if (insertBefore) {
+      if (dragState.row.nextElementSibling === overRow) return;
+      tbody.insertBefore(dragState.row, overRow);
+      return;
+    }
+    if (dragState.row === overRow.nextElementSibling) return;
+    tbody.insertBefore(dragState.row, overRow.nextElementSibling);
+  });
+
+  tbody.addEventListener("pointerup", finishDrag);
+  tbody.addEventListener("pointercancel", finishDrag);
+}
+
+async function persistExpenseCategoryOrder(orderedIds) {
+  if (!orderedIds?.length) return;
+
+  const previousIds = expenseCategoryCache.map((row) => row.id);
+  if (orderedIds.length === previousIds.length && orderedIds.every((id, i) => id === previousIds[i])) {
+    return;
+  }
+
+  const sortById = new Map(expenseCategoryCache.map((row) => [row.id, row.sort_order]));
+  const updates = [];
+  orderedIds.forEach((id, index) => {
+    const nextOrder = index + 1;
+    if (sortById.get(id) !== nextOrder) {
+      updates.push(
+        supabaseClient.from("expense_categories").update({ sort_order: nextOrder }).eq("id", id)
+      );
+    }
+  });
+
+  const byId = new Map(expenseCategoryCache.map((row) => [row.id, row]));
+  expenseCategoryCache = orderedIds.map((id, index) => ({
+    ...byId.get(id),
+    sort_order: index + 1,
+  }));
+
+  if (!updates.length) return;
+
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    alert(AppError.getUserMessage(failed.error));
+    loadExpenseCategories();
+  }
+}
+
+function startEditExpenseCategory(btn) {
+  const row = btn.closest("tr");
+  const labelCell = row?.querySelector(".expense-cat-label");
+  const actionsCell = row?.querySelector(".expense-cat-actions");
+  if (!row || !labelCell || !actionsCell) return;
+  row.classList.add("is-editing");
+  const currentLabel = btn.dataset.label || labelCell.textContent || "";
+  labelCell.innerHTML = `<input type="text" class="expense-cat-label-input" maxlength="80" value="${escapeHtml(currentLabel)}" aria-label="Category name" />`;
+  actionsCell.innerHTML = `
+    <button type="button" class="button-secondary button-small save-expense-category" data-id="${escapeHtml(btn.dataset.id || "")}">Save</button>
+    <button type="button" class="button-secondary button-small cancel-expense-category">Cancel</button>`;
+  labelCell.querySelector(".expense-cat-label-input")?.focus();
+}
+
+async function saveExpenseCategoryLabel(btn) {
+  const id = btn.dataset.id;
+  const row = btn.closest("tr");
+  const input = row?.querySelector(".expense-cat-label-input");
+  const label = String(input?.value || "").trim();
+  if (!id) return;
+  if (!label) {
+    alert("Category name cannot be empty.");
+    input?.focus();
+    return;
+  }
+  const trimmed = label.slice(0, 80);
+  const cached = expenseCategoryCache.find((row) => row.id === id);
+  if (cached && cached.label === trimmed) {
+    renderExpenseCategories(expenseCategoryCache);
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  const { error } = await supabaseClient.from("expense_categories").update({ label: trimmed }).eq("id", id);
+  if (error) {
+    alert(AppError.getUserMessage(error));
+    btn.disabled = false;
+    btn.textContent = "Save";
+    return;
+  }
+  if (cached) cached.label = trimmed;
+  renderExpenseCategories(expenseCategoryCache);
 }
 
 async function handleDeleteExpenseCategory(btn) {
@@ -707,7 +905,8 @@ async function handleDeleteExpenseCategory(btn) {
     alert(AppError.getUserMessage(error));
     return;
   }
-  loadExpenseCategories();
+  expenseCategoryCache = expenseCategoryCache.filter((row) => row.id !== id);
+  renderExpenseCategories(expenseCategoryCache);
 }
 
 // ─── Staff salaries ──────────────────────────────────────────────────────────
