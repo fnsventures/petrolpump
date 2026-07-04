@@ -89,7 +89,7 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
 
 ### 2.1 How it works
 
-- On push to `main` or `staging`, the workflow runs and generates `js/env.js` using **GitHub environment secrets**.
+- After a PR is **merged** into `main` or `staging`, the Merge workflow runs, then Deploy GitHub Pages builds and publishes the site using **GitHub environment secrets**. You can also trigger a manual deploy from Actions (staging uses the `staging` branch HEAD; prod uses `main`).
 - Each environment uses its own Supabase project, so prod and staging data are separate.
 - The site is served as a static bundle from GitHub Pages; `CNAME` is used for a custom domain.
 
@@ -110,7 +110,7 @@ Use one Supabase project for prod and another for staging.
 ### 2.3 Deploy flow
 
 1. **Test in staging**  
-   Push commits to the `staging` branch. The workflow deploys to the `/staging/` path.
+   Merge a PR into the `staging` branch (or run **Deploy GitHub Pages** manually with target `staging`). The workflow deploys to the `/staging/` path.
 
 2. **Promote to production**  
    Merge `staging` into `main`. The workflow deploys to the root URL.
