@@ -13,6 +13,7 @@ truncate table
   public.credit_entries,
   public.day_closing,
   public.salary_payments,
+  public.salary_month_exclusions,
   public.employee_attendance,
   public.expenses,
   public.dsr_petrol,
