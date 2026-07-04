@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, storedToLandedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, resolveStoredBuyingRate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, storedToLandedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, resolveStoredBuyingRate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -48,12 +48,12 @@ const REPORT_CATALOG = [
       {
         id: "trading",
         title: "Trading account",
-        description: "Income, purchases and expenses for the period.",
+        description: "Stock-based account: sales, purchases, opening/closing stock. Gross income is a balancing figure — not the same as P&L net profit.",
       },
       {
         id: "pl",
         title: "Profit & Loss",
-        description: "Profit and loss statement for the period.",
+        description: "Margin-based net profit — same formula as Dashboard P&L and Analysis.",
       },
     ],
   },
@@ -238,6 +238,10 @@ function getFuelSupplierLabel() {
   return PumpSettings.getCachedSync().reports?.fuelSupplierLabel || AppConfig.DEFAULT_REPORTS.fuelSupplierLabel;
 }
 
+function initReportsAboutAccordion() {
+  initDocsAccordion(document.querySelector(".reports-about-accordion"));
+}
+
 function initReportsPage() {
   const startInput = document.getElementById("reports-start");
   const endInput = document.getElementById("reports-end");
@@ -254,6 +258,7 @@ function initReportsPage() {
   renderReportCatalog();
   setActiveReportTab(activeReport);
   preloadReportPrintCss();
+  initReportsAboutAccordion();
 
   const params = new URLSearchParams(window.location.search);
   const tab = params.get("tab");
@@ -704,6 +709,7 @@ function aggregateInvoiceGst(invoices, invoiceItems) {
       const cgst = Number(inv.cgst_total ?? 0);
       const sgst = Number(inv.sgst_total ?? 0);
       const igst = Number(inv.igst_total ?? 0);
+      const gross = Number(inv.total_amount ?? 0);
       const taxable = invoiceHeaderTaxable(inv);
 
       if (cgst > 0 || sgst > 0 || igst > 0) {
@@ -720,6 +726,7 @@ function aggregateInvoiceGst(invoices, invoiceItems) {
         slabTotals.non_gst.gross += nonGst;
       } else if (gross > 0) {
         slabTotals.non_gst.gross += gross;
+        slabTotals.non_gst.taxable += gross;
       }
     }
   });
@@ -1186,7 +1193,7 @@ function computeTradingAndPl(data, range) {
     receiptRows: data.receiptRows,
     expenseRows: data.expenseRows,
     lubeSales: products.lube.sales,
-    requireAllBuying: false,
+    requireAllBuying: true,
   });
 
   const expensesByCategory = new Map();
@@ -1207,13 +1214,15 @@ function computeTradingAndPl(data, range) {
     openingStock,
     closingStock,
     grossIncome,
-    fuelGrossProfit: pl.fuelGrossProfit ?? 0,
-    grossProfit: pl.grossProfit ?? 0,
+    fuelGrossProfit: pl.canCalculate ? (pl.fuelGrossProfit ?? 0) : null,
+    grossProfit: pl.canCalculate ? (pl.grossProfit ?? 0) : null,
     expensesByCategory,
     testingExpensesByCategory,
     totalExpenses: pl.totalExpenses,
     testingExpenses: pl.testingExpenses,
-    netProfit: pl.netProfit ?? 0,
+    netProfit: pl.canCalculate ? pl.netProfit : null,
+    canCalculate: pl.canCalculate,
+    missingBuyingPrice: pl.missingBuyingPrice,
   };
 }
 
@@ -1260,7 +1269,7 @@ function renderTradingAccount(data, range) {
     </div>
     <p class="report-note muted">Debit and credit totals should match; gross income is the balancing figure.</p>
     <p class="report-summary-line">Gross income for period: <strong>${formatCurrency(t.grossIncome)}</strong></p>
-    <p class="report-note muted">Stock valued at effective buying price from receipts (${escapeHtml(getBuyingPriceUnitLabel())} on dashboard, stored per litre). Lube sales from billing invoices.</p>`;
+    <p class="report-note muted">Stock-based trading account: gross income adjusts for opening/closing stock at cost. This is <strong>not</strong> the same as net profit on the P&amp;L report (margin-based). Fuel sales use net litres (meter minus testing). Lube sales from billing invoices.</p>`;
 }
 
 function renderProfitLoss(data, range) {
@@ -1280,7 +1289,7 @@ function renderProfitLoss(data, range) {
     .join("");
 
   const testingExpenseHtml = testingExpenseRows.length
-    ? `<tr class="report-subhead-row"><td colspan="2">MS/HS testing (excluded from net profit — day closing only)</td></tr>${testingExpenseRows
+    ? `<tr class="report-subhead-row"><td colspan="2">MS/HS & density testing (excluded from net profit — day closing only)</td></tr>${testingExpenseRows
         .map(
           (e) =>
             `<tr class="muted"><td>${escapeHtml(e.label)}</td><td class="num">${formatNumberPlain(e.amount)}</td></tr>`
@@ -1293,21 +1302,31 @@ function renderProfitLoss(data, range) {
       ? `<tr><td>Gross profit — Lube / Billing</td><td class="num">${formatNumberPlain(t.products.lube.sales)}</td></tr>`
       : "";
 
+  const buyingWarning =
+    !t.canCalculate && t.missingBuyingPrice?.length
+      ? `<p class="report-note warning">${t.missingBuyingPrice.length} receipt day(s) need a buying price — enter pre-VAT ${escapeHtml(getBuyingPriceUnitLabel())} on the Dashboard P&amp;L before net profit can be calculated.</p>`
+      : "";
+
+  const netProfitDisplay = t.canCalculate ? formatNumberPlain(t.netProfit) : "—";
+  const fuelGrossDisplay = t.canCalculate ? formatNumberPlain(t.fuelGrossProfit) : "—";
+  const grossProfitDisplay = t.canCalculate ? formatNumberPlain(t.grossProfit) : "—";
+
   return `
     ${reportHeader("Profit & loss account", range.start, range.end)}
+    ${buyingWarning}
     <table class="report-table">
       <thead><tr><th>Particulars</th><th>Amount (₹)</th></tr></thead>
       <tbody>
-        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${formatNumberPlain(t.fuelGrossProfit)}</td></tr>
+        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${fuelGrossDisplay}</td></tr>
         ${lubeProfitRow}
-        <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${formatNumberPlain(t.grossProfit)}</strong></td></tr>
+        <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${grossProfitDisplay}</strong></td></tr>
         ${expenseHtml}
         <tr class="report-total-row"><td><strong>Total expenses</strong></td><td class="num"><strong>${formatNumberPlain(t.totalExpenses)}</strong></td></tr>
-        <tr class="report-total-row"><td><strong>Net profit</strong></td><td class="num"><strong>${formatNumberPlain(t.netProfit)}</strong></td></tr>
+        <tr class="report-total-row"><td><strong>Net profit</strong></td><td class="num"><strong>${netProfitDisplay}</strong></td></tr>
         ${testingExpenseHtml}
       </tbody>
     </table>
-    <p class="report-note muted">Net profit = gross profit − operating expenses. MS/HS testing is excluded (handled in day closing). Fuel margin uses net sale litres × (selling − buying).</p>`;
+    <p class="report-note muted">Margin-based P&amp;L — same formula as Dashboard and Analysis: net profit = gross profit − operating expenses. MS/HS and density testing are excluded (handled in day closing). Fuel margin uses net sale litres × (selling − buying). Matches Dashboard P&amp;L and Analysis for the same date range.</p>`;
 }
 
 const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=4";

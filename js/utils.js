@@ -785,14 +785,15 @@ function computeFuelGrossProfit(dsrRows, getBuying) {
 
 function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false } = {}) {
   return (expenseRows ?? []).reduce((sum, row) => {
-    const isTesting = isTestingExpenseCategory(row.category);
+    const isTesting = isTestingExpenseCategory(row.category, row.label ?? row.description);
     if (testingOnly && !isTesting) return sum;
     if (excludeTesting && isTesting) return sum;
-    return sum + Number(row.amount ?? 0);
+    const amount = Number(row.amount ?? 0);
+    return sum + (Number.isFinite(amount) ? amount : 0);
   }, 0);
 }
 
-/** MS/HS fuel testing — excluded from P&L net profit (tracked separately in day closing). */
+/** MS/HS and density fuel testing — excluded from P&L net profit (tracked separately in day closing). */
 const TESTING_EXPENSE_CATEGORY_SLUGS = new Set([
   "mstest",
   "hsdtest",
@@ -802,6 +803,10 @@ const TESTING_EXPENSE_CATEGORY_SLUGS = new Set([
   "hs-test",
   "ms_test",
   "hs_test",
+  "densitytest",
+  "density_test",
+  "density-test",
+  "density_testing",
 ]);
 
 function isTestingExpenseCategory(category, label) {
@@ -811,22 +816,32 @@ function isTestingExpenseCategory(category, label) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-  return normalizedLabel === "ms testing" || normalizedLabel === "hs testing" || normalizedLabel === "hsd testing";
+  return (
+    normalizedLabel === "ms testing" ||
+    normalizedLabel === "hs testing" ||
+    normalizedLabel === "hsd testing" ||
+    normalizedLabel === "density test" ||
+    normalizedLabel === "density testing"
+  );
 }
 
-/** Receipt days missing buying price (blocks P&L until admin enters ₹/KL). */
-function findMissingBuyingPriceRows(dsrRows) {
+/**
+ * Receipt days with no resolvable buying rate (blocks P&L until admin enters ₹/KL).
+ * Uses receipt history fallback — same rule as GST purchase reports.
+ */
+function findMissingBuyingPriceRows(dsrRows, receiptRows) {
+  const getBuying = buildEffectiveBuyingMap(receiptRows ?? []);
   return (dsrRows ?? []).filter((row) => {
     if (Number(row.receipts ?? 0) <= 0) return false;
-    const bp = row.buying_price_per_litre;
-    return bp == null || bp === "" || (typeof bp === "number" && !Number.isFinite(bp));
+    const rate = resolveStoredBuyingRate(row, getBuying);
+    return rate == null || !Number.isFinite(rate) || rate <= 0;
   });
 }
 
 /**
  * Unified P&L for dashboard, reports, and analysis.
  * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%).
- * Net profit = fuel gross profit + lube − operating expenses (MS/HS testing excluded).
+ * Net profit = fuel gross profit + lube − operating expenses (MS/HS and density testing excluded).
  * Requires purchaseTaxUtils.js (loaded before utils.js).
  */
 function computeProfitLossSummary({
@@ -836,7 +851,7 @@ function computeProfitLossSummary({
   lubeSales = 0,
   requireAllBuying = true,
 } = {}) {
-  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows);
+  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows, receiptRows);
   const canCalculate = !requireAllBuying || missingBuyingPrice.length === 0;
   const getBuying = buildEffectiveBuyingMap(canCalculate ? receiptRows : []);
   const { total: revenue, missingRates } = computeFuelRevenue(dsrRows);
@@ -879,3 +894,19 @@ window.sumExpenseAmounts = sumExpenseAmounts;
 window.isTestingExpenseCategory = isTestingExpenseCategory;
 window.findMissingBuyingPriceRows = findMissingBuyingPriceRows;
 window.computeProfitLossSummary = computeProfitLossSummary;
+
+/** Single-open accordion for documentation panels (Reports About, Analysis Setup). */
+function initDocsAccordion(accordion) {
+  if (!accordion) return;
+  const topLevelItems = accordion.querySelectorAll(":scope > .reports-about-item");
+  topLevelItems.forEach((item) => {
+    item.addEventListener("toggle", () => {
+      if (!item.open) return;
+      topLevelItems.forEach((other) => {
+        if (other !== item) other.open = false;
+      });
+    });
+  });
+}
+
+window.initDocsAccordion = initDocsAccordion;
