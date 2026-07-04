@@ -92,6 +92,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
+      if (!payload.category) {
+        if (errorEl) {
+          errorEl.textContent = "Please select a category.";
+          errorEl.classList.remove("hidden");
+        }
+        document.getElementById("expense-category")?.focus();
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Save expense";
+        }
+        return;
+      }
+
       const { error } = await supabaseClient.from("expenses").insert(payload);
 
       if (submitBtn) {
