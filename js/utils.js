@@ -688,11 +688,11 @@ function calculateDsrSaleRupees(rows, { includeTesting = false } = {}) {
 }
 
 /**
- * Effective buying price (₹/L) from latest receipt on or before the sale date.
- * Returns landed cost for P&L: pre-VAT fuel + delivery + VAT/LST (see purchaseTaxUtils).
+ * Receipt-rate lookup + landed-rate cache for P&L, analysis, and trading account.
+ * Builds receipt indexes once; memoizes stored and landed rates per product/date.
  * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
  */
-function buildEffectiveBuyingMap(receiptRows) {
+function createBuyingRateContext(receiptRows) {
   const byProduct = new Map();
   (receiptRows ?? []).forEach((row) => {
     const p = normalizeProduct(row.product);
@@ -703,36 +703,100 @@ function buildEffectiveBuyingMap(receiptRows) {
     });
   });
   byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
-  return function getEffectiveBuying(product, date) {
-    const list = byProduct.get(normalizeProduct(product));
-    if (!list?.length) return null;
-    const found = list.find((r) => r.date <= date);
-    return found != null && Number.isFinite(found.buying_price_per_litre)
-      ? found.buying_price_per_litre
-      : null;
-  };
-}
 
-/** Stored (pre-VAT) buying rate — row value first, then latest receipt on or before that date. */
-function resolveStoredBuyingRate(row, getBuying) {
-  const rowRate = Number(row?.buying_price_per_litre);
-  if (Number.isFinite(rowRate) && rowRate > 0) return rowRate;
-  const fromMap = getBuying?.(row?.product, row?.date);
-  return fromMap != null && Number.isFinite(fromMap) && fromMap > 0 ? fromMap : null;
-}
+  const storedCache = new Map();
+  const landedCache = new Map();
 
-function getEffectiveBuyingRate(row, getBuying) {
-  const product = row?.product;
-  const stored = resolveStoredBuyingRate(row, getBuying);
-  if (stored == null) return null;
-  if (typeof storedToLandedBuyingRatePerLitre === "function") {
-    return storedToLandedBuyingRatePerLitre(stored, product) ?? stored;
+  function getStored(product, date) {
+    const p = normalizeProduct(product);
+    const cacheKey = `${p}\0${date}`;
+    if (storedCache.has(cacheKey)) return storedCache.get(cacheKey);
+
+    const list = byProduct.get(p);
+    let stored = null;
+    if (list?.length) {
+      const found = list.find((r) => r.date <= date);
+      if (found != null && Number.isFinite(found.buying_price_per_litre) && found.buying_price_per_litre > 0) {
+        stored = found.buying_price_per_litre;
+      }
+    }
+    storedCache.set(cacheKey, stored);
+    return stored;
   }
-  return stored;
+
+  function getLanded(stored, product) {
+    if (stored == null || !Number.isFinite(stored) || stored <= 0) return null;
+    const p = normalizeProduct(product);
+    const cacheKey = `${p}\0${stored}`;
+    if (landedCache.has(cacheKey)) return landedCache.get(cacheKey);
+    const landed = toLandedBuyingRatePerLitre(stored, p);
+    landedCache.set(cacheKey, landed);
+    return landed;
+  }
+
+  function getLandedForRow(row) {
+    const stored = resolveStoredBuyingRate(row, getStored);
+    return getLanded(stored, row?.product);
+  }
+
+  function getLandedForDate(product, date) {
+    return getLanded(getStored(product, date), product);
+  }
+
+  return { getStored, getLandedForRow, getLandedForDate, getBuying: getStored };
+}
+
+/**
+ * Effective pre-VAT buying price (₹/L) from latest receipt on or before the sale date.
+ * Prefer createBuyingRateContext when resolving rates for many rows.
+ * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
+ */
+function buildEffectiveBuyingMap(receiptRows) {
+  return createBuyingRateContext(receiptRows).getStored;
+}
+
+/**
+ * Stored pre-VAT buying rate for a sale day.
+ * Uses the latest receipt on or before that date (see buildEffectiveBuyingMap).
+ * Row value is only a fallback on receipt days — sale-only rows may carry stale
+ * buying_price_per_litre from imports and must not override receipt history.
+ */
+function resolveStoredBuyingRate(row, getBuying) {
+  const fromMap = getBuying?.(row?.product, row?.date);
+  if (fromMap != null && Number.isFinite(fromMap) && fromMap > 0) return fromMap;
+  const isReceiptDay = Number(row?.receipts ?? 0) > 0;
+  const rowRate = Number(row?.buying_price_per_litre);
+  if (isReceiptDay && Number.isFinite(rowRate) && rowRate > 0) return rowRate;
+  return null;
+}
+
+/**
+ * Landed buying rate (₹/L) for margin/cost: pre-VAT + delivery + VAT/LST.
+ * Never returns the raw stored pre-VAT rate — purchaseTaxUtils.js is required.
+ */
+function toLandedBuyingRatePerLitre(storedRatePerLitre, product) {
+  const stored = Number(storedRatePerLitre);
+  if (!Number.isFinite(stored) || stored <= 0) return null;
+  if (typeof storedToLandedBuyingRatePerLitre !== "function") return null;
+  return storedToLandedBuyingRatePerLitre(stored, product);
+}
+
+/** Landed rate from latest receipt on or before a date (opening/closing stock, trading account). */
+function getLandedBuyingRateForDate(product, date, getBuyingOrCtx) {
+  if (getBuyingOrCtx?.getLandedForDate) return getBuyingOrCtx.getLandedForDate(product, date);
+  const stored = getBuyingOrCtx?.(product, date);
+  return toLandedBuyingRatePerLitre(stored, product);
+}
+
+function getEffectiveBuyingRate(row, getBuyingOrCtx) {
+  if (getBuyingOrCtx?.getLandedForRow) return getBuyingOrCtx.getLandedForRow(row);
+  const stored = resolveStoredBuyingRate(row, getBuyingOrCtx);
+  if (stored == null) return null;
+  return toLandedBuyingRatePerLitre(stored, row?.product);
 }
 
 /** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
-function computeFuelRowMargin(row, getBuying) {
+function computeFuelRowMargin(row, getBuyingOrCtx) {
   const product = normalizeProduct(row?.product);
   if (product !== "petrol" && product !== "diesel") {
     return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
@@ -742,7 +806,7 @@ function computeFuelRowMargin(row, getBuying) {
     return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
   }
   const sellingRate = getDsrSaleRate(row);
-  const buyingRate = getEffectiveBuyingRate(row, getBuying);
+  const buyingRate = getBuyingOrCtx ? getEffectiveBuyingRate(row, getBuyingOrCtx) : null;
   const revenue =
     Number.isFinite(sellingRate) && sellingRate > 0 ? litres * sellingRate : 0;
   const cost = buyingRate != null ? litres * buyingRate : 0;
@@ -751,36 +815,41 @@ function computeFuelRowMargin(row, getBuying) {
   return { revenue, cost, grossProfit, litres };
 }
 
+/** Single pass: fuel revenue, cost, and gross profit from DSR rows. */
+function accumulateFuelPnL(dsrRows, getBuyingOrCtx) {
+  let revenue = 0;
+  let missingRates = 0;
+  let costOfGoods = 0;
+  let fuelGrossProfit = 0;
+  for (const row of dsrRows ?? []) {
+    const { revenue: rowRevenue, cost, grossProfit, litres } = computeFuelRowMargin(
+      row,
+      getBuyingOrCtx
+    );
+    if (litres <= 0) continue;
+    revenue += rowRevenue;
+    costOfGoods += cost;
+    fuelGrossProfit += grossProfit;
+    const sellingRate = getDsrSaleRate(row);
+    if (!Number.isFinite(sellingRate) || sellingRate <= 0) missingRates += 1;
+  }
+  return { revenue, missingRates, costOfGoods, fuelGrossProfit };
+}
+
 /** Net sale revenue (₹) from fuel DSR rows. */
 function computeFuelRevenue(dsrRows) {
-  let total = 0;
-  let missingRates = 0;
-  for (const row of dsrRows ?? []) {
-    const { revenue, litres } = computeFuelRowMargin(row, null);
-    if (litres <= 0) continue;
-    const rate = getDsrSaleRate(row);
-    if (!Number.isFinite(rate) || rate <= 0) missingRates += 1;
-    total += revenue;
-  }
-  return { total, missingRates };
+  const { revenue, missingRates } = accumulateFuelPnL(dsrRows, null);
+  return { total: revenue, missingRates };
 }
 
 /** Fuel cost at effective buying rates (₹). */
-function computeFuelCostOfGoods(dsrRows, getBuying) {
-  let total = 0;
-  for (const row of dsrRows ?? []) {
-    total += computeFuelRowMargin(row, getBuying).cost;
-  }
-  return total;
+function computeFuelCostOfGoods(dsrRows, getBuyingOrCtx) {
+  return accumulateFuelPnL(dsrRows, getBuyingOrCtx).costOfGoods;
 }
 
 /** Fuel gross profit: net litres × (selling rate − effective buying rate). */
-function computeFuelGrossProfit(dsrRows, getBuying) {
-  let total = 0;
-  for (const row of dsrRows ?? []) {
-    total += computeFuelRowMargin(row, getBuying).grossProfit;
-  }
-  return total;
+function computeFuelGrossProfit(dsrRows, getBuyingOrCtx) {
+  return accumulateFuelPnL(dsrRows, getBuyingOrCtx).fuelGrossProfit;
 }
 
 function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false } = {}) {
@@ -827,13 +896,16 @@ function isTestingExpenseCategory(category, label) {
 
 /**
  * Receipt days with no resolvable buying rate (blocks P&L until admin enters ₹/KL).
- * Uses receipt history fallback — same rule as GST purchase reports.
+ * @param {Function|Array} getStoredOrReceiptRows - getStored fn or receipt rows array
  */
-function findMissingBuyingPriceRows(dsrRows, receiptRows) {
-  const getBuying = buildEffectiveBuyingMap(receiptRows ?? []);
+function findMissingBuyingPriceRows(dsrRows, getStoredOrReceiptRows) {
+  const getStored =
+    typeof getStoredOrReceiptRows === "function"
+      ? getStoredOrReceiptRows
+      : createBuyingRateContext(getStoredOrReceiptRows ?? []).getStored;
   return (dsrRows ?? []).filter((row) => {
     if (Number(row.receipts ?? 0) <= 0) return false;
-    const rate = resolveStoredBuyingRate(row, getBuying);
+    const rate = resolveStoredBuyingRate(row, getStored);
     return rate == null || !Number.isFinite(rate) || rate <= 0;
   });
 }
@@ -850,23 +922,23 @@ function computeProfitLossSummary({
   expenseRows,
   lubeSales = 0,
   requireAllBuying = true,
+  buyingContext = null,
 } = {}) {
-  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows, receiptRows);
+  const ctx = buyingContext ?? createBuyingRateContext(receiptRows ?? []);
+  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows, ctx.getStored);
   const canCalculate = !requireAllBuying || missingBuyingPrice.length === 0;
-  const getBuying = buildEffectiveBuyingMap(canCalculate ? receiptRows : []);
-  const { total: revenue, missingRates } = computeFuelRevenue(dsrRows);
-  const costOfGoods = canCalculate ? computeFuelCostOfGoods(dsrRows, getBuying) : 0;
-  const fuelGrossProfit = canCalculate ? computeFuelGrossProfit(dsrRows, getBuying) : null;
+  const fuelPnL = accumulateFuelPnL(dsrRows, canCalculate ? ctx : null);
   const lube = Number(lubeSales ?? 0);
   const testingExpenses = sumExpenseAmounts(expenseRows, { testingOnly: true });
   const totalExpenses = sumExpenseAmounts(expenseRows, { excludeTesting: true });
+  const fuelGrossProfit = canCalculate ? fuelPnL.fuelGrossProfit : null;
   const grossProfit = fuelGrossProfit != null ? fuelGrossProfit + lube : null;
   const netProfit = grossProfit != null ? grossProfit - totalExpenses : null;
 
   return {
-    revenue,
-    missingRates,
-    costOfGoods,
+    revenue: fuelPnL.revenue,
+    missingRates: fuelPnL.missingRates,
+    costOfGoods: canCalculate ? fuelPnL.costOfGoods : 0,
     fuelGrossProfit,
     lubeSales: lube,
     grossProfit,
@@ -884,7 +956,10 @@ window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;
 window.buildEffectiveBuyingMap = buildEffectiveBuyingMap;
+window.createBuyingRateContext = createBuyingRateContext;
 window.resolveStoredBuyingRate = resolveStoredBuyingRate;
+window.toLandedBuyingRatePerLitre = toLandedBuyingRatePerLitre;
+window.getLandedBuyingRateForDate = getLandedBuyingRateForDate;
 window.getEffectiveBuyingRate = getEffectiveBuyingRate;
 window.computeFuelRowMargin = computeFuelRowMargin;
 window.computeFuelRevenue = computeFuelRevenue;

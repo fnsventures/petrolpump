@@ -1357,6 +1357,8 @@ async function loadProfitLossSummary(range) {
     plBuyingHintEl.textContent = getPlBuyingPriceHint();
   }
 
+  await loadPumpSettings();
+
   const RECEIPT_HISTORY_START = PumpSettings.getReceiptHistoryStart();
 
   const [
@@ -1473,7 +1475,7 @@ async function loadProfitLossSummary(range) {
   const plMethodologyEl = document.getElementById("pl-methodology-note");
   if (plMethodologyEl) {
     plMethodologyEl.textContent =
-      "Net profit = fuel gross profit + lube/billing − operating expenses. Net sale (above) is fuel only; lube/billing adds to net profit when present. Fuel uses net litres (meter minus testing). MS/HS and density testing expenses excluded. Same formula as Analysis and Reports P&L.";
+      "Net profit = fuel gross profit + lube/billing − operating expenses. Net sale (above) is fuel only; lube/billing adds to net profit when present. Fuel uses net litres (meter minus testing) and landed buying cost (pre-VAT ₹/KL + delivery + VAT/LST per litre). MS/HS and density testing expenses excluded. Same formula as Analysis and Reports P&L.";
   }
   scheduleAutoFitStats();
 }
