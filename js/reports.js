@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, storedToLandedBuyingRatePerLitre, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, buildEffectiveBuyingMap, resolveStoredBuyingRate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -411,6 +411,7 @@ async function loadAndRenderReports() {
   const fetchFn = () => fetchReportData(rangeStart, rangeEnd);
 
   try {
+    await loadPumpSettings();
     if (typeof withProgress === "function") {
       cachedData = await withProgress(async () => {
         if (typeof AppCache !== "undefined" && AppCache) {
@@ -987,13 +988,13 @@ function renderGstSalesDetail(data, range) {
 }
 
 /**
- * Collect fuel receipt lines in range with a resolvable buying rate.
- * Uses row buying price when set; otherwise latest buying price on or before that date
- * (same logic as Trading A/c / P&amp;L).
+ * Collect fuel receipt lines in range with a resolvable pre-VAT buying rate.
+ * GST inward reports apply VAT + delivery via calcPurchaseLineTax (gross = landed cost).
+ * Margin/P&amp;L/trading use getEffectiveBuyingRate instead (landed rate directly).
  */
-function collectFuelPurchaseLines(data, range) {
+function collectFuelPurchaseLines(data, range, getStored) {
   const inRange = (r) => r.date >= range.start && r.date <= range.end;
-  const getBuying = buildEffectiveBuyingMap(data.receiptRows ?? []);
+  const resolveStored = getStored ?? createBuyingRateContext(data.receiptRows ?? []).getStored;
   const lines = [];
   const seen = new Set();
 
@@ -1014,7 +1015,7 @@ function collectFuelPurchaseLines(data, range) {
   (data.dsrRows ?? []).filter(inRange).forEach((r) => {
     const litres = Number(r.receipts ?? 0);
     if (litres <= 0) return;
-    addLine(r.date, r.product, litres, resolveStoredBuyingRate(r, getBuying));
+    addLine(r.date, r.product, litres, resolveStoredBuyingRate(r, resolveStored));
   });
 
   return lines.sort(
@@ -1024,18 +1025,20 @@ function collectFuelPurchaseLines(data, range) {
   );
 }
 
-function countReceiptsMissingBuying(data, range) {
+function countReceiptsMissingBuying(data, range, getStored) {
   const inRange = (r) => r.date >= range.start && r.date <= range.end;
-  const getBuying = buildEffectiveBuyingMap(data.receiptRows ?? []);
+  const resolveStored = getStored ?? createBuyingRateContext(data.receiptRows ?? []).getStored;
   return (data.dsrRows ?? []).filter((r) => {
     if (!inRange(r) || Number(r.receipts ?? 0) <= 0) return false;
-    const rate = resolveStoredBuyingRate(r, getBuying);
+    const rate = resolveStoredBuyingRate(r, resolveStored);
     return rate == null || rate <= 0;
   }).length;
 }
 
 function buildFuelPurchaseRows(data, range) {
-  const purchaseLines = collectFuelPurchaseLines(data, range);
+  const getStored = createBuyingRateContext(data.receiptRows ?? []).getStored;
+  const purchaseLines = collectFuelPurchaseLines(data, range, getStored);
+  const missingBuyingCount = countReceiptsMissingBuying(data, range, getStored);
   const slabTotals = {};
   GST_SLABS.forEach((s) => {
     slabTotals[s.key] = { taxable: 0, cgst: 0, sgst: 0, gross: 0 };
@@ -1059,7 +1062,7 @@ function buildFuelPurchaseRows(data, range) {
   return {
     detailRows,
     slabTotals,
-    missingBuyingCount: countReceiptsMissingBuying(data, range),
+    missingBuyingCount,
   };
 }
 
@@ -1131,13 +1134,18 @@ function renderGstPurchaseDetail(data, range) {
 
 /** Trading account (stock-based) + P&L figures via shared computeProfitLossSummary. */
 function computeTradingAndPl(data, range) {
-  const getBuying = buildEffectiveBuyingMap(data.receiptRows);
+  const buyingContext = createBuyingRateContext(data.receiptRows);
   const merged = DsrQueries.mergeDsrStock(data.dsrRows, data.stockRows);
 
   const products = {
     petrol: { label: "Petrol (MS)", sales: 0, purchase: 0, openingStockVal: 0, closingStockVal: 0, openingL: 0, closingL: 0 },
     diesel: { label: "Diesel (HSD)", sales: 0, purchase: 0, openingStockVal: 0, closingStockVal: 0, openingL: 0, closingL: 0 },
     lube: { label: "Lubricant / Billing", sales: 0, purchase: 0, openingStockVal: 0, closingStockVal: 0 },
+  };
+
+  const productBounds = {
+    petrol: { first: null, last: null },
+    diesel: { first: null, last: null },
   };
 
   merged.forEach((row) => {
@@ -1147,25 +1155,24 @@ function computeTradingAndPl(data, range) {
     const rate = getDsrSaleRate(row);
     const receiptL = Number(row.receipts ?? 0);
     if (receiptL > 0) {
-      const storedBuying = resolveStoredBuyingRate(row, getBuying) ?? 0;
-      const landedRate =
-        storedToLandedBuyingRatePerLitre(storedBuying, row.product) ?? storedBuying;
+      const landedRate = getEffectiveBuyingRate(row, buyingContext) ?? 0;
       products[p].purchase += receiptL * landedRate;
     }
     products[p].sales += netL * rate;
+    if (productBounds[p]) {
+      if (!productBounds[p].first) productBounds[p].first = row;
+      productBounds[p].last = row;
+    }
   });
 
   ["petrol", "diesel"].forEach((p) => {
-    const prodRows = merged.filter((r) => normalizeProduct(r.product) === p);
-    if (!prodRows.length) return;
-    const first = prodRows[0];
-    const last = prodRows[prodRows.length - 1];
+    const first = productBounds[p].first;
+    const last = productBounds[p].last;
+    if (!first || !last) return;
     products[p].openingL = Number(first.opening_stock ?? 0);
     products[p].closingL = Number(last.dip_stock ?? last.stock ?? 0);
-    const openStored = getBuying(p, first.date) ?? 0;
-    const closeStored = getBuying(p, last.date) ?? openStored;
-    const openBuy = storedToLandedBuyingRatePerLitre(openStored, p) ?? openStored;
-    const closeBuy = storedToLandedBuyingRatePerLitre(closeStored, p) ?? closeStored;
+    const openBuy = getLandedBuyingRateForDate(p, first.date, buyingContext) ?? 0;
+    const closeBuy = getLandedBuyingRateForDate(p, last.date, buyingContext) ?? openBuy;
     products[p].openingStockVal = products[p].openingL * openBuy;
     products[p].closingStockVal = products[p].closingL * closeBuy;
   });
@@ -1184,6 +1191,7 @@ function computeTradingAndPl(data, range) {
     expenseRows: data.expenseRows,
     lubeSales: products.lube.sales,
     requireAllBuying: true,
+    buyingContext,
   });
 
   const expensesByCategory = new Map();
@@ -1307,7 +1315,7 @@ function renderProfitLoss(data, range) {
     <table class="report-table">
       <thead><tr><th>Particulars</th><th>Amount (₹)</th></tr></thead>
       <tbody>
-        <tr><td>Gross profit — Fuel (net litres × (selling − buying))</td><td class="num">${fuelGrossDisplay}</td></tr>
+        <tr><td>Gross profit — Fuel (net litres × (selling − landed buying incl. VAT + delivery))</td><td class="num">${fuelGrossDisplay}</td></tr>
         ${lubeProfitRow}
         <tr class="report-total-row"><td><strong>Gross profit</strong></td><td class="num"><strong>${grossProfitDisplay}</strong></td></tr>
         ${expenseHtml}
@@ -1316,7 +1324,7 @@ function renderProfitLoss(data, range) {
         ${testingExpenseHtml}
       </tbody>
     </table>
-    <p class="report-note muted">Margin-based P&amp;L — same formula as Dashboard and Analysis: net profit = gross profit − operating expenses. MS/HS and density testing are excluded (handled in day closing). Fuel margin uses net sale litres × (selling − buying). Matches Dashboard P&amp;L and Analysis for the same date range.</p>`;
+    <p class="report-note muted">Margin-based P&amp;L — same formula as Dashboard and Analysis: net profit = gross profit − operating expenses. MS/HS and density testing are excluded (handled in day closing). Fuel margin uses net sale litres × (selling − landed buying incl. VAT + delivery). Matches Dashboard P&amp;L and Analysis for the same date range.</p>`;
 }
 
 const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=4";

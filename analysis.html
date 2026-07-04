@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/app.css?v=6" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -18,13 +18,13 @@
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=1"></script>
-    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/utils.js?v=9"></script>
     <script defer src="js/dateRangeFilter.js?v=2"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/analysis.js?v=3"></script>
+    <script defer src="js/analysis.js?v=9"></script>
   </head>
   <body class="analysis-page">
     <header class="topbar">
@@ -257,7 +257,7 @@
                   <div class="reports-about-nested">
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Fuel purchase cost</span><span class="reports-about-summary-desc muted">Cost of fuel sold</span></span></summary>
-                      <div class="reports-about-item-body"><p>Net litres sold × landed buying rate (pre-VAT ₹/KL + VAT + delivery per litre) for each sale day.</p></div>
+                      <div class="reports-about-item-body"><p>Net litres sold × landed buying rate (pre-VAT ₹/KL + delivery + VAT/LST per litre) for each sale day.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Gross profit</span><span class="reports-about-summary-desc muted">Before operating expenses</span></span></summary>
@@ -280,8 +280,20 @@
                       <div class="reports-about-item-body"><p>Total operating expenses divided by calendar days in the range.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
-                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Revenue per litre</span><span class="reports-about-summary-desc muted">Fuel net sale ÷ litres</span></span></summary>
-                      <div class="reports-about-item-body"><p>Average selling yield per fuel litre (fuel revenue only; lube excluded from numerator).</p></div>
+                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Selling price per litre (MS / HSD)</span><span class="reports-about-summary-desc muted">Volume-weighted meter rate</span></span></summary>
+                      <div class="reports-about-item-body"><p>Average selling rate per litre for petrol (MS) or diesel (HSD): net sale ₹ ÷ net litres for that product in the period.</p></div>
+                    </details>
+                    <details class="reports-about-item reports-about-item--nested">
+                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Buying price per litre (MS / HSD)</span><span class="reports-about-summary-desc muted">Landed cost incl. VAT + delivery</span></span></summary>
+                      <div class="reports-about-item-body"><p>Volume-weighted landed buying rate per litre for each product (pre-VAT ₹/KL + delivery + VAT/LST applied per sale day). Requires complete buying prices.</p></div>
+                    </details>
+                    <details class="reports-about-item reports-about-item--nested">
+                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Gross margin per litre</span><span class="reports-about-summary-desc muted">Gross profit ÷ litres</span></span></summary>
+                      <div class="reports-about-item-body"><p>Gross profit (fuel margin + lube/billing) spread across total petrol + diesel litres sold, before operating expenses. Requires complete buying prices.</p></div>
+                    </details>
+                    <details class="reports-about-item reports-about-item--nested">
+                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Petrol / diesel gross margin per litre</span><span class="reports-about-summary-desc muted">Fuel gross profit ÷ product litres</span></span></summary>
+                      <div class="reports-about-item-body"><p>Per-product fuel gross margin: net litres × (selling − landed buying incl. VAT + delivery), divided by petrol or diesel litres sold. Lube/billing is excluded from these product-specific figures.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Profit per litre</span><span class="reports-about-summary-desc muted">Net profit ÷ litres</span></span></summary>
@@ -402,12 +414,27 @@
         </section>
 
         <section class="settings-panel analysis-metrics-panel" data-panel="metrics" hidden>
-          <header class="analysis-panel-head">
-            <h2 class="analysis-section-title">Key metrics</h2>
-            <p class="analysis-section-desc">Core financials for the selected period. Uses the same P&amp;L formula as Dashboard and Reports.</p>
+          <div class="analysis-metrics-ambient" aria-hidden="true"></div>
+
+          <header class="analysis-metrics-intro">
+            <div class="analysis-metrics-intro__copy">
+              <p class="analysis-eyebrow">Live intelligence</p>
+              <h2 class="analysis-section-title">Period metrics</h2>
+              <p class="analysis-section-desc">Core financials for the selected range. Same P&amp;L engine as Dashboard and Reports — landed buying cost incl. VAT + delivery.</p>
+            </div>
           </header>
-          <p id="analysis-buying-alert" class="error hidden" role="alert"></p>
-          <div class="analysis-kpi-grid analysis-kpi-grid--primary">
+
+          <p id="analysis-buying-alert" class="error hidden analysis-metrics-alert" role="alert"></p>
+
+          <div class="analysis-metrics-block analysis-metrics-block--hero">
+            <header class="analysis-metrics-block__head">
+              <span class="analysis-metrics-block__badge analysis-metrics-block__badge--core">Core</span>
+              <div>
+                <h3 class="analysis-metrics-block__title">Key metrics</h3>
+                <p class="analysis-metrics-block__desc">Headline financials at a glance</p>
+              </div>
+            </header>
+            <div class="analysis-kpi-grid analysis-kpi-grid--primary analysis-kpi-grid--bento">
             <article class="analysis-kpi analysis-kpi--featured" data-metric="sales">
               <div class="analysis-kpi-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 17l6-6 4 4 8-10"/><path d="M14 5h7v7"/></svg>
@@ -448,17 +475,25 @@
                 <small id="analysis-growth-note">vs previous period</small>
               </div>
             </article>
+            </div>
           </div>
 
-          <header class="analysis-panel-head analysis-panel-head--sub">
-            <h2 class="analysis-section-title">Profitability &amp; costs</h2>
-            <p class="analysis-section-desc">Fuel purchase cost (from P&amp;L ₹/KL rates), gross profit, and per-litre economics. Charts use daily fuel + lube totals; KPIs match Dashboard P&amp;L.</p>
-          </header>
-          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+          <div class="analysis-metrics-block">
+            <header class="analysis-metrics-block__head">
+              <span class="analysis-metrics-block__badge analysis-metrics-block__badge--profit">P&amp;L</span>
+              <div>
+                <h3 class="analysis-metrics-block__title">Profitability &amp; costs</h3>
+                <p class="analysis-metrics-block__desc">Fuel purchase cost, margins, and per-litre yield</p>
+              </div>
+            </header>
+
+            <div class="analysis-metrics-subsection">
+              <h4 class="analysis-metrics-subtitle">Costs &amp; margins</h4>
+              <div class="analysis-kpi-grid analysis-kpi-grid--secondary analysis-kpi-grid--costs">
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Fuel purchase cost</h3>
               <p class="stat" id="analysis-fuel-cost">—</p>
-              <small>Cost of fuel sold (₹)</small>
+              <small>Landed cost incl. VAT + delivery</small>
             </article>
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Gross profit</h3>
@@ -483,23 +518,71 @@
               <h3>Avg. daily expenses</h3>
               <p class="stat" id="analysis-avg-daily-expenses">—</p>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
-              <h3>Revenue per litre</h3>
-              <p class="stat" id="analysis-revenue-per-litre">—</p>
-              <small>Avg. selling yield</small>
+              </div>
+            </div>
+
+            <div class="analysis-metrics-subsection">
+              <h4 class="analysis-metrics-subtitle">Per-litre economics</h4>
+              <div class="analysis-kpi-grid analysis-kpi-grid--secondary analysis-kpi-grid--per-litre">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
+              <span class="analysis-kpi-tag">MS</span>
+              <h3>Selling price/L</h3>
+              <p class="stat" id="analysis-petrol-selling-per-litre">—</p>
+              <small>Avg. meter rate</small>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
+              <span class="analysis-kpi-tag">HSD</span>
+              <h3>Selling price/L</h3>
+              <p class="stat" id="analysis-diesel-selling-per-litre">—</p>
+              <small>Avg. meter rate</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
+              <span class="analysis-kpi-tag">MS</span>
+              <h3>Buying price/L</h3>
+              <p class="stat" id="analysis-petrol-buying-per-litre">—</p>
+              <small>Landed incl. VAT + delivery</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
+              <span class="analysis-kpi-tag">HSD</span>
+              <h3>Buying price/L</h3>
+              <p class="stat" id="analysis-diesel-buying-per-litre">—</p>
+              <small>Landed incl. VAT + delivery</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
+              <span class="analysis-kpi-tag">MS</span>
+              <h3>Gross margin/L</h3>
+              <p class="stat" id="analysis-petrol-gross-margin-per-litre">—</p>
+              <small>Selling − buying</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
+              <span class="analysis-kpi-tag">HSD</span>
+              <h3>Gross margin/L</h3>
+              <p class="stat" id="analysis-diesel-gross-margin-per-litre">—</p>
+              <small>Selling − buying</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--accent">
+              <h3>Gross margin per litre</h3>
+              <p class="stat" id="analysis-gross-margin-per-litre">—</p>
+              <small>All fuel + lube spread</small>
+            </article>
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--accent">
               <h3>Profit per litre</h3>
               <p class="stat" id="analysis-profit-per-litre">—</p>
               <small>Net margin per L</small>
             </article>
+              </div>
+            </div>
           </div>
 
-          <header class="analysis-panel-head analysis-panel-head--sub">
-            <h2 class="analysis-section-title">Fuel volume &amp; mix</h2>
-            <p class="analysis-section-desc">Litres sold and revenue split by product.</p>
-          </header>
-          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+          <div class="analysis-metrics-block">
+            <header class="analysis-metrics-block__head">
+              <span class="analysis-metrics-block__badge analysis-metrics-block__badge--volume">Volume</span>
+              <div>
+                <h3 class="analysis-metrics-block__title">Fuel volume &amp; mix</h3>
+                <p class="analysis-metrics-block__desc">Litres sold and revenue split by product</p>
+              </div>
+            </header>
+            <div class="analysis-kpi-grid analysis-kpi-grid--secondary analysis-kpi-grid--volume">
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Total volume</h3>
               <p class="stat" id="analysis-total-volume">—</p>
@@ -510,33 +593,42 @@
               <p class="stat" id="analysis-avg-daily-volume">—</p>
               <small>Litres per day</small>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
+              <span class="analysis-kpi-tag">MS</span>
               <h3>Petrol volume</h3>
               <p class="stat" id="analysis-petrol-volume">—</p>
               <small>Litres sold</small>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
+              <span class="analysis-kpi-tag">HSD</span>
               <h3>Diesel volume</h3>
               <p class="stat" id="analysis-diesel-volume">—</p>
               <small>Litres sold</small>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
+              <span class="analysis-kpi-tag">MS</span>
               <h3>Petrol share</h3>
               <p class="stat" id="analysis-petrol-share">—</p>
               <small>% of revenue</small>
             </article>
-            <article class="analysis-kpi analysis-kpi--compact">
+            <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
+              <span class="analysis-kpi-tag">HSD</span>
               <h3>Diesel share</h3>
               <p class="stat" id="analysis-diesel-share">—</p>
               <small>% of revenue</small>
             </article>
+            </div>
           </div>
 
-          <header class="analysis-panel-head analysis-panel-head--sub">
-            <h2 class="analysis-section-title">Performance &amp; activity</h2>
-            <p class="analysis-section-desc">Daily averages, growth, and trading-day patterns.</p>
-          </header>
-          <div class="analysis-kpi-grid analysis-kpi-grid--secondary">
+          <div class="analysis-metrics-block">
+            <header class="analysis-metrics-block__head">
+              <span class="analysis-metrics-block__badge analysis-metrics-block__badge--activity">Activity</span>
+              <div>
+                <h3 class="analysis-metrics-block__title">Performance &amp; activity</h3>
+                <p class="analysis-metrics-block__desc">Daily averages, growth, and trading-day patterns</p>
+              </div>
+            </header>
+            <div class="analysis-kpi-grid analysis-kpi-grid--secondary analysis-kpi-grid--activity">
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Avg. daily sales</h3>
               <p class="stat" id="analysis-avg-daily-sales">—</p>
@@ -581,6 +673,7 @@
               <p class="stat" id="analysis-loss-days">—</p>
               <small>Negative net profit</small>
             </article>
+            </div>
           </div>
         </section>
 
