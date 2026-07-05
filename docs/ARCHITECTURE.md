@@ -336,7 +336,7 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 - **Environments:**
   - **Prod:** `main` branch → root URL (e.g. `https://bishnupriyafuels.fnsventures.in/`).
   - **Staging:** `staging` branch → `/staging/` path.
-- **CI:** `.github/workflows/deploy-pages.yml` — push to `staging` or `main` (or manual dispatch) builds `js/env.js` from environment secrets, then pushes the site to the **`gh-pages`** branch for GitHub Pages.
+- **CI:** `.github/workflows/deploy-pages.yml` — one job builds and pushes to **`gh-pages`** (staging → `/staging/`, prod → root).
 - **Details:** Step-by-step local setup, deploy flow, and supervisor login are in [Development guide](DEVELOPMENT.md).
 
 ---
