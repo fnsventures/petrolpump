@@ -1,142 +1,116 @@
-name: Deploy GitHub Pages
+name: Deploy
 
-run-name: ${{ github.event_name == 'workflow_run' && format('Deploy after {0}', github.event.workflow_run.display_title) || format('Manual deploy ({0})', inputs.target) }}
+run-name: >-
+  ${{
+    github.event_name == 'workflow_dispatch' &&
+      format('Manual · {0} · {1}', inputs.target, inputs.ref || github.ref_name) ||
+    format('Deploy {0}', github.ref_name == 'staging' && 'staging' || 'prod')
+  }}
 
 on:
-  workflow_run:
-    workflows: [Merge]
-    types: [completed]
+  push:
+    branches:
+      - staging
+      - main
   workflow_dispatch:
     inputs:
       target:
         required: true
         type: choice
         options: [staging, prod]
-      sha:
+        description: Environment to deploy to
+      ref:
         required: false
         type: string
-        description: Commit to deploy (defaults to staging or main branch HEAD)
+        description: Branch, tag, or commit SHA (default — branch selected below when starting the run)
 
 concurrency:
   group: github-pages
   cancel-in-progress: false
 
 permissions:
-  actions: read
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
-  prepare:
-    name: Prepare deploy
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+  deploy:
     runs-on: ubuntu-latest
-    outputs:
-      target: ${{ steps.resolve.outputs.target }}
-      sha: ${{ steps.resolve.outputs.sha }}
-      deploy: ${{ steps.resolve.outputs.deploy }}
-    steps:
-      - if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: meta
-        with:
-          name: deploy-meta
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.target == 'staging' && 'staging' || 'main' }}
-          fetch-depth: 1
-
-      - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
-        id: branch_head
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - id: resolve
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ inputs.sha }}" ]; then
-              sha="${{ inputs.sha }}"
-            else
-              sha="${{ steps.branch_head.outputs.sha }}"
-            fi
-            echo "target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
-            echo "sha=${sha}" >> "$GITHUB_OUTPUT"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.meta.outcome }}" = "success" ]; then
-            echo "target=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['target'])")" >> "$GITHUB_OUTPUT"
-            echo "sha=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['sha'])")" >> "$GITHUB_OUTPUT"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  build:
-    name: Build site
-    needs: prepare
-    if: needs.prepare.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    environment: ${{ needs.prepare.outputs.target }}
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
     env:
-      TARGET: ${{ needs.prepare.outputs.target }}
-      DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
+      REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || github.ref) || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.DEPLOY_SHA }}
+          ref: ${{ env.REF }}
+          fetch-depth: 1
 
-      - name: Build and package
+      - name: Build and publish
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-        run: |
-          bash .github/scripts/pages-deploy.sh build "$TARGET"
-          mkdir -p bundle
-          cp -a _site bundle/_site
-          cp .github/scripts/pages-deploy.sh bundle/pages-deploy.sh
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: deploy-bundle
-          path: bundle/
-          retention-days: 1
-
-  deploy:
-    name: Publish site
-    needs: [prepare, build]
-    if: needs.prepare.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: deploy-bundle
-          path: bundle
-
-      - name: Update pages-state branch
-        working-directory: bundle
-        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          TARGET: ${{ needs.prepare.outputs.target }}
-          DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
-        run: bash pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"
+        run: |
+          set -euo pipefail
+          target="$TARGET"
+          commit_sha="$(git rev-parse HEAD)"
+
+          case "$target" in
+            staging|prod) ;;
+            *) echo "invalid target: $target" >&2; exit 1 ;;
+          esac
+
+          cat > js/env.js <<EOF
+          window.__APP_CONFIG__ = {
+            SUPABASE_URL: "${SUPABASE_URL}",
+            SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
+            APP_ENV: "${target}",
+          };
+          EOF
+
+          [ "$target" = "staging" ] && rm -f CNAME
+
+          mkdir -p _site
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+          if git rev-parse origin/gh-pages >/dev/null 2>&1; then
+            git archive origin/gh-pages | tar -x -C _site
+          fi
+
+          touch _site/.nojekyll
+          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs)
+
+          if [ "$target" = "staging" ]; then
+            mkdir -p _site/staging
+            rsync -a "${excludes[@]}" ./ _site/staging/
+          else
+            staging_backup=""
+            if [ -d _site/staging ]; then
+              staging_backup="$(mktemp -d)"
+              mv _site/staging "$staging_backup/staging"
+            fi
+            rsync -a "${excludes[@]}" ./ _site/
+            if [ -n "$staging_backup" ]; then
+              mv "$staging_backup/staging" _site/staging
+              rmdir "$staging_backup"
+            fi
+          fi
+
+          cd _site
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "gh-pages unchanged, skipping push"
+            exit 0
+          fi
+          git commit -q -m "deploy ${target}: ${commit_sha}"
+          git branch -M gh-pages
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for attempt in 1 2 3; do
+            git push -f origin gh-pages && exit 0
+            echo "gh-pages push failed, retrying (${attempt}/3)..." >&2
+            sleep $((attempt * 5))
+          done
+          echo "gh-pages push failed after 3 attempts" >&2
+          exit 1

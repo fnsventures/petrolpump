@@ -89,14 +89,27 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
 
 ### 2.1 How it works
 
-- After a PR is **merged** into `main` or `staging`, the Merge workflow runs, then Deploy GitHub Pages builds and publishes the site using **GitHub environment secrets**. You can also trigger a manual deploy from Actions (staging uses the `staging` branch HEAD; prod uses `main`).
-- Each environment uses its own Supabase project, so prod and staging data are separate.
-- The site is served as a static bundle from GitHub Pages; `CNAME` is used for a custom domain.
+Only **`.github/workflows/deploy-pages.yml`** is needed for frontend deploy. **`merge.yml` is not used** (removed — push events trigger deploy directly).
+
+| Trigger | What happens |
+|---------|----------------|
+| Push to **`staging`** | Auto-deploy that commit to **staging** (`/staging/`) |
+| Push to **`main`** | Auto-deploy that commit to **prod** (root) |
+| **Manual** (Actions → Deploy → Run workflow) | Deploy any branch/tag/commit to **staging** or **prod** |
+
+Manual deploy steps:
+1. Actions → **Deploy** → **Run workflow**
+2. **Use workflow from** — pick the branch that contains the code (e.g. `feature/my-change` or `staging`)
+3. **target** — `staging` or `prod`
+4. **ref** *(optional)* — override with a specific branch, tag, or commit SHA; leave empty to use the branch from step 2
+
+Each deploy uses that environment’s GitHub secrets and pushes to **`gh-pages`** (staging → `/staging/` only; prod → root, staging preserved).
 
 ### 2.2 Required GitHub configuration
 
-1. Create two **environments** in the repo: **prod** and **staging** (Settings → Environments).
-2. In each environment, add **Environment secrets**:
+1. **GitHub Pages source:** Settings → Pages → Build and deployment → **Deploy from a branch** → Branch **`gh-pages`** → **`/ (root)`**.
+2. Create two **environments** in the repo: **prod** and **staging** (Settings → Environments).
+3. In each environment, add **Environment secrets**:
    - `SUPABASE_URL` — Supabase project URL for that environment.
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
@@ -110,10 +123,10 @@ Use one Supabase project for prod and another for staging.
 ### 2.3 Deploy flow
 
 1. **Test in staging**  
-   Merge a PR into the `staging` branch (or run **Deploy GitHub Pages** manually with target `staging`). The workflow deploys to the `/staging/` path.
+   Merge a PR into `staging`, or run **Deploy** manually with target `staging` from your feature branch.
 
 2. **Promote to production**  
-   Merge `staging` into `main`. The workflow deploys to the root URL.
+   Merge `staging` into `main`, or run **Deploy** manually with target `prod` (typically from `main` or `staging`).
 
 ### 2.4 Database scripts (sync, migrate, backup)
 
