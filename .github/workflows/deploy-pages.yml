@@ -1,11 +1,19 @@
-name: Deploy GitHub Pages
+name: Deploy
 
-run-name: ${{ github.event_name == 'workflow_run' && format('Deploy after {0}', github.event.workflow_run.display_title) || format('Manual deploy ({0})', inputs.target) }}
+run-name: >-
+  ${{
+    github.event_name == 'push' && github.ref_name == 'staging' &&
+      format('Staging-{0}', github.run_number) ||
+    github.event_name == 'push' && github.ref_name == 'main' &&
+      format('Prod-{0}', github.run_number) ||
+    format('Manual-{0}-{1}', inputs.target, github.run_number)
+  }}
 
 on:
-  workflow_run:
-    workflows: [Merge]
-    types: [completed]
+  push:
+    branches:
+      - staging
+      - main
   workflow_dispatch:
     inputs:
       target:
@@ -22,41 +30,43 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  actions: read
   contents: read
   pages: write
   id-token: write
 
 jobs:
   prepare:
-    name: Prepare deploy
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    name: >-
+      ${{
+        github.event_name == 'workflow_dispatch' && 'Override' ||
+        github.ref_name == 'staging' && 'Rehearse' ||
+        'Brief'
+      }}
     runs-on: ubuntu-latest
     outputs:
       target: ${{ steps.resolve.outputs.target }}
       sha: ${{ steps.resolve.outputs.sha }}
       deploy: ${{ steps.resolve.outputs.deploy }}
     steps:
-      - if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        id: meta
-        with:
-          name: deploy-meta
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
       - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
+        name: >-
+          ${{ inputs.target == 'staging' && 'Scout' || 'Locate' }}
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target == 'staging' && 'staging' || 'main' }}
           fetch-depth: 1
 
       - if: github.event_name == 'workflow_dispatch' && inputs.sha == ''
+        name: Trace
         id: branch_head
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: resolve
+        name: >-
+          ${{
+            (github.event_name == 'workflow_dispatch' && inputs.target == 'staging' ||
+              github.ref_name == 'staging') && 'Aim' || 'Lock'
+          }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "${{ inputs.sha }}" ]; then
@@ -67,16 +77,21 @@ jobs:
             echo "target=${{ inputs.target }}" >> "$GITHUB_OUTPUT"
             echo "sha=${sha}" >> "$GITHUB_OUTPUT"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ steps.meta.outcome }}" = "success" ]; then
-            echo "target=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['target'])")" >> "$GITHUB_OUTPUT"
-            echo "sha=$(python3 -c "import json; print(json.load(open('deploy-meta.json'))['sha'])")" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "staging" ]; then
+            echo "target=staging" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            echo "target=prod" >> "$GITHUB_OUTPUT"
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
-    name: Build site
+    name: >-
+      ${{ needs.prepare.outputs.target == 'staging' && 'Assemble' || 'Forge' }}
     needs: prepare
     if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
@@ -85,11 +100,13 @@ jobs:
       TARGET: ${{ needs.prepare.outputs.target }}
       DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Pull
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
-      - name: Build and package
+      - name: >-
+          ${{ needs.prepare.outputs.target == 'staging' && 'Patch' || 'Compile' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -99,20 +116,25 @@ jobs:
           cp -a _site bundle/_site
           cp .github/scripts/pages-deploy.sh bundle/pages-deploy.sh
 
-      - uses: actions/configure-pages@v5
+      - name: Link
+        uses: actions/configure-pages@v5
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: >-
+          ${{ needs.prepare.outputs.target == 'staging' && 'Sandbox' || 'Stage' }}
+        uses: actions/upload-pages-artifact@v3
         with:
           path: _site
 
-      - uses: actions/upload-artifact@v4
+      - name: Pack
+        uses: actions/upload-artifact@v4
         with:
           name: deploy-bundle
           path: bundle/
           retention-days: 1
 
   deploy:
-    name: Publish site
+    name: >-
+      ${{ needs.prepare.outputs.target == 'staging' && 'Preview' || 'Release' }}
     needs: [prepare, build]
     if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
@@ -124,15 +146,19 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - id: deployment
+      - name: >-
+          ${{ needs.prepare.outputs.target == 'staging' && 'Push' || 'Launch' }}
+        id: deployment
         uses: actions/deploy-pages@v4
 
-      - uses: actions/download-artifact@v4
+      - name: Unpack
+        uses: actions/download-artifact@v4
         with:
           name: deploy-bundle
           path: bundle
 
-      - name: Update pages-state branch
+      - name: >-
+          ${{ needs.prepare.outputs.target == 'staging' && 'Bookmark' || 'Archive' }}
         working-directory: bundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
