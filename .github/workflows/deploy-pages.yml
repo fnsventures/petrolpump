@@ -115,6 +115,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          # js/env.js is gitignored in the source repo but must ship on Pages
+          if [ "$target" = "staging" ]; then
+            git add -f staging/js/env.js
+          else
+            git add -f js/env.js
+          fi
           if git diff --cached --quiet; then
             echo "gh-pages unchanged, skipping push"
             exit 0
