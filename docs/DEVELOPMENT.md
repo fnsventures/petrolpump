@@ -89,13 +89,21 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
 
 ### 2.1 How it works
 
-- **Staging** and **prod** deploy independently from separate branches:
-  - Push or merge into **`staging`** → deploys only to `/staging/` (prod site is unchanged).
-  - Push or merge into **`main`** → deploys only to the root URL (staging at `/staging/` is preserved).
-- Each deploy uses that environment’s **GitHub environment secrets** (`staging` or `prod`), so each Supabase project stays isolated.
-- The workflow pushes the built site to the **`gh-pages`** branch (no `github-pages` environment required), so staging deploys are not blocked by branch protection rules.
-- You can also run **Deploy** manually from Actions (pick `staging` or `prod`; defaults to the branch HEAD).
-- The site is served as a static bundle from GitHub Pages; `CNAME` is used for a custom domain.
+Only **`.github/workflows/deploy-pages.yml`** is needed for frontend deploy. **`merge.yml` is not used** (removed — push events trigger deploy directly).
+
+| Trigger | What happens |
+|---------|----------------|
+| Push to **`staging`** | Auto-deploy that commit to **staging** (`/staging/`) |
+| Push to **`main`** | Auto-deploy that commit to **prod** (root) |
+| **Manual** (Actions → Deploy → Run workflow) | Deploy any branch/tag/commit to **staging** or **prod** |
+
+Manual deploy steps:
+1. Actions → **Deploy** → **Run workflow**
+2. **Use workflow from** — pick the branch that contains the code (e.g. `feature/my-change` or `staging`)
+3. **target** — `staging` or `prod`
+4. **ref** *(optional)* — override with a specific branch, tag, or commit SHA; leave empty to use the branch from step 2
+
+Each deploy uses that environment’s GitHub secrets and pushes to **`gh-pages`** (staging → `/staging/` only; prod → root, staging preserved).
 
 ### 2.2 Required GitHub configuration
 
@@ -115,10 +123,10 @@ Use one Supabase project for prod and another for staging.
 ### 2.3 Deploy flow
 
 1. **Test in staging**  
-   Merge a PR into the `staging` branch (or run **Deploy GitHub Pages** manually with target `staging`). The workflow deploys to the `/staging/` path.
+   Merge a PR into `staging`, or run **Deploy** manually with target `staging` from your feature branch.
 
 2. **Promote to production**  
-   Merge `staging` into `main`. The workflow deploys to the root URL.
+   Merge `staging` into `main`, or run **Deploy** manually with target `prod` (typically from `main` or `staging`).
 
 ### 2.4 Database scripts (sync, migrate, backup)
 
