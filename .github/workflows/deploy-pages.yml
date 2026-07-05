@@ -33,27 +33,32 @@ permissions:
 
 jobs:
   deploy:
+    name: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.target == 'staging' ||
+          github.ref_name == 'staging') && 'Staging' || 'Prod'
+      }}
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
     env:
       TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
       REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || github.ref) || github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: >-
+          ${{ env.TARGET == 'staging' && 'Scout' || 'Pull' }}
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.REF }}
           fetch-depth: 1
 
-      - name: Build and publish
+      - name: >-
+          ${{ env.TARGET == 'staging' && 'Patch' || 'Compile' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           target="$TARGET"
-          commit_sha="$(git rev-parse HEAD)"
 
           case "$target" in
             staging|prod) ;;
@@ -94,6 +99,16 @@ jobs:
               rmdir "$staging_backup"
             fi
           fi
+
+      - name: >-
+          ${{ env.TARGET == 'staging' && 'Preview' || 'Release' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          target="$TARGET"
+          commit_sha="$(git rev-parse HEAD)"
 
           cd _site
           git init -q
