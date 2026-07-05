@@ -9,6 +9,7 @@
    * @param {string} [config.panelSelector]
    * @param {string} [config.defaultSection]
    * @param {string[]} [config.validSections]
+   * @param {(section: string) => void} [config.onSectionChange]
    */
   function initPageSections(config = {}) {
     const navItemSelector = config.navItemSelector || ".settings-nav-item";
@@ -34,6 +35,9 @@
       });
       if (section && location.hash !== "#" + section) {
         history.replaceState(null, "", "#" + section);
+      }
+      if (typeof config.onSectionChange === "function") {
+        config.onSectionChange(section);
       }
     }
 
