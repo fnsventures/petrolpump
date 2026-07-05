@@ -164,49 +164,181 @@
         </form>
         </section>
 
-        <section class="settings-panel card" data-panel="register" hidden>
-        <div class="card-head snapshot-head">
-          <div>
-            <h2>Day closing register</h2>
-            <p class="muted">Saved closing statements for accounting and future reference. Use date range to filter.</p>
-          </div>
-          <div class="snapshot-controls">
-            <div class="form-field">
-              <label for="dc-register-start">From</label>
-              <input id="dc-register-start" type="date" />
-            </div>
-            <div class="form-field">
-              <label for="dc-register-end">To</label>
-              <input id="dc-register-end" type="date" />
-            </div>
-            <div class="filter-actions">
-              <button type="button" id="dc-register-load">Load</button>
+        <section class="settings-panel card dc-register-panel" data-panel="register" hidden>
+          <div class="card-head snapshot-head dc-register-intro">
+            <div>
+              <h2 class="dashboard-section-title">Register</h2>
+              <p class="muted dc-register-lead">Day closing statements, then night cash collection and history.</p>
             </div>
           </div>
-        </div>
-        <div class="table-wrap">
-          <table class="day-closing-register-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Reference</th>
-                <th>Total sale</th>
-                <th>Collection</th>
-                <th>Short prev</th>
-                <th>Credit</th>
-                <th>Expenses</th>
-                <th>Night cash</th>
-                <th>Phone pay</th>
-                <th>Short</th>
-                <th>Remarks</th>
-                <th id="dc-register-actions-head" class="table-actions" hidden>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="dc-register-body">
-              <tr><td colspan="11" class="muted">Select date range and click Load.</td></tr>
-            </tbody>
-          </table>
-        </div>
+
+          <div class="dc-register-block dc-register-statements-block">
+            <div class="card-head snapshot-head dc-register-block-head">
+              <div>
+                <h3 class="dashboard-section-title">Day closing statements</h3>
+                <p id="dc-register-summary" class="muted">Select a date range and load.</p>
+              </div>
+              <div class="snapshot-controls">
+                <div class="form-field">
+                  <label for="dc-register-start">From</label>
+                  <input id="dc-register-start" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="dc-register-end">To</label>
+                  <input id="dc-register-end" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="dc-register-status">Night cash</label>
+                  <select id="dc-register-status" aria-label="Filter by night cash status">
+                    <option value="all">All</option>
+                    <option value="pending">At pump only</option>
+                    <option value="collected">Collected only</option>
+                  </select>
+                </div>
+                <div class="filter-actions">
+                  <button type="button" id="dc-register-load">Load</button>
+                </div>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="day-closing-register-table dc-register-closings-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reference</th>
+                    <th class="col-amount">Total sale</th>
+                    <th class="col-amount">Collection</th>
+                    <th class="col-amount">Short prev</th>
+                    <th class="col-amount">Credit</th>
+                    <th class="col-amount">Expenses</th>
+                    <th class="col-amount">Night cash</th>
+                    <th>Status</th>
+                    <th class="col-amount">Phone pay</th>
+                    <th class="col-amount">Short</th>
+                    <th>Remarks</th>
+                    <th id="dc-register-actions-head" class="table-actions" hidden>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dc-register-body">
+                  <tr><td colspan="12" class="muted">Select date range and click Load.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="dc-register-block dc-register-night-cash">
+            <div class="dc-register-block-head dc-register-summary-head">
+              <div>
+                <h3 class="dashboard-section-title">Night cash collection</h3>
+                <p class="muted">Uncollected cash at the pump and recording pickups.</p>
+              </div>
+              <button type="button" id="dc-register-refresh-all" class="button-secondary dc-register-refresh">Refresh</button>
+            </div>
+
+          <div class="dc-register-stats" aria-label="Night cash summary">
+              <div class="dc-stat-card dc-stat-card--highlight">
+                <span class="dc-stat-label">Total uncollected</span>
+                <strong id="ncc-available-total" class="dc-stat-value">—</strong>
+              </div>
+              <div class="dc-stat-card">
+                <span class="dc-stat-label">Days waiting</span>
+                <strong id="ncc-available-days" class="dc-stat-value">—</strong>
+              </div>
+              <div class="dc-stat-card">
+                <span class="dc-stat-label">Earliest → latest</span>
+                <strong id="ncc-available-range" class="dc-stat-value dc-stat-value--text">—</strong>
+              </div>
+            </div>
+
+          <p class="muted dc-register-admin-note" data-role="supervisor-only">Night cash collection is recorded by an admin when cash is physically picked up from the pump. You can view totals and history below.</p>
+
+          <details class="dc-register-subblock dc-register-collect" id="dc-collect-details" open data-role="admin-only" style="display:none">
+            <summary class="dc-register-block-title">Collect night cash</summary>
+            <p class="muted dc-register-block-desc">Pick the dates you are physically collecting. Only saved closings with uncollected night cash in that range are included. After recording, supervisors cannot edit those days; admins still can.</p>
+            <form id="ncc-collect-form" class="form dc-collect-form" autocomplete="off">
+              <div class="snapshot-controls dc-collect-controls">
+                <div class="form-field form-field-inline">
+                  <label for="ncc-from-date">From</label>
+                  <input id="ncc-from-date" type="date" required />
+                </div>
+                <div class="form-field form-field-inline">
+                  <label for="ncc-to-date">To</label>
+                  <input id="ncc-to-date" type="date" required />
+                </div>
+                <div class="filter-actions">
+                  <button type="button" id="ncc-fill-range-btn" class="button-secondary">Fill pending period</button>
+                  <button type="button" id="ncc-preview-btn" class="primary">Preview collection</button>
+                </div>
+              </div>
+              <div class="form-field dc-collect-remarks">
+                <label for="ncc-remarks">Remarks <span class="dc-optional">(optional)</span></label>
+                <input id="ncc-remarks" type="text" placeholder="e.g. Collected at pump, entered in cash register" maxlength="500" />
+              </div>
+              <div id="ncc-preview-panel" class="dc-register-preview hidden" aria-live="polite">
+                <div class="dc-register-preview-head">
+                  <div>
+                    <h4 class="dc-register-preview-title">Collection preview</h4>
+                    <p id="ncc-preview-range" class="muted dc-register-preview-range"></p>
+                  </div>
+                  <dl class="dc-register-preview-totals">
+                    <div>
+                      <dt>Days</dt>
+                      <dd id="ncc-preview-days">—</dd>
+                    </div>
+                    <div class="dc-register-preview-total">
+                      <dt>Total</dt>
+                      <dd id="ncc-preview-total">—</dd>
+                    </div>
+                  </dl>
+                </div>
+                <p id="ncc-preview-warnings" class="dc-register-notice hidden" role="status"></p>
+                <div class="table-wrap dc-register-preview-table">
+                  <table class="day-closing-register-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Closing ref</th>
+                        <th class="col-amount">Night cash</th>
+                      </tr>
+                    </thead>
+                    <tbody id="ncc-preview-body"></tbody>
+                  </table>
+                </div>
+                <div class="dc-register-preview-actions form-actions">
+                  <button type="submit" id="ncc-collect-btn" class="primary" disabled data-role="admin-only" style="display:none">Record collection</button>
+                  <p class="muted dc-register-preview-hint">Confirm the days and total match the cash you have on hand.</p>
+                </div>
+              </div>
+              <p id="ncc-collect-success" class="success hidden"></p>
+              <p id="ncc-collect-error" class="error hidden" role="alert"></p>
+            </form>
+          </details>
+
+          <div class="dc-register-subblock">
+            <div class="dc-register-block-head">
+              <h4 class="dc-register-subtitle">Collection history</h4>
+              <p class="muted">Past pickups. Cannot be edited or deleted from the app.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="day-closing-register-table ncc-register-table">
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th class="col-num">Days</th>
+                    <th class="col-amount">Amount</th>
+                    <th>Collected on</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody id="ncc-register-body">
+                  <tr><td colspan="7" class="muted">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </div>
         </section>
       </div>
     </main>

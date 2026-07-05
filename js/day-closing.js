@@ -6,6 +6,10 @@ let isAdmin = false;
 let dcBreakdownRequestId = 0;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
 let expenseCategoryLabels = null;
+let dcDom = null;
+const dcBreakdownEls = {};
+const DC_LOADING = "…";
+const DC_EMPTY = "—";
 
 const DC_DETAIL_KINDS = ["collection", "credit", "expenses"];
 const DC_LEGACY_EXPENSE_LABELS = {
@@ -37,18 +41,80 @@ const DC_DETAIL_COLUMNS = {
   ],
 };
 
-function getDcDetailElements(kind) {
-  const group = document.querySelector(`.dc-breakdown-group[data-breakdown="${kind}"]`);
-  return {
-    toggle: group?.querySelector(".dc-breakdown-toggle") ?? null,
-    panel: group?.querySelector(".dc-breakdown-details") ?? null,
+function cacheDayClosingDom() {
+  if (dcDom) return;
+  dcDom = {
+    dateInput: document.getElementById("day-closing-date"),
+    form: document.getElementById("day-closing-form"),
+    refreshBtn: document.getElementById("day-closing-refresh"),
+    nightCashInput: document.getElementById("dc-night-cash"),
+    phonePayInput: document.getElementById("dc-phone-pay"),
+    remarksInput: document.getElementById("dc-remarks"),
+    saveBtn: document.getElementById("day-closing-save"),
+    referenceLine: document.getElementById("dc-reference-line"),
+    noActivityHint: document.getElementById("dc-no-activity-hint"),
+    successEl: document.getElementById("day-closing-success"),
+    errorEl: document.getElementById("day-closing-error"),
+    alreadySavedEl: document.getElementById("day-closing-already-saved"),
+    totalSaleEl: document.getElementById("dc-total-sale"),
+    collectionEl: document.getElementById("dc-collection"),
+    shortPrevEl: document.getElementById("dc-short-previous"),
+    subtotalEl: document.getElementById("dc-subtotal"),
+    creditTodayEl: document.getElementById("dc-credit-today"),
+    expensesTodayEl: document.getElementById("dc-expenses-today"),
+    shortTodayEl: document.getElementById("dc-short-today"),
+    registerStart: document.getElementById("dc-register-start"),
+    registerEnd: document.getElementById("dc-register-end"),
+    registerLoadBtn: document.getElementById("dc-register-load"),
+    registerBody: document.getElementById("dc-register-body"),
+    registerStatus: document.getElementById("dc-register-status"),
+    registerSummary: document.getElementById("dc-register-summary"),
+    nccAvailableTotal: document.getElementById("ncc-available-total"),
+    nccAvailableDays: document.getElementById("ncc-available-days"),
+    nccAvailableRange: document.getElementById("ncc-available-range"),
+    nccFromDate: document.getElementById("ncc-from-date"),
+    nccToDate: document.getElementById("ncc-to-date"),
+    nccPreviewPanel: document.getElementById("ncc-preview-panel"),
+    nccCollectBtn: document.getElementById("ncc-collect-btn"),
+    nccCollectError: document.getElementById("ncc-collect-error"),
+    nccCollectSuccess: document.getElementById("ncc-collect-success"),
+    nccPreviewBtn: document.getElementById("ncc-preview-btn"),
+    nccPreviewDays: document.getElementById("ncc-preview-days"),
+    nccPreviewTotal: document.getElementById("ncc-preview-total"),
+    nccPreviewRange: document.getElementById("ncc-preview-range"),
+    nccPreviewWarnings: document.getElementById("ncc-preview-warnings"),
+    nccPreviewBody: document.getElementById("ncc-preview-body"),
+    nccRemarks: document.getElementById("ncc-remarks"),
+    nccRegisterBody: document.getElementById("ncc-register-body"),
   };
+  document.querySelectorAll(".dc-breakdown-group").forEach((group) => {
+    const kind = group.dataset.breakdown;
+    if (kind) {
+      dcBreakdownEls[kind] = {
+        toggle: group.querySelector(".dc-breakdown-toggle"),
+        panel: group.querySelector(".dc-breakdown-details"),
+      };
+    }
+  });
+}
+
+function getDcDetailElements(kind) {
+  return dcBreakdownEls[kind] || { toggle: null, panel: null };
+}
+
+function setBreakdownAmounts(text) {
+  if (!dcDom) return;
+  dcDom.totalSaleEl && (dcDom.totalSaleEl.textContent = text);
+  dcDom.collectionEl && (dcDom.collectionEl.textContent = text);
+  dcDom.shortPrevEl && (dcDom.shortPrevEl.textContent = text);
+  dcDom.subtotalEl && (dcDom.subtotalEl.textContent = text);
+  dcDom.creditTodayEl && (dcDom.creditTodayEl.textContent = text);
+  dcDom.expensesTodayEl && (dcDom.expensesTodayEl.textContent = text);
+  dcDom.shortTodayEl && (dcDom.shortTodayEl.textContent = text);
 }
 
 function collapseDayClosingDetails() {
-  document.querySelectorAll(".dc-breakdown-group").forEach((group) => {
-    const toggle = group.querySelector(".dc-breakdown-toggle");
-    const panel = group.querySelector(".dc-breakdown-details");
+  Object.values(dcBreakdownEls).forEach(({ toggle, panel }) => {
     toggle?.setAttribute("aria-expanded", "false");
     if (panel) {
       panel.hidden = true;
@@ -230,8 +296,7 @@ async function loadDayClosingDetail(kind, dateStr) {
 }
 
 async function toggleDayClosingDetail(kind) {
-  const dateInput = document.getElementById("day-closing-date");
-  const dateStr = dateInput?.value?.trim();
+  const dateStr = dcDom?.dateInput?.value?.trim();
   if (!dateStr) return;
 
   const { toggle, panel } = getDcDetailElements(kind);
@@ -250,37 +315,18 @@ async function toggleDayClosingDetail(kind) {
 }
 
 async function loadDayClosingBreakdown(dateStr) {
-  const dateInput = document.getElementById("day-closing-date");
-  const nightCashInput = document.getElementById("dc-night-cash");
-  const phonePayInput = document.getElementById("dc-phone-pay");
-  const totalSaleEl = document.getElementById("dc-total-sale");
-  const collectionEl = document.getElementById("dc-collection");
-  const shortPrevEl = document.getElementById("dc-short-previous");
-  const subtotalEl = document.getElementById("dc-subtotal");
-  const creditTodayEl = document.getElementById("dc-credit-today");
-  const expensesTodayEl = document.getElementById("dc-expenses-today");
-  const shortTodayEl = document.getElementById("dc-short-today");
-  const successEl = document.getElementById("day-closing-success");
-  const errorEl = document.getElementById("day-closing-error");
+  if (!dateStr || !dcDom?.dateInput) return;
 
-  if (!dateStr || !dateInput) return;
-
-  if (dateInput.value !== dateStr) dateInput.value = dateStr;
+  if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
 
   const requestId = ++dcBreakdownRequestId;
   refreshDayClosingDetailsState(dateStr).catch((err) => {
     AppError.report(err, { context: "refreshDayClosingDetailsState" });
   });
 
-  successEl?.classList.add("hidden");
-  errorEl?.classList.add("hidden");
-  if (totalSaleEl) totalSaleEl.textContent = "…";
-  if (collectionEl) collectionEl.textContent = "…";
-  if (shortPrevEl) shortPrevEl.textContent = "…";
-  if (subtotalEl) subtotalEl.textContent = "…";
-  if (creditTodayEl) creditTodayEl.textContent = "…";
-  if (expensesTodayEl) expensesTodayEl.textContent = "…";
-  if (shortTodayEl) shortTodayEl.textContent = "…";
+  dcDom.successEl?.classList.add("hidden");
+  dcDom.errorEl?.classList.add("hidden");
+  setBreakdownAmounts(DC_LOADING);
 
   try {
     const { data, error } = await supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
@@ -291,16 +337,10 @@ async function loadDayClosingBreakdown(dateStr) {
     if (requestId !== dcBreakdownRequestId) return;
     AppError.report(err, { context: "loadDayClosingBreakdown" });
     dayClosingBreakdown = null;
-    if (totalSaleEl) totalSaleEl.textContent = "—";
-    if (collectionEl) collectionEl.textContent = "—";
-    if (shortPrevEl) shortPrevEl.textContent = "—";
-    if (subtotalEl) subtotalEl.textContent = "—";
-    if (creditTodayEl) creditTodayEl.textContent = "—";
-    if (expensesTodayEl) expensesTodayEl.textContent = "—";
-    if (shortTodayEl) shortTodayEl.textContent = "—";
-    if (errorEl) {
-      errorEl.textContent = err?.message || "Failed to load day closing breakdown.";
-      errorEl.classList.remove("hidden");
+    setBreakdownAmounts(DC_EMPTY);
+    if (dcDom.errorEl) {
+      dcDom.errorEl.textContent = err?.message || "Failed to load day closing breakdown.";
+      dcDom.errorEl.classList.remove("hidden");
     }
     return;
   }
@@ -315,59 +355,56 @@ async function loadDayClosingBreakdown(dateStr) {
   const expensesToday = Number(b.expenses_today ?? 0);
   const subtotal = totalSale + collection + shortPrevious;
 
-  if (totalSaleEl) totalSaleEl.textContent = formatCurrency(totalSale);
-  if (collectionEl) collectionEl.textContent = formatCurrency(collection);
-  if (shortPrevEl) shortPrevEl.textContent = formatCurrency(shortPrevious);
-  if (subtotalEl) subtotalEl.textContent = formatCurrency(subtotal);
-  if (creditTodayEl) creditTodayEl.textContent = formatCurrency(creditToday);
-  if (expensesTodayEl) expensesTodayEl.textContent = formatCurrency(expensesToday);
+  if (dcDom.totalSaleEl) dcDom.totalSaleEl.textContent = formatCurrency(totalSale);
+  if (dcDom.collectionEl) dcDom.collectionEl.textContent = formatCurrency(collection);
+  if (dcDom.shortPrevEl) dcDom.shortPrevEl.textContent = formatCurrency(shortPrevious);
+  if (dcDom.subtotalEl) dcDom.subtotalEl.textContent = formatCurrency(subtotal);
+  if (dcDom.creditTodayEl) dcDom.creditTodayEl.textContent = formatCurrency(creditToday);
+  if (dcDom.expensesTodayEl) dcDom.expensesTodayEl.textContent = formatCurrency(expensesToday);
 
-  if (nightCashInput) {
-    const v = b.night_cash;
-    if (v != null && v !== "") nightCashInput.value = Number(v);
-    else nightCashInput.value = "";
-  }
-  if (phonePayInput) {
-    const v = b.phone_pay;
-    if (v != null && v !== "") phonePayInput.value = Number(v);
-    else phonePayInput.value = "";
+  for (const [input, key] of [[dcDom.nightCashInput, "night_cash"], [dcDom.phonePayInput, "phone_pay"]]) {
+    if (!input) continue;
+    const v = b[key];
+    input.value = v != null && v !== "" ? Number(v) : "";
   }
 
   const alreadySaved = !!b.already_saved;
   const canOverwrite = canOverwriteDayClosing(b);
-  const saveBtn = document.getElementById("day-closing-save");
-  const referenceLine = document.getElementById("dc-reference-line");
-  const remarksInput = document.getElementById("dc-remarks");
-  syncDayClosingSaveButton(saveBtn);
+  syncDayClosingSaveButton(dcDom.saveBtn);
   syncDayClosingAlreadySavedNotice(b);
-  if (referenceLine) {
+  if (dcDom.referenceLine) {
     if (b.closing_reference) {
-      referenceLine.textContent = "Reference: " + b.closing_reference + (b.remarks ? " · " + b.remarks : "");
-      referenceLine.classList.remove("hidden");
+      dcDom.referenceLine.textContent = "Reference: " + b.closing_reference + (b.remarks ? " · " + b.remarks : "");
+      dcDom.referenceLine.classList.remove("hidden");
     } else {
-      referenceLine.classList.add("hidden");
+      dcDom.referenceLine.classList.add("hidden");
     }
   }
-  if (remarksInput) {
-    remarksInput.value = b.remarks ?? "";
-    remarksInput.disabled = alreadySaved && !canOverwrite;
+  if (dcDom.remarksInput) {
+    dcDom.remarksInput.value = b.remarks ?? "";
+    dcDom.remarksInput.disabled = alreadySaved && !canOverwrite;
   }
-  const noActivityHint = document.getElementById("dc-no-activity-hint");
-  if (noActivityHint) {
+  if (dcDom.nightCashInput) dcDom.nightCashInput.disabled = alreadySaved && !canOverwrite;
+  if (dcDom.phonePayInput) dcDom.phonePayInput.disabled = alreadySaved && !canOverwrite;
+  if (dcDom.noActivityHint) {
     const hasActivity = totalSale || collection || shortPrevious || creditToday || expensesToday;
-    if (!hasActivity && !alreadySaved) {
-      noActivityHint.classList.remove("hidden");
-    } else {
-      noActivityHint.classList.add("hidden");
-    }
+    dcDom.noActivityHint.classList.toggle("hidden", hasActivity || alreadySaved);
   }
-  successEl?.classList.add("hidden");
+  dcDom.successEl?.classList.add("hidden");
 
-  updateDayClosingShortLive();
+  if (!canOverwrite && alreadySaved && b.short_today != null && dcDom.shortTodayEl) {
+    const shortToday = Number(b.short_today);
+    dcDom.shortTodayEl.textContent = formatCurrency(shortToday);
+    dcDom.shortTodayEl.classList.remove("stat-positive", "stat-negative");
+    if (shortToday > 0) dcDom.shortTodayEl.classList.add("stat-positive");
+    else if (shortToday < 0) dcDom.shortTodayEl.classList.add("stat-negative");
+  } else {
+    updateDayClosingShortLive();
+  }
 }
 
 function canOverwriteDayClosing(breakdown) {
-  return !!(breakdown?.can_overwrite || (isAdmin && breakdown?.already_saved));
+  return !!breakdown?.can_overwrite;
 }
 
 function syncDayClosingSaveButton(btn) {
@@ -379,15 +416,21 @@ function syncDayClosingSaveButton(btn) {
 }
 
 function syncDayClosingAlreadySavedNotice(breakdown) {
-  const el = document.getElementById("day-closing-already-saved");
+  const el = dcDom?.alreadySavedEl;
   if (!el) return;
   const alreadySaved = !!breakdown?.already_saved;
   const canOverwrite = canOverwriteDayClosing(breakdown);
-  if (alreadySaved && !canOverwrite) {
-    el.textContent = "Day closing already saved for this date.";
+  if (breakdown?.night_cash_collected && !canOverwrite) {
+    const ref = breakdown.night_cash_collection_reference || "collection";
+    el.textContent = `Night cash collected (${ref}). Locked for supervisors — only an admin can modify this day closing.`;
     el.classList.remove("hidden");
   } else if (canOverwrite) {
-    el.textContent = "Day closing saved. You can update values and save again.";
+    el.textContent = breakdown?.night_cash_collected
+      ? "Night cash collected. As admin you can still update values and save again."
+      : "Day closing saved. You can update values and save again.";
+    el.classList.remove("hidden");
+  } else if (alreadySaved) {
+    el.textContent = "Day closing already saved for this date.";
     el.classList.remove("hidden");
   } else {
     el.classList.add("hidden");
@@ -395,35 +438,28 @@ function syncDayClosingAlreadySavedNotice(breakdown) {
 }
 
 function updateDayClosingShortLive() {
-  if (!dayClosingBreakdown) return;
-  const nightCashInput = document.getElementById("dc-night-cash");
-  const phonePayInput = document.getElementById("dc-phone-pay");
-  const shortTodayEl = document.getElementById("dc-short-today");
+  if (!dayClosingBreakdown || !dcDom) return;
 
   const totalSale = Number(dayClosingBreakdown.total_sale ?? 0);
   const collection = Number(dayClosingBreakdown.collection ?? 0);
   const shortPrevious = Number(dayClosingBreakdown.short_previous ?? 0);
   const creditToday = Number(dayClosingBreakdown.credit_today ?? 0);
   const expensesToday = Number(dayClosingBreakdown.expenses_today ?? 0);
-  const nightCash = Number(nightCashInput?.value ?? 0) || 0;
-  const phonePay = Number(phonePayInput?.value ?? 0) || 0;
+  const nightCash = Number(dcDom.nightCashInput?.value ?? 0) || 0;
+  const phonePay = Number(dcDom.phonePayInput?.value ?? 0) || 0;
 
   const shortToday = (totalSale + collection + shortPrevious) - (nightCash + phonePay + creditToday + expensesToday);
-  if (shortTodayEl) {
-    shortTodayEl.textContent = formatCurrency(shortToday);
-    shortTodayEl.classList.remove("stat-positive", "stat-negative");
-    if (shortToday > 0) shortTodayEl.classList.add("stat-positive");
-    else if (shortToday < 0) shortTodayEl.classList.add("stat-negative");
+  if (dcDom.shortTodayEl) {
+    dcDom.shortTodayEl.textContent = formatCurrency(shortToday);
+    dcDom.shortTodayEl.classList.remove("stat-positive", "stat-negative");
+    if (shortToday > 0) dcDom.shortTodayEl.classList.add("stat-positive");
+    else if (shortToday < 0) dcDom.shortTodayEl.classList.add("stat-negative");
   }
 }
 
 async function initializeDayClosing() {
-  const dateInput = document.getElementById("day-closing-date");
-  const form = document.getElementById("day-closing-form");
-  const refreshBtn = document.getElementById("day-closing-refresh");
-  const nightCashInput = document.getElementById("dc-night-cash");
-  const phonePayInput = document.getElementById("dc-phone-pay");
-
+  cacheDayClosingDom();
+  const { dateInput, form, refreshBtn, nightCashInput, phonePayInput } = dcDom;
   if (!dateInput || !form) return;
 
   const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
@@ -446,25 +482,23 @@ async function initializeDayClosing() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     let alreadySavedHandled = false;
-    const submitBtn = document.getElementById("day-closing-save");
+    const submitBtn = dcDom.saveBtn;
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = "Saving…";
     }
-    const successEl = document.getElementById("day-closing-success");
-    const errorEl = document.getElementById("day-closing-error");
-    successEl?.classList.add("hidden");
-    errorEl?.classList.add("hidden");
+    dcDom.successEl?.classList.add("hidden");
+    dcDom.errorEl?.classList.add("hidden");
 
     const dateStr = dateInput.value?.trim();
-    const nightCash = Number(document.getElementById("dc-night-cash")?.value ?? 0);
-    const phonePay = Number(document.getElementById("dc-phone-pay")?.value ?? 0);
-    const remarks = document.getElementById("dc-remarks")?.value?.trim() || null;
+    const nightCash = Number(nightCashInput?.value ?? 0);
+    const phonePay = Number(phonePayInput?.value ?? 0);
+    const remarks = dcDom.remarksInput?.value?.trim() || null;
     if (!dateStr) {
       syncDayClosingSaveButton(submitBtn);
-      if (errorEl) {
-        errorEl.textContent = "Please select a date.";
-        errorEl.classList.remove("hidden");
+      if (dcDom.errorEl) {
+        dcDom.errorEl.textContent = "Please select a date.";
+        dcDom.errorEl.classList.remove("hidden");
       }
       return;
     }
@@ -472,14 +506,14 @@ async function initializeDayClosing() {
       alreadySavedHandled = true;
       syncDayClosingSaveButton(submitBtn);
       syncDayClosingAlreadySavedNotice(dayClosingBreakdown);
-      if (errorEl) errorEl.classList.add("hidden");
+      dcDom.errorEl?.classList.add("hidden");
       return;
     }
     if (nightCash < 0 || phonePay < 0) {
       syncDayClosingSaveButton(submitBtn);
-      if (errorEl) {
-        errorEl.textContent = "Night cash and Phone pay must be ≥ 0.";
-        errorEl.classList.remove("hidden");
+      if (dcDom.errorEl) {
+        dcDom.errorEl.textContent = "Night cash and Phone pay must be ≥ 0.";
+        dcDom.errorEl.classList.remove("hidden");
       }
       return;
     }
@@ -494,18 +528,17 @@ async function initializeDayClosing() {
       if (error) throw error;
       dayClosingBreakdown = data;
       updateDayClosingShortLive();
-      if (successEl) {
+      if (dcDom.successEl) {
         const refPart = data?.closing_reference ? " Reference: " + data.closing_reference + "." : "";
         const action = data?.overwritten ? "Day closing updated." : "Day closing saved.";
-        successEl.classList.remove("hidden");
-        successEl.textContent = action + refPart + " Today's short: " + formatCurrency(Number(data?.short_today ?? 0)) + " (stored for next day).";
+        dcDom.successEl.classList.remove("hidden");
+        dcDom.successEl.textContent = action + refPart + " Today's short: " + formatCurrency(Number(data?.short_today ?? 0)) + " (stored for next day).";
       }
-      const referenceLine = document.getElementById("dc-reference-line");
-      if (referenceLine && data?.closing_reference) {
-        referenceLine.textContent = "Reference: " + data.closing_reference + (data.remarks ? " · " + data.remarks : "");
-        referenceLine.classList.remove("hidden");
+      if (dcDom.referenceLine && data?.closing_reference) {
+        dcDom.referenceLine.textContent = "Reference: " + data.closing_reference + (data.remarks ? " · " + data.remarks : "");
+        dcDom.referenceLine.classList.remove("hidden");
       }
-      if (errorEl) errorEl.classList.add("hidden");
+      dcDom.errorEl?.classList.add("hidden");
       dateInput.value = dateStr;
       savePersistedDate("day_closing_close", dateStr);
       await loadDayClosingBreakdown(dateStr);
@@ -515,20 +548,14 @@ async function initializeDayClosing() {
       }
     } catch (err) {
       AppError.report(err, { context: "saveDayClosing" });
-      const isAlreadySaved = err?.message && String(err.message).includes("already saved for this date");
-      if (isAlreadySaved) {
+      const isLocked = err?.message && String(err.message).includes("locked");
+      if (isLocked) {
         alreadySavedHandled = true;
-        if (errorEl) errorEl.classList.add("hidden");
-        const alreadySavedEl = document.getElementById("day-closing-already-saved");
-        if (alreadySavedEl) alreadySavedEl.classList.remove("hidden");
-        if (submitBtn) submitBtn.disabled = true;
-        dayClosingBreakdown = { ...(dayClosingBreakdown || {}), already_saved: true, can_overwrite: isAdmin };
+        dcDom.errorEl?.classList.add("hidden");
         await loadDayClosingBreakdown(dateStr);
-      } else {
-        if (errorEl) {
-          errorEl.textContent = err?.message || "Failed to save day closing.";
-          errorEl.classList.remove("hidden");
-        }
+      } else if (dcDom.errorEl) {
+        dcDom.errorEl.textContent = err?.message || "Failed to save day closing.";
+        dcDom.errorEl.classList.remove("hidden");
       }
     } finally {
       if (submitBtn && !alreadySavedHandled) syncDayClosingSaveButton(submitBtn);
@@ -565,90 +592,6 @@ async function initializeDayClosing() {
   });
 
   await loadDayClosingBreakdown(dateInput.value || todayStr);
-
-  // Day closing register: date range and load
-  const registerStart = document.getElementById("dc-register-start");
-  const registerEnd = document.getElementById("dc-register-end");
-  const registerLoadBtn = document.getElementById("dc-register-load");
-  const registerBody = document.getElementById("dc-register-body");
-  if (registerStart && registerEnd && registerLoadBtn && registerBody) {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    registerEnd.value = toLocalDateString(endDate);
-    registerStart.value = toLocalDateString(startDate);
-
-    registerLoadBtn.addEventListener("click", async () => {
-      const start = registerStart.value?.trim();
-      const end = registerEnd.value?.trim();
-      if (!start || !end) return;
-      registerLoadBtn.disabled = true;
-      registerBody.innerHTML = `<tr><td colspan='${isAdmin ? 12 : 11}' class='muted'>Loading…</td></tr>`;
-      try {
-        const [{ data, error }, { data: latestRow }] = await Promise.all([
-          supabaseClient
-            .from("day_closing")
-            .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks")
-            .gte("date", start)
-            .lte("date", end)
-            .order("date", { ascending: false }),
-          supabaseClient
-            .from("day_closing")
-            .select("date")
-            .order("date", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-        ]);
-        if (error) throw error;
-        const colCount = isAdmin ? 12 : 11;
-        if (!data?.length) {
-          registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>No closing statements in this range.</td></tr>`;
-          return;
-        }
-        const latestDate = latestRow?.date || null;
-        registerBody.innerHTML = data.map((row) => {
-          const d = row.date;
-          const ref = row.closing_reference ?? "—";
-          const fmtNum = (v) => formatCurrency(Number(v ?? 0));
-          const canDelete = isAdmin && row.id && row.date === latestDate;
-          const deleteBtn = canDelete
-            ? AdminDelete.buttonHtml({
-                selector: "dc-delete-btn",
-                data: { id: row.id, date: d, ref },
-                title: "Delete latest closing (admin)",
-              })
-            : isAdmin
-              ? `<span class="muted" title="Only the most recent closing can be deleted">—</span>`
-              : "";
-          const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
-          return `<tr>
-            <td>${d}</td>
-            <td><code>${escapeHtml(ref)}</code></td>
-            <td>${fmtNum(row.total_sale)}</td>
-            <td>${fmtNum(row.collection)}</td>
-            <td>${fmtNum(row.short_previous)}</td>
-            <td>${fmtNum(row.credit_today)}</td>
-            <td>${fmtNum(row.expenses_today)}</td>
-            <td>${fmtNum(row.night_cash)}</td>
-            <td>${fmtNum(row.phone_pay)}</td>
-            <td>${fmtNum(row.short_today)}</td>
-            <td>${escapeHtml(row.remarks ?? "—")}</td>
-            ${actionsCell}
-          </tr>`;
-        }).join("");
-
-        if (!registerBody.dataset.dcDeleteBound) {
-          AdminDelete.bindOnce(registerBody, ".dc-delete-btn", (btn) => deleteDayClosing(btn, registerLoadBtn), "dcDeleteBound");
-        }
-      } catch (err) {
-        AppError.report(err, { context: "loadDayClosingRegister" });
-        const errColCount = isAdmin ? 12 : 11;
-        registerBody.innerHTML = `<tr><td colspan='${errColCount}' class='error'>${escapeHtml(err?.message || "Failed to load.")}</td></tr>`;
-      } finally {
-        registerLoadBtn.disabled = false;
-      }
-    });
-  }
 }
 
 function broadcastCreditUpdated() {
@@ -672,7 +615,7 @@ function initDayClosingCreditDeleteHandlers() {
     e.preventDefault();
     e.stopPropagation();
 
-    const dateInput = document.getElementById("day-closing-date");
+    const dateInput = dcDom?.dateInput;
     const dateStr = dateInput?.value?.trim() || "";
 
     if (paymentBtn) {
@@ -688,6 +631,21 @@ function initDayClosingCreditDeleteHandlers() {
   });
 }
 
+async function afterDcCreditRelatedDelete(detailKind, dateStr) {
+  if (typeof CacheInvalidation !== "undefined") {
+    CacheInvalidation.invalidate("credit");
+  }
+  broadcastCreditUpdated();
+  dcDetailsCache.collection = null;
+  dcDetailsCache.credit = null;
+  if (!dateStr) return;
+  await loadDayClosingBreakdown(dateStr);
+  const { toggle } = getDcDetailElements(detailKind);
+  if (toggle?.getAttribute("aria-expanded") === "true") {
+    await loadDayClosingDetail(detailKind, dateStr);
+  }
+}
+
 async function deleteDayClosingPayment(paymentId, btn, dateStr) {
   const amount = Number(btn?.dataset?.amount || 0);
   const dateLabel = btn?.dataset?.date || dateStr || "this date";
@@ -699,21 +657,7 @@ async function deleteDayClosingPayment(paymentId, btn, dateStr) {
     confirmMessage: `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from collection, day closing, and short. This cannot be undone.`,
     deleteFn: () => supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId }),
     cacheScope: "operational",
-    onSuccess: async () => {
-      if (typeof CacheInvalidation !== "undefined") {
-        CacheInvalidation.invalidate("credit");
-      }
-      broadcastCreditUpdated();
-      dcDetailsCache.collection = null;
-      dcDetailsCache.credit = null;
-      if (dateStr) await loadDayClosingBreakdown(dateStr);
-      if (dateStr) {
-        const { toggle } = getDcDetailElements("collection");
-        if (toggle?.getAttribute("aria-expanded") === "true") {
-          await loadDayClosingDetail("collection", dateStr);
-        }
-      }
-    },
+    onSuccess: () => afterDcCreditRelatedDelete("collection", dateStr),
     errorContext: { context: "deleteDayClosingPayment", paymentId },
   });
 }
@@ -729,21 +673,7 @@ async function deleteDayClosingCreditEntry(entryId, btn, dateStr) {
     confirmMessage: `Delete credit sale of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from credit today, day closing, and short. This cannot be undone.`,
     deleteFn: () => supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId }),
     cacheScope: "operational",
-    onSuccess: async () => {
-      if (typeof CacheInvalidation !== "undefined") {
-        CacheInvalidation.invalidate("credit");
-      }
-      broadcastCreditUpdated();
-      dcDetailsCache.collection = null;
-      dcDetailsCache.credit = null;
-      if (dateStr) await loadDayClosingBreakdown(dateStr);
-      if (dateStr) {
-        const { toggle } = getDcDetailElements("credit");
-        if (toggle?.getAttribute("aria-expanded") === "true") {
-          await loadDayClosingDetail("credit", dateStr);
-        }
-      }
-    },
+    onSuccess: () => afterDcCreditRelatedDelete("credit", dateStr),
     errorContext: { context: "deleteDayClosingCreditEntry", entryId },
   });
 }
@@ -761,15 +691,499 @@ async function deleteDayClosing(btn, reloadBtn) {
     deleteFn: () => supabaseClient.rpc("delete_day_closing", { p_id: id }),
     cacheScope: "operational",
     onSuccess: async () => {
-      const dateInput = document.getElementById("day-closing-date");
-      if (dateInput?.value === dateStr) {
+      if (dcDom?.dateInput?.value === dateStr) {
         dayClosingBreakdown = null;
         await loadDayClosingBreakdown(dateStr);
       }
-      if (reloadBtn) reloadBtn.click();
+      if (isRegisterSectionActive()) await loadDayClosingRegister();
     },
     errorContext: { context: "deleteDayClosing", id },
   });
+}
+
+let nccPreviewData = null;
+let nccAvailableData = null;
+let registerLoadedOnce = false;
+
+function fmtNum(value) {
+  if (value == null || value === "") return "—";
+  return formatCurrency(Number(value));
+}
+
+function amtCell(value) {
+  return `<td class="col-amount">${fmtNum(value)}</td>`;
+}
+
+function renderNightCashStatus(isCollected, collectedRef) {
+  if (!isCollected) {
+    return '<span class="dc-status-badge dc-status-badge--pending">At pump</span>';
+  }
+  const ref = collectedRef ? escapeHtml(collectedRef) : "";
+  return `<span class="dc-status-badge dc-status-badge--collected">Collected</span>${ref ? `<span class="dc-status-ref">${ref}</span>` : ""}`;
+}
+
+async function loadNightCashAvailable() {
+  const { nccAvailableTotal: totalEl, nccAvailableDays: daysEl, nccAvailableRange: rangeEl } = dcDom || {};
+  if (!totalEl) return null;
+
+  try {
+    const { data, error } = await supabaseClient.rpc("get_night_cash_available");
+    if (error) throw error;
+    nccAvailableData = data;
+
+    const total = Number(data?.total_available ?? 0);
+    const count = Number(data?.day_count ?? 0);
+    totalEl.textContent = fmtNum(total);
+    daysEl.textContent = count ? String(count) : "0";
+    if (data?.from_date && data?.to_date) {
+      rangeEl.textContent = `${formatDisplayDate(data.from_date)} – ${formatDisplayDate(data.to_date)}`;
+    } else {
+      rangeEl.textContent = count ? "—" : "None pending";
+    }
+
+    return data;
+  } catch (err) {
+    AppError.report(err, { context: "loadNightCashAvailable" });
+    nccAvailableData = null;
+    totalEl.textContent = "—";
+    if (daysEl) daysEl.textContent = "—";
+    if (rangeEl) rangeEl.textContent = "Failed to load";
+    return null;
+  }
+}
+
+function applyNightCashCollectRange({ onlyIfEmpty = false, showError = false } = {}) {
+  const { nccFromDate: fromInput, nccToDate: toInput, nccCollectError: errorEl, nccPreviewPanel: panel, nccCollectBtn: collectBtn } = dcDom || {};
+  if (!fromInput || !toInput) return false;
+  if (onlyIfEmpty && (fromInput.value || toInput.value)) return false;
+  if (!nccAvailableData?.from_date || !nccAvailableData?.to_date || !Number(nccAvailableData?.day_count)) {
+    if (showError && errorEl) {
+      errorEl.textContent = "No uncollected night cash to fill.";
+      errorEl.classList.remove("hidden");
+    }
+    return false;
+  }
+  errorEl?.classList.add("hidden");
+  fromInput.value = nccAvailableData.from_date;
+  toInput.value = nccAvailableData.to_date;
+  panel?.classList.add("hidden");
+  nccPreviewData = null;
+  if (collectBtn) collectBtn.disabled = true;
+  return true;
+}
+
+function fillNightCashCollectRange() {
+  applyNightCashCollectRange({ showError: true });
+}
+
+async function loadNightCashCollectionRegister() {
+  const body = dcDom?.nccRegisterBody;
+  if (!body) return;
+
+  body.innerHTML = '<tr><td colspan="7" class="muted">Loading…</td></tr>';
+  try {
+    const { data, error } = await supabaseClient
+      .from("night_cash_collections")
+      .select("collection_reference, from_date, to_date, day_count, total_amount, collected_at, remarks")
+      .order("collected_at", { ascending: false });
+    if (error) throw error;
+
+    if (!data?.length) {
+      body.innerHTML = '<tr><td colspan="7" class="muted">No collections recorded yet.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = data.map((row) => {
+      const collectedAt = row.collected_at
+        ? new Date(row.collected_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })
+        : "—";
+      return `<tr>
+        <td><code>${escapeHtml(row.collection_reference || "—")}</code></td>
+        <td>${escapeHtml(formatDisplayDate(row.from_date))}</td>
+        <td>${escapeHtml(formatDisplayDate(row.to_date))}</td>
+        <td class="col-num">${row.day_count ?? "—"}</td>
+        ${amtCell(row.total_amount)}
+        <td>${escapeHtml(collectedAt)}</td>
+        <td>${escapeHtml(row.remarks || "—")}</td>
+      </tr>`;
+    }).join("");
+  } catch (err) {
+    AppError.report(err, { context: "loadNightCashCollectionRegister" });
+    body.innerHTML = `<tr><td colspan="7" class="error">${escapeHtml(err?.message || "Failed to load register.")}</td></tr>`;
+  }
+}
+
+async function previewNightCashCollection() {
+  if (!isAdmin) return;
+
+  const {
+    nccFromDate: fromInput,
+    nccToDate: toInput,
+    nccPreviewBtn: previewBtn,
+    nccPreviewPanel: panel,
+    nccCollectError: errorEl,
+    nccCollectBtn: collectBtn,
+    nccPreviewDays: previewDaysEl,
+    nccPreviewTotal: previewTotalEl,
+    nccPreviewRange: rangeEl,
+    nccPreviewWarnings: warningsEl,
+    nccPreviewBody: previewBody,
+  } = dcDom || {};
+  const from = fromInput?.value?.trim();
+  const to = toInput?.value?.trim();
+
+  errorEl?.classList.add("hidden");
+  nccPreviewData = null;
+  if (collectBtn) collectBtn.disabled = true;
+
+  if (!from || !to) {
+    if (errorEl) {
+      errorEl.textContent = "Select both from and to dates.";
+      errorEl.classList.remove("hidden");
+    }
+    panel?.classList.add("hidden");
+    return;
+  }
+  if (from > to) {
+    if (errorEl) {
+      errorEl.textContent = "From date must be on or before to date.";
+      errorEl.classList.remove("hidden");
+    }
+    panel?.classList.add("hidden");
+    return;
+  }
+
+  if (previewBtn) {
+    previewBtn.disabled = true;
+    previewBtn.textContent = "Loading…";
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc("preview_night_cash_collection", {
+      p_from_date: from,
+      p_to_date: to,
+    });
+    if (error) throw error;
+    nccPreviewData = data;
+
+    const days = Array.isArray(data?.days) ? data.days : [];
+    const dayCount = Number(data?.day_count ?? 0);
+    const total = Number(data?.total_amount ?? 0);
+
+    if (previewDaysEl) previewDaysEl.textContent = String(dayCount);
+    if (previewTotalEl) previewTotalEl.textContent = fmtNum(total);
+
+    if (rangeEl) {
+      rangeEl.textContent = `${formatDisplayDate(from)} – ${formatDisplayDate(to)}`;
+    }
+
+    const warnings = [];
+    const missing = Number(data?.missing_closing_count ?? 0);
+    const alreadyCollected = Number(data?.already_collected_count ?? 0);
+    if (missing > 0) warnings.push(`${missing} day(s) in range have no day closing and will be skipped.`);
+    if (alreadyCollected > 0) warnings.push(`${alreadyCollected} day(s) in range were already collected and are excluded.`);
+
+    if (warningsEl) {
+      if (warnings.length) {
+        warningsEl.textContent = warnings.join(" ");
+        warningsEl.classList.remove("hidden");
+      } else {
+        warningsEl.classList.add("hidden");
+      }
+    }
+
+    if (previewBody) {
+      previewBody.innerHTML = days.length
+        ? days.map((row) => `<tr>
+          <td>${escapeHtml(formatDisplayDate(row.date))}</td>
+          <td><code>${escapeHtml(row.closing_reference || "—")}</code></td>
+          ${amtCell(row.night_cash)}
+        </tr>`).join("")
+        : '<tr><td colspan="3" class="muted">No uncollected day closings in this range.</td></tr>';
+    }
+
+    panel?.classList.remove("hidden");
+    if (collectBtn && isAdmin) collectBtn.disabled = dayCount === 0;
+  } catch (err) {
+    AppError.report(err, { context: "previewNightCashCollection" });
+    panel?.classList.add("hidden");
+    if (errorEl) {
+      errorEl.textContent = err?.message || "Failed to preview collection.";
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    if (previewBtn) {
+      previewBtn.disabled = false;
+      previewBtn.textContent = "Preview collection";
+    }
+  }
+}
+
+async function recordNightCashCollection(e) {
+  e.preventDefault();
+  if (!isAdmin) return;
+
+  const {
+    nccFromDate: fromInput,
+    nccToDate: toInput,
+    nccRemarks: remarksInput,
+    nccCollectBtn: collectBtn,
+    nccCollectSuccess: successEl,
+    nccCollectError: errorEl,
+    nccPreviewPanel: panel,
+    dateInput,
+  } = dcDom || {};
+  const from = fromInput?.value?.trim();
+  const to = toInput?.value?.trim();
+  const remarks = remarksInput?.value?.trim() || null;
+
+  if (!nccPreviewData || Number(nccPreviewData.day_count ?? 0) === 0) {
+    await previewNightCashCollection();
+    if (!nccPreviewData || Number(nccPreviewData.day_count ?? 0) === 0) return;
+  }
+
+  const total = Number(nccPreviewData.total_amount ?? 0);
+  const dayCount = Number(nccPreviewData.day_count ?? 0);
+  const confirmed = window.confirm(
+    `Record collection of ${formatCurrency(total)} for ${dayCount} day(s) (${formatDisplayDate(from)} to ${formatDisplayDate(to)})?\n\nSupervisors will no longer be able to edit those day closings. Admins can still modify them.`
+  );
+  if (!confirmed) return;
+
+  successEl?.classList.add("hidden");
+  errorEl?.classList.add("hidden");
+  if (collectBtn) {
+    collectBtn.disabled = true;
+    collectBtn.textContent = "Recording…";
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc("collect_night_cash", {
+      p_from_date: from,
+      p_to_date: to,
+      p_remarks: remarks,
+    });
+    if (error) throw error;
+
+    if (successEl) {
+      successEl.textContent = `Collection recorded: ${data?.collection_reference || "OK"} · ${formatCurrency(data?.total_amount ?? total)} for ${data?.day_count ?? dayCount} day(s). Those days are locked for supervisors.`;
+      successEl.classList.remove("hidden");
+    }
+
+    nccPreviewData = null;
+    panel?.classList.add("hidden");
+    if (remarksInput) remarksInput.value = "";
+    if (fromInput) fromInput.value = "";
+    if (toInput) toInput.value = "";
+
+    registerLoadedOnce = true;
+    await refreshRegisterPanel();
+
+    if (dateInput?.value) await loadDayClosingBreakdown(dateInput.value);
+  } catch (err) {
+    AppError.report(err, { context: "recordNightCashCollection" });
+    if (errorEl) {
+      errorEl.textContent = err?.message || "Failed to record collection.";
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    if (collectBtn) {
+      collectBtn.textContent = "Record collection";
+      collectBtn.disabled = !nccPreviewData || Number(nccPreviewData.day_count ?? 0) === 0;
+    }
+  }
+}
+
+function initNightCashCollection() {
+  const { nccPreviewBtn: previewBtn } = dcDom || {};
+  const form = document.getElementById("ncc-collect-form");
+  const fillBtn = document.getElementById("ncc-fill-range-btn");
+  if (!previewBtn && !form) return;
+
+  previewBtn?.addEventListener("click", () => previewNightCashCollection());
+  fillBtn?.addEventListener("click", fillNightCashCollectRange);
+  form?.addEventListener("submit", recordNightCashCollection);
+}
+
+async function refreshRegisterPanel() {
+  await loadRegisterNightCashData({ loadDayClosingRegister: true });
+}
+
+function isRegisterSectionActive() {
+  return (location.hash || "").replace(/^#/, "") === "register";
+}
+
+async function loadRegisterNightCashData({ loadDayClosingRegister = false } = {}) {
+  await loadNightCashAvailable();
+  applyNightCashCollectRange({ onlyIfEmpty: true });
+  await loadNightCashCollectionRegister();
+  if (loadDayClosingRegister) {
+    registerLoadedOnce = true;
+    const start = dcDom?.registerStart?.value?.trim();
+    const end = dcDom?.registerEnd?.value?.trim();
+    if (start && end) await loadDayClosingRegister();
+  }
+}
+
+async function onRegisterSectionShown() {
+  await loadRegisterNightCashData({ loadDayClosingRegister: true });
+}
+
+async function loadDayClosingRegister() {
+  const {
+    registerStart,
+    registerEnd,
+    registerLoadBtn,
+    registerBody,
+    registerStatus: statusFilter,
+    registerSummary: summaryEl,
+  } = dcDom || {};
+  if (!registerStart || !registerEnd || !registerBody) return;
+
+  const start = registerStart.value?.trim();
+  const end = registerEnd.value?.trim();
+  if (!start || !end) {
+    if (summaryEl) summaryEl.textContent = "Select a date range and load.";
+    return;
+  }
+
+  const colCount = isAdmin ? 13 : 12;
+  if (registerLoadBtn) registerLoadBtn.disabled = true;
+  registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>Loading…</td></tr>`;
+
+  try {
+    const status = statusFilter?.value || "all";
+    let closingsQuery = supabaseClient
+      .from("day_closing")
+      .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks, night_cash_collection_id, night_cash_collections(collection_reference)")
+      .gte("date", start)
+      .lte("date", end);
+    if (status === "pending") {
+      closingsQuery = closingsQuery.is("night_cash_collection_id", null);
+    } else if (status === "collected") {
+      closingsQuery = closingsQuery.not("night_cash_collection_id", "is", null);
+    }
+
+    const [{ data, error }, { data: latestRow }] = await Promise.all([
+      closingsQuery.order("date", { ascending: false }),
+      supabaseClient
+        .from("day_closing")
+        .select("date")
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    if (error) throw error;
+
+    const rows = data || [];
+
+    if (!rows.length) {
+      registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>No closing statements match this filter.</td></tr>`;
+      if (summaryEl) {
+        summaryEl.textContent = `No rows for ${formatDisplayDate(start)} – ${formatDisplayDate(end)} (${status === "all" ? "all" : status}).`;
+      }
+      return;
+    }
+
+    const latestDate = latestRow?.date || null;
+    let pendingNightCash = 0;
+    let collectedNightCash = 0;
+    let pendingCount = 0;
+    let collectedCount = 0;
+
+    registerBody.innerHTML = rows.map((row) => {
+      const d = row.date;
+      const ref = row.closing_reference ?? "—";
+      const collectedRef = row.night_cash_collections?.collection_reference;
+      const isCollected = !!row.night_cash_collection_id;
+      const nightCashAmt = Number(row.night_cash ?? 0);
+
+      if (isCollected) {
+        collectedNightCash += nightCashAmt;
+        collectedCount += 1;
+      } else {
+        pendingNightCash += nightCashAmt;
+        pendingCount += 1;
+      }
+
+      const canDelete = isAdmin && row.id && row.date === latestDate && !isCollected;
+      const deleteBtn = canDelete
+        ? AdminDelete.buttonHtml({
+            selector: "dc-delete-btn",
+            data: { id: row.id, date: d, ref },
+            title: "Delete latest closing (admin)",
+          })
+        : isAdmin
+          ? `<span class="muted" title="${isCollected ? `Night cash collected (${collectedRef || "locked"})` : "Only the most recent closing can be deleted"}">—</span>`
+          : "";
+      const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
+
+      return `<tr>
+        <td>${escapeHtml(formatDisplayDate(d))}</td>
+        <td><code>${escapeHtml(ref)}</code></td>
+        ${amtCell(row.total_sale)}
+        ${amtCell(row.collection)}
+        ${amtCell(row.short_previous)}
+        ${amtCell(row.credit_today)}
+        ${amtCell(row.expenses_today)}
+        ${amtCell(row.night_cash)}
+        <td>${renderNightCashStatus(isCollected, collectedRef)}</td>
+        ${amtCell(row.phone_pay)}
+        ${amtCell(row.short_today)}
+        <td>${escapeHtml(row.remarks ?? "—")}</td>
+        ${actionsCell}
+      </tr>`;
+    }).join("");
+
+    if (summaryEl) {
+      const parts = [
+        `${rows.length} closing${rows.length === 1 ? "" : "s"}`,
+        `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`,
+      ];
+      if (status !== "all") parts.push(status === "pending" ? "at pump only" : "collected only");
+      parts.push(`night cash at pump ${formatCurrency(pendingNightCash)} (${pendingCount})`);
+      parts.push(`collected ${formatCurrency(collectedNightCash)} (${collectedCount})`);
+      summaryEl.textContent = parts.join(" · ");
+    }
+
+    if (!registerBody.dataset.dcDeleteBound) {
+      AdminDelete.bindOnce(
+        registerBody,
+        ".dc-delete-btn",
+        (btn) => deleteDayClosing(btn, registerLoadBtn),
+        "dcDeleteBound"
+      );
+    }
+  } catch (err) {
+    AppError.report(err, { context: "loadDayClosingRegister" });
+    registerBody.innerHTML = `<tr><td colspan='${colCount}' class='error'>${escapeHtml(err?.message || "Failed to load.")}</td></tr>`;
+    if (summaryEl) summaryEl.textContent = "Failed to load register.";
+  } finally {
+    if (registerLoadBtn) registerLoadBtn.disabled = false;
+  }
+}
+
+function initRegisterSection() {
+  const { registerStart, registerEnd, registerLoadBtn, registerStatus } = dcDom;
+  const refreshAllBtn = document.getElementById("dc-register-refresh-all");
+
+  if (registerStart && registerEnd) {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    registerEnd.value = toLocalDateString(endDate);
+    registerStart.value = toLocalDateString(startDate);
+  }
+
+  registerLoadBtn?.addEventListener("click", () => {
+    registerLoadedOnce = true;
+    loadDayClosingRegister();
+  });
+  registerStatus?.addEventListener("change", () => {
+    if (registerLoadedOnce) loadDayClosingRegister();
+  });
+  refreshAllBtn?.addEventListener("click", () => refreshRegisterPanel());
+
+  initNightCashCollection();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -781,12 +1195,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   isAdmin = auth.role === "admin";
   applyRoleVisibility(auth.role);
+  cacheDayClosingDom();
 
   const registerActionsHead = document.getElementById("dc-register-actions-head");
   if (registerActionsHead) registerActionsHead.hidden = !isAdmin;
 
+  initRegisterSection();
+
   if (typeof initPageSections === "function") {
-    initPageSections({ defaultSection: "close", validSections: ["close", "register"] });
+    initPageSections({
+      defaultSection: "close",
+      validSections: ["close", "register"],
+      onSectionChange: (section) => {
+        if (section === "register") {
+          onRegisterSectionShown().catch((err) => {
+            AppError.report(err, { context: "onRegisterSectionShown" });
+          });
+        }
+      },
+    });
   }
 
   await initializeDayClosing();
