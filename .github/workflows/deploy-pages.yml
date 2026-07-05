@@ -30,9 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 jobs:
   prepare:
@@ -104,6 +102,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ env.DEPLOY_SHA }}
+          fetch-depth: 1
 
       - name: >-
           ${{ needs.prepare.outputs.target == 'staging' && 'Patch' || 'Compile' }}
@@ -115,15 +114,6 @@ jobs:
           mkdir -p bundle
           cp -a _site bundle/_site
           cp .github/scripts/pages-deploy.sh bundle/pages-deploy.sh
-
-      - name: Link
-        uses: actions/configure-pages@v5
-
-      - name: >-
-          ${{ needs.prepare.outputs.target == 'staging' && 'Sandbox' || 'Stage' }}
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
 
       - name: Pack
         uses: actions/upload-artifact@v4
@@ -138,19 +128,7 @@ jobs:
     needs: [prepare, build]
     if: needs.prepare.outputs.deploy == 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
     steps:
-      - name: >-
-          ${{ needs.prepare.outputs.target == 'staging' && 'Push' || 'Launch' }}
-        id: deployment
-        uses: actions/deploy-pages@v4
-
       - name: Unpack
         uses: actions/download-artifact@v4
         with:
@@ -158,11 +136,11 @@ jobs:
           path: bundle
 
       - name: >-
-          ${{ needs.prepare.outputs.target == 'staging' && 'Bookmark' || 'Archive' }}
+          ${{ needs.prepare.outputs.target == 'staging' && 'Push' || 'Launch' }}
         working-directory: bundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           TARGET: ${{ needs.prepare.outputs.target }}
           DEPLOY_SHA: ${{ needs.prepare.outputs.sha }}
-        run: bash pages-deploy.sh save-state "$TARGET" "$DEPLOY_SHA"
+        run: bash pages-deploy.sh publish "$TARGET" "$DEPLOY_SHA"

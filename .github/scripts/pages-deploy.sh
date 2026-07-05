@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cmd="${1:?usage: pages-deploy.sh build|save-state <staging|prod> [commit-sha]}"
-target="${2:?usage: pages-deploy.sh build|save-state <staging|prod> [commit-sha]}"
+cmd="${1:?usage: pages-deploy.sh build|publish <staging|prod> [commit-sha]}"
+target="${2:?usage: pages-deploy.sh build|publish <staging|prod> [commit-sha]}"
 
 case "$target" in
   staging|prod) ;;
@@ -28,9 +28,14 @@ EOF
     [ "$target" = "staging" ] && rm -f CNAME
 
     mkdir -p _site
-    git fetch origin pages-state --depth=1 2>/dev/null || true
-    if git rev-parse origin/pages-state >/dev/null 2>&1; then
-      git archive origin/pages-state | tar -x -C _site
+    git fetch origin gh-pages --depth=1 2>/dev/null || true
+    if git rev-parse origin/gh-pages >/dev/null 2>&1; then
+      git archive origin/gh-pages | tar -x -C _site
+    else
+      git fetch origin pages-state --depth=1 2>/dev/null || true
+      if git rev-parse origin/pages-state >/dev/null 2>&1; then
+        git archive origin/pages-state | tar -x -C _site
+      fi
     fi
 
     touch _site/.nojekyll
@@ -53,8 +58,8 @@ EOF
     fi
     ;;
 
-  save-state)
-    commit_sha="${3:?commit-sha required for save-state}"
+  publish)
+    commit_sha="${3:?commit-sha required for publish}"
     : "${GITHUB_TOKEN:?GITHUB_TOKEN is required}"
     : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
@@ -64,20 +69,20 @@ EOF
     git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
     git add -A
     if git diff --cached --quiet; then
-      echo "pages-state unchanged, skipping push"
+      echo "gh-pages unchanged, skipping push"
       exit 0
     fi
     git commit -q -m "deploy ${target}: ${commit_sha}"
-    git branch -M pages-state
+    git branch -M gh-pages
     git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
     for attempt in 1 2 3 4 5; do
-      if git push -f origin pages-state; then
+      if git push -f origin gh-pages; then
         exit 0
       fi
-      echo "pages-state push failed, retrying (${attempt}/5)..." >&2
+      echo "gh-pages push failed, retrying (${attempt}/5)..." >&2
       sleep $((attempt * 5))
     done
-    echo "pages-state push failed after 5 attempts" >&2
+    echo "gh-pages push failed after 5 attempts" >&2
     exit 1
     ;;
 
