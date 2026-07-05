@@ -93,13 +93,15 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
   - Push or merge into **`staging`** → deploys only to `/staging/` (prod site is unchanged).
   - Push or merge into **`main`** → deploys only to the root URL (staging at `/staging/` is preserved).
 - Each deploy uses that environment’s **GitHub environment secrets** (`staging` or `prod`), so each Supabase project stays isolated.
-- You can also run **Deploy GitHub Pages** manually from Actions (pick `staging` or `prod`; defaults to the branch HEAD).
+- The workflow pushes the built site to the **`gh-pages`** branch (no `github-pages` environment required), so staging deploys are not blocked by branch protection rules.
+- You can also run **Deploy** manually from Actions (pick `staging` or `prod`; defaults to the branch HEAD).
 - The site is served as a static bundle from GitHub Pages; `CNAME` is used for a custom domain.
 
 ### 2.2 Required GitHub configuration
 
-1. Create two **environments** in the repo: **prod** and **staging** (Settings → Environments).
-2. In each environment, add **Environment secrets**:
+1. **GitHub Pages source:** Settings → Pages → Build and deployment → **Deploy from a branch** → Branch **`gh-pages`** → **`/ (root)`**.
+2. Create two **environments** in the repo: **prod** and **staging** (Settings → Environments).
+3. In each environment, add **Environment secrets**:
    - `SUPABASE_URL` — Supabase project URL for that environment.
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
