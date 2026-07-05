@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v82";
+const CACHE_VERSION = "v83";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -41,7 +41,6 @@ const STATIC_ASSET_PATHS = [
   "css/landing.css",
   "css/login.css",
   "assets/bpcl-logo.png",
-  "js/env.js",
   "js/errorHandler.js",
   "js/cache.js",
   "js/appConfig.js",
@@ -179,6 +178,12 @@ self.addEventListener("fetch", (event) => {
 
   // Skip chrome-extension and other non-http(s) requests
   if (!url.protocol.startsWith("http")) {
+    return;
+  }
+
+  // Runtime config is gitignored locally and generated per deploy — never cache
+  if (url.pathname.endsWith("/js/env.js")) {
+    event.respondWith(fetch(request));
     return;
   }
 
