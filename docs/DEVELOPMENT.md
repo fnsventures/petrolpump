@@ -89,8 +89,11 @@ The repository uses **GitHub Actions** to deploy two environments to **GitHub Pa
 
 ### 2.1 How it works
 
-- After a PR is **merged** into `main` or `staging`, the Merge workflow runs, then Deploy GitHub Pages builds and publishes the site using **GitHub environment secrets**. You can also trigger a manual deploy from Actions (staging uses the `staging` branch HEAD; prod uses `main`).
-- Each environment uses its own Supabase project, so prod and staging data are separate.
+- **Staging** and **prod** deploy independently from separate branches:
+  - Push or merge into **`staging`** → deploys only to `/staging/` (prod site is unchanged).
+  - Push or merge into **`main`** → deploys only to the root URL (staging at `/staging/` is preserved).
+- Each deploy uses that environment’s **GitHub environment secrets** (`staging` or `prod`), so each Supabase project stays isolated.
+- You can also run **Deploy GitHub Pages** manually from Actions (pick `staging` or `prod`; defaults to the branch HEAD).
 - The site is served as a static bundle from GitHub Pages; `CNAME` is used for a custom domain.
 
 ### 2.2 Required GitHub configuration
