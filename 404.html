@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Page not found · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
+    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
     <link rel="stylesheet" href="css/base.css" />
     <style>
       .not-found {
@@ -17,6 +17,12 @@
       }
       .not-found-card {
         max-width: 28rem;
+      }
+      .not-found-logo {
+        width: var(--station-logo-size-xl, 6.5rem);
+        height: var(--station-logo-size-xl, 6.5rem);
+        margin: 0 auto 1.25rem;
+        object-fit: contain;
       }
       .not-found h1 {
         margin: 0 0 0.5rem;
@@ -55,6 +61,14 @@
   <body>
     <main class="not-found">
       <div class="not-found-card">
+        <img
+          src="assets/bishnupriya-fuels-logo.png"
+          alt="Bishnupriya Fuels"
+          class="not-found-logo station-logo station-logo--xl"
+          width="104"
+          height="104"
+          decoding="async"
+        />
         <h1>Page not found</h1>
         <p>The page you requested does not exist or may have moved.</p>
         <div class="not-found-actions">

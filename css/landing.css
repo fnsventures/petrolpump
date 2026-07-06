@@ -184,15 +184,11 @@
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .landing-bpcl-logo {
-  width: 56px;
-  height: auto;
-  object-fit: contain;
   flex-shrink: 0;
-  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
 }
 
 .brand-text {

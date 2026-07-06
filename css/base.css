@@ -14,6 +14,12 @@
   --bpcl-yellow-dark: #e6b800;
   --bpcl-green: #007a33;
   --bpcl-red: #e60012;
+  /* Station logo — square sizing; PNG is circular white badge (same as ID card) */
+  --station-logo-size-sm: 2.75rem;
+  --station-logo-size-md: 4rem;
+  --station-logo-size-lg: 5rem;
+  --station-logo-size-xl: 6.5rem;
+  --station-logo-size-print: 12mm;
   /* Brand & semantic colors */
   --color-primary: var(--bpcl-blue);
   --color-primary-hover: var(--bpcl-blue-dark);
@@ -130,9 +136,13 @@ body:not(.login-page):not(.landing-page) main {
 }
 
 main {
-  width: min(1080px, 96vw);
   margin: var(--space-5) auto 3rem;
   flex: 1;
+  box-sizing: border-box;
+}
+
+main:not(.settings-layout):not(.login-card) {
+  width: min(1080px, 96vw);
 }
 
 main a:not(.button-secondary):not(.nav-logout) {
@@ -197,12 +207,56 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   padding: 0;
 }
 
+/* Shared circular station logo — same treatment as staff ID card */
+.station-logo,
+.brand-logo,
+.landing-bpcl-logo,
+.login-logo img,
+.report-bpcl-logo,
+.invoice-bpcl-logo,
+.salary-slip-logo,
+.staff-id-topbar-logo,
+.staff-id-teaser-logo,
+.staff-roster-brand-logo,
+.not-found-logo {
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  filter: none;
+}
+
+.station-logo--sm,
+.brand-logo {
+  width: var(--station-logo-size-sm);
+  height: var(--station-logo-size-sm);
+}
+
+.station-logo--md,
+.report-bpcl-logo {
+  width: var(--station-logo-size-md);
+  height: var(--station-logo-size-md);
+}
+
+.station-logo--lg,
+.staff-id-teaser-logo,
+.staff-roster-brand-logo,
+.invoice-bpcl-logo {
+  width: var(--station-logo-size-lg);
+  height: var(--station-logo-size-lg);
+}
+
+.station-logo--xl,
+.landing-bpcl-logo,
+.not-found-logo {
+  width: var(--station-logo-size-xl);
+  height: var(--station-logo-size-xl);
+}
+
 .topbar .brand-mark .brand-logo {
   display: block;
-  height: 2.75rem;
-  width: auto;
-  max-width: 2.5rem;
-  object-fit: contain;
 }
 
 .topbar .brand-text {
@@ -673,7 +727,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 }
 
 .snapshot-head {
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
 }
 
@@ -778,7 +832,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 .filter-card-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
   gap: var(--space-2) var(--space-3);
 }
@@ -811,10 +865,77 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   color: #475569;
 }
 
+.form-field .checkbox-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.form-field input:not([type="checkbox"]):not([type="radio"]),
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form-field-checkbox {
+  min-width: 0;
+}
+
+.form-field-checkbox .checkbox-label {
+  min-height: var(--input-height);
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--bpcl-blue);
+}
+
+.form-field .radio-label {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0;
+}
+
+.radio-label input[type="radio"] {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--bpcl-blue);
+}
+
+.form-field-radio .radio-label {
+  min-height: var(--input-height);
+}
+
 .filter-actions {
   display: flex;
   gap: 0.5rem;
-  align-items: center;
+  align-items: flex-end;
 }
 
 .button-secondary {
@@ -1137,6 +1258,15 @@ body.role-admin [data-role="admin-only"] {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 0.75rem 1rem;
   align-items: start;
+}
+
+.form-grid--inline-button {
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.form-grid--inline-button .form-field:last-child {
+  min-width: 0;
 }
 
 label {
@@ -1685,7 +1815,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
     display: flex;
   }
 
-  main {
+  main:not(.settings-layout):not(.login-card) {
     margin-top: 1rem;
     width: min(100%, 96vw);
   }
@@ -1700,21 +1830,6 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
    METER READING PAGE – Professional DSR Layout
    ══════════════════════════════════════════════════════════════════ */
 
-/* ── Page background: subtle gradient for depth ── */
-body:has(.meter-toolbar) {
-  background:
-    radial-gradient(ellipse 100% 60% at 50% -8%, rgba(0, 112, 192, 0.07), transparent 55%),
-    linear-gradient(168deg, #f8fafc 0%, #f1f5f9 50%, #eef6fc 100%);
-  min-height: 100vh;
-}
-
-/* ── Wider layout for Meter Reading page ── */
-body:has(.meter-toolbar) main.stack,
-body:has(.meter-toolbar) main.settings-layout {
-  width: min(98vw, 1680px);
-  max-width: none;
-}
-
 /* ── Toolbar: sticky dropdown bar ── */
 .meter-toolbar {
   display: flex;
@@ -1728,7 +1843,7 @@ body:has(.meter-toolbar) main.settings-layout {
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
   position: sticky;
-  top: 3.5rem;
+  top: calc(var(--topbar-height, 3.75rem) + 0.25rem);
   z-index: 20;
 }
 

@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -153,10 +153,11 @@ async function waitForTaglineFont(doc) {
 }
 
 function idCardTopbarHtml(tagline) {
-  const bpclLogo = staffIdAssetUrl("assets/bpcl-logo.png");
+  const logoSrc = AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/bishnupriya-fuels-logo.png";
+  const logoUrl = staffIdAssetUrl(logoSrc);
   return `
     <div class="staff-id-topbar">
-      <img class="staff-id-topbar-logo" src="${bpclLogo}" width="32" height="32" alt="BPCL" />
+      <img class="station-logo staff-id-topbar-logo" src="${logoUrl}" width="36" height="36" alt="Bishnupriya Fuels" />
       <div class="staff-id-topbar-text">
         <span class="staff-id-topbar-tag">${escapeHtml(tagline)}</span>
         <span class="staff-id-topbar-brand">${escapeHtml(STATION_ID_BRAND)}</span>
@@ -250,51 +251,26 @@ function staffIdAssetUrl(path) {
 
 async function runStaffIdPrintInIframe(emp) {
   const sheetHtml = buildIdCardSheetHtml(emp);
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", "Staff ID print");
-  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
-  document.body.appendChild(iframe);
+  const headExtras = [
+    `<link rel="stylesheet" href="${STAFF_ID_TAGLINE_FONT_URL}" />`,
+    `<link rel="stylesheet" href="${staffIdAssetUrl("css/app.css")}" />`,
+    `<link rel="stylesheet" href="${staffIdAssetUrl("css/staff-id-print.css")}" />`,
+  ].join("\n  ");
 
-  const doc = iframe.contentDocument;
-  if (!doc) {
-    iframe.remove();
-    throw new Error("Print frame unavailable");
-  }
-
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(emp.name || "Staff")} · ID card</title>
-  <link rel="stylesheet" href="${STAFF_ID_TAGLINE_FONT_URL}" />
-  <link rel="stylesheet" href="${staffIdAssetUrl("css/app.css")}" />
-  <link rel="stylesheet" href="${staffIdAssetUrl("css/staff-id-print.css")}" />
-</head>
-<body>
-  <div class="staff-id-sheet">${sheetHtml}</div>
-</body>
-</html>`);
-  doc.close();
-
-  await waitForCardImages(doc.body);
-  await waitForTaglineFont(doc);
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-  const win = iframe.contentWindow;
-  if (!win) {
-    iframe.remove();
-    throw new Error("Print frame unavailable");
-  }
-
-  const cleanup = () => {
-    iframe.remove();
-  };
-
-  win.addEventListener("afterprint", cleanup);
-  win.focus();
-  win.print();
-  window.setTimeout(cleanup, 3000);
+  await PrintUtils.printInIframe({
+    title: `${emp.name || "Staff"} · ID card`,
+    bodyHtml: sheetHtml,
+    headExtras,
+    containerClass: "staff-id-sheet",
+    iframeTitle: "Staff ID print",
+    iframeStyle: PrintUtils.COMPACT_IFRAME_STYLE,
+    cleanupTimeoutMs: 3000,
+    waitForReady: async (doc) => {
+      await waitForCardImages(doc.body);
+      await waitForTaglineFont(doc);
+      await PrintUtils.waitForPaint(doc);
+    },
+  });
 }
 
 function idCardReadiness(employee) {
@@ -343,21 +319,24 @@ async function clearEmployeePhoto(employeeId) {
   if (rpcError) throw rpcError;
 }
 
-function waitForCardImages(root) {
+function waitForCardImages(root, timeoutMs = 4000) {
   const imgs = root.querySelectorAll("img.staff-id-photo, img.staff-id-topbar-logo");
   if (!imgs.length) return Promise.resolve();
-  return Promise.all(
-    Array.from(imgs).map(
-      (img) =>
-        new Promise((resolve) => {
-          if (img.complete && img.naturalWidth > 0) resolve();
-          else {
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-          }
-        })
-    )
-  );
+  return Promise.race([
+    Promise.all(
+      Array.from(imgs).map(
+        (img) =>
+          new Promise((resolve) => {
+            if (img.complete && img.naturalWidth > 0) resolve();
+            else {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+            }
+          })
+      )
+    ),
+    new Promise((resolve) => window.setTimeout(resolve, timeoutMs)),
+  ]);
 }
 
 function initStaffPage(auth) {
@@ -402,10 +381,11 @@ function initStaffPage(auth) {
   const profilePf = document.getElementById("staff-profile-pf");
   const profilePfContribution = document.getElementById("staff-profile-pf-contribution");
   const profileAddress = document.getElementById("staff-profile-address");
-  const idCardPreview = document.getElementById("id-card-preview");
   const idCardHint = document.getElementById("id-card-hint");
+  const idCardViewBtn = document.getElementById("id-card-view-btn");
+  const idCardModal = document.getElementById("staff-id-modal");
+  const idCardModalClose = document.getElementById("staff-id-modal-close");
   const printBtn = document.getElementById("id-card-print-btn");
-  const printRoot = document.getElementById("staff-id-print-root");
 
   if (!rosterList || !staffMemberForm) return;
 
@@ -414,8 +394,11 @@ function initStaffPage(auth) {
   let selectedId = null;
   let pendingPhotoFile = null;
   let removePhotoOnSave = false;
+  let idCardModalOpen = false;
+  let idCardRenderedForId = null;
 
   function showPanel(mode) {
+    if (mode !== "profile") closeIdCardModal();
     emptyState?.classList.toggle("hidden", mode !== "empty");
     if (emptyState) emptyState.hidden = mode !== "empty";
     formPanel?.classList.toggle("hidden", mode !== "form");
@@ -515,11 +498,7 @@ function initStaffPage(auth) {
     nameInput?.focus();
   }
 
-  async function renderIdCardPanel(emp) {
-    if (!idCardPreview) return;
-    idCardPreview.innerHTML = buildIdCardSheetHtml(emp);
-    await waitForCardImages(idCardPreview);
-    await waitForTaglineFont(document);
+  function updateIdCardControls(emp) {
     const missing = idCardReadiness(emp);
     if (printBtn) {
       printBtn.disabled = missing.length > 0;
@@ -527,17 +506,85 @@ function initStaffPage(auth) {
         ? `Add ${missing.join(" and ")} to enable printing`
         : "Print staff ID card";
     }
+    if (idCardViewBtn) {
+      idCardViewBtn.disabled = false;
+      idCardViewBtn.title = missing.length
+        ? `Preview available — add ${missing.join(" and ")} for printing`
+        : "Open ID card preview";
+    }
     if (idCardHint) {
       if (missing.length) {
-        idCardHint.textContent = `Add ${missing.join(" and ")} (edit profile) to print the ID card.`;
-        idCardHint.classList.remove("hidden");
-        idCardHint.classList.remove("is-ready");
+        idCardHint.innerHTML = `Add <strong>${missing.map((m) => escapeHtml(m)).join("</strong>, <strong>")}</strong> in the profile to enable printing.`;
+        idCardHint.className = "staff-id-status-banner salary-na-banner";
       } else {
-        idCardHint.textContent = "Ready to print.";
-        idCardHint.classList.remove("hidden");
-        idCardHint.classList.add("is-ready");
+        idCardHint.textContent = "ID card complete — ready to print.";
+        idCardHint.className = "staff-id-status-banner staff-id-status-banner--ready";
       }
     }
+  }
+
+  function getIdCardPreviewMount() {
+    return document.getElementById("id-card-preview");
+  }
+
+  function paintIdCardPreview(emp) {
+    const mount = getIdCardPreviewMount();
+    if (!mount) return false;
+    mount.innerHTML = `<div class="staff-id-sheet">${buildIdCardSheetHtml(emp)}</div>`;
+    idCardRenderedForId = emp.id;
+    return true;
+  }
+
+  async function renderIdCardPreview(emp) {
+    if (!paintIdCardPreview(emp)) return;
+    const mount = getIdCardPreviewMount();
+    if (!mount) return;
+    await waitForCardImages(mount);
+    await waitForTaglineFont(document);
+  }
+
+  function closeIdCardModal() {
+    if (!idCardModal || !idCardModalOpen) return;
+    idCardModalOpen = false;
+    idCardModal.classList.add("hidden");
+    idCardModal.hidden = true;
+    document.body.classList.remove("modal-open");
+    idCardViewBtn?.setAttribute("aria-expanded", "false");
+    idCardViewBtn?.focus();
+  }
+
+  function openIdCardModal(emp) {
+    if (!idCardModal || !emp) return;
+    const mount = getIdCardPreviewMount();
+    if (!mount) return;
+
+    const modalTitle = document.getElementById("staff-id-modal-title");
+    if (modalTitle) modalTitle.textContent = emp.name ? `${emp.name} · ID card` : "ID card preview";
+
+    idCardModalOpen = true;
+    idCardModal.classList.remove("hidden");
+    idCardModal.hidden = false;
+    document.body.classList.add("modal-open");
+    idCardViewBtn?.setAttribute("aria-expanded", "true");
+
+    if (!paintIdCardPreview(emp)) {
+      mount.innerHTML = '<p class="staff-id-modal-loading">Could not load ID card preview.</p>';
+    } else {
+      void waitForCardImages(mount).then(() => waitForTaglineFont(document));
+    }
+
+    updateIdCardControls(emp);
+    idCardModalClose?.focus();
+  }
+
+  function renderIdCardPanel(emp) {
+    updateIdCardControls(emp);
+    if (idCardRenderedForId !== emp.id) {
+      const mount = getIdCardPreviewMount();
+      if (mount) mount.innerHTML = "";
+      idCardRenderedForId = null;
+    }
+    if (idCardModalOpen) paintIdCardPreview(emp);
   }
 
   function renderProfile(emp) {
@@ -564,7 +611,7 @@ function initStaffPage(auth) {
     if (profileAddress) profileAddress.textContent = formatDetail(emp.address);
     setProfilePhoto(emp.photo_url, emp.name);
     renderRosterList();
-    void renderIdCardPanel(emp);
+    renderIdCardPanel(emp);
     showPanel("profile");
     if (location.hash !== `#${emp.id}`) {
       history.replaceState(null, "", `staff.html#${emp.id}`);
@@ -600,14 +647,18 @@ function initStaffPage(auth) {
           ? `<img class="staff-roster-thumb" src="${escapeHtml(s.photo_url)}" alt="" />`
           : `<span class="staff-roster-thumb staff-roster-thumb-placeholder">${escapeHtml(staffInitial(s.name))}</span>`;
         const ready = idCardReadiness(s).length === 0;
+        const badge = ready
+          ? `<span class="staff-id-badge staff-id-badge--ready">ID ready</span>`
+          : `<span class="staff-id-badge staff-id-badge--draft">Draft</span>`;
         return `
         <li>
-          <button type="button" class="staff-roster-item${active}" data-id="${escapeHtml(s.id)}" role="option" aria-selected="${s.id === selectedId}">
+          <button type="button" class="staff-roster-item settings-nav-item${active}" data-id="${escapeHtml(s.id)}" role="option" aria-selected="${s.id === selectedId}">
             ${thumb}
             <span class="staff-roster-item-text">
               <span class="staff-roster-item-name">${escapeHtml(s.name)}</span>
-              <span class="staff-roster-item-meta">${escapeHtml(s.role_display || "Staff")}${ready ? " · ID ready" : ""}</span>
+              <span class="staff-roster-item-meta">${escapeHtml(s.role_display || "Staff")}</span>
             </span>
+            ${badge}
           </button>
         </li>`;
       })
@@ -724,6 +775,20 @@ function initStaffPage(auth) {
       alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
     }
   }
+
+  idCardViewBtn?.addEventListener("click", () => {
+    const emp = staffList.find((s) => s.id === selectedId);
+    if (emp) openIdCardModal(emp);
+  });
+
+  idCardModalClose?.addEventListener("click", closeIdCardModal);
+  idCardModal?.querySelector("[data-staff-id-close]")?.addEventListener("click", closeIdCardModal);
+  idCardModal?.addEventListener("click", (e) => {
+    if (e.target === idCardModal) closeIdCardModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && idCardModalOpen) closeIdCardModal();
+  });
 
   printBtn?.addEventListener("click", () => {
     const emp = staffList.find((s) => s.id === selectedId);
