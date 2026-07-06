@@ -49,17 +49,18 @@ function enhanceTopbarBrand() {
   if (!brand || brand.querySelector(".brand-mark")) return;
 
   const link = brand.querySelector("a");
-  if (!link || typeof AppConfig === "undefined" || !AppConfig.BPCL_LOGO_SRC) return;
+  const logoSrc = AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC;
+  if (!link || typeof AppConfig === "undefined" || !logoSrc) return;
 
   topbar?.classList.add("topbar--bpcl");
 
   const mark = document.createElement("span");
   mark.className = "brand-mark";
   const img = document.createElement("img");
-  img.src = AppConfig.BPCL_LOGO_SRC;
-  img.alt = "Bharat Petroleum";
-  img.className = "brand-logo";
-  img.width = 36;
+  img.src = logoSrc;
+  img.alt = "Bishnupriya Fuels";
+  img.className = "brand-logo station-logo station-logo--sm";
+  img.width = 44;
   img.height = 44;
   img.decoding = "async";
   mark.appendChild(img);
@@ -606,7 +607,10 @@ if (loginForm) {
       return;
     }
 
-    if (loginButton) loginButton.disabled = true;
+    if (loginButton) {
+      loginButton.disabled = true;
+      loginButton.textContent = "Signing in…";
+    }
 
     const formData = new FormData(loginForm);
     const email = formData.get("email");
@@ -617,7 +621,10 @@ if (loginForm) {
       password,
     });
 
-    if (loginButton) loginButton.disabled = false;
+    if (loginButton) {
+      loginButton.disabled = false;
+      loginButton.textContent = "Sign in";
+    }
 
     if (error) {
       AppError.handle(error, { target: loginError });

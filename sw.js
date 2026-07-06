@@ -3,77 +3,35 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v83";
+const CACHE_VERSION = "v88";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
-/** Paths relative to the service worker scope (works for prod root and /staging/). */
+/** Core shell cached on install; other assets load on first visit (cache-first / SWR). */
 const STATIC_ASSET_PATHS = [
   "index.html",
   "login.html",
   "dashboard.html",
-  "dsr.html",
-  "credit.html",
-  "credit-overdue.html",
-  "credit-customer.html",
-  "expenses.html",
-  "day-closing.html",
-  "attendance.html",
-  "staff.html",
-  "sales-daily.html",
-  "analysis.html",
-  "reports.html",
-  "billing.html",
-  "invoices.html",
-  "settings.html",
-  "salary.html",
-  "about.html",
   "404.html",
   "manifest.json",
   "css/base.css",
   "css/app.css",
-  "css/staff-id-print.css",
-  "css/invoice-print.css",
-  "css/salary-slip-print.css",
-  "css/reports-print.css",
-  "css/credit-summary-print.css",
   "css/landing.css",
   "css/login.css",
-  "assets/bpcl-logo.png",
+  "assets/bishnupriya-fuels-logo.png",
   "js/errorHandler.js",
   "js/cache.js",
   "js/appConfig.js",
   "js/utils.js",
-  "js/dateRangeFilter.js",
+  "js/printUtils.js",
   "js/pumpSettings.js",
-  "js/purchaseTaxUtils.js",
-  "js/dsrQueries.js",
   "js/vendor/supabase.min.js",
   "js/supabase.js",
   "js/auth.js",
   "js/pageSections.js",
-  "js/creditCustomerDetail.js",
   "js/dashboard.js",
-  "js/dsr.js",
-  "js/credit.js",
-  "js/expenses.js",
-  "js/invoices.js",
-  "js/day-closing.js",
-  "js/attendance.js",
-  "js/staff.js",
-  "js/sales-daily.js",
-  "js/analysis.js",
-  "js/reports.js",
-  "js/billing.js",
-  "js/settings.js",
-  "js/staffEmployees.js",
-  "js/salary.js",
   "js/landing.js",
-  "assets/landing-01.JPG",
-  "assets/landing-02.JPG",
-  "assets/landing-03.JPG",
-  "assets/landing-04.JPG",
 ];
 
 const CACHE_MATCH_OPTS = { ignoreSearch: true };

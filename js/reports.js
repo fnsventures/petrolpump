@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion, PrintUtils */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -366,7 +366,7 @@ function reportHeader(title, start, end) {
   return `
     <header class="report-print-head">
       <div class="report-letterhead">
-        <img src="${AppConfig.BPCL_LOGO_SRC}" alt="Bharat Petroleum" class="report-bpcl-logo" width="56" height="68" />
+        <img src="${AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="64" height="64" />
         <div class="report-letterhead-text">
           <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
           <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -1404,7 +1404,10 @@ function renderReportHtml(reportId, data, range) {
 
 function sanitizeReportHtmlForPrint(html) {
   return html
-    .replace(/src="[^"]*bpcl-logo[^"]*"/gi, `src="${reportsAssetUrl("assets/bpcl-logo.png")}"`)
+    .replace(
+      /src="[^"]*(?:bpcl-logo|bishnupriya-fuels-logo)[^"]*"/gi,
+      `src="${reportsAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}"`
+    )
     .replace(/<a\b[^>]*>/gi, "")
     .replace(/<\/a>/gi, "");
 }
@@ -1426,33 +1429,6 @@ function buildPrintSheetWrapped(reportBodyHtml, reportId, range) {
         <span>${escapeHtml(title)}${periodLabel ? ` · ${escapeHtml(periodLabel)}` : ""}</span>
       </footer>
     </div>`;
-}
-
-async function waitForPrintFrameReady(doc, win) {
-  await new Promise((resolve) => {
-    const timeout = window.setTimeout(resolve, 5000);
-    const finish = () => {
-      window.clearTimeout(timeout);
-      resolve();
-    };
-    if (win.document.readyState === "complete") {
-      finish();
-    } else {
-      win.addEventListener("load", finish, { once: true });
-    }
-  });
-
-  const logo = doc.querySelector(".report-bpcl-logo");
-  if (logo && !logo.complete) {
-    await new Promise((resolve) => {
-      logo.addEventListener("load", resolve, { once: true });
-      logo.addEventListener("error", resolve, { once: true });
-      window.setTimeout(resolve, 2500);
-    });
-  }
-
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  void doc.body.offsetHeight;
 }
 
 async function handleReportPrintClick() {
@@ -1498,44 +1474,15 @@ async function runReportPrint() {
   const meta = findReportMeta(activeReport);
   const title = meta?.title || "Report";
 
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", "Report print");
-  iframe.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument;
-  const win = iframe.contentWindow;
-  if (!doc || !win) {
-    iframe.remove();
-    throw new Error("Print frame unavailable");
-  }
-
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>${cssText.replace(/<\/style/gi, "<\\/style")}</style>
-</head>
-<body class="report-print-body">
-  <div class="report-print-container">${sheetWrapped}</div>
-</body>
-</html>`);
-  doc.close();
-
-  try {
-    await waitForPrintFrameReady(doc, win);
-    const cleanup = () => iframe.remove();
-    win.addEventListener("afterprint", cleanup, { once: true });
-    win.focus();
-    win.print();
-    window.setTimeout(cleanup, 5000);
-  } catch (err) {
-    iframe.remove();
-    throw err;
-  }
+  await PrintUtils.printInIframe({
+    title,
+    bodyHtml: sheetWrapped,
+    cssText,
+    bodyClass: "report-print-body",
+    containerClass: "report-print-container",
+    iframeTitle: "Report print",
+    imageSelectors: [".report-bpcl-logo"],
+  });
 }
 
 function renderActiveReport() {

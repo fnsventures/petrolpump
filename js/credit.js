@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -1090,7 +1090,7 @@ function creditSummaryReportHeader(title, subtitleLines) {
   return `
     <header class="report-print-head">
       <div class="report-letterhead">
-        <img src="${creditSummaryAssetUrl(AppConfig.BPCL_LOGO_SRC)}" alt="Bharat Petroleum" class="report-bpcl-logo" width="56" height="68" />
+        <img src="${creditSummaryAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="64" height="64" />
         <div class="report-letterhead-text">
           <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
           <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -1300,19 +1300,6 @@ function buildCreditSummaryPrintHtml(summary, context) {
     </article>`;
 }
 
-async function waitForCreditSummaryPrintAssets(doc) {
-  const logo = doc.querySelector(".report-bpcl-logo");
-  if (logo && !logo.complete) {
-    await new Promise((resolve) => {
-      logo.addEventListener("load", resolve, { once: true });
-      logo.addEventListener("error", resolve, { once: true });
-      window.setTimeout(resolve, 2500);
-    });
-  }
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  void doc.body.offsetHeight;
-}
-
 async function runCreditSummaryPrint() {
   if (!lastCustomerSummary || !lastCustomerSummaryContext?.customerName) {
     const msg = "Load the customer account first, then print.";
@@ -1325,45 +1312,17 @@ async function runCreditSummaryPrint() {
   }
 
   const sheetHtml = buildCreditSummaryPrintHtml(lastCustomerSummary, lastCustomerSummaryContext);
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", "Credit summary print");
-  iframe.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument;
-  const win = iframe.contentWindow;
-  if (!doc || !win) {
-    iframe.remove();
-    throw new Error("Print frame unavailable");
-  }
-
   const title = `${lastCustomerSummaryContext.customerName} · Credit summary`;
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <link rel="stylesheet" href="${creditSummaryAssetUrl(CREDIT_SUMMARY_PRINT_CSS)}" />
-</head>
-<body class="report-print-body">
-  <div class="report-print-container">${sheetHtml}</div>
-</body>
-</html>`);
-  doc.close();
 
-  try {
-    await waitForCreditSummaryPrintAssets(doc);
-    const cleanup = () => iframe.remove();
-    win.addEventListener("afterprint", cleanup, { once: true });
-    win.focus();
-    win.print();
-    window.setTimeout(cleanup, 5000);
-  } catch (err) {
-    iframe.remove();
-    throw err;
-  }
+  await PrintUtils.printInIframe({
+    title,
+    bodyHtml: sheetHtml,
+    cssHref: CREDIT_SUMMARY_PRINT_CSS,
+    bodyClass: "report-print-body",
+    containerClass: "report-print-container",
+    iframeTitle: "Credit summary print",
+    imageSelectors: [".report-bpcl-logo"],
+  });
 }
 
 async function handleCreditSummaryPrintClick() {

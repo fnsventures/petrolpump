@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig */
 
 let productsCache = [];
 let currentAuth = null;
@@ -100,21 +100,6 @@ function normalizeInvoiceItemName(name) {
   return fixes[key] || raw;
 }
 
-function invoiceAssetUrl(path) {
-  return new URL(path, window.location.href).href;
-}
-
-async function waitForInvoicePrintAssets(doc) {
-  const logo = doc.querySelector(".invoice-bpcl-logo");
-  if (logo && !logo.complete) {
-    await new Promise((resolve) => {
-      logo.addEventListener("load", resolve, { once: true });
-      logo.addEventListener("error", resolve, { once: true });
-    });
-  }
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-}
-
 async function runInvoicePrint(invoiceNumber) {
   const printRoot = document.getElementById("print-invoice");
   if (!printRoot) {
@@ -123,50 +108,28 @@ async function runInvoicePrint(invoiceNumber) {
   }
 
   let sheetHtml = printRoot.innerHTML;
+  const logoSrc = AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/bishnupriya-fuels-logo.png";
   sheetHtml = sheetHtml.replace(
-    /src="assets\/bpcl-logo\.png"/gi,
-    `src="${invoiceAssetUrl("assets/bpcl-logo.png")}"`
+    /src="assets\/(?:bpcl-logo|bishnupriya-fuels-logo)\.png"/gi,
+    `src="${PrintUtils.resolveAssetUrl(logoSrc)}"`
   );
 
   const title = invoiceNumber ? String(invoiceNumber) : "Tax Invoice";
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", "Invoice print");
-  iframe.style.cssText =
-    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
-  document.body.appendChild(iframe);
-
-  const doc = iframe.contentDocument;
-  if (!doc) {
-    iframe.remove();
-    window.print();
-    return;
-  }
-
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <link rel="stylesheet" href="${invoiceAssetUrl("css/invoice-print.css")}" />
-</head>
-<body>
-  <div class="print-invoice-container">${sheetHtml}</div>
-</body>
-</html>`);
-  doc.close();
 
   try {
-    await waitForInvoicePrintAssets(doc);
-    const win = iframe.contentWindow;
-    if (!win) throw new Error("Print frame unavailable");
-    const cleanup = () => iframe.remove();
-    win.addEventListener("afterprint", cleanup);
-    win.focus();
-    win.print();
-    window.setTimeout(cleanup, 3000);
+    await PrintUtils.printInIframe({
+      title,
+      bodyHtml: sheetHtml,
+      cssHref: "css/invoice-print.css",
+      containerClass: "print-invoice-container",
+      iframeTitle: "Invoice print",
+      iframeStyle: PrintUtils.COMPACT_IFRAME_STYLE,
+      imageSelectors: [".invoice-bpcl-logo"],
+      waitForLoad: false,
+      cleanupTimeoutMs: 3000,
+      onFallback: () => window.print(),
+    });
   } catch (err) {
-    iframe.remove();
     AppError?.report?.(err, { context: "runInvoicePrint" });
     window.print();
   }

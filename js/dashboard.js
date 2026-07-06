@@ -513,7 +513,11 @@ function scheduleAutoFitStats() {
   if (statFitRaf) cancelAnimationFrame(statFitRaf);
   statFitRaf = requestAnimationFrame(() => {
     statFitRaf = null;
-    autoFitStats(document);
+    const scope =
+      document.querySelector(".settings-panel.is-visible") ||
+      document.querySelector(".settings-panel:not([hidden])") ||
+      document;
+    autoFitStats(scope);
   });
 }
 

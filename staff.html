@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Staff · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bpcl-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bpcl-logo.png" />
+    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
@@ -16,12 +16,13 @@
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=8"></script>
+    <script defer src="js/utils.js?v=9"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js"></script>
-    <script defer src="js/staff.js"></script>
+    <script defer src="js/printUtils.js"></script>
+    <script defer src="js/staff.js?v=11"></script>
   </head>
   <body class="staff-page">
     <header class="topbar">
@@ -69,31 +70,38 @@
       </nav>
     </header>
 
-    <main class="staff-page-layout">
-      <aside class="staff-roster-sidebar card" aria-label="Staff list">
-        <div class="staff-roster-sidebar-head">
-          <div>
-            <h2>Staff</h2>
-            <p class="muted staff-roster-count" id="staff-roster-count">—</p>
-          </div>
-          <button type="button" id="staff-add-btn" class="button-secondary">+ Add</button>
+    <main class="settings-layout staff-page-layout">
+      <nav class="settings-nav card staff-roster-nav" aria-label="Staff roster">
+        <p class="settings-nav-title">Staff</p>
+        <div class="staff-roster-toolbar">
+          <p class="muted staff-roster-count" id="staff-roster-count">—</p>
+          <button type="button" id="staff-add-btn" class="button-secondary button-small">+ Add</button>
         </div>
-        <p class="muted staff-roster-hint">Set salary and PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
+        <p class="muted staff-roster-hint">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
         <ul id="staff-roster-list" class="staff-roster-list" role="listbox" aria-label="Select staff member">
           <li class="staff-roster-loading muted">Loading…</li>
         </ul>
-      </aside>
+      </nav>
 
-      <div class="staff-main">
-        <section id="staff-empty-state" class="staff-empty-state card">
-          <p class="staff-empty-title">No staff selected</p>
-          <p class="muted">Choose someone from the list, or add a new staff member to view their profile and print an ID card.</p>
-          <button type="button" id="staff-empty-add-btn">Add staff</button>
+      <div class="settings-panels staff-main">
+        <section id="staff-empty-state" class="settings-panel card staff-empty-state is-visible">
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Staff profiles</h2>
+              <p class="muted">Select a team member from the roster to view their profile, manage details, and print an ID card.</p>
+            </div>
+          </div>
+          <div class="staff-empty-body">
+            <button type="button" id="staff-empty-add-btn">Add staff member</button>
+          </div>
         </section>
 
-        <section id="staff-form-panel" class="staff-form-panel card hidden" hidden>
-          <div class="staff-panel-head">
-            <h2 id="staff-form-title">Add staff</h2>
+        <section id="staff-form-panel" class="settings-panel card staff-form-panel hidden" hidden>
+          <div class="card-head snapshot-head staff-panel-head">
+            <div>
+              <h2 id="staff-form-title">Add staff</h2>
+              <p class="muted">Personal details used on the staff ID card and HR records.</p>
+            </div>
             <button type="button" id="staff-form-close" class="link">Cancel</button>
           </div>
           <form id="emp-member-form" class="form" autocomplete="off">
@@ -174,10 +182,10 @@
           </form>
         </section>
 
-        <section id="staff-profile-panel" class="staff-profile-panel hidden" hidden>
+        <section id="staff-profile-panel" class="settings-panel staff-profile-panel hidden" hidden>
           <div class="staff-profile-grid">
             <div class="staff-profile-card card">
-              <div class="staff-profile-head">
+              <div class="card-head snapshot-head staff-profile-head">
                 <div id="staff-profile-photo" class="staff-profile-photo is-placeholder" role="img">
                   <span id="staff-profile-initial">?</span>
                   <img id="staff-profile-img" class="hidden" alt="" />
@@ -205,20 +213,47 @@
             </div>
 
             <div class="staff-id-panel card">
-              <div class="staff-id-panel-head">
-                <h3>ID card</h3>
-                <button type="button" id="id-card-print-btn" disabled>Print ID card</button>
+              <div class="card-head snapshot-head">
+                <div>
+                  <h2>ID card</h2>
+                  <p class="muted">Portrait PVC badge · front and back</p>
+                </div>
               </div>
-              <p id="id-card-hint" class="staff-id-hint muted hidden"></p>
-              <p class="muted staff-id-preview-label">Front · Back (portrait PVC size)</p>
-              <div id="id-card-preview-wrap" class="staff-id-preview-wrap">
-                <div id="id-card-preview" class="staff-id-sheet" role="group" aria-label="Staff ID card preview"></div>
-              </div>
+              <p id="id-card-hint" class="staff-id-status-banner hidden" role="status"></p>
+              <button type="button" id="id-card-view-btn" class="staff-id-teaser clickable-card" aria-haspopup="dialog" aria-expanded="false" aria-controls="staff-id-modal">
+                <span class="staff-id-teaser-logo-wrap" aria-hidden="true">
+                  <img src="assets/bishnupriya-fuels-logo.png" width="80" height="80" alt="Bishnupriya Fuels" class="station-logo staff-id-teaser-logo station-logo--lg" />
+                </span>
+                <span class="staff-id-teaser-body">
+                  <span class="staff-id-teaser-title">Preview ID card</span>
+                  <span class="staff-id-teaser-meta muted">Tap to view front &amp; back before printing</span>
+                </span>
+                <span class="staff-id-teaser-chevron" aria-hidden="true">›</span>
+              </button>
             </div>
           </div>
         </section>
       </div>
     </main>
+
+    <div id="staff-id-modal" class="staff-id-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="staff-id-modal-title">
+      <div class="staff-id-modal-backdrop" data-staff-id-close tabindex="-1" aria-hidden="true"></div>
+      <div class="staff-id-modal-panel card">
+        <div class="card-head snapshot-head staff-id-modal-head">
+          <div>
+            <h2 id="staff-id-modal-title">ID card preview</h2>
+            <p class="muted staff-id-modal-subtitle">Front · back · portrait PVC size</p>
+          </div>
+          <button type="button" id="staff-id-modal-close" class="staff-id-modal-close" aria-label="Close preview">×</button>
+        </div>
+        <div id="id-card-preview-wrap" class="staff-id-preview-wrap">
+          <div id="id-card-preview" class="staff-id-preview-mount" role="group" aria-label="Staff ID card preview"></div>
+        </div>
+        <div class="staff-id-modal-actions">
+          <button type="button" id="id-card-print-btn" disabled>Print ID card</button>
+        </div>
+      </div>
+    </div>
 
     <div id="staff-id-print-root" class="staff-id-print-root" hidden aria-hidden="true"></div>
 

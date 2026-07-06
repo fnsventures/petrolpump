@@ -1,16 +1,5 @@
 /* App shell: dashboard, DSR, credit, expenses, attendance, analysis, settings */
 
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-.checkbox-label input[type="checkbox"] {
-  flex-shrink: 0;
-}
-
 tbody tr {
   transition: background var(--transition-fast);
 }
@@ -52,11 +41,6 @@ tbody tr:hover {
 }
 .day-closing-register-table tbody tr:nth-child(even) {
   background: rgba(248, 250, 252, 0.85);
-}
-
-.dc-register-panel .card-head.snapshot-head {
-  align-items: flex-start;
-  gap: 1rem;
 }
 
 .dc-register-intro {
@@ -1049,9 +1033,12 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   font-size: 0.72rem;
 }
 
-.meter-table.compact input {
+.meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
   width: 15ch;
   max-width: 100%;
+  min-height: var(--input-height);
+  padding: 0 var(--control-padding-x);
+  box-sizing: border-box;
 }
 
 .meter-table.compact input[type="date"] {
@@ -1120,8 +1107,8 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
    Analysis page – BPCL-aligned (matches dashboard / app shell)
    ========================================================================== */
 
-.analysis-layout {
-  max-width: 80rem;
+main.settings-layout.analysis-layout {
+  width: min(80rem, 96vw);
 }
 
 .analysis-nav-icon {
@@ -2949,7 +2936,7 @@ body.analysis-page .chart-wrap--donut {
 /* Snapshot: title + date + optional rates in one row */
 .dashboard-page .snapshot-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-3);
@@ -2970,6 +2957,12 @@ body.analysis-page .chart-wrap--donut {
 
 .form-field-inline {
   min-width: 0;
+}
+
+.form-field-inline input[type="date"],
+.form-field-inline select {
+  width: auto;
+  min-width: 10rem;
 }
 
 .form-field-inline label {
@@ -3003,7 +2996,7 @@ body.analysis-page .chart-wrap--donut {
 /* DSR / P&L: title + filter on one line – same as snapshot-controls */
 .dsr-card-head-inline {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
@@ -3776,7 +3769,7 @@ table.attendance-matrix {
 }
 
 .reports-sidebar-title {
-  margin: 0 0 var(--space-2) 0.35rem;
+  margin: 0 0 var(--space-2) 0.5rem;
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -3791,7 +3784,7 @@ table.attendance-matrix {
 }
 
 .reports-nav-group-title {
-  margin: 0 0 0.25rem 0.35rem;
+  margin: 0 0 0.25rem 0.5rem;
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -3956,10 +3949,8 @@ table.attendance-matrix {
 }
 
 .report-bpcl-logo {
-  flex-shrink: 0;
-  width: auto;
-  height: 4.25rem;
-  object-fit: contain;
+  width: var(--station-logo-size-md);
+  height: var(--station-logo-size-md);
 }
 
 .report-letterhead-text {
@@ -4121,14 +4112,17 @@ table.attendance-matrix {
 
 /* ─── Settings page (section navigation) ─────────────────────────────────── */
 
+main.settings-layout,
 .settings-layout {
   display: grid;
-  grid-template-columns: minmax(11rem, 14rem) 1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr);
+  gap: 1rem 1.25rem;
   align-items: start;
-  max-width: 72rem;
-  margin: 0 auto;
+  width: min(72rem, 96vw);
+  max-width: 100%;
+  margin: var(--space-5) auto 3rem;
   padding: 1rem;
+  box-sizing: border-box;
 }
 
 /* One sidebar cell for pages that swap two navs (e.g. credit-overdue list vs customer). */
@@ -4136,7 +4130,7 @@ table.attendance-matrix {
   min-width: 0;
   align-self: start;
   position: sticky;
-  top: 4.5rem;
+  top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -4159,6 +4153,23 @@ table.attendance-matrix {
 .settings-nav.card {
   padding: 0.85rem;
   margin-bottom: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-nav.card::before {
+  content: "";
+  display: block;
+  height: 3px;
+  margin: calc(-1 * 0.85rem - 3px) calc(-1 * 0.85rem) 0.5rem;
+  background: linear-gradient(
+    90deg,
+    var(--bpcl-blue) 0%,
+    var(--bpcl-blue) 38%,
+    var(--bpcl-yellow) 38%,
+    var(--bpcl-yellow) 100%
+  );
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .settings-nav-title {
@@ -4276,9 +4287,11 @@ tr.is-editing .expense-cat-drag-handle {
 }
 
 @media (max-width: 768px) {
+  main.settings-layout,
   .settings-layout {
     grid-template-columns: 1fr;
-    padding: 0.5rem 0;
+    width: min(100%, 96vw);
+    padding: 0.75rem;
   }
 
   .settings-layout .settings-sidebar {
@@ -4823,15 +4836,7 @@ tr.is-editing .expense-cat-drag-handle {
 
 main.settings-layout.page-layout-wide {
   width: min(98vw, 1680px);
-  max-width: none;
-}
-
-.page-layout-wide.settings-layout {
-  max-width: min(98vw, 1680px);
-  grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
-  gap: 1.25rem;
   padding: 1rem 1.25rem 2rem;
-  align-items: start;
 }
 
 .page-layout-wide .settings-panels {
@@ -4860,13 +4865,11 @@ main.settings-layout.page-layout-wide {
   vertical-align: middle;
 }
 
-.page-layout-wide .dsr-card .meter-table.compact input {
+.page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
   min-width: 5.75rem;
   max-width: none;
   font-size: var(--text-base);
-  min-height: var(--input-height);
-  padding: 0.4rem 0.5rem;
 }
 
 .page-layout-wide .dsr-card .meter-table.compact input[type="date"] {
@@ -5226,29 +5229,20 @@ body.modal-open {
 
 @media (max-width: 768px) {
   main.settings-layout.page-layout-wide {
-    width: 100%;
+    width: min(100%, 96vw);
     padding: 0.75rem;
-  }
-
-  .page-layout-wide.settings-layout {
-    grid-template-columns: 1fr;
   }
 }
 
 /* Dashboard: nav | primary content | context rail */
 main.settings-layout.dashboard-page-layout {
-  width: min(1280px, 98vw);
-  max-width: 100%;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: var(--space-3);
-  padding-right: var(--space-3);
-  box-sizing: border-box;
+  width: min(80rem, 98vw);
+  padding: 1rem;
 }
 
 .settings-layout.dashboard-page-layout {
   max-width: none;
-  grid-template-columns: minmax(10.5rem, 13rem) minmax(0, 1fr) minmax(11.5rem, 15.5rem);
+  grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr) minmax(11.5rem, 15.5rem);
   gap: 1rem 1.25rem;
   align-items: start;
 }
@@ -5271,26 +5265,6 @@ main.settings-layout.dashboard-page-layout {
   border-color: var(--border);
 }
 
-.settings-nav.card {
-  position: relative;
-  overflow: hidden;
-}
-
-.settings-nav.card::before {
-  content: "";
-  display: block;
-  height: 3px;
-  margin: calc(-1 * 0.85rem - 3px) calc(-1 * 0.85rem) 0.5rem;
-  background: linear-gradient(
-    90deg,
-    var(--bpcl-blue) 0%,
-    var(--bpcl-blue) 38%,
-    var(--bpcl-yellow) 38%,
-    var(--bpcl-yellow) 100%
-  );
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
 body.dashboard-page .highlight-card.clickable-card:hover {
   border-color: rgba(0, 112, 192, 0.35);
   box-shadow: var(--shadow-md);
@@ -5298,7 +5272,7 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 
 @media (max-width: 1100px) {
   .settings-layout.dashboard-page-layout {
-    grid-template-columns: minmax(10.5rem, 13rem) minmax(0, 1fr);
+    grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr);
   }
 
   .dashboard-context-rail {
@@ -5345,47 +5319,35 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   }
 }
 
-/* Staff page — roster + profile layout */
-.staff-page-layout {
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) 1fr;
-  gap: 1rem;
-  align-items: start;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem;
+/* Staff page — aligned with settings-layout (Attendance / Salary) */
+.staff-page-layout.settings-layout {
+  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
 }
 
-.staff-roster-sidebar {
-  position: sticky;
-  top: 1rem;
+.staff-roster-nav {
   max-height: calc(100vh - 6rem);
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 
-.staff-roster-sidebar-head {
+.staff-roster-toolbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
-}
-
-.staff-roster-sidebar-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
+  padding: 0 0.15rem;
 }
 
 .staff-roster-count {
-  margin: 0.15rem 0 0;
-  font-size: 0.8rem;
+  margin: 0;
+  font-size: var(--text-sm, 0.875rem);
 }
 
 .staff-roster-hint {
-  margin: 0 0 0.75rem;
-  font-size: 0.8rem;
+  margin: 0 0 0.65rem;
+  padding: 0 0.15rem;
+  font-size: var(--text-xs, 0.75rem);
+  line-height: 1.45;
 }
 
 .staff-roster-list {
@@ -5400,122 +5362,124 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 .staff-roster-item {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
+  gap: 0.6rem;
   width: 100%;
-  padding: 0.55rem 0.5rem;
-  margin-bottom: 0.25rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md, 8px);
-  background: transparent;
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.15rem;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
   text-align: left;
-  cursor: pointer;
-  font: inherit;
-  color: inherit;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-.staff-roster-item:hover {
-  background: rgba(0, 112, 192, 0.06);
-}
-
-.staff-roster-item.is-active {
-  background: rgba(0, 112, 192, 0.1);
-  border-color: rgba(0, 112, 192, 0.25);
+.staff-roster-item.settings-nav-item.is-active {
+  box-shadow: inset 3px 0 0 var(--bpcl-blue);
 }
 
 .staff-roster-thumb {
-  width: 40px;
-  height: 48px;
-  border-radius: 4px;
+  width: 36px;
+  height: 42px;
+  border-radius: var(--radius-sm, 8px);
   object-fit: cover;
   object-position: center top;
   flex-shrink: 0;
-  border: 1px solid rgba(0, 61, 115, 0.15);
+  border: 1px solid var(--border, #e2e8f0);
 }
 
 .staff-roster-thumb-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #dce8f4;
-  color: var(--bpcl-blue, #0070c0);
+  background: var(--bpcl-blue-soft);
+  color: var(--bpcl-blue);
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .staff-roster-item-text {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  flex: 1;
 }
 
 .staff-roster-item-name {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--text-sm, 0.875rem);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .staff-roster-item-meta {
-  font-size: 0.75rem;
-  color: var(--text-muted, #4a5f73);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--text-muted, #64748b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.staff-id-badge {
+  flex-shrink: 0;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.staff-id-badge--ready {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.staff-id-badge--draft {
+  background: var(--surface-muted, #f1f5f9);
+  color: var(--text-muted, #64748b);
 }
 
 .staff-main {
   min-width: 0;
 }
 
-.staff-empty-state {
-  text-align: center;
-  padding: 2.5rem 1.5rem;
-}
-
-.staff-empty-title {
-  margin: 0 0 0.5rem;
-  font-size: 1.15rem;
-  font-weight: 600;
-}
-
-.staff-panel-head {
+.staff-empty-body {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  justify-content: center;
+  padding: 1.5rem 0 0.5rem;
 }
 
-.staff-panel-head h2 {
-  margin: 0;
+.staff-form-panel .card-head.staff-panel-head {
+  margin-bottom: var(--space-4, 1rem);
 }
 
 .staff-profile-grid {
   display: grid;
-  grid-template-columns: 1fr minmax(320px, 1fr);
+  grid-template-columns: 1fr minmax(280px, 340px);
   gap: 1rem;
   align-items: start;
 }
 
-.staff-profile-head {
-  display: flex;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--border, #d8e2ec);
+.staff-profile-card.card,
+.staff-id-panel.card {
+  margin-bottom: 0;
+}
+
+.staff-profile-head.card-head {
+  align-items: center;
+  margin-bottom: var(--space-4, 1rem);
+  padding-bottom: var(--space-4, 1rem);
+  border-bottom: 1px solid var(--border, #e2e8f0);
 }
 
 .staff-profile-photo {
-  width: 120px;
-  height: 150px;
-  border-radius: 8px;
+  width: 112px;
+  height: 140px;
+  border-radius: var(--radius-md, 10px);
   overflow: hidden;
   flex-shrink: 0;
-  border: 2px solid var(--bpcl-blue, #0070c0);
-  background: #e8eef4;
-  position: relative;
+  border: 2px solid var(--bpcl-blue);
+  background: var(--surface-muted, #f8fafc);
+  box-shadow: var(--shadow-sm);
 }
 
 .staff-profile-photo #staff-profile-img {
@@ -5532,9 +5496,9 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   justify-content: center;
   width: 100%;
   height: 100%;
-  font-size: 2.5rem;
+  font-size: 2.25rem;
   font-weight: 700;
-  color: var(--bpcl-blue, #0070c0);
+  color: var(--bpcl-blue);
 }
 
 .staff-profile-photo:not(.is-placeholder) #staff-profile-initial {
@@ -5561,51 +5525,219 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 }
 
 .staff-profile-details dt {
-  font-size: 0.72rem;
+  font-size: var(--text-xs, 0.75rem);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-muted, #4a5f73);
+  color: var(--text-muted, #64748b);
   margin: 0 0 0.1rem;
 }
 
 .staff-profile-details dd {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm, 0.875rem);
 }
 
 .staff-profile-address {
   grid-column: 1 / -1;
 }
 
-.staff-id-panel-head {
+.staff-id-status-banner {
+  margin: 0 0 0.75rem;
+}
+
+.staff-id-status-banner--ready {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.staff-id-panel-head h3 {
-  margin: 0;
-  font-size: 1rem;
-}
-
-.staff-id-hint {
+  gap: 0.35rem;
   margin: 0 0 0.75rem;
-  font-size: 0.85rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: var(--text-xs, 0.75rem);
 }
 
-.staff-id-hint.is-ready {
-  color: var(--success, #0d7a3e);
+.staff-id-teaser {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  margin: 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface, #fff);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.staff-id-teaser.clickable-card:hover {
+  border-color: rgba(0, 112, 192, 0.35);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.staff-id-teaser:focus-visible {
+  outline: 2px solid var(--bpcl-blue, #0070c0);
+  outline-offset: 2px;
+}
+
+.staff-id-teaser-logo-wrap {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+}
+
+.staff-id-teaser-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.staff-id-teaser-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.staff-id-teaser-title {
+  font-weight: 600;
+  font-size: var(--text-sm, 0.875rem);
+  color: var(--bpcl-blue-dark, #005a9c);
+}
+
+.staff-id-teaser-meta {
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.staff-id-teaser-chevron {
+  flex-shrink: 0;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: var(--bpcl-blue);
+  opacity: 0.65;
+}
+
+.staff-id-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4, 1rem);
+}
+
+.staff-id-modal[hidden] {
+  display: none !important;
+}
+
+.staff-id-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.staff-id-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 44rem);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-5, 1.25rem);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  animation: staff-id-modal-in 0.2s ease-out;
+}
+
+.staff-id-modal-panel.card {
+  margin-bottom: 0;
+}
+
+@keyframes staff-id-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.staff-id-modal-head.card-head {
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.staff-id-modal-head h2 {
+  margin: 0;
+}
+
+.staff-id-modal-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.staff-id-modal-close {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-elevated, #f1f5f9);
+  color: var(--text-muted, #64748b);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.staff-id-modal-close:hover {
+  background: var(--border, #e2e8f0);
+  color: var(--bpcl-blue);
+}
+
+.staff-id-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: var(--space-4, 1rem);
+  padding-top: var(--space-3, 0.75rem);
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.staff-id-modal-loading {
+  text-align: center;
+  padding: 2rem;
+  margin: 0;
+  color: var(--text-muted, #64748b);
+  font-size: var(--text-sm, 0.875rem);
 }
 
 @media (max-width: 900px) {
-  .staff-page-layout {
+  .staff-page-layout.settings-layout {
     grid-template-columns: 1fr;
   }
 
-  .staff-roster-sidebar {
+  .staff-roster-nav {
     position: static;
     max-height: none;
   }
@@ -5619,21 +5751,44 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   }
 }
 
-/* Staff ID cards — BPCL portrait PVC, futuristic */
-.staff-id-preview-label {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.75);
-}
-
+/* Staff ID cards — BPCL portrait PVC */
 .staff-id-preview-wrap {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--space-4, 1rem);
+  background: var(--surface-muted, #f8fafc);
+  border: 1px dashed var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  overflow: auto;
+  min-height: 360px;
+}
+
+
+.staff-id-preview-mount {
+  width: 100%;
+  display: flex;
   justify-content: center;
-  padding: 1rem;
-  background: linear-gradient(145deg, #0a1628 0%, #1a3a5c 45%, #0d2240 100%);
-  border-radius: var(--radius-md, 8px);
-  overflow-x: auto;
+  align-items: flex-start;
+  min-height: 330px;
+}
+
+.staff-id-preview-mount .staff-id-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.staff-id-preview-mount .staff-id-card {
+  width: 204px;
+  height: 324px;
+  min-width: 204px;
+  min-height: 324px;
+  flex-shrink: 0;
 }
 
 .staff-id-sheet {
@@ -5711,15 +5866,14 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 }
 
 .staff-id-topbar-logo {
-  width: 8mm;
-  height: 8mm;
+  width: 9.5mm;
+  height: 9.5mm;
   object-fit: contain;
-  background: #fff;
-  border-radius: 1.2mm;
-  padding: 0.55mm;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
   box-sizing: border-box;
   flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .staff-id-topbar-text {
@@ -5753,20 +5907,20 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   position: relative;
   z-index: 1;
   flex: 1 1 auto;
-  padding: 1.5mm 3mm 1mm;
+  padding: 1mm 3mm 0.8mm;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.9mm;
+  gap: 0.65mm;
   min-height: 0;
   overflow: hidden;
 }
 
 .staff-id-card-body--back {
   align-items: stretch;
-  gap: 1.3mm;
-  padding-bottom: 1mm;
+  gap: 1mm;
+  padding-bottom: 0.8mm;
 }
 
 /* Photo hero — centre of focus */
@@ -5775,7 +5929,7 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   justify-content: center;
   width: 100%;
   flex-shrink: 0;
-  padding: 1mm 0 0.5mm;
+  padding: 0.5mm 0 0.3mm;
 }
 
 .staff-id-photo-ring {
@@ -5789,8 +5943,8 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 }
 
 .staff-id-photo-wrap {
-  width: 33mm;
-  height: 35mm;
+  width: 28mm;
+  height: 30mm;
   border-radius: 2.2mm;
   overflow: hidden;
   background: linear-gradient(180deg, #dce8f4 0%, #b8cfe4 100%);
@@ -5820,9 +5974,9 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   margin: 0;
   width: 100%;
   text-align: center;
-  font-size: 3.7mm;
+  font-size: 3.4mm;
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1.08;
   color: var(--id-navy);
   text-transform: uppercase;
   flex-shrink: 0;
@@ -5983,8 +6137,8 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 2.5mm;
-  line-height: 1.38;
+  font-size: 2.35mm;
+  line-height: 1.32;
   color: var(--id-muted);
   flex: 0 0 auto;
 }
@@ -5992,7 +6146,7 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 .staff-id-rules li {
   position: relative;
   padding-left: 3.2mm;
-  margin-bottom: 1.2mm;
+  margin-bottom: 0.9mm;
 }
 
 .staff-id-rules li::before {
@@ -6240,6 +6394,17 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 
 .month-year-filter-controls select:last-child {
   flex: 0 0 5.5rem;
+}
+
+.month-year-filter-controls .month-year-filter-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .month-year-filter-controls .month-year-filter-action {
+    flex: 1 1 100%;
+  }
 }
 
 .salary-kpi-grid {

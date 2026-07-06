@@ -10,13 +10,13 @@
   "theme_color": "#0070c0",
   "icons": [
     {
-      "src": "assets/bpcl-logo.png",
+      "src": "assets/bishnupriya-fuels-logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/bpcl-logo.png",
+      "src": "assets/bishnupriya-fuels-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
