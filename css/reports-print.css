@@ -11,6 +11,7 @@
   --report-text: #1a2332;
   --report-muted: #64748b;
   --report-sheet-width: 186mm;
+  --station-logo-size-print: 12mm;
 }
 
 *,
@@ -66,11 +67,13 @@ body.report-print-body {
   gap: 8pt;
 }
 
-.report-bpcl-logo {
-  flex-shrink: 0;
-  width: auto;
-  height: 28pt;
+.report-bpcl-logo,
+.invoice-bpcl-logo,
+.salary-slip-logo {
+  width: var(--station-logo-size-print);
+  height: var(--station-logo-size-print);
   object-fit: contain;
+  flex-shrink: 0;
 }
 
 .report-letterhead-text {

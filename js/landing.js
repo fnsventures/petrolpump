@@ -6,7 +6,7 @@ const SLIDESHOW_IMAGES = [
 ];
 
 /** Used when slideshow photos are not deployed (e.g. local dev without image assets). */
-const SLIDESHOW_FALLBACK = "assets/bpcl-logo.png";
+const SLIDESHOW_FALLBACK = "assets/bishnupriya-fuels-logo.png";
 
 const SLIDE_INTERVAL_MS = 2500;
 const SLIDE_FADE_MS = 800;

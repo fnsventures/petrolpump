@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -354,7 +354,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
     <article class="salary-slip-sheet" data-slip-ref="${escapeHtml(slipRef)}">
       <header class="salary-slip-head">
         <div class="salary-slip-letterhead">
-          <img src="${slipAssetUrl(AppConfig.BPCL_LOGO_SRC)}" alt="Bharat Petroleum" class="salary-slip-logo" width="56" height="68" />
+          <img src="${slipAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}" alt="Bishnupriya Fuels" class="station-logo salary-slip-logo" width="64" height="64" />
           <div class="salary-slip-letterhead-text">
             <h1 class="salary-slip-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
             <p class="salary-slip-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -503,76 +503,19 @@ async function getSalarySlipPrintCssText() {
   return salarySlipPrintCssCache;
 }
 
-async function waitForSalarySlipPrintReady(doc, win) {
-  await new Promise((resolve) => {
-    const timeout = window.setTimeout(resolve, 5000);
-    const finish = () => {
-      window.clearTimeout(timeout);
-      resolve();
-    };
-    if (win.document.readyState === "complete") {
-      finish();
-    } else {
-      win.addEventListener("load", finish, { once: true });
-    }
-  });
-
-  const logo = doc.querySelector(".salary-slip-logo");
-  if (logo && !logo.complete) {
-    await new Promise((resolve) => {
-      logo.addEventListener("load", resolve, { once: true });
-      logo.addEventListener("error", resolve, { once: true });
-      window.setTimeout(resolve, 2500);
-    });
-  }
-
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  void doc.body.offsetHeight;
-}
-
 async function runSalarySlipPrint(staff, staffPayments, monthValue) {
   const [sheetHtml, cssText] = await Promise.all([
     Promise.resolve(buildSalarySlipHtml(staff, staffPayments, monthValue)),
     getSalarySlipPrintCssText(),
   ]);
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("title", "Salary slip print");
-  iframe.style.cssText =
-    "position:fixed;left:-9999px;top:0;width:210mm;height:297mm;border:0;opacity:0;pointer-events:none";
-  document.body.appendChild(iframe);
 
-  const doc = iframe.contentDocument;
-  const win = iframe.contentWindow;
-  if (!doc || !win) {
-    iframe.remove();
-    throw new Error("Print frame unavailable");
-  }
-
-  doc.open();
-  doc.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(staff.name || "Staff")} · Salary slip</title>
-  <style>${cssText.replace(/<\/style/gi, "<\\/style")}</style>
-</head>
-<body>
-  ${sheetHtml}
-</body>
-</html>`);
-  doc.close();
-
-  try {
-    await waitForSalarySlipPrintReady(doc, win);
-    const cleanup = () => iframe.remove();
-    win.addEventListener("afterprint", cleanup, { once: true });
-    win.focus();
-    win.print();
-    window.setTimeout(cleanup, 5000);
-  } catch (err) {
-    iframe.remove();
-    throw err;
-  }
+  await PrintUtils.printInIframe({
+    title: `${staff.name || "Staff"} · Salary slip`,
+    bodyHtml: sheetHtml,
+    cssText,
+    iframeTitle: "Salary slip print",
+    imageSelectors: [".salary-slip-logo"],
+  });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

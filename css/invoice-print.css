@@ -12,6 +12,7 @@
   --inv-border: #b8d4e8;
   --inv-text: #1a2332;
   --inv-muted: #4a5f7a;
+  --station-logo-size-print: 12mm;
 }
 
 *,
@@ -84,17 +85,16 @@ body {
 
 .invoice-logo-wrap {
   flex: 0 0 auto;
-  padding: 6px;
-  border: 1px solid var(--inv-border);
-  border-radius: 6px;
-  background: #fff;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .invoice-bpcl-logo {
   display: block;
-  width: 56px;
-  height: auto;
-  max-height: 70px;
+  width: var(--station-logo-size-print);
+  height: var(--station-logo-size-print);
   object-fit: contain;
 }
 
