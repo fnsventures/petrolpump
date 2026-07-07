@@ -5350,6 +5350,30 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   line-height: 1.45;
 }
 
+.staff-roster-search-wrap {
+  display: block;
+  margin: 0 0 0.65rem;
+  padding: 0 0.15rem;
+}
+
+.staff-roster-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border, #d8dee8);
+  border-radius: var(--radius-sm, 6px);
+  font: inherit;
+  font-size: var(--text-sm, 0.875rem);
+  background: var(--surface, #fff);
+  color: inherit;
+}
+
+.staff-roster-search:focus {
+  outline: 2px solid var(--accent, #005baa);
+  outline-offset: 1px;
+  border-color: var(--accent, #005baa);
+}
+
 .staff-roster-list {
   list-style: none;
   margin: 0;
