@@ -115,12 +115,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          # js/env.js is gitignored in the source repo but must ship on Pages
-          if [ "$target" = "staging" ]; then
-            git add -f staging/js/env.js
-          else
-            git add -f js/env.js
-          fi
+          # js/env.js is gitignored in the source repo but must ship on Pages.
+          # Always force-add both paths when present so a staging-only deploy cannot
+          # drop prod js/env.js (and a prod deploy cannot drop staging/js/env.js).
+          for env_path in js/env.js staging/js/env.js; do
+            [ -f "$env_path" ] && git add -f "$env_path"
+          done
           if git diff --cached --quiet; then
             echo "gh-pages unchanged, skipping push"
             exit 0
