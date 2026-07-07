@@ -221,7 +221,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!staffList.length) {
       attendanceBody.innerHTML =
-        '<tr><td colspan="5" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first (admin).</td></tr>';
+        '<tr><td colspan="5" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first.</td></tr>';
       if (attendanceSummary) attendanceSummary.textContent = "";
       return;
     }
@@ -470,7 +470,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!staffList.length) {
       if (historyMatrixSummary) historyMatrixSummary.textContent = "";
       historyMatrixWrap.innerHTML =
-        '<p class="muted att-matrix-placeholder">Add staff in <a href="staff.html">HR → Staff</a> first (admin).</p>';
+        '<p class="muted att-matrix-placeholder">Add staff in <a href="staff.html">HR → Staff</a> first.</p>';
       return;
     }
 

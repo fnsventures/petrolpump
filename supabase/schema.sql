@@ -219,7 +219,7 @@ begin
   -- Define page access rules
   v_allowed := case p_page
     when 'settings' then v_role = 'admin'
-    when 'staff' then v_role = 'admin'
+    when 'staff' then v_role in ('admin', 'supervisor')
     when 'analysis' then v_role = 'admin'
     when 'reports' then v_role = 'admin'
     when 'dashboard' then v_role in ('admin', 'supervisor')
@@ -1051,7 +1051,7 @@ create table if not exists public.employees (
 
 create index if not exists employees_display_order_idx on public.employees (display_order, name);
 
-comment on table public.employees is 'Pump employees who receive salary (e.g. supervisor + operators). Used for salary and attendance.';
+comment on table public.employees is 'Pump employees who receive salary. Mutations: admin or supervisor (delete: admin only). Used for salary and attendance.';
 comment on column public.employees.photo_url is 'Public URL of staff photo for ID card (staff-photos bucket).';
 comment on column public.employees.date_of_birth is 'Date of birth (shown on staff ID card).';
 comment on column public.employees.id_valid_from is 'ID card valid from (back of card).';
@@ -1064,8 +1064,8 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_admin() then
-    raise exception 'Admin only';
+  if not public.is_supervisor_or_admin() then
+    raise exception 'Staff access required';
   end if;
   update public.employees
   set photo_url = nullif(trim(p_photo_url), '')
@@ -1163,22 +1163,24 @@ grant execute on function public.list_employees_salary() to authenticated;
 
 alter table public.employees enable row level security;
 
-drop policy if exists "employees_select_authenticated" on public.employees;
 drop policy if exists "employees_select_admin" on public.employees;
-create policy "employees_select_admin" on public.employees
-  for select to authenticated using (public.is_admin());
+drop policy if exists "employees_select_staff" on public.employees;
+create policy "employees_select_staff" on public.employees
+  for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "employees_insert_own_or_admin" on public.employees;
 drop policy if exists "employees_insert_admin" on public.employees;
-create policy "employees_insert_admin" on public.employees
-  for insert to authenticated with check (public.is_admin());
+drop policy if exists "employees_insert_staff" on public.employees;
+create policy "employees_insert_staff" on public.employees
+  for insert to authenticated with check (public.is_supervisor_or_admin());
 
 drop policy if exists "employees_update_by_role" on public.employees;
 drop policy if exists "employees_update_admin" on public.employees;
-create policy "employees_update_admin" on public.employees
+drop policy if exists "employees_update_staff" on public.employees;
+create policy "employees_update_staff" on public.employees
   for update to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
+  using (public.is_supervisor_or_admin())
+  with check (public.is_supervisor_or_admin());
 
 drop policy if exists "employees_delete_admin" on public.employees;
 create policy "employees_delete_admin" on public.employees
