@@ -22,7 +22,7 @@
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js"></script>
     <script defer src="js/printUtils.js"></script>
-    <script defer src="js/staff.js?v=11"></script>
+    <script defer src="js/staff.js?v=12"></script>
   </head>
   <body class="staff-page">
     <header class="topbar">
@@ -55,7 +55,7 @@
           <div class="nav-group" role="menu">
             <a href="attendance.html">Attendance</a>
             <a href="salary.html">Salary</a>
-            <a href="staff.html" data-role="admin-only" style="display:none">Staff</a>
+            <a href="staff.html">Staff</a>
           </div>
         </div>
         <div class="nav-group-block">
@@ -77,7 +77,10 @@
           <p class="muted staff-roster-count" id="staff-roster-count">—</p>
           <button type="button" id="staff-add-btn" class="button-secondary button-small">+ Add</button>
         </div>
-        <p class="muted staff-roster-hint">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
+        <label class="staff-roster-search-wrap">
+          <input type="search" id="staff-roster-search" class="staff-roster-search" placeholder="Search by name or role…" autocomplete="off" aria-label="Search staff" />
+        </label>
+        <p class="muted staff-roster-hint" data-role="admin-only" style="display:none">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
         <ul id="staff-roster-list" class="staff-roster-list" role="listbox" aria-label="Select staff member">
           <li class="staff-roster-loading muted">Loading…</li>
         </ul>
@@ -195,7 +198,7 @@
                   <p id="staff-profile-role" class="muted">—</p>
                   <div class="staff-profile-actions">
                     <button type="button" id="staff-profile-edit-btn" class="button-secondary">Edit profile</button>
-                    <button type="button" id="staff-profile-delete-btn" class="button-delete">Remove</button>
+                    <button type="button" id="staff-profile-delete-btn" class="button-delete" data-role="admin-only" style="display:none">Remove</button>
                   </div>
                 </div>
               </div>

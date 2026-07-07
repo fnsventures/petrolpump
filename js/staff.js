@@ -13,7 +13,7 @@ const STAFF_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
-    allowedRoles: ["admin"],
+    allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
     pageName: "staff",
   });
@@ -340,8 +340,10 @@ function waitForCardImages(root, timeoutMs = 4000) {
 }
 
 function initStaffPage(auth) {
+  const isAdmin = auth.role === "admin";
   const rosterList = document.getElementById("staff-roster-list");
   const rosterCount = document.getElementById("staff-roster-count");
+  const rosterSearch = document.getElementById("staff-roster-search");
   const emptyState = document.getElementById("staff-empty-state");
   const formPanel = document.getElementById("staff-form-panel");
   const profilePanel = document.getElementById("staff-profile-panel");
@@ -391,6 +393,7 @@ function initStaffPage(auth) {
 
   let staffList = [];
   let staffListLoadError = null;
+  let rosterFilter = "";
   let selectedId = null;
   let pendingPhotoFile = null;
   let removePhotoOnSave = false;
@@ -623,6 +626,16 @@ function initStaffPage(auth) {
     if (emp) renderProfile(emp);
   }
 
+  function filteredStaffList() {
+    const q = rosterFilter.trim().toLowerCase();
+    if (!q) return staffList;
+    return staffList.filter((s) => {
+      const name = (s.name || "").toLowerCase();
+      const role = (s.role_display || "").toLowerCase();
+      return name.includes(q) || role.includes(q);
+    });
+  }
+
   function renderRosterList() {
     if (!rosterList) return;
     if (staffListLoadError) {
@@ -630,17 +643,25 @@ function initStaffPage(auth) {
       if (rosterCount) rosterCount.textContent = "—";
       return;
     }
+    const visible = filteredStaffList();
     if (rosterCount) {
-      rosterCount.textContent =
-        staffList.length === 0
-          ? "No staff yet"
-          : `${staffList.length} member${staffList.length === 1 ? "" : "s"}`;
+      if (!staffList.length) {
+        rosterCount.textContent = "No staff yet";
+      } else if (rosterFilter.trim()) {
+        rosterCount.textContent = `${visible.length} of ${staffList.length} shown`;
+      } else {
+        rosterCount.textContent = `${staffList.length} member${staffList.length === 1 ? "" : "s"}`;
+      }
     }
     if (!staffList.length) {
       rosterList.innerHTML = '<li class="staff-roster-empty muted">Add your first staff member.</li>';
       return;
     }
-    rosterList.innerHTML = staffList
+    if (!visible.length) {
+      rosterList.innerHTML = '<li class="staff-roster-empty muted">No matches for your search.</li>';
+      return;
+    }
+    rosterList.innerHTML = visible
       .map((s) => {
         const active = s.id === selectedId ? " is-active" : "";
         const thumb = s.photo_url
@@ -668,7 +689,7 @@ function initStaffPage(auth) {
   async function loadStaffMembers() {
     try {
       staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
-        isAdmin: true,
+        isAdmin,
         useCache: true,
       });
       staffListLoadError = null;
@@ -718,6 +739,16 @@ function initStaffPage(auth) {
     const btn = e.target instanceof Element ? e.target.closest(".staff-roster-item") : null;
     if (!btn) return;
     selectEmployee(btn.getAttribute("data-id"));
+  });
+
+  rosterSearch?.addEventListener("input", () => {
+    rosterFilter = rosterSearch.value || "";
+    renderRosterList();
+  });
+
+  window.addEventListener("hashchange", () => {
+    const hashId = (location.hash || "").replace(/^#/, "");
+    if (hashId && staffList.some((s) => s.id === hashId)) selectEmployee(hashId);
   });
 
   document.getElementById("staff-add-btn")?.addEventListener("click", openAddForm);

@@ -1119,7 +1119,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!staffList.length) {
       tbody.innerHTML =
-        '<tr><td colspan="7" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first (admin).</td></tr>';
+        '<tr><td colspan="7" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first.</td></tr>';
       if (kpiPayroll) kpiPayroll.textContent = "—";
       if (kpiPaid) kpiPaid.textContent = "—";
       if (kpiPending) kpiPending.textContent = "—";
