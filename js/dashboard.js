@@ -635,6 +635,8 @@ function getAlertThresholds() {
     highCredit: t.highCredit > 0 ? t.highCredit : 0,
     highVariation: t.highVariation > 0 ? t.highVariation : 0,
     dayClosingReminder: t.dayClosingReminder,
+    dayClosingShortage: t.dayClosingShortage,
+    shortageAlert: t.shortageAlert,
   };
 }
 
@@ -663,6 +665,29 @@ async function updateSmartAlerts() {
       cta: "View DSR",
       href: "dsr.html",
     });
+  }
+
+  if (th.shortageAlert) {
+    const todayStr = formatDateInput(new Date());
+    const { data: closingRow, error: closingError } = await supabaseClient
+      .from("day_closing")
+      .select("short_today")
+      .eq("date", todayStr)
+      .maybeSingle();
+
+    if (!closingError && closingRow?.short_today != null && PumpSettings.isDayClosingShortage(closingRow.short_today)) {
+      const shortAmount = Number(closingRow.short_today);
+      const thresholdLabel =
+        th.dayClosingShortage > 0
+          ? `your alert threshold (${formatCurrency(th.dayClosingShortage)})`
+          : "zero";
+      alerts.push({
+        type: "warning",
+        message: `Today's short (${formatCurrency(shortAmount)}) is above ${thresholdLabel}. Review night cash and PhonePe totals.`,
+        cta: "Day closing",
+        href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
+      });
+    }
   }
 
   if (alerts.length === 0) {
