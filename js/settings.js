@@ -430,11 +430,15 @@ function bindAlertsForm(auth) {
   const dieselInput = document.getElementById("low-stock-diesel");
   const highCreditInput = document.getElementById("alert-high-credit");
   const highVariationInput = document.getElementById("alert-high-variation");
+  const dayClosingShortageInput = document.getElementById("alert-day-closing-shortage");
+  const shortageAlertCheck = document.getElementById("alert-shortage");
   const dayClosingCheck = document.getElementById("alert-day-closing");
   if (petrolInput) petrolInput.value = a.petrol;
   if (dieselInput) dieselInput.value = a.diesel;
   if (highCreditInput) highCreditInput.value = a.highCredit || "";
   if (highVariationInput) highVariationInput.value = a.highVariation || "";
+  if (dayClosingShortageInput) dayClosingShortageInput.value = a.dayClosingShortage ?? 0;
+  if (shortageAlertCheck) shortageAlertCheck.checked = a.shortageAlert !== false;
   if (dayClosingCheck) dayClosingCheck.checked = a.dayClosingReminder;
 
   form.addEventListener("submit", async (e) => {
@@ -459,6 +463,11 @@ function bindAlertsForm(auth) {
           ),
           highCredit: parseOptionalNumber(highCreditInput?.value, curAlerts.highCredit ?? 0),
           highVariation: parseOptionalNumber(highVariationInput?.value, curAlerts.highVariation ?? 0),
+          dayClosingShortage: parseOptionalNumber(
+            dayClosingShortageInput?.value,
+            curAlerts.dayClosingShortage ?? AppConfig.DEFAULT_ALERTS.dayClosingShortage
+          ),
+          shortageAlert: shortageAlertCheck?.checked !== false,
           dayClosingReminder: dayClosingCheck?.checked !== false,
         },
       }, auth.session?.user?.id);

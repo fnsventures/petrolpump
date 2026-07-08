@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, CreditCustomerDetail, initPageSections, toLocalDateString, debounce, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, getMonthRange, getRangeForSelection, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
 
 const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
 
@@ -493,15 +493,15 @@ function getOverviewDateRange() {
     document.getElementById("credit-overview-end")
   );
   if (range) return { start: range.start, end: range.end };
-  const today = new Date();
-  return getMonthRange(today.getFullYear(), today.getMonth());
+  const fallback = getRangeForSelection("all-time");
+  return { start: fallback.start, end: fallback.end };
 }
 
 function initOverviewPanel() {
   createDateRangeFilter({
     storageKey: "credit_overview_period",
-    ranges: ["today", "this-week", "this-month", "custom"],
-    defaultRange: "this-month",
+    ranges: ["today", "this-week", "this-month", "all-time", "custom"],
+    defaultRange: "all-time",
     rangeSelect: "credit-overview-range",
     startInput: "credit-overview-start",
     endInput: "credit-overview-end",
@@ -690,7 +690,7 @@ function normalizeOverviewPeriodData(raw) {
 }
 
 function overviewCacheKey(start, end) {
-  return `credit_overview_${start}_${end}`;
+  return `credit_overview_${start || "all"}_${end}`;
 }
 
 function applyOverviewPeriodData(data) {
@@ -763,11 +763,11 @@ async function loadOverviewPeriodActivity() {
   try {
     const fetchFn = async () => {
       const { data, error } = await supabaseClient.rpc("get_credit_overview_period", {
-        p_from: start,
+        p_from: start || null,
         p_to: end,
       });
       if (error) throw error;
-      return normalizeOverviewPeriodData(data);
+      return data;
     };
 
     let data;

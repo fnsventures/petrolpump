@@ -3041,7 +3041,8 @@ begin
            coalesce(sum(e.amount), 0)::numeric as credit_taken
     from public.credit_entries e
     inner join public.credit_customers c on c.id = e.credit_customer_id
-    where e.transaction_date between p_from and p_to
+    where e.transaction_date <= p_to
+      and (p_from is null or e.transaction_date >= p_from)
     group by 1
   ),
   payment_agg as (
@@ -3050,7 +3051,8 @@ begin
            coalesce(sum(p.amount), 0)::numeric as settled
     from public.credit_payments p
     inner join public.credit_customers c on c.id = p.credit_customer_id
-    where p.date between p_from and p_to
+    where p.date <= p_to
+      and (p_from is null or p.date >= p_from)
     group by 1
   ),
   merged as (
@@ -3102,7 +3104,7 @@ begin
 end;
 $$;
 comment on function public.get_credit_overview_period(date, date) is
-  'Portfolio credit activity for a date range: totals and per-customer breakdown (one round-trip).';
+  'Portfolio credit activity for a date range (null p_from = all time): totals and per-customer breakdown.';
 
 -- ============================================================================
 -- AUDIT TRIGGERS (automatic logging of sensitive operations)

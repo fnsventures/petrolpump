@@ -121,6 +121,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       finishRecordFormSave(form, { date: savedDate }, { date: RECORD_DATE_KEYS.expense });
       successEl?.classList.remove("hidden");
       loadExpenses(true);
+      try {
+        localStorage.setItem("expenses-updated", String(Date.now()));
+      } catch (e) {
+        /* ignore */
+      }
       // Invalidate cache so dashboard reflects new expense immediately
       if (typeof CacheInvalidation !== "undefined") {
         CacheInvalidation.invalidate("operational");

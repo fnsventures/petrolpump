@@ -410,6 +410,20 @@
                 <input id="low-stock-diesel" type="number" min="0" step="100" />
               </div>
             </div>
+            <h3 class="settings-subheading">Day closing short</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-day-closing-shortage">Shortage threshold (₹)</label>
+                <input id="alert-day-closing-shortage" type="number" min="0" step="1" />
+                <small class="muted">Amounts above this are treated as a short (red card). Use 0 to flag any positive short.</small>
+              </div>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-shortage" type="checkbox" checked />
+                Alert when today&apos;s short exceeds the threshold
+              </label>
+            </div>
             <h3 class="settings-subheading">Other alerts</h3>
             <div class="form-grid">
               <div class="form-field">

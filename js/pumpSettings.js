@@ -226,13 +226,31 @@
 
   function getAlertThresholds() {
     const a = getCachedSync().alerts || {};
+    const shortage =
+      Number(a.dayClosingShortage) >= 0
+        ? Number(a.dayClosingShortage)
+        : AppConfig.DEFAULT_ALERTS.dayClosingShortage;
     return {
       petrol: Number(a.lowStockPetrol) >= 0 ? Number(a.lowStockPetrol) : AppConfig.DEFAULT_ALERTS.lowStockPetrol,
       diesel: Number(a.lowStockDiesel) >= 0 ? Number(a.lowStockDiesel) : AppConfig.DEFAULT_ALERTS.lowStockDiesel,
       highCredit: Number(a.highCredit) || 0,
       highVariation: Number(a.highVariation) || 0,
       dayClosingReminder: a.dayClosingReminder !== false,
+      dayClosingShortage: shortage,
+      shortageAlert: a.shortageAlert !== false,
     };
+  }
+
+  const SHORTAGE_EPSILON = 0.005;
+
+  function isDayClosingShortage(amount) {
+    const t = getAlertThresholds().dayClosingShortage;
+    return Number(amount) > t + SHORTAGE_EPSILON;
+  }
+
+  function isDayClosingSurplus(amount) {
+    const t = getAlertThresholds().dayClosingShortage;
+    return Number(amount) < -(t + SHORTAGE_EPSILON);
   }
 
   function getShiftConfig() {
@@ -266,6 +284,8 @@
     getStationContactLine,
     getPumpConfig,
     getAlertThresholds,
+    isDayClosingShortage,
+    isDayClosingSurplus,
     getShiftConfig,
     getReceiptHistoryStart,
     normalize,
