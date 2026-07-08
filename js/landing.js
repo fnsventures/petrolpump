@@ -114,7 +114,8 @@ async function resolveSlideSrc(set) {
 async function resolveSlideshowImages() {
   const loaded = await Promise.all(SLIDESHOW_SETS.map((set) => resolveSlideSrc(set)));
   const available = loaded.filter(Boolean);
-  return available.length > 0 ? available : [SLIDESHOW_FALLBACK];
+  if (available.length > 0) return available;
+  return [SLIDESHOW_FALLBACK];
 }
 
 function startRandomSlideshow(imageList) {
@@ -124,7 +125,14 @@ function startRandomSlideshow(imageList) {
   ];
   if (slides.some((el) => !el) || !imageList.length) return;
 
-  let order = shuffle(imageList);
+  // First slide is rendered via <picture> in HTML for LCP; rotate the rest.
+  const rotationImages =
+    imageList.length > 1
+      ? imageList.filter((src) => src !== imageList[0])
+      : [];
+  if (!rotationImages.length) return;
+
+  let order = shuffle(rotationImages);
   let index = 0;
   let active = 0;
 
@@ -144,14 +152,10 @@ function startRandomSlideshow(imageList) {
     index += 1;
 
     if (index >= order.length) {
-      order = shuffle(imageList);
+      order = shuffle(rotationImages);
       index = 0;
     }
   };
-
-  slides[active].style.backgroundImage = `url("${order[0]}")`;
-  slides[active].classList.add("is-visible");
-  index = 1;
 
   window.setInterval(showSlide, SLIDE_INTERVAL_MS);
 }

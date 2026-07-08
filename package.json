@@ -7,6 +7,7 @@
     "build:images": "node scripts/optimize-images.mjs",
     "build:html": "node scripts/build-html.mjs",
     "dev": "node scripts/dev-server.mjs",
+    "build:site": "node scripts/build-site.mjs",
     "build:fonts": "node scripts/download-fonts.mjs",
     "build:assets": "npm run build:images && npm run build:vendor && npm run build:fonts",
     "minify": "node scripts/minify-assets.mjs"

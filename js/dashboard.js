@@ -543,6 +543,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     initPageSections({
       defaultSection: "snapshot",
       validSections: dashboardSections,
+      onSectionChange: (section) => {
+        if (section === "dsr") void ensureDsrSectionLoaded();
+        if (section === "pl" && role === "admin") void ensurePlSectionLoaded();
+      },
     });
   }
 
@@ -606,21 +610,28 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (typeof window.showProgress === "function") window.showProgress();
   try {
+    setupDsrFilter();
+    if (role === "admin") setupPlFilter();
+
     await Promise.all([
       loadTodaySales(snapshotDateStr),
       loadCreditSummary(snapshotDateStr),
       loadHeroStock(snapshotDateStr),
-      initializeDsrDashboard(),
-      initializeProfitLossFilter(),
     ]);
     if (snapshotCard) snapshotCard.classList.remove("loading");
-    if (dsrCard) dsrCard.classList.remove("loading");
+
+    const initialSection = (location.hash || "").replace(/^#/, "") || "snapshot";
+    if (initialSection === "dsr") {
+      await ensureDsrSectionLoaded();
+    } else if (initialSection === "pl" && role === "admin") {
+      await ensurePlSectionLoaded();
+    } else if (dsrCard) {
+      dsrCard.classList.remove("loading");
+    }
+
     await updateSmartAlerts();
     await loadDayClosingBanners();
     updateDashboardAlertsVisibility();
-    if (role === "admin") {
-      loadPlTodoBanner();
-    }
     if (window.location.hash === "#pl") {
       setTimeout(() => {
         const plEl = document.getElementById("pl");
@@ -793,9 +804,14 @@ async function loadDayClosingBanners() {
   block.classList.toggle("hidden", parts.length === 0);
 }
 
-async function initializeDsrDashboard() {
-  if (!document.getElementById("dsr-range")) return;
-  createDateRangeFilter({
+let dsrFilterApi = null;
+let plFilterApi = null;
+let dsrSectionLoaded = false;
+let plSectionLoaded = false;
+
+function setupDsrFilter() {
+  if (dsrFilterApi || !document.getElementById("dsr-range")) return dsrFilterApi;
+  dsrFilterApi = createDateRangeFilter({
     storageKey: "dashboard_dsr",
     ranges: ["today", "yesterday", "this-week", "this-month", "custom"],
     defaultRange: "yesterday",
@@ -805,8 +821,100 @@ async function initializeDsrDashboard() {
     customRange: "dsr-custom-range",
     form: "dsr-filter-form",
     labelEl: "dsr-date-label",
+    trigger: "manual",
+    runOnInit: false,
     onApply: (range) => loadDsrSummary(range),
   });
+  return dsrFilterApi;
+}
+
+async function ensureDsrSectionLoaded() {
+  setupDsrFilter();
+  if (!dsrFilterApi) return;
+  const dsrCard = document.getElementById("dsr-dashboard-card");
+  if (!dsrSectionLoaded) {
+    dsrSectionLoaded = true;
+    await dsrFilterApi.refresh();
+  }
+  if (dsrCard) dsrCard.classList.remove("loading");
+}
+
+function setupPlFilter() {
+  if (plFilterApi || !document.getElementById("pl-range")) return plFilterApi;
+  plFilterApi = createDateRangeFilter({
+    storageKey: "dashboard_pl",
+    ranges: ["today", "this-week", "this-month", "custom"],
+    defaultRange: "today",
+    rangeSelect: "pl-range",
+    startInput: "pl-start",
+    endInput: "pl-end",
+    customRange: "pl-custom-range",
+    form: "pl-filter-form",
+    labelEl: "pl-date-label",
+    trigger: "manual",
+    runOnInit: false,
+    onApply: (range) => loadProfitLossSummary(range),
+  });
+  return plFilterApi;
+}
+
+async function ensurePlSectionLoaded() {
+  setupPlFilter();
+  if (!plFilterApi) return;
+  if (!plSectionLoaded) {
+    plSectionLoaded = true;
+    await Promise.all([plFilterApi.refresh(), loadPlTodoBanner()]);
+  }
+}
+
+async function fetchProfitLossData(range) {
+  await loadPumpSettings();
+  const receiptStart = PumpSettings.getReceiptHistoryStart();
+
+  try {
+    const { data, error } = await AppError.withRetry(
+      () =>
+        supabaseClient.functions.invoke("get-pl-data", {
+          body: {
+            startDate: range.start,
+            endDate: range.end,
+            receiptHistoryStart: receiptStart,
+          },
+        }),
+      { maxAttempts: 3 }
+    );
+
+    if (error) throw error;
+
+    return {
+      dsrRows: data?.dsrRows ?? [],
+      receiptRows: data?.receiptRows ?? [],
+      expenseRows: data?.expenseRows ?? [],
+      lubeSales: Number(data?.lubeSales ?? 0),
+      dsrError: data?.errors?.dsr ? new Error(data.errors.dsr) : null,
+      expenseError: data?.errors?.expense ? new Error(data.errors.expense) : null,
+      lubeError: data?.errors?.lube ? new Error(data.errors.lube) : null,
+    };
+  } catch {
+    const [dsrResult, expenseResult, lubeResult] = await Promise.all([
+      DsrQueries.fetchDsrRows(range.start, range.end, {
+        select:
+          "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre",
+      }),
+      DsrQueries.fetchExpenses(range.start, range.end),
+      DsrQueries.fetchLubeSales(range.start, range.end),
+    ]);
+
+    return {
+      dsrRows: dsrResult.data ?? [],
+      receiptRows: dsrResult.receiptRows ?? [],
+      expenseRows: expenseResult.data ?? [],
+      lubeSales: lubeResult.total ?? 0,
+      dsrError: dsrResult.error,
+      expenseError: expenseResult.error,
+      lubeError: lubeResult.error,
+    };
+  }
 }
 
 async function loadTodaySales(dateStr) {
@@ -1244,23 +1352,6 @@ function renderDsrSummary(data, elements, range) {
   scheduleAutoFitStats();
 }
 
-async function initializeProfitLossFilter() {
-  if (!document.getElementById("pl-range")) return;
-  createDateRangeFilter({
-    storageKey: "dashboard_pl",
-    ranges: ["today", "this-week", "this-month", "custom"],
-    defaultRange: "today",
-    rangeSelect: "pl-range",
-    startInput: "pl-start",
-    endInput: "pl-end",
-    customRange: "pl-custom-range",
-    form: "pl-filter-form",
-    labelEl: "pl-date-label",
-    onApply: (range) => loadProfitLossSummary(range),
-  });
-}
-
-
 /**
  * Fetch count of DSR rows with receipts > 0 and no buying price (all history / old data included).
  */
@@ -1392,34 +1483,22 @@ async function loadProfitLossSummary(range) {
     plBuyingHintEl.textContent = getPlBuyingPriceHint();
   }
 
-  await loadPumpSettings();
+  const plData = await fetchProfitLossData(range);
+  if (plData.dsrError) AppError.report(plData.dsrError, { context: "profitLossSummary", type: "dsr" });
+  if (plData.expenseError) AppError.report(plData.expenseError, { context: "profitLossSummary", type: "expense" });
+  if (plData.lubeError) AppError.report(plData.lubeError, { context: "profitLossSummary", type: "lube" });
 
-  const [
-    dsrResult,
-    expenseResult,
-    lubeResult,
-  ] = await Promise.all([
-    DsrQueries.fetchDsrRows(range.start, range.end, {
-      select: "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre",
-    }),
-    DsrQueries.fetchExpenses(range.start, range.end),
-    DsrQueries.fetchLubeSales(range.start, range.end),
-  ]);
-  if (dsrResult.error) AppError.report(dsrResult.error, { context: "profitLossSummary", type: "dsr" });
-  if (expenseResult.error) AppError.report(expenseResult.error, { context: "profitLossSummary", type: "expense" });
-  if (lubeResult.error) AppError.report(lubeResult.error, { context: "profitLossSummary", type: "lube" });
+  const dsrRows = plData.dsrRows;
+  const receiptRows = plData.receiptRows;
+  const expenseData = plData.expenseRows;
 
-  const dsrRows = dsrResult.data ?? [];
-  const receiptRows = dsrResult.receiptRows;
-  const expenseData = expenseResult.data;
-
-  const hasDsr = !dsrResult.error;
-  const hasExpense = !expenseResult.error;
+  const hasDsr = !plData.dsrError;
+  const hasExpense = !plData.expenseError;
   const pl = computeProfitLossSummary({
     dsrRows,
     receiptRows,
     expenseRows: expenseData,
-    lubeSales: lubeResult.total,
+    lubeSales: plData.lubeSales,
   });
   const income = { total: pl.revenue, missingRates: pl.missingRates };
   const missingBuyingPrice = pl.missingBuyingPrice;
