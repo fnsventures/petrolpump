@@ -28,7 +28,7 @@
   --station-logo-size-md: 4rem;
   --station-logo-size-lg: 5rem;
   --station-logo-size-xl: 6.5rem;
-  --station-logo-size-print: 12mm;
+  --station-logo-size-print: 16mm;
   /* Brand & semantic colors */
   --color-primary: var(--bpcl-blue);
   --color-primary-hover: var(--bpcl-blue-dark);

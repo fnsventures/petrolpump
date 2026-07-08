@@ -89,7 +89,7 @@ function formatMonthLabel(monthValue) {
   return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
-const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=1";
+const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=2";
 
 function slipAssetUrl(path) {
   return new URL(path, window.location.href).href;
@@ -354,7 +354,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
     <article class="salary-slip-sheet" data-slip-ref="${escapeHtml(slipRef)}">
       <header class="salary-slip-head">
         <div class="salary-slip-letterhead">
-          <img src="${slipAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}" alt="Bishnupriya Fuels" class="station-logo salary-slip-logo" width="64" height="64" />
+          <img src="${PrintUtils.getStationLogoPrintUrl()}" alt="Bishnupriya Fuels" class="station-logo salary-slip-logo" width="128" height="128" />
           <div class="salary-slip-letterhead-text">
             <h1 class="salary-slip-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
             <p class="salary-slip-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -514,7 +514,7 @@ async function runSalarySlipPrint(staff, staffPayments, monthValue) {
     bodyHtml: sheetHtml,
     cssText,
     iframeTitle: "Salary slip print",
-    imageSelectors: [".salary-slip-logo"],
+    imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
   });
 }
 

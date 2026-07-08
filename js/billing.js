@@ -107,13 +107,7 @@ async function runInvoicePrint(invoiceNumber) {
     return;
   }
 
-  let sheetHtml = printRoot.innerHTML;
-  const logoSrc =
-    AppConfig.STATION_LOGO_LG_SRC || AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/logo-80.webp";
-  sheetHtml = sheetHtml.replace(
-    /src="assets\/(?:bpcl-logo|bishnupriya-fuels-logo|logo-80)\.(?:png|webp)"/gi,
-    `src="${PrintUtils.resolveAssetUrl(logoSrc)}"`
-  );
+  let sheetHtml = PrintUtils.applyPrintLogos(printRoot.innerHTML);
 
   const title = invoiceNumber ? String(invoiceNumber) : "Tax Invoice";
 
@@ -121,13 +115,11 @@ async function runInvoicePrint(invoiceNumber) {
     await PrintUtils.printInIframe({
       title,
       bodyHtml: sheetHtml,
-      cssHref: "css/invoice-print.css",
+      cssHref: "css/invoice-print.css?v=3",
       containerClass: "print-invoice-container",
       iframeTitle: "Invoice print",
-      iframeStyle: PrintUtils.COMPACT_IFRAME_STYLE,
-      imageSelectors: [".invoice-bpcl-logo"],
-      waitForLoad: false,
-      cleanupTimeoutMs: 3000,
+      imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
+      cleanupTimeoutMs: 5000,
       onFallback: () => window.print(),
     });
   } catch (err) {

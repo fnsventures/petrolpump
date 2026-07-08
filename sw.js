@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v103";
+const CACHE_VERSION = "v104";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -51,13 +51,18 @@ const STATIC_ASSET_PATHS = [
   "css/app-attendance.css",
   "css/app-salary.css",
   "css/app-staff.css",
-  // Icons & landing images
+  "css/invoice-print.css",
+  "css/reports-print.css",
+  "css/salary-slip-print.css",
+  "css/credit-summary-print.css",
+  "css/staff-id-print.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
   "assets/icon-192.png",
   "assets/icon-512.png",
   "assets/logo-44.webp",
   "assets/logo-104.webp",
+  "assets/logo-print.webp",
   "assets/landing-01.webp",
   "assets/landing-01-800.webp",
   "assets/landing-02.webp",

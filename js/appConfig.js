@@ -124,12 +124,20 @@
   const STATION_LOGO_SRC = "assets/logo-44.webp";
   /** Invoice, staff ID, and other large logo slots (80×80). */
   const STATION_LOGO_LG_SRC = "assets/logo-80.webp";
+  /** Print / PDF letterhead (192×192 WebP — sharp at 16 mm on A4, ~10 KB). */
+  const STATION_LOGO_PRINT_SRC = "assets/logo-print.webp";
   /** @deprecated Use STATION_LOGO_SRC — kept for backward compatibility. */
   const BPCL_LOGO_SRC = STATION_LOGO_SRC;
+
+  function getStationLogoPrintSrc() {
+    return STATION_LOGO_PRINT_SRC || STATION_LOGO_LG_SRC || STATION_LOGO_SRC;
+  }
 
   const AppConfig = {
     STATION_LOGO_SRC,
     STATION_LOGO_LG_SRC,
+    STATION_LOGO_PRINT_SRC,
+    getStationLogoPrintSrc,
     BPCL_LOGO_SRC,
     GST_SLABS,
     PRODUCT_UNITS,
