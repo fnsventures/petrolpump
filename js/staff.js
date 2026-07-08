@@ -5,8 +5,6 @@ const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
 const STATION_ISSUER_NAME = "M/s Bishnupriya Fuels";
 const STATION_ISSUER_PLACE = "Padmanavpur";
 const BPCL_TAGLINE = "Energising Lives";
-const STAFF_ID_TAGLINE_FONT_URL =
-  "https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap";
 const STAFF_PHOTO_BUCKET = "staff-photos";
 const MAX_STAFF_PHOTO_BYTES = 2 * 1024 * 1024;
 const STAFF_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -153,7 +151,8 @@ async function waitForTaglineFont(doc) {
 }
 
 function idCardTopbarHtml(tagline) {
-  const logoSrc = AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/bishnupriya-fuels-logo.png";
+  const logoSrc =
+    AppConfig.STATION_LOGO_LG_SRC || AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/logo-80.webp";
   const logoUrl = staffIdAssetUrl(logoSrc);
   return `
     <div class="staff-id-topbar">
@@ -252,8 +251,9 @@ function staffIdAssetUrl(path) {
 async function runStaffIdPrintInIframe(emp) {
   const sheetHtml = buildIdCardSheetHtml(emp);
   const headExtras = [
-    `<link rel="stylesheet" href="${STAFF_ID_TAGLINE_FONT_URL}" />`,
-    `<link rel="stylesheet" href="${staffIdAssetUrl("css/app.css")}" />`,
+    `<link rel="stylesheet" href="${staffIdAssetUrl("css/fonts.css")}" />`,
+    `<link rel="stylesheet" href="${staffIdAssetUrl("css/app-core.css")}" />`,
+    `<link rel="stylesheet" href="${staffIdAssetUrl("css/app-staff.css")}" />`,
     `<link rel="stylesheet" href="${staffIdAssetUrl("css/staff-id-print.css")}" />`,
   ].join("\n  ");
 

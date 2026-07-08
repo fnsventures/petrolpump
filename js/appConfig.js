@@ -120,13 +120,16 @@
     shiftAfternoonEnd: "petrolpump_shift_afternoon_end",
   };
 
-  /** Primary station logo (Bishnupriya Fuels — includes BP dealer branding). */
-  const STATION_LOGO_SRC = "assets/bishnupriya-fuels-logo.png";
+  /** Topbar / compact logo (44×44). */
+  const STATION_LOGO_SRC = "assets/logo-44.webp";
+  /** Invoice, staff ID, and other large logo slots (80×80). */
+  const STATION_LOGO_LG_SRC = "assets/logo-80.webp";
   /** @deprecated Use STATION_LOGO_SRC — kept for backward compatibility. */
   const BPCL_LOGO_SRC = STATION_LOGO_SRC;
 
   const AppConfig = {
     STATION_LOGO_SRC,
+    STATION_LOGO_LG_SRC,
     BPCL_LOGO_SRC,
     GST_SLABS,
     PRODUCT_UNITS,

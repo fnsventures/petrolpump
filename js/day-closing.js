@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -30,7 +30,7 @@ const DC_DETAIL_COLUMNS = {
   ],
   credit: [
     { label: "Customer", key: "customer" },
-    { label: "Fuel", format: (row) => (row.legacy ? "Legacy" : row.fuel) },
+    { label: "Fuel", format: (row) => (row.legacy ? "Legacy" : formatFuelBadge(row.fuel)), escape: false },
     { label: "Qty (L)", format: (row) => (row.quantity == null ? "—" : row.quantity.toFixed(3)) },
     DC_AMOUNT_COLUMN,
   ],
