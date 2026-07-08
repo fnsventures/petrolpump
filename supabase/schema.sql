@@ -372,7 +372,8 @@ create policy "dsr_diesel_delete_admin" on public.dsr_diesel
   for delete to authenticated using (public.is_admin());
 
 -- Backward-compatible union view (used by dashboard, sales-daily, analysis, day-closing)
-create or replace view public.dsr as
+create or replace view public.dsr
+with (security_invoker = true) as
   select id, date, 'petrol'::text as product, tank_capacity,
     opening_pump1_nozzle1, opening_pump1_nozzle2,
     opening_pump2_nozzle1, opening_pump2_nozzle2,
@@ -405,7 +406,8 @@ comment on view public.dsr is 'Backward-compatible union view. SELECT only; writ
 -- No separate tables needed; always consistent with meter readings.
 -- At ~730 rows/year the window function is trivial.
 
-create or replace view public.dsr_stock as
+create or replace view public.dsr_stock
+with (security_invoker = true) as
 with base as (
   select
     date,
