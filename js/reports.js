@@ -366,7 +366,7 @@ function reportHeader(title, start, end) {
   return `
     <header class="report-print-head">
       <div class="report-letterhead">
-        <img src="${AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="64" height="64" />
+        <img src="${PrintUtils.getStationLogoPrintUrl()}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="128" height="128" />
         <div class="report-letterhead-text">
           <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
           <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -1392,7 +1392,7 @@ function renderProfitLoss(data, range) {
     <p class="report-note muted">Margin-based P&amp;L — same formula as Dashboard and Analysis: net profit = gross profit − operating expenses. MS/HS and density testing are excluded (handled in day closing). Fuel margin uses net sale litres × (selling − landed buying incl. VAT + delivery). Matches Dashboard P&amp;L and Analysis for the same date range.</p>`;
 }
 
-const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=4";
+const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=5";
 
 function reportsAssetUrl(path) {
   return new URL(path, window.location.href).href;
@@ -1468,11 +1468,7 @@ function renderReportHtml(reportId, data, range) {
 }
 
 function sanitizeReportHtmlForPrint(html) {
-  return html
-    .replace(
-      /src="[^"]*(?:bpcl-logo|bishnupriya-fuels-logo)[^"]*"/gi,
-      `src="${reportsAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}"`
-    )
+  return PrintUtils.applyPrintLogos(html)
     .replace(/<a\b[^>]*>/gi, "")
     .replace(/<\/a>/gi, "");
 }
@@ -1546,7 +1542,7 @@ async function runReportPrint() {
     bodyClass: "report-print-body",
     containerClass: "report-print-container",
     iframeTitle: "Report print",
-    imageSelectors: [".report-bpcl-logo"],
+    imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
   });
 }
 

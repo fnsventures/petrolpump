@@ -12,6 +12,42 @@
     return new URL(path, window.location.href).href;
   }
 
+  const PRINT_LOGO_ASSET_RE =
+    "logo-44|logo-80|logo-104|logo-print|bpcl-logo|bishnupriya-fuels-logo";
+  const PRINT_LOGO_CLASS_RE =
+    "invoice-bpcl-logo|report-bpcl-logo|salary-slip-logo";
+  const PRINT_LOGO_IMAGE_SELECTORS =
+    ".report-bpcl-logo, .invoice-bpcl-logo, .salary-slip-logo";
+
+  /** Resolved absolute URL for letterhead logos in print/PDF output. */
+  function getStationLogoPrintUrl() {
+    const path =
+      (typeof AppConfig !== "undefined" && AppConfig.getStationLogoPrintSrc?.()) ||
+      "assets/logo-print.webp";
+    return resolveAssetUrl(path);
+  }
+
+  /** Normalize logo markup before iframe print (high-res src, no picture/srcset). */
+  function applyPrintLogos(html) {
+    const logoUrl = getStationLogoPrintUrl();
+    return String(html || "")
+      .replace(
+        new RegExp(
+          `<picture>[\\s\\S]*?<img([^>]*class="[^"]*(?:${PRINT_LOGO_CLASS_RE})[^"]*"[^>]*)>[\\s\\S]*?<\\/picture>`,
+          "gi"
+        ),
+        `<img$1 src="${logoUrl}" width="128" height="128" />`
+      )
+      .replace(
+        new RegExp(`src="[^"]*(?:${PRINT_LOGO_ASSET_RE})[^"]*"`, "gi"),
+        `src="${logoUrl}"`
+      )
+      .replace(
+        new RegExp(`srcset="[^"]*(?:${PRINT_LOGO_ASSET_RE})[^"]*"`, "gi"),
+        ""
+      );
+  }
+
   function escapeInlineCss(cssText) {
     return String(cssText || "").replace(/<\/style/gi, "<\\/style");
   }
@@ -181,8 +217,11 @@
   global.PrintUtils = {
     COMPACT_IFRAME_STYLE,
     DEFAULT_IFRAME_STYLE,
+    PRINT_LOGO_IMAGE_SELECTORS,
+    applyPrintLogos,
     buildPrintDocumentHtml,
     escapeInlineCss,
+    getStationLogoPrintUrl,
     printInIframe,
     resolveAssetUrl,
     waitForFrameLoad,

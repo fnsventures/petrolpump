@@ -12,7 +12,7 @@
   --inv-border: #b8d4e8;
   --inv-text: #1a2332;
   --inv-muted: #4a5f7a;
-  --station-logo-size-print: 12mm;
+  --station-logo-size-print: 16mm;
 }
 
 *,
@@ -95,7 +95,11 @@ body {
   display: block;
   width: var(--station-logo-size-print);
   height: var(--station-logo-size-print);
+  max-width: none;
+  max-height: none;
   object-fit: contain;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .invoice-letterhead-body {
