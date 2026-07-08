@@ -11,8 +11,8 @@
     <script src="js/appNav.js"></script>
     <script src="js/dsrSections.js"></script>
     <script src="js/dsrBootstrap.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=9" />
-    <link rel="stylesheet" href="css/app-dsr.css?v=9" />
+    <link rel="stylesheet" href="css/app-core.css?v=10" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=10" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -200,6 +200,10 @@
                 <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
               </div>
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -274,9 +278,14 @@
 
             <div class="meter-block">
               <h3 class="meter-title">Closing meter reading</h3>
-              <table class="dsr-table meter-table compact">
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th>P1 · N1</th>
                     <th>P1 · N2</th>
                     <th>P2 · N1</th>
@@ -285,6 +294,7 @@
                 </thead>
                 <tbody>
                   <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <input
                         id="petrol-closing-p1n1"
@@ -349,6 +359,9 @@
               </div>
               <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Opening stock (L)</th>
@@ -594,6 +607,10 @@
                 <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
               </div>
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -668,9 +685,14 @@
 
             <div class="meter-block">
               <h3 class="meter-title">Closing meter reading</h3>
-              <table class="dsr-table meter-table compact">
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th>P1 · N1</th>
                     <th>P1 · N2</th>
                     <th>P2 · N1</th>
@@ -679,6 +701,7 @@
                 </thead>
                 <tbody>
                   <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <input
                         id="diesel-closing-p1n1"
@@ -743,6 +766,9 @@
               </div>
               <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Opening stock (L)</th>

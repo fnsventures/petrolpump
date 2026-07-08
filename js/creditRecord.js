@@ -157,6 +157,16 @@ async function handleQuickPayment() {
   }
 }
 
+function pickContactFromRows(rows) {
+  const primary = rows.find((r) => Number(r.amount_due) > 0) || rows[0];
+  if (!primary) return { mobile: "", address: "", vehicleNo: "" };
+  return {
+    mobile: String(primary.mobile ?? "").trim(),
+    address: String(primary.address ?? "").trim(),
+    vehicleNo: String(primary.vehicle_no ?? "").trim(),
+  };
+}
+
 function buildCustomerSuggestions(rows) {
   const byName = new Map();
   for (const row of rows || []) {
@@ -325,6 +335,10 @@ async function loadCustomerNames() {
       return;
     }
     customerSuggestions = buildCustomerSuggestions(data || []);
+    const input = document.getElementById("customer");
+    if (input && document.activeElement === input) {
+      renderCustomerSuggestions(input.value);
+    }
   } catch (e) {
     AppError.report(e, { context: "loadCustomerNames" });
   }

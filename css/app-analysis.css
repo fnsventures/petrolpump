@@ -3,10 +3,6 @@
    Analysis page – BPCL-aligned (matches dashboard / app shell)
    ========================================================================== */
 
-main.settings-layout.analysis-layout {
-  width: min(80rem, 96vw);
-}
-
 .analysis-nav-icon {
   display: inline-block;
   width: 1.1rem;

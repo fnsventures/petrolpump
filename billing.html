@@ -10,7 +10,7 @@
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=9" />
-    <link rel="stylesheet" href="css/app-billing.css?v=9" />
+    <link rel="stylesheet" href="css/app-billing.css?v=10" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -95,8 +95,18 @@
               <h3>Items</h3>
               <button type="button" id="add-item-btn" class="button-secondary button-sm">+ Add Item</button>
             </div>
-            <div class="table-wrap">
+            <div class="table-wrap billing-items-wrap">
               <table class="billing-items-table" id="items-table">
+                <colgroup>
+                  <col class="col-sl" />
+                  <col class="col-item" />
+                  <col class="col-qty" />
+                  <col class="col-unit" />
+                  <col class="col-rate" />
+                  <col class="col-gst" />
+                  <col class="col-amount" />
+                  <col class="col-action" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th class="col-sl">#</th>
@@ -106,16 +116,16 @@
                     <th class="col-rate">Rate</th>
                     <th class="col-gst">GST %</th>
                     <th class="col-amount">Amount</th>
-                    <th class="col-action"></th>
+                    <th class="col-action" aria-hidden="true"></th>
                   </tr>
                 </thead>
                 <tbody id="items-body">
                 </tbody>
                 <tfoot>
-                  <tr>
-                    <td colspan="6" class="text-right"><strong>Subtotal</strong></td>
-                    <td id="subtotal-display">₹0.00</td>
-                    <td></td>
+                  <tr class="billing-items-subtotal-row">
+                    <td colspan="6" class="billing-subtotal-label"><strong>Subtotal</strong></td>
+                    <td class="col-amount billing-subtotal-value" id="subtotal-display">₹0.00</td>
+                    <td class="col-action" aria-hidden="true"></td>
                   </tr>
                 </tfoot>
               </table>

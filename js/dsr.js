@@ -270,7 +270,7 @@ function updateDsrChrome(section) {
     document.title = `${subtitle.textContent} · Bishnupriya Fuels`;
   }
   const title = document.getElementById("dsr-sidebar-title");
-  if (title) title.textContent = isDsrView ? "DSR" : "Fuel type";
+  if (title) title.textContent = isDsrView ? "DSR" : "Sections";
   document.getElementById("dsr-page-main")?.classList.toggle("dsr-page-layout--dsr-view", isDsrView);
 }
 
