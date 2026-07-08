@@ -6,6 +6,8 @@
     <title>Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="preload" as="image" href="assets/landing-01-800.webp" type="image/webp" media="(max-width: 900px)" />
+    <link rel="preload" as="image" href="assets/landing-01.webp" type="image/webp" media="(min-width: 901px)" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/landing.css" />
     <script defer src="js/landing.js"></script>
@@ -13,7 +15,19 @@
   <body class="landing-page">
     <header class="landing-hero">
       <div class="slideshow" aria-hidden="true">
-        <div class="slide slide-a"></div>
+        <div class="slide slide-a is-visible">
+          <picture class="slide-picture">
+            <source srcset="assets/landing-01-800.webp" media="(max-width: 900px)" type="image/webp" />
+            <img
+              src="assets/landing-01.webp"
+              alt=""
+              width="1600"
+              height="900"
+              fetchpriority="high"
+              decoding="async"
+            />
+          </picture>
+        </div>
         <div class="slide slide-b"></div>
       </div>
       <div class="hero-scrim"></div>

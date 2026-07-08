@@ -37,21 +37,7 @@ function run(command, args) {
 }
 
 async function prepareSite() {
-  const excludes = [
-    "_site",
-    ".git",
-    "node_modules",
-    ".github",
-    "supabase",
-    "docs",
-    "scripts",
-    "_partials",
-    "package.json",
-    "package-lock.json",
-  ].map((name) => `--exclude=${name}`);
-
-  await run("rsync", ["-a", "--delete", ...excludes, `${REPO_ROOT}/`, `${SITE_DIR}/`]);
-  await run("node", ["scripts/build-html.mjs", SITE_DIR]);
+  await run("node", ["scripts/build-site.mjs"]);
 }
 
 function safePath(urlPath) {

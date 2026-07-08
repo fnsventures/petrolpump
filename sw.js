@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v101";
+const CACHE_VERSION = "v102";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -58,7 +58,14 @@ const STATIC_ASSET_PATHS = [
   "assets/icon-512.png",
   "assets/logo-44.webp",
   "assets/logo-104.webp",
+  "assets/landing-01.webp",
   "assets/landing-01-800.webp",
+  "assets/landing-02.webp",
+  "assets/landing-02-800.webp",
+  "assets/landing-03.webp",
+  "assets/landing-03-800.webp",
+  "assets/landing-04.webp",
+  "assets/landing-04-800.webp",
   // Self-hosted fonts
   "fonts/dm-sans-latin.woff2",
   "fonts/dm-sans-latin-ext.woff2",

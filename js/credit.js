@@ -193,7 +193,11 @@ function setCustomerToolbarVisible(visible) {
 
 function refreshCreditPortfolioViews() {
   if (isCustomerView()) return;
-  if (listTabReady.outstanding) loadCreditLedger(true);
+  if (listTabReady.outstanding) {
+    void loadCreditLedger(true);
+  } else {
+    void loadPortfolioSnapshot(true);
+  }
   if (window.CreditOverview?.isReady?.()) window.CreditOverview.refresh();
 }
 
@@ -256,6 +260,26 @@ function updateSummaryStats(filtered) {
   const countEl = document.getElementById("credit-customer-count");
   if (totalEl) totalEl.textContent = formatCurrency(total);
   if (countEl) countEl.textContent = String(withBalance.length);
+}
+
+async function fetchLedgerData() {
+  const { data: ledgerData, error } = await supabaseClient.rpc("get_credit_ledger_aggregated");
+  if (error) throw error;
+  creditPagination.ledgerData = ledgerData ?? [];
+}
+
+async function loadPortfolioSnapshot(forceReload = false) {
+  if (creditPagination.isLoading) return;
+  creditPagination.isLoading = true;
+  try {
+    if (forceReload) creditPagination.ledgerData = [];
+    if (creditPagination.ledgerData.length === 0) await fetchLedgerData();
+    updateSummaryStats(getFilteredLedger());
+  } catch (err) {
+    AppError.report(err, { context: "loadPortfolioSnapshot" });
+  } finally {
+    creditPagination.isLoading = false;
+  }
 }
 
 function renderLedgerBalanceCell(net, prepaid, isAdvance) {
@@ -353,13 +377,13 @@ async function loadCreditLedger(reset = false) {
 
   try {
     if (reset || creditPagination.ledgerData.length === 0) {
-      const { data: ledgerData, error } = await supabaseClient.rpc("get_credit_ledger_aggregated");
-      if (error) {
+      try {
+        await fetchLedgerData();
+      } catch (error) {
         tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
         AppError.report(error, { context: "loadCreditLedger" });
         return;
       }
-      creditPagination.ledgerData = ledgerData ?? [];
     }
 
     creditPagination.offset = reset ? 0 : creditPagination.offset;
@@ -410,9 +434,15 @@ async function ensureListTab(section) {
     return;
   }
   const src = LIST_TAB_SCRIPTS[section];
-  if (!src || listTabReady[section]) return;
+  if (!src || listTabReady[section]) {
+    if (section === "overview") void loadPortfolioSnapshot();
+    return;
+  }
   await loadScript(src);
-  if (section === "overview") window.CreditOverview?.init?.();
+  if (section === "overview") {
+    window.CreditOverview?.init?.();
+    void loadPortfolioSnapshot();
+  }
   if (section === "record") window.CreditRecord?.init?.();
   listTabReady[section] = true;
 }

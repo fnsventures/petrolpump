@@ -27,7 +27,8 @@ Data access is **enforced at the database** via Row Level Security (RLS). Client
 | **Database** | PostgreSQL (Supabase) | Schema in `supabase/schema.sql`; migrations in `supabase/migrations/` |
 | **API** | Supabase client (REST + RPC) | Tables + Row Level Security + server-side RPCs |
 | **Hosting** | GitHub Pages | Static site; custom domain via `CNAME` |
-| **CI/CD** | GitHub Actions | Builds `js/env.js` from secrets per environment |
+| **CI/CD** | GitHub Actions | Builds `js/env.js`, vendor bundle, HTML partials, minified assets |
+| **Build** | Node (esbuild, Nunjucks) | `npm run build:vendor`, `build:html`, `minify`; see `package.json` |
 | **Offline** | Service worker (`sw.js`) | Caches static assets and API patterns for forecourt use |
 
 ---
@@ -43,8 +44,8 @@ petrolPump/
 ├── index.html              # Public landing (hero, about); links to login.html
 ├── login.html              # Operator login (Supabase Auth)
 ├── dashboard.html          # Authenticated home (snapshot, P&L section, quick links)
-├── dsr.html                # Meter Reading → dsr_petrol / dsr_diesel (stock via dsr_stock view)
-├── sales-daily.html        # DSR listing / daily report view
+├── dsr.html                # Meter Reading + DSR summary (merged; replaces sales-daily)
+├── sales-daily.html        # Legacy redirect → dsr.html#filters
 ├── credit.html             # Credit ledger, customer detail, overdue tabs
 ├── credit-overdue.html     # Legacy URL → redirects to credit.html#outstanding
 ├── credit-customer.html    # Legacy URL → redirects to credit.html (preserves query/hash)
@@ -70,16 +71,23 @@ petrolPump/
 
 ```
 css/
-├── base.css                 # Layout, typography, shared components
-├── app.css                  # App shell, dashboard, forms, tables
+├── base.css                 # Layout, typography, shared components (imports fonts.css)
+├── fonts.css                # Self-hosted @font-face (DM Sans, Source Serif 4, Caveat)
+├── app-core.css             # Shared shell, nav, panels
+├── app-{route}.css          # Per-page styles (dashboard, dsr, credit, reports, …)
+├── app.css                  # Legacy aggregator (imports all app-*.css; not linked in HTML)
 ├── login.css                # Login page
 ├── landing.css              # Public landing (index.html)
-├── style.css                # Legacy / additional styles
 ├── invoice-print.css        # Billing invoice print layout
 ├── salary-slip-print.css    # Salary slip print layout
 ├── staff-id-print.css       # Staff ID card print layout
 ├── reports-print.css        # Reports print layout
 └── credit-summary-print.css # Credit customer summary print layout
+```
+
+```
+fonts/                       # Self-hosted woff2 subsets (latin + latin-ext)
+_partials/                   # Nunjucks partials (app-topbar.njk) — expanded at build time
 ```
 
 ### 3.3 Scripts
@@ -88,27 +96,35 @@ css/
 js/
 ├── env.js              # Runtime config — gitignored; generated in CI
 ├── env.example.js      # Template for local env.js
+├── vendor/
+│   ├── supabase.min.js           # Full client (app pages)
+│   └── supabase-login.min.js     # Auth-only bundle (login.html)
 ├── appConfig.js        # Default pump settings, GST slabs, branding constants
 ├── supabase.js         # Supabase client from window.__APP_CONFIG__
 ├── auth.js             # Session guard, role, check_page_access, nav
+├── appNav.js           # Dev fallback: inject nav when HTML partials not built
+├── roleBootstrap.js    # Early role visibility from cache (FOUC prevention)
 ├── pumpSettings.js     # Load/cache pump_settings.config
 ├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
-├── dsrQueries.js       # Shared DSR fetch/select helpers; mergeDsrStock for reports/dashboard
+├── dsrQueries.js       # Shared DSR fetch/select helpers; receipt-history split
+├── dsrSummary.js       # DSR summary section (lazy-loaded from dsr.js)
 ├── errorHandler.js     # Centralized error reporting
 ├── cache.js            # AppCache (role, reports, settings, …)
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
 ├── pageSections.js     # Settings-style section tabs
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
 ├── landing.js          # Landing page
-├── dashboard.js        # Dashboard snapshot, P&L, context rail (rates/tanks)
-├── dsr.js              # Meter Reading → dsr_petrol / dsr_diesel
-├── sales-daily.js      # DSR listing view
-├── credit.js           # Credit ledger, customer detail, overdue, payments
-├── creditCustomerDetail.js # Shared customer credit helpers (used by credit.js)
+├── dashboard.js        # Dashboard snapshot, lazy DSR/P&L sections, alerts
+├── dsr.js              # Meter Reading + DSR summary orchestration
+├── credit.js           # Credit list view, lazy tab modules
+├── creditOverview.js   # Credit overview tab (lazy)
+├── creditRecord.js     # Credit record tab (lazy)
+├── creditCustomer.js   # Customer detail view (lazy)
+├── creditCustomerDetail.js # Shared customer credit helpers
 ├── expenses.js         # Expenses
 ├── day-closing.js      # Day closing
 ├── billing.js          # Sales invoices → save_invoice RPC
-├── invoices.js         # Supplier invoice documents → edge function + invoice_documents
+├── invoices.js         # Supplier invoice documents → edge function
 ├── attendance.js       # Attendance batch save
 ├── salary.js           # Salary payments, pay-period tracking, expense linkage
 ├── staff.js            # Employee roster CRUD, photo upload, ID card (admin)
@@ -126,7 +142,7 @@ Top navigation is grouped and role-aware (`js/auth.js` → `applyRoleVisibility(
 
 | Group | Pages | Supervisor | Admin |
 |-------|-------|------------|-------|
-| **Operations** | Dashboard, Meter Reading (`dsr.html`), DSR listing (`sales-daily.html`) | ✓ | ✓ |
+| **Operations** | Dashboard, Meter Reading (`dsr.html`) | ✓ | ✓ |
 | **Finance** | Credit, Expenses, Day closing, Billing, Invoices | ✓ | ✓ |
 | **HR** | Attendance, Salary, **Staff** | Attendance + Salary only | ✓ (incl. Staff) |
 | **Admin** | Analysis, Reports, Settings | ✗ | ✓ |
@@ -150,8 +166,10 @@ supabase/
 │   ├── 20260619100000_security_loophole_mitigation.sql
 │   └── …
 └── functions/
-    ├── get-dashboard-data/   # Edge function: batched dashboard payload (optional)
-    └── invoice-documents/    # Edge function: supplier invoices ↔ Google Drive
+    ├── get-dashboard-data/   # Edge: batched dashboard DSR summary payload
+    ├── get-reports-data/     # Edge: batched reports page data
+    ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
+    └── invoice-documents/    # Edge: supplier invoices ↔ Google Drive
 ```
 
 ### 3.6 Documentation
@@ -183,7 +201,7 @@ docs/
 │  • js/env.js → window.__APP_CONFIG__ (Supabase URL, anon key)             │
 │  • js/supabase.js (client + SW register), js/auth.js, js/*.js per page   │
 │  • sw.js — static + API cache; AppCache in js/cache.js (localStorage)     │
-│  • css/base.css, css/app.css, css/login.css, css/landing.css              │
+│  • css/base.css, css/fonts.css, css/app-core.css + route CSS per page          │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │  Supabase JS client (anon key)
@@ -193,7 +211,9 @@ docs/
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
 │  │  Auth           │  │  PostgreSQL     │  │  Edge Functions (opt)   │  │
 │  │  Email/Password  │  │  Tables + RLS   │  │  get-dashboard-data,    │  │
-│  │  JWT → role     │  │  RPCs, Triggers │  │  invoice-documents      │  │
+│  │  JWT → role     │  │  RPCs, Triggers │  │  get-reports-data,      │  │
+│  │                 │  │                 │  │  get-pl-data,           │  │
+│  │                 │  │                 │  │  invoice-documents      │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -227,10 +247,10 @@ docs/
 
 | Page | Script | Primary purpose |
 |------|--------|-----------------|
-| `dashboard.html` | `dashboard.js` | Snapshot, DSR summary, admin P&amp;L + buying price, alerts, tank visuals |
-| `dsr.html` | `dsr.js` | Meter Reading — upsert `dsr_petrol` / `dsr_diesel` |
-| `sales-daily.html` | `sales-daily.js` | Date-range DSR listing with stock reconciliation |
-| `credit.html` | `credit.js` | Ledger, customer detail (in-page hash routes), payments, outstanding |
+| `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + P&amp;L loaded lazily per section |
+| `dsr.html` | `dsr.js` | Meter Reading + DSR summary (`dsrSummary.js` lazy) |
+| `sales-daily.html` | — | Redirect to `dsr.html#filters` |
+| `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
 | `expenses.html` | `expenses.js` | Daily expenses by category |
 | `day-closing.html` | `day-closing.js` | Close day + register; admin overwrite/delete |
 | `billing.html` | `billing.js` | Outward lube invoices via `save_invoice` |
@@ -244,13 +264,13 @@ docs/
 
 **Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
 
-**Dashboard sections** (side nav via `pageSections.js`): `snapshot` (all roles), `dsr` summary (all), `pl` (**admin only** — inline pre-VAT buying price entry), `notifications` (alerts, day-closing reminder). Aside rail **At a glance** shows MS/HSD selling rates and animated tank fill % from `pump_settings.config.pumps` capacities.
+**Dashboard sections** (side nav via `pageSections.js`): `snapshot` (all roles, loads on init), `dsr` summary (loaded when section opened), `pl` (**admin only** — loaded when section opened via `get-pl-data` edge function with client fallback), `notifications` (alerts). Aside rail **At a glance** shows MS/HSD selling rates and animated tank fill % from `pump_settings.config.pumps` capacities.
 
 **Analysis sections:** `setup` (date range), `metrics` (KPI cards), `charts` (sales, profit, fuel/revenue mix via Chart.js CDN), `insights` (text summaries). Printable P&amp;L is on **Reports** (`pl` report) and dashboard **P&amp;L** section — Analysis is a broader BI view.
 
 ### 5.4 Caching and offline
 
-- **`sw.js`:** Precaches HTML/CSS/JS (versioned `CACHE_VERSION`, currently `v72`) and applies network-first caching for Supabase REST/Functions URLs. Works for prod root and `/staging/` scope.
+- **`sw.js`:** Precaches HTML/CSS/JS/fonts (versioned `CACHE_VERSION`, currently `v102`) and applies network-first caching for Supabase REST/Functions URLs. Sensitive financial tables and RPCs are never cached. Works for prod root and `/staging/` scope.
 - **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` (role, reports, settings, etc.).
 
 ---
@@ -275,7 +295,7 @@ docs/
 - **Page access:** `check_page_access(page)` — see [Flows §1](FLOWS.md#1-authentication-and-role-based-access) for the full page list.
 - **Staff / HR RPCs:** `list_employees_roster()` (no PII — attendance/salary pickers), `list_employees_salary()` (full HR fields for slips), `set_employee_photo(uuid, url)` (admin), `save_employee_attendance_batch(date, jsonb)`.
 - **Operator profile:** `update_my_avatar(url)`, `my_avatar_storage_folder()` (path helper for Storage RLS).
-- **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
+- **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `batch_record_credit_settlements`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
 - **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite` for admins), `save_day_closing(...)`, `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest date only), `recascade_day_closing_short_from(date)` (internal).
 - **Billing:** `generate_invoice_number()`, `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
 - **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
@@ -295,8 +315,12 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 
 | Function | Purpose | Deploy |
 |----------|---------|--------|
-| `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | Manual via Supabase CLI |
-| `get-dashboard-data` | Optional batched dashboard payload | Manual; **not used** by current `dashboard.js` (direct queries) |
+| `get-dashboard-data` | Batched dashboard DSR summary (DSR, stock, expenses, credit) | GitHub Actions or Supabase CLI |
+| `get-reports-data` | Batched reports page payload | GitHub Actions or Supabase CLI |
+| `get-pl-data` | Batched P&amp;L (DSR + receipt history, expenses, lube sales) | GitHub Actions or Supabase CLI |
+| `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
+
+Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`. Requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` per environment. See [Development guide §2.5](DEVELOPMENT.md#25-edge-functions).
 
 Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
@@ -336,7 +360,7 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 - **Environments:**
   - **Prod:** `main` branch → root URL (e.g. `https://bishnupriyafuels.fnsventures.in/`).
   - **Staging:** `staging` branch → `/staging/` path.
-- **CI:** `.github/workflows/deploy-pages.yml` — one job builds and pushes to **`gh-pages`** (staging → `/staging/`, prod → root).
+- **CI:** `.github/workflows/deploy-pages.yml` — builds env, vendor bundle, HTML partials, minifies assets, pushes to **`gh-pages`** (staging → `/staging/`, prod → root). Edge functions: `.github/workflows/deploy-supabase-functions.yml`.
 - **Details:** Step-by-step local setup, deploy flow, and supervisor login are in [Development guide](DEVELOPMENT.md).
 
 ---
