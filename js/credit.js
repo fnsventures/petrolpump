@@ -139,11 +139,16 @@ function customerSummaryUrl(name, period) {
   return `credit.html?${params.toString()}#summary`;
 }
 
+function readOverviewDateRange() {
+  return readDateRangeFromControls(
+    document.getElementById("credit-overview-range"),
+    document.getElementById("credit-overview-start"),
+    document.getElementById("credit-overview-end")
+  );
+}
+
 function getOverviewFilterForLinks() {
-  const rangeSelect = document.getElementById("credit-overview-range");
-  const startInput = document.getElementById("credit-overview-start");
-  const endInput = document.getElementById("credit-overview-end");
-  const resolved = readDateRangeFromControls(rangeSelect, startInput, endInput);
+  const resolved = readOverviewDateRange();
   if (!resolved) return null;
   return {
     period: resolved.modeInfo?.mode || "custom",
@@ -487,11 +492,7 @@ function initCustomerSettlePanel() {
 }
 
 function getOverviewDateRange() {
-  const range = readDateRangeFromControls(
-    document.getElementById("credit-overview-range"),
-    document.getElementById("credit-overview-start"),
-    document.getElementById("credit-overview-end")
-  );
+  const range = readOverviewDateRange();
   if (range) return { start: range.start, end: range.end };
   const fallback = getRangeForSelection("all-time");
   return { start: fallback.start, end: fallback.end };
@@ -693,7 +694,7 @@ function overviewCacheKey(start, end) {
   return `credit_overview_${start || "all"}_${end}`;
 }
 
-function applyOverviewPeriodData(data) {
+function applyOverviewPeriodData(data, periodFilter = getOverviewFilterForLinks()) {
   const tbody = document.getElementById("credit-overview-body");
   const emptyCta = document.getElementById("credit-overview-empty");
   const tableEl = tbody?.closest("table");
@@ -709,13 +710,12 @@ function applyOverviewPeriodData(data) {
     return;
   }
 
-  renderOverviewCustomerRows(tbody, normalized.customers);
+  renderOverviewCustomerRows(tbody, normalized.customers, periodFilter);
   tableEl?.classList.remove("hidden");
   emptyCta?.classList.add("hidden");
 }
 
-function renderOverviewCustomerRows(tbody, rows) {
-  const periodFilter = getOverviewFilterForLinks();
+function renderOverviewCustomerRows(tbody, rows, periodFilter) {
   tbody.innerHTML = rows
     .map((row) => {
       const detailHref = customerSummaryUrl(row.customer_name, periodFilter);
@@ -748,13 +748,16 @@ async function loadOverviewPeriodActivity() {
   if (!tbody) return;
 
   const { start, end } = getOverviewDateRange();
+  const periodFilter = getOverviewFilterForLinks();
   const requestId = ++overviewRequestId;
   const cacheKey = overviewCacheKey(start, end);
   const cached =
     typeof AppCache !== "undefined" && AppCache?.get ? AppCache.get(cacheKey) : null;
   const hasCached = cached && !cached.isMiss && cached.data;
 
-  if (!hasCached) {
+  if (hasCached) {
+    applyOverviewPeriodData(cached.data, periodFilter);
+  } else {
     tbody.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
     emptyCta?.classList.add("hidden");
     tableEl?.classList.remove("hidden");
@@ -774,14 +777,14 @@ async function loadOverviewPeriodActivity() {
     if (typeof AppCache !== "undefined" && AppCache?.getWithSWR) {
       data = await AppCache.getWithSWR(cacheKey, fetchFn, "credit_overview", (fresh) => {
         if (requestId !== overviewRequestId) return;
-        applyOverviewPeriodData(fresh);
+        applyOverviewPeriodData(fresh, periodFilter);
       });
     } else {
       data = await fetchFn();
     }
 
     if (requestId !== overviewRequestId) return;
-    applyOverviewPeriodData(data);
+    if (!hasCached) applyOverviewPeriodData(data, periodFilter);
   } catch (err) {
     if (requestId !== overviewRequestId) return;
     tbody.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;

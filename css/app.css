@@ -1385,8 +1385,11 @@ tbody tr:hover {
 }
 .day-closing-breakdown .dsr-summary-row.dc-subtotal dd {
   grid-column: 2;
+  padding: 0.42rem 0;
+  text-align: right;
   font-weight: 700;
   color: #0f172a;
+  box-sizing: border-box;
 }
 .day-closing-breakdown .dsr-summary-row dd input {
   width: 100%;
