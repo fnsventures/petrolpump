@@ -1,12 +1,28 @@
-const SLIDESHOW_IMAGES = [
-  "assets/landing-01.JPG",
-  "assets/landing-02.JPG",
-  "assets/landing-03.JPG",
-  "assets/landing-04.JPG",
+const SLIDESHOW_SETS = [
+  {
+    webp: "assets/landing-01.webp",
+    webpNarrow: "assets/landing-01-800.webp",
+    jpg: "assets/landing-01.JPG",
+  },
+  {
+    webp: "assets/landing-02.webp",
+    webpNarrow: "assets/landing-02-800.webp",
+    jpg: "assets/landing-02.JPG",
+  },
+  {
+    webp: "assets/landing-03.webp",
+    webpNarrow: "assets/landing-03-800.webp",
+    jpg: "assets/landing-03.JPG",
+  },
+  {
+    webp: "assets/landing-04.webp",
+    webpNarrow: "assets/landing-04-800.webp",
+    jpg: "assets/landing-04.JPG",
+  },
 ];
 
 /** Used when slideshow photos are not deployed (e.g. local dev without image assets). */
-const SLIDESHOW_FALLBACK = "assets/bishnupriya-fuels-logo.png";
+const SLIDESHOW_FALLBACK = "assets/logo-104.webp";
 
 const SLIDE_INTERVAL_MS = 2500;
 const SLIDE_FADE_MS = 800;
@@ -21,7 +37,7 @@ const FOOTER_ICONS = {
   youtube:
     "M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.08 5.2 12 5.2 12 5.2s-6.08 0-7.84.23A2.5 2.5 0 0 0 2.4 7.2 26.3 26.3 0 0 0 2.16 12a26.3 26.3 0 0 0 .24 4.8 2.5 2.5 0 0 0 1.76 1.77C5.92 18.8 12 18.8 12 18.8s6.08 0 7.84-.23a2.5 2.5 0 0 0 1.76-1.77A26.3 26.3 0 0 0 21.84 12a26.3 26.3 0 0 0-.24-4.8zM10 15.5v-7l6 3.5-6 3.5z",
   email:
-    "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm7 7.1L19 8H5l7 4.1zm-7 4.9h14V10l-7 4.1L5 10v7z",
+    "M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 1 2-2zm7 7.1L19 8H5l7 4.1zm-7 4.9h14V10l-7 4.1L5 10v7z",
 };
 
 const FOOTER_LINKS = [
@@ -79,10 +95,27 @@ function probeImage(src) {
   });
 }
 
+function prefersNarrowSlides() {
+  return window.matchMedia("(max-width: 900px)").matches;
+}
+
+async function resolveSlideSrc(set) {
+  const narrow = prefersNarrowSlides();
+  const candidates = narrow
+    ? [set.webpNarrow, set.webp, set.jpg]
+    : [set.webp, set.jpg];
+  for (const src of candidates) {
+    const ok = await probeImage(src);
+    if (ok) return ok;
+  }
+  return null;
+}
+
 async function resolveSlideshowImages() {
-  const loaded = await Promise.all(SLIDESHOW_IMAGES.map((src) => probeImage(src)));
+  const loaded = await Promise.all(SLIDESHOW_SETS.map((set) => resolveSlideSrc(set)));
   const available = loaded.filter(Boolean);
-  return available.length > 0 ? available : [SLIDESHOW_FALLBACK];
+  if (available.length > 0) return available;
+  return [SLIDESHOW_FALLBACK];
 }
 
 function startRandomSlideshow(imageList) {
@@ -92,7 +125,14 @@ function startRandomSlideshow(imageList) {
   ];
   if (slides.some((el) => !el) || !imageList.length) return;
 
-  let order = shuffle(imageList);
+  // First slide is rendered via <picture> in HTML for LCP; rotate the rest.
+  const rotationImages =
+    imageList.length > 1
+      ? imageList.filter((src) => src !== imageList[0])
+      : [];
+  if (!rotationImages.length) return;
+
+  let order = shuffle(rotationImages);
   let index = 0;
   let active = 0;
 
@@ -112,14 +152,10 @@ function startRandomSlideshow(imageList) {
     index += 1;
 
     if (index >= order.length) {
-      order = shuffle(imageList);
+      order = shuffle(rotationImages);
       index = 0;
     }
   };
-
-  slides[active].style.backgroundImage = `url("${order[0]}")`;
-  slides[active].classList.add("is-visible");
-  index = 1;
 
   window.setInterval(showSlide, SLIDE_INTERVAL_MS);
 }

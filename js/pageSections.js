@@ -23,6 +23,12 @@
       [...navItems].map((btn) => btn.dataset.section).filter(Boolean);
     const defaultSection = config.defaultSection || valid[0] || "";
 
+    function normalizeSectionId(raw) {
+      const hashAliases = config.hashAliases || {};
+      const h = String(raw || "").replace(/^#/, "");
+      return hashAliases[h] || h;
+    }
+
     function showSection(id) {
       const section = valid.includes(id) ? id : defaultSection;
       navItems.forEach((btn) => {
@@ -45,11 +51,11 @@
       btn.addEventListener("click", () => showSection(btn.dataset.section || defaultSection));
     });
 
-    const hash = (location.hash || "").replace(/^#/, "");
+    const hash = normalizeSectionId(location.hash);
     showSection(valid.includes(hash) ? hash : defaultSection);
 
     window.addEventListener("hashchange", () => {
-      const h = (location.hash || "").replace(/^#/, "");
+      const h = normalizeSectionId(location.hash);
       if (valid.includes(h)) showSection(h);
     });
   }

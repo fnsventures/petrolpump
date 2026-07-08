@@ -4,13 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Meter Reading · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <script src="js/dsrSections.js"></script>
+    <script src="js/dsrBootstrap.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=10" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=10" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -24,65 +26,164 @@
     <script defer src="js/dsr.js"></script>
   </head>
   <body>
-    <header class="topbar">
+    <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
-        <span class="page-subtitle">Meter Reading</span>
+        <span class="page-subtitle" id="dsr-page-subtitle">Meter Reading</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" aria-label="Main navigation">
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="dsr.html">Meter Reading</a>
-            <a href="sales-daily.html">DSR</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="credit.html">Credit</a>
-            <a href="expenses.html">Expenses</a>
-            <a href="day-closing.html">Day closing &amp; short</a>
-            <a href="billing.html">Billing</a>
-            <a href="invoices.html">Invoices</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="attendance.html">Attendance</a>
-            <a href="salary.html">Salary</a>
-            <a href="staff.html">Staff</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
-            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
-            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
-          </div>
-        </div>
-        <button id="logout-button" class="link nav-logout">Logout</button>
-      </nav>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
-    <main class="settings-layout page-layout-wide dsr-page-layout">
-      <nav class="settings-nav card" aria-label="Meter reading sections">
-        <p class="settings-nav-title">Meter reading</p>
-        <button type="button" class="settings-nav-item is-active" data-section="petrol">Petrol (MS)</button>
-        <button type="button" class="settings-nav-item" data-section="diesel">Diesel (HSD)</button>
+    <main class="settings-layout page-layout-wide dsr-page-layout" id="dsr-page-main">
+      <nav class="settings-nav card dsr-fuel-nav" id="dsr-sidebar-nav" aria-label="DSR sections">
+        <p class="settings-nav-title" id="dsr-sidebar-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="filters" data-dsr-sidebar-group="dsr" hidden>Total</button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="dsr-petrol" data-dsr-sidebar-group="dsr" hidden>
+          <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-meta">Petrol · 15 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="dsr-diesel" data-dsr-sidebar-group="dsr" hidden>
+          <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-meta">Diesel · 20 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="petrol" data-dsr-sidebar-group="meter">
+          <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-meta">Petrol · 15 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="diesel" data-dsr-sidebar-group="meter">
+          <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-meta">Diesel · 20 KL</span>
+        </button>
       </nav>
       <div class="settings-panels">
-      <section class="settings-panel card dsr-card is-visible" data-panel="petrol" data-product="petrol">
-        <div class="dsr-card-head">
-          <div>
-            <h2>MS (Petrol) · 15KL Tank</h2>
-            <p class="muted">
-              Fill the reading sheet exactly like the physical DSR register.
-            </p>
+        <section class="settings-panel card dashboard-card" data-panel="filters" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Total</h2>
+              <p class="muted panel-lead">Combined MS and HSD readings, sales, stock, and variation for the selected period.</p>
+              <p class="muted"><a href="reports.html?tab=dsr" data-role="admin-only">Tank-wise DSR report (print) →</a></p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="dsr-daily-start-date">From</label>
+                <input id="dsr-daily-start-date" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="dsr-daily-end-date">To</label>
+                <input id="dsr-daily-end-date" type="date" />
+              </div>
+            </div>
+          </div>
+
+          <div id="dsr-period-stats" class="dc-register-period-stats dsr-period-stats hidden" aria-label="Period totals">
+            <div class="dc-stat-card dc-stat-card--petrol" data-dsr-stat="petrol">
+              <span class="dc-stat-label">Petrol net sale</span>
+              <strong id="dsr-period-petrol-net" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Litres · MS</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--diesel" data-dsr-stat="diesel">
+              <span class="dc-stat-label">Diesel net sale</span>
+              <strong id="dsr-period-diesel-net" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Litres · HSD</span>
+            </div>
+            <div class="dc-stat-card" data-dsr-stat="shared">
+              <span class="dc-stat-label">Receipts</span>
+              <strong id="dsr-period-receipts" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Tank deliveries</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--highlight" data-dsr-stat="shared">
+              <span class="dc-stat-label">Variation</span>
+              <strong id="dsr-period-variation" class="dc-stat-value">—</strong>
+              <span id="dsr-period-days-meta" class="dc-stat-meta muted">Stock gain / loss</span>
+            </div>
+          </div>
+
+          <div class="dsr-daily-block dsr-card dsr-card--petrol dsr-daily-block--petrol">
+            <div class="panel-head dsr-card-head">
+              <div class="dsr-fuel-head">
+                <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+                <div>
+                  <h3 class="dashboard-section-title">Petrol — daily entries</h3>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="dsr-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sales P1 (L)</th>
+                    <th>Sales P2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Closing stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody id="dsr-daily-petrol-body">
+                  <tr>
+                    <td colspan="11" class="muted">Select a date range to load readings.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="dsr-daily-block dsr-card dsr-card--diesel dsr-daily-block--diesel">
+            <div class="panel-head dsr-card-head">
+              <div class="dsr-fuel-head">
+                <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+                <div>
+                  <h3 class="dashboard-section-title">Diesel — daily entries</h3>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="dsr-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sales P1 (L)</th>
+                    <th>Sales P2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Closing stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody id="dsr-daily-diesel-body">
+                  <tr>
+                    <td colspan="11" class="muted">Select a date range to load readings.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol is-visible" data-panel="petrol" data-product="petrol">
+        <div class="panel-head dsr-card-head">
+          <div class="dsr-fuel-head">
+            <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+            <div>
+              <h2 class="dashboard-section-title">MS (Petrol) · 15KL Tank</h2>
+              <p class="muted panel-lead">
+                Fill the reading sheet exactly like the physical DSR register.
+              </p>
+            </div>
           </div>
         </div>
         <form id="dsr-form-petrol" class="sheet-form" autocomplete="off">
@@ -99,6 +200,10 @@
                 <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
               </div>
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -173,9 +278,14 @@
 
             <div class="meter-block">
               <h3 class="meter-title">Closing meter reading</h3>
-              <table class="dsr-table meter-table compact">
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th>P1 · N1</th>
                     <th>P1 · N2</th>
                     <th>P2 · N1</th>
@@ -184,6 +294,7 @@
                 </thead>
                 <tbody>
                   <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <input
                         id="petrol-closing-p1n1"
@@ -238,9 +349,19 @@
             </div>
 
             <div class="meter-block meter-block-wide">
-              <h3 class="meter-title">Sales, testing & stock</h3>
+              <div class="meter-block-head">
+                <h3 class="meter-title">Sales, testing &amp; stock</h3>
+                <p class="dsr-field-legend muted">
+                  <span class="dsr-legend-dot dsr-legend-dot--calc" aria-hidden="true"></span> Auto-calculated
+                  <span class="dsr-legend-sep" aria-hidden="true">·</span>
+                  <span class="dsr-legend-dot dsr-legend-dot--input" aria-hidden="true"></span> Enter manually
+                </p>
+              </div>
               <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Opening stock (L)</th>
@@ -397,9 +518,9 @@
             </div>
           </div>
 
-          <div class="sheet-rate-row">
+          <div class="sheet-rate-row dsr-rate-row">
             <div class="form-field">
-              <label for="petrol-rate">Petrol Rate (₹/L)</label>
+              <label for="petrol-rate">Petrol rate (₹/L)</label>
               <input
                 id="petrol-rate"
                 name="petrol_rate"
@@ -460,13 +581,16 @@
       </section>
 
 
-      <section class="settings-panel card dsr-card" data-panel="diesel" data-product="diesel" hidden>
-        <div class="dsr-card-head">
-          <div>
-            <h2>HSD (Diesel) · 20KL Tank</h2>
-            <p class="muted">
-              Fill the reading sheet exactly like the physical DSR register.
-            </p>
+      <section class="settings-panel card dashboard-card dsr-card dsr-card--diesel" data-panel="diesel" data-product="diesel" hidden>
+        <div class="panel-head dsr-card-head">
+          <div class="dsr-fuel-head">
+            <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+            <div>
+              <h2 class="dashboard-section-title">HSD (Diesel) · 20KL Tank</h2>
+              <p class="muted panel-lead">
+                Fill the reading sheet exactly like the physical DSR register.
+              </p>
+            </div>
           </div>
         </div>
         <form id="dsr-form-diesel" class="sheet-form" autocomplete="off">
@@ -483,6 +607,10 @@
                 <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
               </div>
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -557,9 +685,14 @@
 
             <div class="meter-block">
               <h3 class="meter-title">Closing meter reading</h3>
-              <table class="dsr-table meter-table compact">
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
                 <thead>
                   <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th>P1 · N1</th>
                     <th>P1 · N2</th>
                     <th>P2 · N1</th>
@@ -568,6 +701,7 @@
                 </thead>
                 <tbody>
                   <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <input
                         id="diesel-closing-p1n1"
@@ -622,9 +756,19 @@
             </div>
 
             <div class="meter-block meter-block-wide">
-              <h3 class="meter-title">Sales, testing & stock</h3>
+              <div class="meter-block-head">
+                <h3 class="meter-title">Sales, testing &amp; stock</h3>
+                <p class="dsr-field-legend muted">
+                  <span class="dsr-legend-dot dsr-legend-dot--calc" aria-hidden="true"></span> Auto-calculated
+                  <span class="dsr-legend-sep" aria-hidden="true">·</span>
+                  <span class="dsr-legend-dot dsr-legend-dot--input" aria-hidden="true"></span> Enter manually
+                </p>
+              </div>
               <div class="table-scroll meter-table-scroll">
               <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>Opening stock (L)</th>
@@ -781,9 +925,9 @@
             </div>
           </div>
 
-          <div class="sheet-rate-row">
+          <div class="sheet-rate-row dsr-rate-row">
             <div class="form-field">
-              <label for="diesel-rate">Diesel Rate (₹/L)</label>
+              <label for="diesel-rate">Diesel rate (₹/L)</label>
               <input
                 id="diesel-rate"
                 name="diesel_rate"

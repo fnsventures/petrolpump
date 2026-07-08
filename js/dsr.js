@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, setFilterState, getDsrNetSaleLitres, loadScript */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -98,7 +98,37 @@ const dsrPagination = {
 /** Increments on each date refresh so stale async results do not overwrite the form. */
 const meterRefreshGeneration = { petrol: 0, diesel: 0 };
 
+const DS = window.DsrSections;
+const DSR_SUMMARY_SECTIONS = DS?.SUMMARY ?? new Set(["filters", "dsr-petrol", "dsr-diesel"]);
+const DSR_METER_SECTIONS = DS?.METER ?? new Set(["petrol", "diesel"]);
+const DSR_ALL_SECTIONS = DS?.ALL ?? [...DSR_SUMMARY_SECTIONS, ...DSR_METER_SECTIONS];
+let currentDsrSection = "petrol";
+let dsrSummaryLoadPromise = null;
+let dsrSummaryInitArgs = null;
+
+window.DsrPage = {
+  getCurrentSection: () => currentDsrSection,
+};
+
 document.addEventListener("DOMContentLoaded", async () => {
+  const YYYYMMDD = DS?.YYYYMMDD ?? /^\d{4}-\d{2}-\d{2}$/;
+  const dateFromDashboard = (() => {
+    try {
+      const d = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("petrolpump_sales_daily_from_dashboard") : null;
+      if (d && YYYYMMDD.test(d)) {
+        sessionStorage.removeItem("petrolpump_sales_daily_from_dashboard");
+        return d;
+      }
+    } catch (_) {}
+    return null;
+  })();
+  const urlDateParam = (() => {
+    const p = new URLSearchParams(window.location.search);
+    const d = p.get("date");
+    return d && YYYYMMDD.test(d) ? d : null;
+  })();
+  const hasDateDeepLink = !!(dateFromDashboard || urlDateParam);
+
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -113,9 +143,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   currentUserRole = auth.role ?? "supervisor";
   applyRoleVisibility(auth.role);
 
-  if (typeof initPageSections === "function") {
-    initPageSections({ defaultSection: "petrol", validSections: ["petrol", "diesel"] });
-  }
+  dsrSummaryInitArgs = { dateFromDashboard, urlDateParam };
+  initDsrSections({ defaultSection: hasDateDeepLink ? "filters" : "petrol" });
 
   PRODUCTS.forEach((product) => {
     initReadingForm(product);
@@ -124,6 +153,126 @@ document.addEventListener("DOMContentLoaded", async () => {
   initDsrDeleteHandlers();
   await Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
 });
+
+function resolveDsrSectionFromHash(rawHash) {
+  return DS?.resolveFromHash(rawHash) ?? String(rawHash || "").replace(/^#/, "");
+}
+
+function getDsrPublicHash(section) {
+  return DS?.getPublicHash(section) ?? section;
+}
+
+function initDsrSections({ defaultSection = "petrol" } = {}) {
+  const navItems = document.querySelectorAll("#dsr-sidebar-nav .settings-nav-item");
+  const panels = document.querySelectorAll(".settings-panels .settings-panel");
+  if (!navItems.length || !panels.length) return;
+
+  const layoutEls = {
+    petrolBlock: document.querySelector(".dsr-daily-block--petrol"),
+    dieselBlock: document.querySelector(".dsr-daily-block--diesel"),
+    petrolStat: document.querySelector('[data-dsr-stat="petrol"]'),
+    dieselStat: document.querySelector('[data-dsr-stat="diesel"]'),
+    statsEl: document.getElementById("dsr-period-stats"),
+    titleEl: document.querySelector('[data-panel="filters"] .dashboard-section-title'),
+    leadEl: document.querySelector('[data-panel="filters"] .panel-lead'),
+  };
+
+  function applySummaryLayout(section) {
+    const showPetrol = section === "filters" || section === "dsr-petrol";
+    const showDiesel = section === "filters" || section === "dsr-diesel";
+    const singleFuel = section === "dsr-petrol" || section === "dsr-diesel";
+
+    layoutEls.petrolBlock?.toggleAttribute("hidden", !showPetrol);
+    layoutEls.dieselBlock?.toggleAttribute("hidden", !showDiesel);
+    layoutEls.petrolStat?.toggleAttribute("hidden", !showPetrol);
+    layoutEls.dieselStat?.toggleAttribute("hidden", !showDiesel);
+    layoutEls.statsEl?.classList.toggle("dsr-period-stats--single-fuel", singleFuel);
+
+    const copy = DS?.getSummaryCopy(section);
+    if (copy && layoutEls.titleEl) layoutEls.titleEl.textContent = copy.title;
+    if (copy && layoutEls.leadEl) layoutEls.leadEl.textContent = copy.lead;
+  }
+
+  function showSection(rawSection) {
+    const section = DSR_ALL_SECTIONS.includes(rawSection) ? rawSection : defaultSection;
+    const isDsrView = DSR_SUMMARY_SECTIONS.has(section);
+    currentDsrSection = section;
+
+    navItems.forEach((btn) => {
+      const group = btn.dataset.dsrSidebarGroup;
+      btn.hidden = isDsrView ? group === "meter" : group === "dsr";
+      btn.classList.toggle("is-active", btn.dataset.section === section);
+    });
+
+    panels.forEach((panel) => {
+      const active = isDsrView ? panel.dataset.panel === "filters" : panel.dataset.panel === section;
+      panel.classList.toggle("is-visible", active);
+      panel.hidden = !active;
+    });
+
+    if (isDsrView) {
+      applySummaryLayout(section);
+      void ensureDsrSummary().then(() => window.DsrSummary?.refreshIfNeeded?.());
+    }
+
+    updateDsrChrome(section);
+
+    const publicHash = getDsrPublicHash(section);
+    if (location.hash !== `#${publicHash}`) {
+      history.replaceState(null, "", `#${publicHash}`);
+    }
+  }
+
+  navItems.forEach((btn) => {
+    btn.addEventListener("click", () => showSection(btn.dataset.section || defaultSection));
+  });
+
+  const initial = resolveDsrSectionFromHash(location.hash);
+  showSection(DSR_ALL_SECTIONS.includes(initial) ? initial : defaultSection);
+
+  window.addEventListener("hashchange", () => {
+    const next = resolveDsrSectionFromHash(location.hash);
+    if (DSR_ALL_SECTIONS.includes(next)) showSection(next);
+  });
+}
+
+function invalidateDailySummary() {
+  if (window.DsrSummary) {
+    window.DsrSummary.invalidate();
+  } else {
+    window.__dsrSummaryDirty = true;
+  }
+}
+
+function ensureDsrSummary() {
+  if (!dsrSummaryLoadPromise) {
+    dsrSummaryLoadPromise = loadScript("js/dsrSummary.js").then(() => {
+      if (dsrSummaryInitArgs) {
+        window.DsrSummary?.initFilters?.(
+          dsrSummaryInitArgs.dateFromDashboard,
+          dsrSummaryInitArgs.urlDateParam
+        );
+      }
+      if (window.__dsrSummaryDirty) {
+        window.DsrSummary?.invalidate?.();
+        window.__dsrSummaryDirty = false;
+      }
+    });
+  }
+  return dsrSummaryLoadPromise;
+}
+
+function updateDsrChrome(section) {
+  const subtitle = document.getElementById("dsr-page-subtitle");
+  const isDsrView = DSR_SUMMARY_SECTIONS.has(section);
+  if (subtitle) {
+    subtitle.textContent = isDsrView ? "DSR" : "Meter Reading";
+    document.title = `${subtitle.textContent} · Bishnupriya Fuels`;
+  }
+  const title = document.getElementById("dsr-sidebar-title");
+  if (title) title.textContent = isDsrView ? "DSR" : "Sections";
+  document.getElementById("dsr-page-main")?.classList.toggle("dsr-page-layout--dsr-view", isDsrView);
+}
 
 /** Column count for recent-entries table (includes Actions for admin). */
 function getHistoryColCount(product) {
@@ -159,6 +308,7 @@ function initDsrDeleteHandlers() {
           await refreshMeterFormForSelectedDate(product, form);
         }
         await loadReadingHistory(product, true);
+        void invalidateDailySummary();
       },
       errorContext: { context: "deleteMeterEntry", product, id },
     });
@@ -183,6 +333,34 @@ async function fetchDsrEntryIdForDate(product, dateStr) {
   return data[0].id ?? null;
 }
 
+/** Columns needed to hydrate a meter form (avoids select("*")). */
+function getMeterRowSelectColumns(product) {
+  const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
+  const opening = [];
+  for (let p = 1; p <= config.pumps; p++) {
+    for (let n = 1; n <= config.nozzlesPerPump; n++) {
+      opening.push(`opening_pump${p}_nozzle${n}`);
+    }
+  }
+  const closing = getClosingMeterFields(config);
+  const pumpCols = Array.from({ length: config.pumps }, (_, i) => `sales_pump${i + 1}`);
+  return [
+    "id",
+    "date",
+    ...opening,
+    ...closing,
+    ...pumpCols,
+    "total_sales",
+    "testing",
+    "dip_reading",
+    "stock",
+    "receipts",
+    "petrol_rate",
+    "diesel_rate",
+    "remarks",
+  ].join(", ");
+}
+
 /**
  * Full DSR row for a calendar date (latest by created_at if duplicates).
  * @returns {Promise<object | null>}
@@ -192,7 +370,7 @@ async function fetchDsrFullRowForDate(product, dateStr) {
   const table = DSR_TABLE[product] || "dsr_petrol";
   const { data, error } = await supabaseClient
     .from(table)
-    .select("*")
+    .select(getMeterRowSelectColumns(product))
     .eq("date", dateStr)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -489,6 +667,7 @@ function initReadingForm(product) {
       }
     }
     loadReadingHistory(product, true); // Reset pagination to show new entry
+    void invalidateDailySummary();
     // Invalidate cache so dashboard reflects new DSR immediately
     if (typeof AppCache !== "undefined" && AppCache) {
       CacheInvalidation.invalidate("dsr");
@@ -603,7 +782,7 @@ async function loadReadingHistory(product, reset = false) {
       const [countRes, pageRes] = await Promise.all([
         supabaseClient
           .from(table)
-          .select("*", { count: "exact", head: true }),
+          .select("id", { count: "exact", head: true }),
         supabaseClient
           .from(table)
           .select(selectCols)
@@ -958,4 +1137,3 @@ function setNumber(form, name, value) {
   }
   input.value = value.toFixed(2);
 }
-

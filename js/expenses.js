@@ -267,7 +267,7 @@ async function loadExpenses(reset = false) {
       const { count, error: countError } = await applyNonSalaryExpenseFilter(
         supabaseClient
           .from("expenses")
-          .select("*", { count: "exact", head: true })
+          .select("id", { count: "exact", head: true })
           .gte("date", start)
           .lte("date", end)
       );

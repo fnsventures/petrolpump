@@ -18,6 +18,13 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+/** Normalize a credit customer name for case-insensitive comparison. */
+function normCustomerName(s) {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase();
+}
+
 /**
  * Debounce a function — waits until calls stop for `waitMs`.
  * @param {Function} fn
@@ -310,6 +317,10 @@ function resolveDateRange(selection, opts = {}) {
     const d = singleDate || startInput?.value || todayStr;
     return { start: d, end: d, modeInfo: { mode: selection } };
   }
+  if (selection === "yesterday") {
+    const d = getYesterdayDateString();
+    return { start: d, end: d, modeInfo: { mode: "yesterday" } };
+  }
   if (selection === "this-week") {
     return { ...getWeekRange(today), modeInfo: { mode: "this-week" } };
   }
@@ -434,7 +445,7 @@ function savePersistedDate(storageKey, dateStr) {
 
 /**
  * Restore and auto-save a single date input (record forms, snapshot pickers).
- * Priority: URL param → localStorage → current value → fallback (today).
+ * Priority: URL param → localStorage → current value → fallback (today unless overridden).
  *
  * @param {HTMLInputElement|string} inputRef
  * @param {string} storageKey
@@ -452,7 +463,7 @@ function initPersistedDateInput(inputRef, storageKey, opts = {}) {
     if (fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl)) dateStr = fromUrl;
   }
   if (!dateStr) {
-    const stored = getPersistedDate(storageKey, "");
+    const stored = getPersistedDate(storageKey, fallback);
     if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) dateStr = stored;
   }
   if (!dateStr) {
@@ -512,6 +523,13 @@ function finishRecordFormSave(form, fieldValues, dateStorageKeys = {}) {
  */
 function getLocalDateString() {
   return toLocalDateString(new Date());
+}
+
+/** Yesterday's date as YYYY-MM-DD in local timezone. */
+function getYesterdayDateString() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return formatDateInput(d);
 }
 
 /**
@@ -970,6 +988,51 @@ window.isTestingExpenseCategory = isTestingExpenseCategory;
 window.findMissingBuyingPriceRows = findMissingBuyingPriceRows;
 window.computeProfitLossSummary = computeProfitLossSummary;
 
+/** MS/HSD or petrol/diesel → product key for styling. */
+function normalizeFuelType(value) {
+  const v = String(value ?? "").trim().toUpperCase();
+  if (v === "MS" || v === "PETROL") return "petrol";
+  if (v === "HSD" || v === "DIESEL") return "diesel";
+  const product = normalizeProduct(value);
+  if (product === "petrol" || product === "diesel") return product;
+  return "";
+}
+
+function fuelProductModifier(value) {
+  const mod = normalizeFuelType(value);
+  return mod || null;
+}
+
+function fuelBadgeClass(value) {
+  const mod = fuelProductModifier(value);
+  return mod ? `fuel-badge fuel-badge--${mod}` : "fuel-badge";
+}
+
+function formatFuelBadge(value) {
+  const text = value != null && String(value).trim() ? String(value).trim().toUpperCase() : "";
+  if (!text) return "—";
+  return `<span class="${fuelBadgeClass(value)}">${escapeHtml(text)}</span>`;
+}
+
+function fuelRowClass(value) {
+  const mod = fuelProductModifier(value);
+  return mod ? `fuel-row--${mod}` : "";
+}
+
+function syncFuelSelectStyle(selectEl) {
+  if (!selectEl) return;
+  selectEl.classList.remove("credit-fuel-select--petrol", "credit-fuel-select--diesel");
+  const mod = fuelProductModifier(selectEl.value);
+  if (mod) selectEl.classList.add(`credit-fuel-select--${mod}`);
+}
+
+window.normalizeFuelType = normalizeFuelType;
+window.fuelProductModifier = fuelProductModifier;
+window.fuelBadgeClass = fuelBadgeClass;
+window.formatFuelBadge = formatFuelBadge;
+window.fuelRowClass = fuelRowClass;
+window.syncFuelSelectStyle = syncFuelSelectStyle;
+
 /** Single-open accordion for documentation panels (Reports About, Analysis Setup). */
 function initDocsAccordion(accordion) {
   if (!accordion) return;
@@ -985,3 +1048,44 @@ function initDocsAccordion(accordion) {
 }
 
 window.initDocsAccordion = initDocsAccordion;
+
+const _scriptLoadPromises = new Map();
+
+/**
+ * Load a script once (deduped). Resolves when the script has executed.
+ * @param {string} src - URL relative to the page or absolute
+ * @returns {Promise<void>}
+ */
+function loadScript(src) {
+  const url = src.includes("://") ? src : new URL(src, window.location.href).href;
+  if (_scriptLoadPromises.has(url)) return _scriptLoadPromises.get(url);
+  const promise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${url}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === "1") {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      return;
+    }
+    const el = document.createElement("script");
+    el.src = url;
+    el.defer = true;
+    el.addEventListener(
+      "load",
+      () => {
+        el.dataset.loaded = "1";
+        resolve();
+      },
+      { once: true }
+    );
+    el.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+    document.head.appendChild(el);
+  });
+  _scriptLoadPromises.set(url, promise);
+  return promise;
+}
+
+window.loadScript = loadScript;

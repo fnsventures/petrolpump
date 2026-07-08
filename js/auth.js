@@ -81,6 +81,60 @@ function enhanceTopbarBrand() {
   brand.appendChild(textWrap);
 }
 
+/** Normalize section panels to the day-closing #close header pattern. */
+function normalizePanelHeaders() {
+  const body = document.body;
+  if (!body || body.dataset.panelHeadersNormalized) return;
+  if (body.classList.contains("login-page") || body.classList.contains("landing-page")) {
+    return;
+  }
+  if (!document.querySelector("header.topbar")) return;
+
+  body.dataset.panelHeadersNormalized = "1";
+  body.classList.add("app-page");
+
+  document.querySelectorAll(".settings-panel.card").forEach((panel) => {
+    if (panel.classList.contains("analysis-hero")) return;
+
+    panel.classList.add("dashboard-card");
+
+    const existingHead = panel.querySelector(
+      ":scope > .panel-head, :scope > .dc-close-head, :scope > .card-head.snapshot-head, :scope > .reports-generate-intro"
+    );
+    if (existingHead) {
+      existingHead.classList.add("panel-head");
+      existingHead.querySelector("h2")?.classList.add("dashboard-section-title");
+      existingHead.querySelectorAll("p.muted").forEach((p) => p.classList.add("panel-lead"));
+      return;
+    }
+
+    const h2 = panel.querySelector(":scope > h2");
+    if (!h2) return;
+
+    const head = document.createElement("div");
+    head.className = "panel-head";
+    const copyWrap = document.createElement("div");
+
+    h2.classList.add("dashboard-section-title");
+    copyWrap.appendChild(h2);
+
+    const muted = panel.querySelector(":scope > p.muted");
+    if (muted) {
+      muted.classList.add("panel-lead");
+      copyWrap.appendChild(muted);
+    }
+
+    head.appendChild(copyWrap);
+    panel.insertBefore(head, panel.firstChild);
+  });
+
+  document.querySelectorAll(".dsr-card .dsr-card-head").forEach((head) => {
+    head.classList.add("panel-head");
+    head.querySelector("h2")?.classList.add("dashboard-section-title");
+    head.querySelectorAll("p.muted").forEach((p) => p.classList.add("panel-lead"));
+  });
+}
+
 function markCurrentNavLink() {
   const path = window.location.pathname;
   let current = path.split("/").pop() || "";
@@ -588,8 +642,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   ensureTopbarUserMenu();
   centerTopbarSubtitle();
   enhanceTopbarBrand();
+  normalizePanelHeaders();
   markCurrentNavLink();
   initNavToggle();
+  const cachedRole =
+    typeof window.readCachedUserRole === "function" ? window.readCachedUserRole() : null;
+  if (cachedRole) {
+    applyRoleVisibility(cachedRole);
+  }
   await initTopbarUserProfile();
 });
 
@@ -815,13 +875,16 @@ async function requireAuth(options = {}) {
  * @param {string} role - The user's role ('admin' or 'supervisor')
  */
 function applyRoleVisibility(role) {
-  if (role === "admin") {
-    document.body.classList.add("role-admin");
-    document.querySelectorAll("[data-role='admin-only']").forEach((el) => {
-      el.style.display = "";
-    });
+  const isAdmin = role === "admin";
+
+  if (typeof window.applyRoleClass === "function") {
+    window.applyRoleClass(isAdmin);
   } else {
-    document.body.classList.remove("role-admin");
+    document.documentElement.classList.toggle("role-admin", isAdmin);
+    document.body?.classList.toggle("role-admin", isAdmin);
+  }
+
+  if (!isAdmin) {
     document
       .querySelectorAll("[data-role='admin-only']")
       .forEach((el) => el.remove());
@@ -829,7 +892,7 @@ function applyRoleVisibility(role) {
 
   document
     .querySelectorAll("[data-role='supervisor-only']")
-    .forEach((el) => role === "admin" && el.remove());
+    .forEach((el) => isAdmin && el.remove());
 
   document.querySelectorAll(".nav-group-block").forEach((block) => {
     const links = block.querySelectorAll(".nav-group a[href]");

@@ -41,21 +41,22 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 
 ### 1.3 Run a local server
 
-Serve the project from the repository root so that paths like `/js/env.js` and `/css/app.css` resolve correctly.
-
-**Using Python 3:**
+**Recommended** (expands nav partials, mirrors deploy output):
 
 ```bash
+npm run dev
+```
+
+Open **http://localhost:4173/** — uses `_site/` built from source.
+
+**Quick static serve** (partials not expanded unless you ran `npm run build:site` first):
+
+```bash
+npm run build:site   # optional: refresh _site/
 python3 -m http.server 3000
 ```
 
-**Using Node (npx):**
-
-```bash
-npx serve -p 3000
-```
-
-Then open **http://localhost:3000/** in your browser. Use `index.html` or `login.html` as the entry point.
+Then open **http://localhost:3000/**. Use `index.html` or `login.html` as the entry point.
 
 ### 1.4 First login
 
@@ -151,25 +152,64 @@ cp scripts/db.env.example scripts/db.env
 
 Optional: `./scripts/db.sh backup` before step 4.
 
-### 2.5 Edge functions (manual deploy)
+### 2.5 Edge functions
 
-GitHub Actions deploys the **static frontend only**. Supabase Edge Functions must be deployed separately with the Supabase CLI.
+GitHub Actions can deploy edge functions automatically (`.github/workflows/deploy-supabase-functions.yml`) when `supabase/functions/**` changes on `main` or `staging`. Required **environment secrets** (per prod/staging):
 
-**Prerequisite:** [Supabase CLI](https://supabase.com/docs/guides/cli) installed and logged in.
+| Secret | Purpose |
+|--------|---------|
+| `SUPABASE_ACCESS_TOKEN` | Personal access token from [Supabase Account → Tokens](https://supabase.com/dashboard/account/tokens) |
+| `SUPABASE_PROJECT_REF` | Project ref from **Project Settings → General** |
+
+Manual deploy (alternative):
 
 ```bash
 supabase login
+supabase functions deploy get-dashboard-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-reports-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-pl-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
 ```
 
-Repeat for **staging** and **prod** Supabase projects (each has its own project ref in **Project Settings → General**).
+Repeat for **staging** and **prod** Supabase projects.
 
-**Secrets:** Google OAuth and other function secrets are set in Supabase Dashboard → **Edge Functions → Secrets**, not in GitHub. Full walkthrough: [Invoice documents guide](INVOICE_DOCUMENTS.md).
+**Secrets for `invoice-documents`:** Google OAuth and other function secrets are set in Supabase Dashboard → **Edge Functions → Secrets**, not in GitHub.
 
 | Function | Purpose |
 |----------|---------|
+| `get-dashboard-data` | Batched DSR summary payload for dashboard DSR section |
+| `get-reports-data` | Batched reports page data (DSR, stock, expenses, invoices) |
+| `get-pl-data` | Batched P&amp;L data (DSR + receipt history, expenses, lube sales) |
 | `invoice-documents` | Upload/download/delete supplier invoices in Google Drive |
-| `get-dashboard-data` | Optional batched dashboard payload |
+
+Deploy functions **before or with** frontend merges that depend on them. The client falls back to direct queries if a function is unavailable.
+
+### 2.6 Verify batch credit RPC
+
+After applying migrations, confirm `batch_record_credit_settlements` exists:
+
+```bash
+# In Supabase SQL Editor, run scripts/verify-batch-rpc.sql
+```
+
+Or apply pending migrations:
+
+```bash
+./scripts/db.sh migrate --apply   # prod (see scripts/README.md)
+```
+
+Migration file: `supabase/migrations/20260708120000_batch_credit_settle_rpc.sql`.
+
+### 2.7 Local preview build
+
+Source HTML uses Nunjucks partials (`{% include %}`). For a local mirror of the deployed site:
+
+```bash
+npm run build:site    # sync → _site/ + expand partials
+npm run dev           # build:site + serve http://localhost:4173
+```
+
+Serving repo root with `python3 -m http.server` works but nav partials stay unexpanded unless you run `build:html` first.
 
 When releasing invoice-document changes, deploy the function **before or with** the frontend merge. See [Invoice documents → Release checklist](INVOICE_DOCUMENTS.md#10-release-checklist).
 
