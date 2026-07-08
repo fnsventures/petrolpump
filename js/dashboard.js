@@ -631,13 +631,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     await updateSmartAlerts();
     await loadDayClosingBanners();
+    if (role === "admin") void loadPlTodoBanner();
     updateDashboardAlertsVisibility();
     if (window.location.hash === "#pl") {
-      setTimeout(() => {
-        const plEl = document.getElementById("pl");
-        if (plEl) plEl.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 300);
+      setTimeout(scrollToPlBuyingPriceAlert, 300);
     }
+
+    document.getElementById("pl-todo-goto")?.addEventListener("click", () => {
+      void ensurePlSectionLoaded().then(() => {
+        setTimeout(scrollToPlBuyingPriceAlert, 150);
+      });
+    });
     scheduleAutoFitStats();
   } catch (error) {
     AppError.handle(error, { context: { source: "dashboardInit" } });
@@ -863,7 +867,15 @@ async function ensurePlSectionLoaded() {
   if (!plFilterApi) return;
   if (!plSectionLoaded) {
     plSectionLoaded = true;
-    await Promise.all([plFilterApi.refresh(), loadPlTodoBanner()]);
+    await plFilterApi.refresh();
+  }
+  let pendingFromDsr = false;
+  try {
+    pendingFromDsr = sessionStorage.getItem("pl_todo_pending") === "1";
+    if (pendingFromDsr) sessionStorage.removeItem("pl_todo_pending");
+  } catch (_) {}
+  if (pendingFromDsr) {
+    setTimeout(scrollToPlBuyingPriceAlert, 200);
   }
 }
 
@@ -1353,40 +1365,37 @@ function renderDsrSummary(data, elements, range) {
 }
 
 /**
- * Fetch count of DSR rows with receipts > 0 and no buying price (all history / old data included).
+ * Fetch missing buying-price rows once and update banner (and optionally the P&L list).
  */
-async function loadPlTodoBanner() {
+async function refreshMissingBuyingPriceUi(options = {}) {
+  const { renderList = false } = options;
   const bannerEl = document.getElementById("pl-todo-banner");
   const countEl = document.getElementById("pl-todo-count");
-  if (!bannerEl || !countEl) return;
 
-  const end = new Date();
-  const endStr = formatDateInput(end);
-  const start = new Date(end);
-  start.setFullYear(start.getFullYear() - 10);
-  const startStr = formatDateInput(start);
-
-  const { count, error } = await supabaseClient
-    .from("dsr")
-    .select("id", { count: "exact", head: true })
-    .gte("date", startStr)
-    .lte("date", endStr)
-    .gt("receipts", 0)
-    .is("buying_price_per_litre", null);
-
+  const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows();
   if (error) {
-    AppError.report(error, { context: "loadPlTodoBanner" });
-    bannerEl.classList.add("hidden");
-    return;
+    AppError.report(error, { context: "refreshMissingBuyingPriceUi" });
+    bannerEl?.classList.add("hidden");
+    if (renderList) renderPlMissingBuyingList([]);
+    return [];
   }
-  const n = count ?? 0;
-  if (n > 0) {
-    countEl.textContent = String(n);
-    bannerEl.classList.remove("hidden");
-  } else {
-    bannerEl.classList.add("hidden");
-    try { sessionStorage.removeItem("pl_todo_pending"); } catch (_) {}
+
+  const rows = data ?? [];
+  if (bannerEl && countEl) {
+    if (rows.length > 0) {
+      countEl.textContent = String(rows.length);
+      bannerEl.classList.remove("hidden");
+    } else {
+      bannerEl.classList.add("hidden");
+      try { sessionStorage.removeItem("pl_todo_pending"); } catch (_) {}
+    }
   }
+  if (renderList) renderPlMissingBuyingList(rows);
+  return rows;
+}
+
+async function loadPlTodoBanner() {
+  await refreshMissingBuyingPriceUi({ renderList: false });
 }
 
 /**
@@ -1452,7 +1461,7 @@ async function handleSaveBuyingPrice(dsrId) {
   }
   const range = getCurrentPlRange();
   if (range) await loadProfitLossSummary(range);
-  loadPlTodoBanner();
+  else await refreshMissingBuyingPriceUi({ renderList: true });
   resetBtn();
 }
 
@@ -1461,6 +1470,46 @@ function showPlBuyingPriceError(message) {
   if (!el) return;
   el.textContent = message;
   el.classList.remove("hidden");
+}
+
+function scrollToPlBuyingPriceAlert() {
+  const alert = document.getElementById("pl-buying-price-alert");
+  if (alert && !alert.classList.contains("hidden")) {
+    alert.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.querySelector(".pl-buying-input")?.focus({ preventScroll: true });
+    return;
+  }
+  document.getElementById("pl")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderPlMissingBuyingList(rows) {
+  const plAlertEl = document.getElementById("pl-buying-price-alert");
+  const plMissingListEl = document.getElementById("pl-missing-buying-list");
+  if (!plAlertEl || !plMissingListEl) return;
+
+  if (!rows?.length) {
+    plAlertEl.classList.add("hidden");
+    plMissingListEl.innerHTML = "";
+    return;
+  }
+
+  plAlertEl.classList.remove("hidden");
+  plMissingListEl.innerHTML = rows
+    .map((row) => {
+      const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
+      const rowId = row.id;
+      return `
+        <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">
+          <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
+          <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
+          <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
+          <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
+        </li>`;
+    })
+    .join("");
+  plMissingListEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
+    btn.addEventListener("click", () => handleSaveBuyingPrice(btn.dataset.dsrId));
+  });
 }
 
 async function loadProfitLossSummary(range) {
@@ -1501,38 +1550,10 @@ async function loadProfitLossSummary(range) {
     lubeSales: plData.lubeSales,
   });
   const income = { total: pl.revenue, missingRates: pl.missingRates };
-  const missingBuyingPrice = pl.missingBuyingPrice;
   const allBuyingPricesEntered = pl.canCalculate;
 
-  const plAlertEl = document.getElementById("pl-buying-price-alert");
-  const plMissingListEl = document.getElementById("pl-missing-buying-list");
   const plProfitHintEl = document.getElementById("pl-profit-hint");
-  if (plAlertEl && plMissingListEl) {
-    if (missingBuyingPrice.length > 0) {
-      plAlertEl.classList.remove("hidden");
-      plMissingListEl.innerHTML = missingBuyingPrice
-        .map(
-          (row) => {
-            const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
-            const rowId = row.id;
-            return `
-              <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">
-                <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
-                <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
-                <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
-                <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
-              </li>`;
-          }
-        )
-        .join("");
-      plMissingListEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
-        btn.addEventListener("click", () => handleSaveBuyingPrice(btn.dataset.dsrId));
-      });
-    } else {
-      plAlertEl.classList.add("hidden");
-      plMissingListEl.innerHTML = "";
-    }
-  }
+  await refreshMissingBuyingPriceUi({ renderList: true });
 
   const expenseTotal = pl.totalExpenses;
 

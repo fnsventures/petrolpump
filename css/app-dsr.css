@@ -42,6 +42,15 @@
   min-width: 960px;
 }
 
+/* Inline meter entry tables size to their panel; wide stock row scrolls inside .meter-table-scroll */
+.dsr-card .meter-table.dsr-table {
+  min-width: 0;
+}
+
+.dsr-card .meter-table input[type="date"] {
+  min-width: 0;
+}
+
 .dsr-table th,
 .dsr-table td {
   border: 1px solid var(--border);
@@ -139,15 +148,15 @@
 
 
 /* ─── Wide data-entry layout (Meter Reading, Sales daily) ───────────────── */
-
-main.settings-layout.page-layout-wide {
-  width: min(98vw, 1680px);
-  padding: 1rem 1.25rem 2rem;
-}
+/* Shell width matches dashboard (app-core settings-layout); tables scroll inside panels. */
 
 .page-layout-wide .settings-panels {
   min-width: 0;
   width: 100%;
+}
+
+main.settings-layout.dsr-page-layout {
+  width: min(80rem, 98vw);
 }
 
 .page-layout-wide .settings-panel.card.dsr-card {
@@ -158,9 +167,9 @@ main.settings-layout.page-layout-wide {
   margin-bottom: 0.25rem;
 }
 
-/* Meter tables: readable sizing on wide layout */
+/* Meter tables: fixed layout keeps header cells aligned with inputs */
 .page-layout-wide .dsr-card .meter-table {
-  table-layout: auto;
+  table-layout: fixed;
   width: 100%;
 }
 
@@ -173,13 +182,30 @@ main.settings-layout.page-layout-wide {
 
 .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
   width: 100%;
-  min-width: 5.75rem;
-  max-width: none;
+  min-width: 0;
+  max-width: 100%;
   font-size: var(--text-base);
 }
 
 .page-layout-wide .dsr-card .meter-table.compact input[type="date"] {
-  min-width: 10.5rem;
+  min-width: 0;
+}
+
+.meter-table .meter-col-date {
+  width: 11.5rem;
+}
+
+.meter-table--closing .meter-col-date--spacer {
+  padding: 0;
+  border-color: transparent;
+  background: transparent !important;
+}
+
+.meter-block-wide .meter-table thead th {
+  white-space: normal;
+  line-height: 1.25;
+  word-break: break-word;
+  hyphens: auto;
 }
 
 .page-layout-wide .dsr-card .meter-table .calc-field[readonly] {
@@ -190,12 +216,13 @@ main.settings-layout.page-layout-wide {
   font-size: var(--heading-md);
 }
 
-.page-layout-wide .meter-block-wide .meter-table {
+.page-layout-wide .meter-block-wide .meter-table-scroll .meter-table {
   min-width: 1080px;
 }
 
 .page-layout-wide .meter-table-scroll {
   width: 100%;
+  overflow-x: auto;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: #fff;
@@ -315,6 +342,86 @@ main.settings-layout.page-layout-wide {
   margin-top: 0.25rem;
 }
 
+/* Period summary tiles (markup shared with day-closing register) */
+.dsr-page-layout .dc-register-period-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+@media (max-width: 900px) {
+  .dsr-page-layout .dc-register-period-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .dsr-page-layout .dc-register-period-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dsr-page-layout .dc-register-period-stats .dc-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dsr-page-layout .dc-stat-card {
+  padding: 0.9rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--surface-muted, #f8fafc);
+}
+
+.dsr-page-layout .dc-stat-card--highlight {
+  border-color: rgba(0, 112, 192, 0.3);
+  background: linear-gradient(135deg, #e8f0fa 0%, #f8fafc 100%);
+}
+
+.dsr-page-layout .dc-stat-card--petrol {
+  border-color: var(--fuel-petrol-border);
+  background: linear-gradient(135deg, var(--fuel-petrol-bg) 0%, #fff 72%);
+}
+
+.dsr-page-layout .dc-stat-card--petrol .dc-stat-value {
+  color: var(--fuel-petrol-text);
+}
+
+.dsr-page-layout .dc-stat-card--diesel {
+  border-color: var(--fuel-diesel-border);
+  background: linear-gradient(135deg, var(--fuel-diesel-bg) 0%, #fff 72%);
+}
+
+.dsr-page-layout .dc-stat-card--diesel .dc-stat-value {
+  color: var(--fuel-diesel-text);
+}
+
+.dsr-page-layout .dc-stat-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.dsr-page-layout .dc-stat-value {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+}
+
+.dsr-page-layout .dc-stat-meta {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  margin-top: 0.1rem;
+}
+
 .dsr-period-stats--single-fuel {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -327,6 +434,27 @@ main.settings-layout.page-layout-wide {
 
 .dsr-daily-block {
   margin-top: 1.25rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 0.65rem;
+  background: #fff;
+  overflow: hidden;
+}
+
+.dsr-daily-block.dsr-card--petrol {
+  border-color: rgba(0, 112, 192, 0.22);
+}
+
+.dsr-daily-block.dsr-card--diesel {
+  border-color: rgba(230, 184, 0, 0.45);
+}
+
+.dsr-daily-block .dsr-card-head {
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.dsr-daily-block .table-scroll {
+  padding: 0 1.25rem 1.25rem;
 }
 
 .dsr-daily-block:first-of-type {

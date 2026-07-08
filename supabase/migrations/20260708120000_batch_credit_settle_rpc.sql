@@ -39,6 +39,15 @@ begin
   if p_primary_customer_id is null then
     raise exception 'primary_customer_id required';
   end if;
+  if not exists (select 1 from public.credit_customers where id = p_primary_customer_id) then
+    raise exception 'Primary credit customer not found';
+  end if;
+
+  perform id
+  from public.credit_customers
+  where id = any(p_customer_ids || array[p_primary_customer_id])
+  order by id
+  for update;
 
   foreach v_cust_id in array p_customer_ids
   loop
@@ -46,8 +55,7 @@ begin
 
     select amount_due into v_due
     from public.credit_customers
-    where id = v_cust_id
-    for update;
+    where id = v_cust_id;
 
     if not found then
       raise exception 'Credit customer not found';
@@ -66,10 +74,6 @@ begin
   end loop;
 
   if v_remaining > 0 then
-    if not exists (select 1 from public.credit_customers where id = p_primary_customer_id) then
-      raise exception 'Primary credit customer not found';
-    end if;
-
     v_result := public.record_credit_payment(
       p_primary_customer_id, p_date, v_remaining, p_note, p_payment_mode
     );

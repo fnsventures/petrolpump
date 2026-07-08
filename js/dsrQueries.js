@@ -107,6 +107,35 @@
     return { data: data ?? [], error };
   }
 
+  let missingBuyingPriceInflight = null;
+
+  /**
+   * Receipt days with fuel received but no usable buying price (receipt history window).
+   * Matches the P&L todo banner count and buying-price entry list on the dashboard.
+   */
+  async function fetchMissingBuyingPriceRows() {
+    if (!missingBuyingPriceInflight) {
+      missingBuyingPriceInflight = (async () => {
+        const endStr = new Date().toISOString().slice(0, 10);
+        const startStr = PumpSettings.getReceiptHistoryStart();
+
+        const { data, error } = await supabaseClient
+          .from("dsr")
+          .select("id, date, product, receipts, buying_price_per_litre")
+          .gte("date", startStr)
+          .lte("date", endStr)
+          .gt("receipts", 0)
+          .or("buying_price_per_litre.is.null,buying_price_per_litre.lte.0")
+          .order("date", { ascending: false });
+
+        return { data: data ?? [], error };
+      })().finally(() => {
+        missingBuyingPriceInflight = null;
+      });
+    }
+    return missingBuyingPriceInflight;
+  }
+
   /** Lube/billing invoice totals for P&L (matches Reports trading account). */
   async function fetchLubeSales(startDate, endDate) {
     const { data, error } = await supabaseClient
@@ -148,6 +177,7 @@
     filterDsrByRange,
     extractReceiptRows,
     fetchDsrRows,
+    fetchMissingBuyingPriceRows,
     fetchExpenses,
     fetchLubeSales,
     mergeDsrStock,

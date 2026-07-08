@@ -153,6 +153,14 @@ async function populatePartyDatalist() {
 // ─── Line Items ──────────────────────────────────────────────────────────────
 
 let itemCounter = 0;
+let itemsTableDelegated = false;
+const BILLING_UNITS = ["Pcs", "Ltr", "Kg", "Box", "Set", "Nos"];
+
+function buildUnitOptions(selectedUnit) {
+  return BILLING_UNITS.map(
+    (unit) => `<option value="${unit}" ${unit === selectedUnit ? "selected" : ""}>${unit}</option>`
+  ).join("");
+}
 
 function buildGstSelectOptions(selectedPct) {
   const slabs = AppConfig?.GST_SLABS || [];
@@ -168,6 +176,25 @@ function buildGstSelectOptions(selectedPct) {
       return `<option value="${pct}" ${isSelected ? "selected" : ""}>${label}</option>`;
     })
     .join("");
+}
+
+function syncItemNameField(row, product) {
+  const nameInput = row.querySelector("[data-field='item_name']");
+  const fieldsWrap = row.querySelector(".item-cell-fields");
+  if (!nameInput || !fieldsWrap) return;
+
+  if (product) {
+    nameInput.value = normalizeInvoiceItemName(product.name);
+    nameInput.hidden = true;
+    nameInput.required = false;
+    fieldsWrap.classList.add("item-cell-fields--catalog");
+  } else {
+    nameInput.value = "";
+    nameInput.hidden = false;
+    nameInput.required = true;
+    nameInput.readOnly = false;
+    fieldsWrap.classList.remove("item-cell-fields--catalog");
+  }
 }
 
 function addItemRow(productId) {
@@ -187,71 +214,82 @@ function addItemRow(productId) {
   row.innerHTML = `
     <td class="col-sl">${tbody.children.length + 1}</td>
     <td class="col-item">
-      <select class="item-product-select" data-field="product_id">
-        <option value="">— Custom —</option>
-        ${productOptions}
-      </select>
-      <input type="text" class="item-name-input" data-field="item_name"
-             value="${escapeHtml(product?.name || "")}"
-             placeholder="Item name" required />
+      <div class="item-cell-fields">
+        <select class="item-product-select billing-line-control" data-field="product_id">
+          <option value="">— Custom —</option>
+          ${productOptions}
+        </select>
+        <input type="text" class="item-name-input billing-line-control" data-field="item_name"
+               value="${escapeHtml(product?.name || "")}"
+               placeholder="Item name" required />
+      </div>
     </td>
-    <td class="col-qty"><input type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="input-sm" /></td>
+    <td class="col-qty"><input type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
     <td class="col-unit">
-      <select data-field="unit">
-        <option value="Pcs" ${product?.unit === "Pcs" ? "selected" : ""}>Pcs</option>
-        <option value="Ltr" ${product?.unit === "Ltr" ? "selected" : ""}>Ltr</option>
-        <option value="Kg" ${product?.unit === "Kg" ? "selected" : ""}>Kg</option>
-        <option value="Box" ${product?.unit === "Box" ? "selected" : ""}>Box</option>
-        <option value="Set" ${product?.unit === "Set" ? "selected" : ""}>Set</option>
-        <option value="Nos" ${product?.unit === "Nos" ? "selected" : ""}>Nos</option>
-      </select>
+      <select data-field="unit" class="billing-line-control">${buildUnitOptions(product?.unit)}</select>
     </td>
-    <td class="col-rate"><input type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="input-sm" /></td>
+    <td class="col-rate"><input type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
     <td class="col-gst">
-      <select data-field="gst_percent">
+      <select data-field="gst_percent" class="billing-line-control">
         ${buildGstSelectOptions(product?.gst_percent)}
       </select>
     </td>
     <td class="col-amount"><span class="item-amount">₹0.00</span></td>
-    <td class="col-action"><button type="button" class="link danger remove-item-btn" title="Remove">&times;</button></td>
+    <td class="col-action"><button type="button" class="remove-item-btn" title="Remove" aria-label="Remove item">&times;</button></td>
   `;
 
   tbody.appendChild(row);
 
-  const productSelect = row.querySelector(".item-product-select");
-  productSelect.addEventListener("change", () => onProductSelected(row, productSelect.value));
+  syncItemNameField(row, product);
+  initItemsTableDelegation();
+  recalcRow(row);
+}
 
-  const debouncedRecalc = debounce(() => recalcRow(row), 120);
-  row.querySelectorAll("[data-field='quantity'], [data-field='rate'], [data-field='gst_percent']").forEach((input) => {
-    input.addEventListener("input", debouncedRecalc);
+function initItemsTableDelegation() {
+  const tbody = document.getElementById("items-body");
+  if (!tbody || itemsTableDelegated) return;
+  itemsTableDelegated = true;
+
+  const debouncedRecalc = debounce((row) => recalcRow(row), 120);
+
+  tbody.addEventListener("change", (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement) || target.dataset.field !== "product_id") return;
+    const row = target.closest("tr");
+    if (row) onProductSelected(row, target.value);
   });
 
-  row.querySelector(".remove-item-btn").addEventListener("click", () => {
+  tbody.addEventListener("input", (e) => {
+    const target = e.target;
+    if (!(target instanceof HTMLElement) || !target.dataset.field) return;
+    if (!["quantity", "rate", "gst_percent"].includes(target.dataset.field)) return;
+    const row = target.closest("tr");
+    if (row) debouncedRecalc(row);
+  });
+
+  tbody.addEventListener("click", (e) => {
+    const btn = e.target.closest?.(".remove-item-btn");
+    if (!btn) return;
+    const row = btn.closest("tr");
+    if (!row) return;
     row.remove();
     renumberItems();
     recalcTotals();
   });
-
-  recalcRow(row);
 }
 
 function onProductSelected(row, productId) {
   const product = productsCache.find(p => p.id === productId);
-  const nameInput = row.querySelector("[data-field='item_name']");
   const rateInput = row.querySelector("[data-field='rate']");
   const unitSelect = row.querySelector("[data-field='unit']");
   const gstSelect = row.querySelector("[data-field='gst_percent']");
 
   if (product) {
-    nameInput.value = normalizeInvoiceItemName(product.name);
     rateInput.value = product.default_rate;
     unitSelect.value = product.unit;
     gstSelect.value = product.gst_percent;
-    nameInput.readOnly = true;
-  } else {
-    nameInput.value = "";
-    nameInput.readOnly = false;
   }
+  syncItemNameField(row, product || null);
   recalcRow(row);
 }
 
