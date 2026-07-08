@@ -486,9 +486,6 @@ async function resolveCustomerIds() {
   updateSettleBalanceBanner();
 }
 
-function creditSummaryAssetUrl(path) {
-  return new URL(path, window.location.href).href;
-}
 
 function sortSummaryEntriesByDate(entries) {
   return [...(entries || [])].sort((a, b) =>
@@ -529,7 +526,7 @@ function creditSummaryReportHeader(title, subtitleLines) {
   return `
     <header class="report-print-head">
       <div class="report-letterhead">
-        <img src="${creditSummaryAssetUrl(AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC)}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="64" height="64" />
+        <img src="${PrintUtils.getStationLogoPrintUrl()}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="128" height="128" />
         <div class="report-letterhead-text">
           <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
           <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
@@ -760,7 +757,7 @@ async function runCreditSummaryPrint() {
     bodyClass: "report-print-body",
     containerClass: "report-print-container",
     iframeTitle: "Credit summary print",
-    imageSelectors: [".report-bpcl-logo"],
+    imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
   });
 }
 

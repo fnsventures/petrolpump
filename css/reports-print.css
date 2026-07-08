@@ -11,7 +11,7 @@
   --report-text: #1a2332;
   --report-muted: #64748b;
   --report-sheet-width: 186mm;
-  --station-logo-size-print: 12mm;
+  --station-logo-size-print: 16mm;
 }
 
 *,
@@ -74,6 +74,8 @@ body.report-print-body {
   height: var(--station-logo-size-print);
   object-fit: contain;
   flex-shrink: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 .report-letterhead-text {
