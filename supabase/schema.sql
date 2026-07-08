@@ -3025,17 +3025,13 @@ create or replace function public.get_credit_overview_period(
   p_to date
 )
 returns jsonb
-language plpgsql
+language sql
 security definer
 stable
 set search_path = public
 as $$
-declare
-  v_result jsonb;
-begin
-  perform public.require_staff_access();
-
-  with credit_agg as (
+  with _auth as (select public.require_staff_access()),
+  credit_agg as (
     select lower(trim(c.customer_name)) as name_key,
            min(c.customer_name)::text as customer_name,
            coalesce(sum(e.amount), 0)::numeric as credit_taken
@@ -3064,10 +3060,8 @@ begin
     full outer join payment_agg p using (name_key)
   ),
   totals as (
-    select coalesce(sum(credit_taken), 0)::numeric as credit_taken,
-           coalesce(sum(settled), 0)::numeric as settled,
-           coalesce(sum(credit_taken), 0) - coalesce(sum(settled), 0) as overdue
-    from merged
+    select coalesce((select sum(credit_taken) from credit_agg), 0)::numeric as credit_taken,
+           coalesce((select sum(settled) from payment_agg), 0)::numeric as settled
   ),
   top_customers as (
     select coalesce(
@@ -3093,15 +3087,12 @@ begin
   select jsonb_build_object(
     'credit_taken', t.credit_taken,
     'settled', t.settled,
-    'overdue', t.overdue,
+    'overdue', t.credit_taken - t.settled,
     'customers', tc.rows
   )
-  into v_result
-  from totals t
+  from _auth
+  cross join totals t
   cross join top_customers tc;
-
-  return v_result;
-end;
 $$;
 comment on function public.get_credit_overview_period(date, date) is
   'Portfolio credit activity for a date range (null p_from = all time): totals and per-customer breakdown.';

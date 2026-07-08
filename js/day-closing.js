@@ -1113,15 +1113,17 @@ function isRegisterSectionActive() {
 }
 
 async function loadRegisterNightCashData({ alsoLoadClosings = false } = {}) {
-  await loadNightCashAvailable();
-  applyNightCashCollectRange({ onlyIfEmpty: true });
-  await loadNightCashCollectionRegister();
+  const start = dcDom?.registerStart?.value?.trim();
+  const end = dcDom?.registerEnd?.value?.trim();
+  const tasks = [loadNightCashAvailable(), loadNightCashCollectionRegister()];
+
   if (alsoLoadClosings) {
     registerLoadedOnce = true;
-    const start = dcDom?.registerStart?.value?.trim();
-    const end = dcDom?.registerEnd?.value?.trim();
-    if (start && end) await loadDayClosingRegister();
+    if (start && end) tasks.push(loadDayClosingRegister());
   }
+
+  await Promise.all(tasks);
+  applyNightCashCollectRange({ onlyIfEmpty: true });
 }
 
 async function onRegisterSectionShown() {
