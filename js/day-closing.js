@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -63,12 +63,23 @@ function cacheDayClosingDom() {
     creditTodayEl: document.getElementById("dc-credit-today"),
     expensesTodayEl: document.getElementById("dc-expenses-today"),
     shortTodayEl: document.getElementById("dc-short-today"),
+    shortStatusEl: document.getElementById("dc-short-status"),
+    shortageAlertEl: document.getElementById("dc-shortage-alert"),
+    shortageAlertMessageEl: document.getElementById("dc-shortage-alert-message"),
+    resultCardEl: document.getElementById("dc-result-card"),
     registerStart: document.getElementById("dc-register-start"),
     registerEnd: document.getElementById("dc-register-end"),
     registerLoadBtn: document.getElementById("dc-register-load"),
     registerBody: document.getElementById("dc-register-body"),
+    registerFoot: document.getElementById("dc-register-foot"),
     registerStatus: document.getElementById("dc-register-status"),
     registerSummary: document.getElementById("dc-register-summary"),
+    registerPeriodStats: document.getElementById("dc-register-period-stats"),
+    periodPhonePay: document.getElementById("dc-period-phone-pay"),
+    periodExpenses: document.getElementById("dc-period-expenses"),
+    periodCollection: document.getElementById("dc-period-collection"),
+    periodNightCash: document.getElementById("dc-period-night-cash"),
+    periodNightCashMeta: document.getElementById("dc-period-night-cash-meta"),
     nccAvailableTotal: document.getElementById("ncc-available-total"),
     nccAvailableDays: document.getElementById("ncc-available-days"),
     nccAvailableRange: document.getElementById("ncc-available-range"),
@@ -102,6 +113,47 @@ function getDcDetailElements(kind) {
   return dcBreakdownEls[kind] || { toggle: null, panel: null };
 }
 
+function updateShortDisplay(shortToday) {
+  if (!dcDom?.shortTodayEl) return;
+  const amount = Number(shortToday);
+  const formatted = formatCurrency(amount);
+  dcDom.shortTodayEl.textContent = formatted;
+
+  const card = dcDom.resultCardEl;
+  const statusEl = dcDom.shortStatusEl;
+  const shortage = PumpSettings.isDayClosingShortage(amount);
+  const surplus = PumpSettings.isDayClosingSurplus(amount);
+  const threshold = PumpSettings.getAlertThresholds().dayClosingShortage;
+
+  card?.classList.remove("dc-short--shortage");
+  dcDom.shortTodayEl.classList.remove("dc-short--shortage", "stat-positive", "stat-negative");
+
+  if (shortage) {
+    card?.classList.add("dc-short--shortage");
+    dcDom.shortTodayEl.classList.add("dc-short--shortage");
+    if (statusEl) statusEl.textContent = "Still unaccounted — check night cash & PhonePe totals";
+  } else if (surplus) {
+    if (statusEl) statusEl.textContent = formatCurrency(Math.abs(amount)) + " over-accounted";
+  } else {
+    if (statusEl) statusEl.textContent = "Balanced — all money accounted for";
+  }
+
+  const alertEl = dcDom.shortageAlertEl;
+  const alertMsgEl = dcDom.shortageAlertMessageEl;
+  if (alertEl && alertMsgEl) {
+    if (shortage && PumpSettings.getAlertThresholds().shortageAlert) {
+      alertEl.classList.remove("hidden");
+      alertMsgEl.textContent =
+        threshold > 0
+          ? `Short of ${formatted} exceeds your alert threshold (${formatCurrency(threshold)}). Check night cash & PhonePe totals.`
+          : `Short of ${formatted} is still unaccounted. Check night cash & PhonePe totals.`;
+    } else {
+      alertEl.classList.add("hidden");
+      alertMsgEl.textContent = "";
+    }
+  }
+}
+
 function setBreakdownAmounts(text) {
   if (!dcDom) return;
   dcDom.totalSaleEl && (dcDom.totalSaleEl.textContent = text);
@@ -111,6 +163,13 @@ function setBreakdownAmounts(text) {
   dcDom.creditTodayEl && (dcDom.creditTodayEl.textContent = text);
   dcDom.expensesTodayEl && (dcDom.expensesTodayEl.textContent = text);
   dcDom.shortTodayEl && (dcDom.shortTodayEl.textContent = text);
+  if (text === DC_LOADING || text === DC_EMPTY) {
+    dcDom.shortStatusEl && (dcDom.shortStatusEl.textContent = "");
+    dcDom.resultCardEl?.classList.remove("dc-short--shortage");
+    dcDom.shortTodayEl?.classList.remove("dc-short--shortage", "stat-positive", "stat-negative");
+    dcDom.shortageAlertEl?.classList.add("hidden");
+    if (dcDom.shortageAlertMessageEl) dcDom.shortageAlertMessageEl.textContent = "";
+  }
 }
 
 function collapseDayClosingDetails() {
@@ -392,12 +451,8 @@ async function loadDayClosingBreakdown(dateStr) {
   }
   dcDom.successEl?.classList.add("hidden");
 
-  if (!canOverwrite && alreadySaved && b.short_today != null && dcDom.shortTodayEl) {
-    const shortToday = Number(b.short_today);
-    dcDom.shortTodayEl.textContent = formatCurrency(shortToday);
-    dcDom.shortTodayEl.classList.remove("stat-positive", "stat-negative");
-    if (shortToday > 0) dcDom.shortTodayEl.classList.add("stat-positive");
-    else if (shortToday < 0) dcDom.shortTodayEl.classList.add("stat-negative");
+  if (!canOverwrite && alreadySaved && b.short_today != null) {
+    updateShortDisplay(Number(b.short_today));
   } else {
     updateDayClosingShortLive();
   }
@@ -449,12 +504,7 @@ function updateDayClosingShortLive() {
   const phonePay = Number(dcDom.phonePayInput?.value ?? 0) || 0;
 
   const shortToday = (totalSale + collection + shortPrevious) - (nightCash + phonePay + creditToday + expensesToday);
-  if (dcDom.shortTodayEl) {
-    dcDom.shortTodayEl.textContent = formatCurrency(shortToday);
-    dcDom.shortTodayEl.classList.remove("stat-positive", "stat-negative");
-    if (shortToday > 0) dcDom.shortTodayEl.classList.add("stat-positive");
-    else if (shortToday < 0) dcDom.shortTodayEl.classList.add("stat-negative");
-  }
+  updateShortDisplay(shortToday);
 }
 
 async function initializeDayClosing() {
@@ -578,12 +628,12 @@ async function initializeDayClosing() {
   initDayClosingCreditDeleteHandlers();
 
   window.addEventListener("storage", (e) => {
-    if (e.key !== "credit-updated") return;
+    if (e.key !== "credit-updated" && e.key !== "expenses-updated") return;
     const dateStr = dateInput.value?.trim();
     if (!dateStr) return;
     dcDetailsCache = { date: dateStr, collection: null, credit: null, expenses: null };
     loadDayClosingBreakdown(dateStr).catch((err) => {
-      AppError.report(err, { context: "creditUpdatedRefreshDayClosing" });
+      AppError.report(err, { context: "operationalUpdatedRefreshDayClosing" });
     });
   });
 
@@ -710,8 +760,9 @@ function fmtNum(value) {
   return formatCurrency(Number(value));
 }
 
-function amtCell(value) {
-  return `<td class="col-amount">${fmtNum(value)}</td>`;
+function amtCell(value, extraClass = "") {
+  const cls = ["col-amount", extraClass].filter(Boolean).join(" ");
+  return `<td class="${cls}">${fmtNum(value)}</td>`;
 }
 
 function renderNightCashStatus(isCollected, collectedRef) {
@@ -720,6 +771,55 @@ function renderNightCashStatus(isCollected, collectedRef) {
   }
   const ref = collectedRef ? escapeHtml(collectedRef) : "";
   return `<span class="dc-status-badge dc-status-badge--collected">Collected</span>${ref ? `<span class="dc-status-ref">${ref}</span>` : ""}`;
+}
+
+function formatNightCashMeta(pendingNightCash, collectedNightCash, pendingCount, collectedCount) {
+  const parts = [];
+  if (pendingCount) parts.push(`${formatCurrency(pendingNightCash)} at pump (${pendingCount})`);
+  if (collectedCount) parts.push(`${formatCurrency(collectedNightCash)} collected (${collectedCount})`);
+  return parts.length ? parts.join(" · ") : "No night cash in range";
+}
+
+function updateRegisterPeriodStats({
+  totalPhonePay = 0,
+  totalExpenses = 0,
+  totalCollection = 0,
+  totalNightCash = 0,
+  pendingNightCash = 0,
+  collectedNightCash = 0,
+  pendingCount = 0,
+  collectedCount = 0,
+  visible = false,
+} = {}) {
+  const {
+    registerPeriodStats: statsEl,
+    periodPhonePay,
+    periodExpenses,
+    periodCollection,
+    periodNightCash,
+    periodNightCashMeta,
+  } = dcDom || {};
+
+  if (!statsEl) return;
+
+  if (!visible) {
+    statsEl.classList.add("hidden");
+    return;
+  }
+
+  statsEl.classList.remove("hidden");
+  if (periodPhonePay) periodPhonePay.textContent = fmtNum(totalPhonePay);
+  if (periodExpenses) periodExpenses.textContent = fmtNum(totalExpenses);
+  if (periodCollection) periodCollection.textContent = fmtNum(totalCollection);
+  if (periodNightCash) periodNightCash.textContent = fmtNum(totalNightCash);
+  if (periodNightCashMeta) {
+    periodNightCashMeta.textContent = formatNightCashMeta(
+      pendingNightCash,
+      collectedNightCash,
+      pendingCount,
+      collectedCount
+    );
+  }
 }
 
 async function loadNightCashAvailable() {
@@ -1005,27 +1105,29 @@ function initNightCashCollection() {
 }
 
 async function refreshRegisterPanel() {
-  await loadRegisterNightCashData({ loadDayClosingRegister: true });
+  await loadRegisterNightCashData({ alsoLoadClosings: true });
 }
 
 function isRegisterSectionActive() {
   return (location.hash || "").replace(/^#/, "") === "register";
 }
 
-async function loadRegisterNightCashData({ loadDayClosingRegister = false } = {}) {
-  await loadNightCashAvailable();
-  applyNightCashCollectRange({ onlyIfEmpty: true });
-  await loadNightCashCollectionRegister();
-  if (loadDayClosingRegister) {
+async function loadRegisterNightCashData({ alsoLoadClosings = false } = {}) {
+  const start = dcDom?.registerStart?.value?.trim();
+  const end = dcDom?.registerEnd?.value?.trim();
+  const tasks = [loadNightCashAvailable(), loadNightCashCollectionRegister()];
+
+  if (alsoLoadClosings) {
     registerLoadedOnce = true;
-    const start = dcDom?.registerStart?.value?.trim();
-    const end = dcDom?.registerEnd?.value?.trim();
-    if (start && end) await loadDayClosingRegister();
+    if (start && end) tasks.push(loadDayClosingRegister());
   }
+
+  await Promise.all(tasks);
+  applyNightCashCollectRange({ onlyIfEmpty: true });
 }
 
 async function onRegisterSectionShown() {
-  await loadRegisterNightCashData({ loadDayClosingRegister: true });
+  await loadRegisterNightCashData({ alsoLoadClosings: true });
 }
 
 async function loadDayClosingRegister() {
@@ -1034,6 +1136,7 @@ async function loadDayClosingRegister() {
     registerEnd,
     registerLoadBtn,
     registerBody,
+    registerFoot,
     registerStatus: statusFilter,
     registerSummary: summaryEl,
   } = dcDom || {};
@@ -1049,6 +1152,7 @@ async function loadDayClosingRegister() {
   const colCount = isAdmin ? 13 : 12;
   if (registerLoadBtn) registerLoadBtn.disabled = true;
   registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>Loading…</td></tr>`;
+  if (registerFoot) registerFoot.hidden = true;
 
   try {
     const status = statusFilter?.value || "all";
@@ -1063,14 +1167,18 @@ async function loadDayClosingRegister() {
       closingsQuery = closingsQuery.not("night_cash_collection_id", "is", null);
     }
 
+    const latestQuery = isAdmin
+      ? supabaseClient
+          .from("day_closing")
+          .select("date")
+          .order("date", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null });
+
     const [{ data, error }, { data: latestRow }] = await Promise.all([
       closingsQuery.order("date", { ascending: false }),
-      supabaseClient
-        .from("day_closing")
-        .select("date")
-        .order("date", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      latestQuery,
     ]);
     if (error) throw error;
 
@@ -1078,6 +1186,8 @@ async function loadDayClosingRegister() {
 
     if (!rows.length) {
       registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>No closing statements match this filter.</td></tr>`;
+      if (registerFoot) registerFoot.hidden = true;
+      updateRegisterPeriodStats({ visible: false });
       if (summaryEl) {
         summaryEl.textContent = `No rows for ${formatDisplayDate(start)} – ${formatDisplayDate(end)} (${status === "all" ? "all" : status}).`;
       }
@@ -1085,24 +1195,38 @@ async function loadDayClosingRegister() {
     }
 
     const latestDate = latestRow?.date || null;
-    let pendingNightCash = 0;
-    let collectedNightCash = 0;
-    let pendingCount = 0;
-    let collectedCount = 0;
+    const totals = {
+      pendingNightCash: 0,
+      collectedNightCash: 0,
+      pendingCount: 0,
+      collectedCount: 0,
+      totalCollection: 0,
+      totalCredit: 0,
+      totalExpenses: 0,
+      totalNightCash: 0,
+      totalPhonePay: 0,
+    };
+    const htmlRows = [];
 
-    registerBody.innerHTML = rows.map((row) => {
+    for (const row of rows) {
       const d = row.date;
       const ref = row.closing_reference ?? "—";
       const collectedRef = row.night_cash_collections?.collection_reference;
       const isCollected = !!row.night_cash_collection_id;
       const nightCashAmt = Number(row.night_cash ?? 0);
 
+      totals.totalCollection += Number(row.collection ?? 0);
+      totals.totalCredit += Number(row.credit_today ?? 0);
+      totals.totalExpenses += Number(row.expenses_today ?? 0);
+      totals.totalNightCash += nightCashAmt;
+      totals.totalPhonePay += Number(row.phone_pay ?? 0);
+
       if (isCollected) {
-        collectedNightCash += nightCashAmt;
-        collectedCount += 1;
+        totals.collectedNightCash += nightCashAmt;
+        totals.collectedCount += 1;
       } else {
-        pendingNightCash += nightCashAmt;
-        pendingCount += 1;
+        totals.pendingNightCash += nightCashAmt;
+        totals.pendingCount += 1;
       }
 
       const canDelete = isAdmin && row.id && row.date === latestDate && !isCollected;
@@ -1117,22 +1241,41 @@ async function loadDayClosingRegister() {
           : "";
       const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
 
-      return `<tr>
-        <td>${escapeHtml(formatDisplayDate(d))}</td>
-        <td><code>${escapeHtml(ref)}</code></td>
-        ${amtCell(row.total_sale)}
-        ${amtCell(row.collection)}
-        ${amtCell(row.short_previous)}
-        ${amtCell(row.credit_today)}
-        ${amtCell(row.expenses_today)}
-        ${amtCell(row.night_cash)}
-        <td>${renderNightCashStatus(isCollected, collectedRef)}</td>
-        ${amtCell(row.phone_pay)}
-        ${amtCell(row.short_today)}
-        <td>${escapeHtml(row.remarks ?? "—")}</td>
+      htmlRows.push(`<tr>
+        <td class="col-sticky">${escapeHtml(formatDisplayDate(d))}</td>
+        <td class="col-ref"><code>${escapeHtml(ref)}</code></td>
+        ${amtCell(row.collection, "col-key")}
+        ${amtCell(row.credit_today, "col-key")}
+        ${amtCell(row.expenses_today, "col-key")}
+        ${amtCell(row.night_cash, "col-key")}
+        ${amtCell(row.phone_pay, "col-key")}
+        ${amtCell(row.total_sale, "col-split-start col-secondary")}
+        ${amtCell(row.short_previous, "col-secondary")}
+        ${amtCell(row.short_today, "col-secondary")}
+        <td class="col-secondary">${renderNightCashStatus(isCollected, collectedRef)}</td>
+        <td class="col-secondary">${escapeHtml(row.remarks ?? "—")}</td>
         ${actionsCell}
+      </tr>`);
+    }
+
+    registerBody.innerHTML = htmlRows.join("");
+
+    if (registerFoot) {
+      const actionsFoot = isAdmin ? '<td class="table-actions"></td>' : "";
+      registerFoot.innerHTML = `<tr class="dc-register-totals">
+        <td class="col-sticky" colspan="2"><strong>Total</strong></td>
+        ${amtCell(totals.totalCollection, "col-key")}
+        ${amtCell(totals.totalCredit, "col-key")}
+        ${amtCell(totals.totalExpenses, "col-key")}
+        ${amtCell(totals.totalNightCash, "col-key")}
+        ${amtCell(totals.totalPhonePay, "col-key")}
+        <td class="col-split-start col-secondary" colspan="5"></td>
+        ${actionsFoot}
       </tr>`;
-    }).join("");
+      registerFoot.hidden = false;
+    }
+
+    updateRegisterPeriodStats({ ...totals, visible: true });
 
     if (summaryEl) {
       const parts = [
@@ -1140,8 +1283,6 @@ async function loadDayClosingRegister() {
         `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`,
       ];
       if (status !== "all") parts.push(status === "pending" ? "at pump only" : "collected only");
-      parts.push(`night cash at pump ${formatCurrency(pendingNightCash)} (${pendingCount})`);
-      parts.push(`collected ${formatCurrency(collectedNightCash)} (${collectedCount})`);
       summaryEl.textContent = parts.join(" · ");
     }
 
@@ -1156,6 +1297,8 @@ async function loadDayClosingRegister() {
   } catch (err) {
     AppError.report(err, { context: "loadDayClosingRegister" });
     registerBody.innerHTML = `<tr><td colspan='${colCount}' class='error'>${escapeHtml(err?.message || "Failed to load.")}</td></tr>`;
+    if (registerFoot) registerFoot.hidden = true;
+    updateRegisterPeriodStats({ visible: false });
     if (summaryEl) summaryEl.textContent = "Failed to load register.";
   } finally {
     if (registerLoadBtn) registerLoadBtn.disabled = false;
@@ -1216,5 +1359,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  await loadPumpSettings();
   await initializeDayClosing();
 });

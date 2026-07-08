@@ -61,6 +61,10 @@
     highCredit: 0,
     highVariation: 0,
     dayClosingReminder: true,
+    /** Treat day closing short above this amount (₹) as a shortage. 0 = any positive short. */
+    dayClosingShortage: 0,
+    /** Show dashboard alert when today's saved short exceeds dayClosingShortage. */
+    shortageAlert: true,
   };
 
   const DEFAULT_SHIFTS = {
