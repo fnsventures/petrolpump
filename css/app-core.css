@@ -163,6 +163,51 @@ tbody tr:hover {
 .day-closing-card #dc-shortage-alert {
   margin: 0.75rem 0 0;
 }
+
+/* DSR day summary rows (dashboard, day-closing, dsr) */
+.dsr-summary-card {
+  margin-top: 1.25rem;
+}
+
+.dsr-summary-card h3 {
+  margin: 0 0 0.5rem;
+}
+
+.dsr-summary-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.dsr-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dsr-summary-row dt {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: #475569;
+}
+
+.dsr-summary-row dd {
+  margin: 0;
+  font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.dsr-summary-inhand dd {
+  font-size: 1.25rem;
+}
+
 .day-closing-breakdown {
   --dc-amount-col: 9.5rem;
   margin: 1rem 0;

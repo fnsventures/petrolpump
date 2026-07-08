@@ -606,7 +606,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const snapshotCard = document.getElementById("snapshot-card");
-  const dsrCard = document.getElementById("dsr-dashboard-card");
 
   if (typeof window.showProgress === "function") window.showProgress();
   try {
@@ -625,8 +624,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       await ensureDsrSectionLoaded();
     } else if (initialSection === "pl" && role === "admin") {
       await ensurePlSectionLoaded();
-    } else if (dsrCard) {
-      dsrCard.classList.remove("loading");
     }
 
     await updateSmartAlerts();
@@ -646,7 +643,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (error) {
     AppError.handle(error, { context: { source: "dashboardInit" } });
     if (snapshotCard) snapshotCard.classList.remove("loading");
-    if (dsrCard) dsrCard.classList.remove("loading");
   } finally {
     if (typeof window.hideProgress === "function") window.hideProgress();
   }
@@ -835,12 +831,10 @@ function setupDsrFilter() {
 async function ensureDsrSectionLoaded() {
   setupDsrFilter();
   if (!dsrFilterApi) return;
-  const dsrCard = document.getElementById("dsr-dashboard-card");
   if (!dsrSectionLoaded) {
     dsrSectionLoaded = true;
     await dsrFilterApi.refresh();
   }
-  if (dsrCard) dsrCard.classList.remove("loading");
 }
 
 function setupPlFilter() {
