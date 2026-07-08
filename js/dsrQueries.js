@@ -9,6 +9,7 @@
   const DSR_SELECT_PL =
     "date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre";
   const DSR_SELECT_SUMMARY = "date, product, total_sales, testing, stock, petrol_rate, diesel_rate";
+  const DSR_SELECT_RECEIPT = "date, product, receipts, buying_price_per_litre";
 
   function filterDsrByRange(rows, startDate, endDate) {
     return (rows ?? []).filter((row) => row.date >= startDate && row.date <= endDate);
@@ -25,15 +26,60 @@
   }
 
   /**
+   * Receipt rows before the report range — only rows with receipts and buying price.
+   * Avoids pulling full DSR history when the report window is short.
+   */
+  async function fetchReceiptHistoryBefore(startDate, receiptStart) {
+    if (!startDate || !receiptStart || receiptStart >= startDate) {
+      return { data: [], error: null };
+    }
+    const { data, error } = await supabaseClient
+      .from("dsr")
+      .select(DSR_SELECT_RECEIPT)
+      .gte("date", receiptStart)
+      .lt("date", startDate)
+      .gt("receipts", 0)
+      .gt("buying_price_per_litre", 0)
+      .order("date", { ascending: true });
+    return { data: data ?? [], error };
+  }
+
+  /**
    * Fetch DSR rows for a date range. When useReceiptHistoryStart is true (default),
-   * queries from receipt history start so effective buying prices can be resolved.
+   * loads receipt history for effective buying prices without fetching every DSR row
+   * from receipt history start when the report range is shorter.
    */
   async function fetchDsrRows(startDate, endDate, options) {
     const opts = options || {};
     const receiptStart = opts.receiptHistoryStart ?? PumpSettings.getReceiptHistoryStart();
-    const queryStart = opts.useReceiptHistoryStart !== false ? receiptStart : startDate;
+    const useReceiptHistory = opts.useReceiptHistoryStart !== false;
     const select = opts.select ?? DSR_SELECT_PL;
 
+    if (useReceiptHistory && receiptStart < startDate) {
+      const [rangeResult, receiptResult] = await Promise.all([
+        supabaseClient
+          .from("dsr")
+          .select(select)
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true }),
+        fetchReceiptHistoryBefore(startDate, receiptStart),
+      ]);
+
+      const error = rangeResult.error || receiptResult.error;
+      if (error) return { data: null, allDsr: [], receiptRows: [], error };
+
+      const rangeRows = rangeResult.data ?? [];
+      const allDsr = [...(receiptResult.data ?? []), ...rangeRows];
+      return {
+        data: rangeRows,
+        allDsr,
+        receiptRows: extractReceiptRows(allDsr),
+        error: null,
+      };
+    }
+
+    const queryStart = useReceiptHistory ? receiptStart : startDate;
     const { data, error } = await supabaseClient
       .from("dsr")
       .select(select)

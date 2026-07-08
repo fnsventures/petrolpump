@@ -4,13 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Invoice documents · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=9" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -25,61 +24,29 @@
     <script defer src="js/invoices.js"></script>
   </head>
   <body>
-    <header class="topbar">
+    <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
         <span class="page-subtitle">Invoice documents</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" aria-label="Main navigation">
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="dsr.html">Meter Reading</a>
-            <a href="sales-daily.html">DSR</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="credit.html">Credit</a>
-            <a href="expenses.html">Expenses</a>
-            <a href="day-closing.html">Day closing &amp; short</a>
-            <a href="billing.html">Billing</a>
-            <a href="invoices.html">Invoices</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="attendance.html">Attendance</a>
-            <a href="salary.html">Salary</a>
-            <a href="staff.html">Staff</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
-            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
-            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
-          </div>
-        </div>
-        <button id="logout-button" class="link nav-logout">Logout</button>
-      </nav>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout">
       <nav class="settings-nav card" aria-label="Invoice sections">
-        <p class="settings-nav-title">Invoices</p>
+        <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="upload">Upload invoice</button>
         <button type="button" class="settings-nav-item" data-section="library">Invoice library</button>
       </nav>
       <div class="settings-panels">
-        <section class="settings-panel card is-visible" data-panel="upload">
-          <h2>Upload invoice</h2>
-          <p class="muted">Supplier invoices are stored in Google Drive under <strong>Year → Month</strong> folders based on the invoice date.</p>
+        <section class="settings-panel card dashboard-card is-visible" data-panel="upload">
+          <div class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Upload invoice</h2>
+              <p class="muted panel-lead">Supplier invoices are stored in Google Drive under <strong>Year → Month</strong> folders based on the invoice date.</p>
+            </div>
+          </div>
           <div id="invoice-drive-banner" class="smart-alert smart-alert--warning hidden" role="status"></div>
           <form id="invoice-upload-form" class="form">
             <div class="form-grid">
@@ -111,15 +78,15 @@
             <button type="submit" id="invoice-upload-btn">Upload invoice</button>
             <p id="invoice-upload-success" class="success hidden">Invoice uploaded successfully.</p>
             <p id="invoice-upload-error" class="error hidden"></p>
-            <p class="muted" data-role="admin-only" style="display:none">Configure Google Drive in <a href="settings.html#integrations">Settings → Integrations</a>.</p>
+            <p class="muted" data-role="admin-only">Configure Google Drive in <a href="settings.html#integrations">Settings → Integrations</a>.</p>
           </form>
         </section>
 
-        <section class="settings-panel card" data-panel="library" hidden>
-          <div class="card-head snapshot-head">
+        <section class="settings-panel card dashboard-card" data-panel="library" hidden>
+          <div class="panel-head card-head snapshot-head">
             <div>
-              <h2>Invoice library</h2>
-              <p class="muted">Browse and download supplier invoices uploaded by your team.</p>
+              <h2 class="dashboard-section-title">Invoice library</h2>
+              <p class="muted panel-lead">Browse and download supplier invoices uploaded by your team.</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field">

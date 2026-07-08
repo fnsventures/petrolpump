@@ -40,6 +40,7 @@ function formatDateRangeLabel(range, modeInfo, opts = {}) {
   const style = opts.style || "dashboard";
 
   if (mode === "today") return `Today · ${startLabel}`;
+  if (mode === "yesterday") return `Yesterday · ${startLabel}`;
 
   if (mode === "this-month") {
     const monthDate = new Date(`${range.start}T00:00:00`);
@@ -257,6 +258,7 @@ function createDateRangeFilter(config) {
 const DATE_RANGE_PRESETS = {
   dashboard: [
     { value: "today", label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
     { value: "this-week", label: "This week" },
     { value: "this-month", label: "This month" },
     { value: "custom", label: "Custom dates" },

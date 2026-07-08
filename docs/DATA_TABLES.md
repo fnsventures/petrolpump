@@ -575,6 +575,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `compute_day_closing_components(date)` | Live component calculation | internal use |
 | `add_credit_entry(...)` | New credit sale | — |
 | `record_credit_payment(...)` | Payment + FIFO allocation | — |
+| `batch_record_credit_settlements(...)` | Multi-customer payment in one transaction | — |
 | `delete_credit_entry(id)` | Remove unsettled sale | admin |
 | `delete_credit_payment(id)` | Remove payment + reallocate | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |

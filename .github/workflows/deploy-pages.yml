@@ -51,6 +51,17 @@ jobs:
           ref: ${{ env.REF }}
           fetch-depth: 1
 
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build login vendor bundle
+        run: npm run build:vendor
+
       - name: >-
           ${{ env.TARGET == 'staging' && 'Patch' || 'Compile' }}
         env:
@@ -82,7 +93,7 @@ jobs:
           fi
 
           touch _site/.nojekyll
-          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs)
+          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json)
 
           if [ "$target" = "staging" ]; then
             mkdir -p _site/staging
@@ -98,6 +109,14 @@ jobs:
               mv "$staging_backup/staging" _site/staging
               rmdir "$staging_backup"
             fi
+          fi
+
+          if [ "$target" = "staging" ]; then
+            npm run build:html -- _site/staging
+            npm run minify -- _site/staging
+          else
+            npm run build:html -- _site --exclude staging
+            npm run minify -- _site --exclude staging
           fi
 
       - name: >-

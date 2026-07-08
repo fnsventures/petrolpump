@@ -1,0 +1,166 @@
+/* Billing / invoice form */
+/* ═══════════════════════════════════════════════════════════════════════════
+   BILLING – Invoice form, line items, print layout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.billing-header-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.billing-items-section {
+  margin: var(--space-4) 0 var(--space-3);
+}
+
+.billing-items-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.billing-items-header h3 {
+  margin: 0;
+  font-size: var(--text-base, 1rem);
+}
+
+.billing-items-table {
+  width: 100%;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.billing-items-table .col-sl { width: 3rem; text-align: center; }
+.billing-items-table .col-item { min-width: 180px; }
+.billing-items-table .col-qty { width: 5rem; }
+.billing-items-table .col-unit { width: 5rem; }
+.billing-items-table .col-rate { width: 6rem; }
+.billing-items-table .col-gst { width: 5.5rem; }
+.billing-items-table .col-amount { width: 7rem; text-align: right; }
+.billing-items-table .col-action { width: 2.5rem; text-align: center; }
+
+.billing-items-table td { vertical-align: middle; padding: var(--space-1) var(--space-2); }
+.billing-items-table input,
+.billing-items-table select {
+  width: 100%;
+  padding: var(--space-1);
+  font-size: var(--text-sm, 0.8125rem);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.billing-items-table .item-product-select {
+  margin-bottom: 4px;
+}
+
+.billing-items-table .input-sm {
+  width: 100%;
+}
+
+.billing-items-table .item-amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.billing-items-table .remove-item-btn {
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--danger, #dc2626);
+  padding: 2px 6px;
+}
+
+.billing-items-table tfoot td {
+  font-size: var(--text-sm, 0.875rem);
+  border-top: 2px solid var(--border);
+}
+
+.billing-totals-grid {
+  display: flex;
+  gap: var(--space-4);
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin: var(--space-3) 0;
+}
+
+.billing-totals-grid .form-field {
+  flex: 0 0 160px;
+}
+
+.billing-summary {
+  flex: 1;
+  min-width: 240px;
+  max-width: 360px;
+  margin-left: auto;
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-xs);
+}
+
+.billing-summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.billing-summary-total {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  border-top: 2px solid var(--border);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.billing-tax-breakdown {
+  margin-top: var(--space-2);
+  padding-top: var(--space-1);
+  border-top: 1px dashed var(--border);
+}
+
+.billing-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.button-sm {
+  font-size: var(--text-sm, 0.8125rem);
+  padding: var(--space-1) var(--space-3);
+}
+
+/* ── Print Invoice (professional layout) ── */
+
+.print-invoice-container {
+  display: none;
+}
+
+/* Invoice print layout lives in css/invoice-print.css (isolated iframe) */
+
+/* ── Responsive billing ── */
+@media (max-width: 768px) {
+  .billing-header-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .billing-totals-grid {
+    flex-direction: column;
+  }
+
+  .billing-summary {
+    margin-left: 0;
+    max-width: 100%;
+  }
+
+  .billing-items-table {
+    font-size: 0.75rem;
+  }
+
+  .billing-items-table .col-item { min-width: 120px; }
+}
+
+

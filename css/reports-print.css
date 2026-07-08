@@ -371,4 +371,24 @@ body.report-print-body {
   .report-table tfoot {
     display: table-footer-group;
   }
+
+  tr.fuel-row--petrol td:first-child,
+  tr.fuel-row--petrol td:nth-child(2) {
+    background: rgba(0, 112, 192, 0.08) !important;
+  }
+
+  tr.fuel-row--diesel td:first-child,
+  tr.fuel-row--diesel td:nth-child(2) {
+    background: rgba(255, 204, 0, 0.16) !important;
+  }
+
+  .fuel-badge--petrol {
+    background: rgba(0, 112, 192, 0.1) !important;
+    color: #005a9c !important;
+  }
+
+  .fuel-badge--diesel {
+    background: rgba(255, 204, 0, 0.22) !important;
+    color: #854d0e !important;
+  }
 }

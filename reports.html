@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Reports · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=9" />
+    <link rel="stylesheet" href="css/app-reports.css?v=9" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -24,66 +24,32 @@
     <script defer src="js/auth.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/printUtils.js"></script>
-    <script defer src="js/reports.js?v=8"></script>
+    <script defer src="js/reports.js?v=9"></script>
   </head>
   <body class="reports-page">
-    <header class="topbar no-print">
+    <header class="topbar no-print" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
         <span class="page-subtitle">Reports</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" aria-label="Main navigation">
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="dsr.html">Meter Reading</a>
-            <a href="sales-daily.html">DSR</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="credit.html">Credit</a>
-            <a href="expenses.html">Expenses</a>
-            <a href="day-closing.html">Day closing &amp; short</a>
-            <a href="billing.html">Billing</a>
-            <a href="invoices.html">Invoices</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="attendance.html">Attendance</a>
-            <a href="salary.html">Salary</a>
-            <a href="staff.html">Staff</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
-            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
-            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
-          </div>
-        </div>
-        <button id="logout-button" class="link nav-logout">Logout</button>
-      </nav>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout page-layout-wide no-print">
       <nav class="settings-nav card reports-nav" aria-label="Reports sections">
-        <p class="settings-nav-title">Reports</p>
+        <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="generate">Generate report</button>
         <button type="button" class="settings-nav-item" data-section="about">Report guide</button>
       </nav>
 
       <div class="settings-panels reports-panels">
-        <section class="settings-panel card reports-generate-panel is-visible" data-panel="generate" aria-label="Generate report">
-          <header class="reports-generate-intro">
-            <h2>Generate report</h2>
-            <p class="muted">Pick a report, set the period, then preview and print. All reports use the station letterhead.</p>
+        <section class="settings-panel card dashboard-card reports-generate-panel is-visible" data-panel="generate" aria-label="Generate report">
+          <header class="panel-head reports-generate-intro">
+            <div>
+              <h2 class="dashboard-section-title">Generate report</h2>
+              <p class="muted panel-lead">Pick a report, set the period, then preview and print. All reports use the station letterhead.</p>
+            </div>
           </header>
 
           <div class="reports-generate-layout">
@@ -125,13 +91,15 @@
           </div>
         </section>
 
-        <section class="settings-panel card reports-guide-panel" data-panel="about" id="reports-about" aria-label="Report guide" hidden>
-          <header class="reports-about-head">
-            <p class="reports-about-eyebrow">Documentation</p>
-            <h2>Report guide</h2>
-            <p class="muted reports-about-lead">
-              Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
-            </p>
+        <section class="settings-panel card dashboard-card reports-guide-panel" data-panel="about" id="reports-about" aria-label="Report guide" hidden>
+          <header class="panel-head reports-about-head">
+            <div>
+              <p class="reports-about-eyebrow">Documentation</p>
+              <h2 class="dashboard-section-title">Report guide</h2>
+              <p class="muted panel-lead reports-about-lead">
+                Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
+              </p>
+            </div>
           </header>
 
           <div class="reports-about-accordion" role="region" aria-label="Reports documentation sections">

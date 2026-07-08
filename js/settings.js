@@ -237,7 +237,7 @@ async function loadProducts() {
   if (!tbody) return;
   const { data, error } = await supabaseClient
     .from("products")
-    .select("*")
+    .select("id, name, hsn_code, unit, default_rate, gst_percent")
     .eq("is_active", true)
     .order("name");
 
@@ -904,7 +904,7 @@ async function handleDeleteExpenseCategory(btn) {
   const name = btn.dataset.name;
   const label = btn.dataset.label || name;
   if (!id || !confirm(`Delete category "${label}"?`)) return;
-  const { count } = await supabaseClient.from("expenses").select("*", { count: "exact", head: true }).eq("category", name);
+  const { count } = await supabaseClient.from("expenses").select("id", { count: "exact", head: true }).eq("category", name);
   if (count > 0) {
     alert(`Cannot delete: ${count} expense(s) use this category.`);
     return;

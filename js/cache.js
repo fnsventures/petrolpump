@@ -371,6 +371,30 @@ const CacheInvalidation = (function () {
     ],
   };
 
+  /** Scopes whose underlying data must not linger in the SW API cache after mutation. */
+  const SW_SYNC_SCOPES = new Set([
+    "operational",
+    "dsr",
+    "credit",
+    "reports",
+    "pump_settings",
+    "all_api",
+  ]);
+
+  function notifySwApiCacheClear() {
+    try {
+      navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_API_CACHE" });
+    } catch {
+      // Ignore — SW may not be registered yet
+    }
+  }
+
+  function shouldSyncSw(scope) {
+    if (typeof scope === "string" && SW_SYNC_SCOPES.has(scope)) return true;
+    if (Array.isArray(scope)) return scope.some((s) => SW_SYNC_SCOPES.has(s));
+    return false;
+  }
+
   function invalidate(scope) {
     if (typeof AppCache === "undefined" || !AppCache) return;
     const types = SCOPES[scope] || (Array.isArray(scope) ? scope : [scope]);
@@ -380,6 +404,7 @@ const CacheInvalidation = (function () {
       seen.add(t);
       AppCache.invalidateByType(t);
     });
+    if (shouldSyncSw(scope)) notifySwApiCacheClear();
   }
 
   function invalidateMultiple(scopes) {
@@ -388,6 +413,7 @@ const CacheInvalidation = (function () {
       (SCOPES[scope] || (Array.isArray(scope) ? scope : [scope])).forEach((t) => seen.add(t));
     });
     seen.forEach((t) => AppCache.invalidateByType(t));
+    if (scopes.some((s) => shouldSyncSw(s))) notifySwApiCacheClear();
   }
 
   return { invalidate, invalidateMultiple, SCOPES };

@@ -1,0 +1,18 @@
+{
+  "name": "petrol-pump",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "build:images": "node scripts/optimize-images.mjs",
+    "build:html": "node scripts/build-html.mjs",
+    "dev": "node scripts/dev-server.mjs",
+    "build:fonts": "node scripts/download-fonts.mjs",
+    "build:assets": "npm run build:images && npm run build:vendor && npm run build:fonts",
+    "minify": "node scripts/minify-assets.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "nunjucks": "^3.2.4"
+  }
+}

@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function loadProducts() {
   const { data, error } = await supabaseClient
     .from("products")
-    .select("*")
+    .select("id, name, unit, default_rate, gst_percent")
     .eq("is_active", true)
     .order("name");
 
@@ -108,9 +108,10 @@ async function runInvoicePrint(invoiceNumber) {
   }
 
   let sheetHtml = printRoot.innerHTML;
-  const logoSrc = AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/bishnupriya-fuels-logo.png";
+  const logoSrc =
+    AppConfig.STATION_LOGO_LG_SRC || AppConfig.STATION_LOGO_SRC || AppConfig.BPCL_LOGO_SRC || "assets/logo-80.webp";
   sheetHtml = sheetHtml.replace(
-    /src="assets\/(?:bpcl-logo|bishnupriya-fuels-logo)\.png"/gi,
+    /src="assets\/(?:bpcl-logo|bishnupriya-fuels-logo|logo-80)\.(?:png|webp)"/gi,
     `src="${PrintUtils.resolveAssetUrl(logoSrc)}"`
   );
 
@@ -458,7 +459,9 @@ function resetForm() {
 async function showPrintInvoice(invoiceId) {
   const { data: invoice, error } = await supabaseClient
     .from("invoices")
-    .select("*")
+    .select(
+      "invoice_number, invoice_date, invoice_type, party_name, party_address, party_gstin, vehicle_no, mobile, km_reading, subtotal, discount, round_off, total_amount"
+    )
     .eq("id", invoiceId)
     .single();
 
@@ -469,7 +472,7 @@ async function showPrintInvoice(invoiceId) {
 
   const { data: items } = await supabaseClient
     .from("invoice_items")
-    .select("*")
+    .select("sl_no, item_name, quantity, unit, rate, gst_percent, amount")
     .eq("invoice_id", invoiceId)
     .order("sl_no");
 
@@ -623,7 +626,7 @@ async function loadInvoices(reset = false) {
     if (reset) {
       const { count } = await supabaseClient
         .from("invoices")
-        .select("*", { count: "exact", head: true })
+        .select("id", { count: "exact", head: true })
         .gte("invoice_date", start)
         .lte("invoice_date", end);
       invoicesPagination.totalCount = count || 0;

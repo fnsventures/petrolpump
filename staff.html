@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Staff · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=9" />
+    <link rel="stylesheet" href="css/app-staff.css?v=9" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -25,54 +25,18 @@
     <script defer src="js/staff.js?v=12"></script>
   </head>
   <body class="staff-page">
-    <header class="topbar">
+    <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
         <span class="page-subtitle">Staff</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" aria-label="Main navigation">
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="dsr.html">Meter Reading</a>
-            <a href="sales-daily.html">DSR</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="credit.html">Credit</a>
-            <a href="expenses.html">Expenses</a>
-            <a href="day-closing.html">Day closing &amp; short</a>
-            <a href="billing.html">Billing</a>
-            <a href="invoices.html">Invoices</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="attendance.html">Attendance</a>
-            <a href="salary.html">Salary</a>
-            <a href="staff.html">Staff</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
-            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
-            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
-          </div>
-        </div>
-        <button id="logout-button" class="link nav-logout">Logout</button>
-      </nav>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout staff-page-layout">
       <nav class="settings-nav card staff-roster-nav" aria-label="Staff roster">
-        <p class="settings-nav-title">Staff</p>
+        <p class="settings-nav-title">Sections</p>
         <div class="staff-roster-toolbar">
           <p class="muted staff-roster-count" id="staff-roster-count">—</p>
           <button type="button" id="staff-add-btn" class="button-secondary button-small">+ Add</button>
@@ -80,7 +44,7 @@
         <label class="staff-roster-search-wrap">
           <input type="search" id="staff-roster-search" class="staff-roster-search" placeholder="Search by name or role…" autocomplete="off" aria-label="Search staff" />
         </label>
-        <p class="muted staff-roster-hint" data-role="admin-only" style="display:none">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
+        <p class="muted staff-roster-hint" data-role="admin-only">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
         <ul id="staff-roster-list" class="staff-roster-list" role="listbox" aria-label="Select staff member">
           <li class="staff-roster-loading muted">Loading…</li>
         </ul>
@@ -198,7 +162,7 @@
                   <p id="staff-profile-role" class="muted">—</p>
                   <div class="staff-profile-actions">
                     <button type="button" id="staff-profile-edit-btn" class="button-secondary">Edit profile</button>
-                    <button type="button" id="staff-profile-delete-btn" class="button-delete" data-role="admin-only" style="display:none">Remove</button>
+                    <button type="button" id="staff-profile-delete-btn" class="button-delete" data-role="admin-only">Remove</button>
                   </div>
                 </div>
               </div>
@@ -225,7 +189,10 @@
               <p id="id-card-hint" class="staff-id-status-banner hidden" role="status"></p>
               <button type="button" id="id-card-view-btn" class="staff-id-teaser clickable-card" aria-haspopup="dialog" aria-expanded="false" aria-controls="staff-id-modal">
                 <span class="staff-id-teaser-logo-wrap" aria-hidden="true">
-                  <img src="assets/bishnupriya-fuels-logo.png" width="80" height="80" alt="Bishnupriya Fuels" class="station-logo staff-id-teaser-logo station-logo--lg" />
+                  <picture>
+                    <source srcset="assets/logo-80.webp" type="image/webp" />
+                    <img src="assets/logo-80.png" width="80" height="80" alt="Bishnupriya Fuels" class="station-logo staff-id-teaser-logo station-logo--lg" />
+                  </picture>
                 </span>
                 <span class="staff-id-teaser-body">
                   <span class="staff-id-teaser-title">Preview ID card</span>

@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput, DsrQueries */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, DsrQueries */
 
 /**
  * Generate cache key for dashboard data queries
@@ -37,10 +37,10 @@ function formatRatePerLitre(value) {
 
 function updateDsrQuickLinks(dateStr) {
   const q = dateStr ? `?date=${encodeURIComponent(dateStr)}` : "";
-  ["hero-petrol-cta", "hero-diesel-cta"].forEach((id) => {
-    const el = document.getElementById(id);
-    if (el) el.href = `dsr.html${q}`;
-  });
+  const petrolCta = document.getElementById("hero-petrol-cta");
+  const dieselCta = document.getElementById("hero-diesel-cta");
+  if (petrolCta) petrolCta.href = `dsr.html${q}#petrol`;
+  if (dieselCta) dieselCta.href = `dsr.html${q}#diesel`;
 }
 
 function parseTankCapacityLiters(capacityStr) {
@@ -335,6 +335,7 @@ async function loadHeroStock(dateStr) {
       supabaseClient
         .from("dsr")
         .select("date, product, stock, dip_reading")
+        .gte("date", historyStart)
         .lte("date", selectedDate)
         .order("date", { ascending: false }),
     ]);
@@ -366,20 +367,20 @@ async function loadHeroStock(dateStr) {
   }
 }
 
-function updateHeroDate(dateStr) {
+function updateHeroDate() {
   const dateEl = document.getElementById("dashboard-hero-date");
   const badgeEl = document.getElementById("dashboard-hero-badge");
-  if (!dateEl || !dateStr) return;
-  updateDsrQuickLinks(dateStr);
-  const labelDate = new Date(`${dateStr}T00:00:00`);
+  if (!dateEl) return;
+  const todayStr = getLocalDateString();
+  updateDsrQuickLinks(todayStr);
+  const labelDate = new Date(`${todayStr}T00:00:00`);
   dateEl.textContent = labelDate.toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-  const isToday = dateStr === getLocalDateString();
-  if (badgeEl) badgeEl.classList.toggle("hidden", !isToday);
+  if (badgeEl) badgeEl.classList.remove("hidden");
 }
 
 function updateFuelRateDisplay(petrolRate, dieselRate, options = {}) {
@@ -560,17 +561,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const snapshotDateInput = document.getElementById("snapshot-date");
-  const todayStr = getLocalDateString();
+  const yesterdayStr = getYesterdayDateString();
 
   const updateSalesDailyLink = () => {
-    const link = document.getElementById("sales-daily-link");
-    if (link) link.href = "sales-daily.html?date=" + (snapshotDateInput?.value || todayStr);
+    const date = snapshotDateInput?.value || yesterdayStr;
+    const base = `dsr.html?date=${encodeURIComponent(date)}`;
+    for (const [id, hash] of [
+      ["sales-daily-link", "#filters"],
+      ["sales-daily-ms-link", "#dsr-petrol"],
+      ["sales-daily-hsd-link", "#dsr-diesel"],
+    ]) {
+      document.getElementById(id)?.setAttribute("href", base + hash);
+    }
   };
 
-  let snapshotDateStr = todayStr;
+  let snapshotDateStr = yesterdayStr;
   if (snapshotDateInput) {
     const onSnapshotDate = async (dateValue) => {
-      updateHeroDate(dateValue);
       updateSalesDailyLink();
       await Promise.all([
         loadTodaySales(dateValue),
@@ -579,17 +586,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       ]);
     };
     snapshotDateStr = initPersistedDateInput(snapshotDateInput, "dashboard_snapshot", {
+      fallback: yesterdayStr,
       onChange: onSnapshotDate,
     });
-    updateHeroDate(snapshotDateStr);
+    updateHeroDate();
     updateSalesDailyLink();
-    const salesDailyLink = document.getElementById("sales-daily-link");
-    if (salesDailyLink) {
-      salesDailyLink.addEventListener("click", () => {
-        try {
-          sessionStorage.setItem("petrolpump_sales_daily_from_dashboard", snapshotDateInput.value || todayStr);
-        } catch (_) {}
-      });
+    const rememberSnapshotDateForDsr = () => {
+      try {
+        sessionStorage.setItem("petrolpump_sales_daily_from_dashboard", snapshotDateInput.value || yesterdayStr);
+      } catch (_) {}
+    };
+    for (const id of ["sales-daily-link", "sales-daily-ms-link", "sales-daily-hsd-link"]) {
+      document.getElementById(id)?.addEventListener("click", rememberSnapshotDateForDsr);
     }
   }
 
@@ -789,8 +797,8 @@ async function initializeDsrDashboard() {
   if (!document.getElementById("dsr-range")) return;
   createDateRangeFilter({
     storageKey: "dashboard_dsr",
-    ranges: ["today", "this-week", "this-month", "custom"],
-    defaultRange: "today",
+    ranges: ["today", "yesterday", "this-week", "this-month", "custom"],
+    defaultRange: "yesterday",
     rangeSelect: "dsr-range",
     startInput: "dsr-start",
     endInput: "dsr-end",
@@ -848,8 +856,6 @@ async function loadTodaySales(dateStr) {
  * Render today's sales data to UI
  */
 function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate, rates = {}) {
-  updateHeroDate(selectedDate);
-
   if (!data) {
     snapshotDsrRows = [];
     if (todayStat) todayStat.textContent = "—";
@@ -1388,31 +1394,27 @@ async function loadProfitLossSummary(range) {
 
   await loadPumpSettings();
 
-  const RECEIPT_HISTORY_START = PumpSettings.getReceiptHistoryStart();
-
   const [
-    { data: allDsrData, error: dsrError },
-    { data: expenseData, error: expenseError },
+    dsrResult,
+    expenseResult,
     lubeResult,
   ] = await Promise.all([
-    supabaseClient
-      .from("dsr")
-      .select("id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre")
-      .gte("date", RECEIPT_HISTORY_START)
-      .lte("date", range.end),
-    supabaseClient.from("expenses").select("*").gte("date", range.start).lte("date", range.end),
+    DsrQueries.fetchDsrRows(range.start, range.end, {
+      select: "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre",
+    }),
+    DsrQueries.fetchExpenses(range.start, range.end),
     DsrQueries.fetchLubeSales(range.start, range.end),
   ]);
-  if (dsrError) AppError.report(dsrError, { context: "profitLossSummary", type: "dsr" });
-  if (expenseError) AppError.report(expenseError, { context: "profitLossSummary", type: "expense" });
+  if (dsrResult.error) AppError.report(dsrResult.error, { context: "profitLossSummary", type: "dsr" });
+  if (expenseResult.error) AppError.report(expenseResult.error, { context: "profitLossSummary", type: "expense" });
   if (lubeResult.error) AppError.report(lubeResult.error, { context: "profitLossSummary", type: "lube" });
 
-  const allDsr = allDsrData ?? [];
-  const dsrRows = allDsr.filter((row) => row.date >= range.start && row.date <= range.end);
-  const receiptRows = DsrQueries.extractReceiptRows(allDsr);
+  const dsrRows = dsrResult.data ?? [];
+  const receiptRows = dsrResult.receiptRows;
+  const expenseData = expenseResult.data;
 
-  const hasDsr = !dsrError;
-  const hasExpense = !expenseError;
+  const hasDsr = !dsrResult.error;
+  const hasExpense = !expenseResult.error;
   const pl = computeProfitLossSummary({
     dsrRows,
     receiptRows,

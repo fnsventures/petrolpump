@@ -3,35 +3,111 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v88";
+const CACHE_VERSION = "v101";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
-/** Core shell cached on install; other assets load on first visit (cache-first / SWR). */
+/**
+ * App shell + every page script/CSS precached on install for offline navigation.
+ * env.js is generated per deploy and is never cached (see fetch handler).
+ */
 const STATIC_ASSET_PATHS = [
+  // HTML pages
   "index.html",
+  "about.html",
   "login.html",
   "dashboard.html",
+  "dsr.html",
+  "expenses.html",
+  "credit.html",
+  "billing.html",
+  "reports.html",
+  "analysis.html",
+  "day-closing.html",
+  "attendance.html",
+  "salary.html",
+  "staff.html",
+  "settings.html",
+  "invoices.html",
+  "sales-daily.html",
+  "credit-customer.html",
+  "credit-overdue.html",
   "404.html",
   "manifest.json",
+  // CSS
   "css/base.css",
-  "css/app.css",
+  "css/fonts.css",
   "css/landing.css",
   "css/login.css",
-  "assets/bishnupriya-fuels-logo.png",
+  "css/app-core.css",
+  "css/app-dashboard.css",
+  "css/app-analysis.css",
+  "css/app-dsr.css",
+  "css/app-day-closing.css",
+  "css/app-credit.css",
+  "css/app-billing.css",
+  "css/app-reports.css",
+  "css/app-attendance.css",
+  "css/app-salary.css",
+  "css/app-staff.css",
+  // Icons & landing images
+  "assets/favicon-32.png",
+  "assets/apple-touch-icon.png",
+  "assets/icon-192.png",
+  "assets/icon-512.png",
+  "assets/logo-44.webp",
+  "assets/logo-104.webp",
+  "assets/landing-01-800.webp",
+  // Self-hosted fonts
+  "fonts/dm-sans-latin.woff2",
+  "fonts/dm-sans-latin-ext.woff2",
+  "fonts/dm-sans-italic-latin.woff2",
+  "fonts/dm-sans-italic-latin-ext.woff2",
+  "fonts/source-serif-4-latin.woff2",
+  "fonts/source-serif-4-latin-ext.woff2",
+  "fonts/caveat-latin.woff2",
+  "fonts/caveat-latin-ext.woff2",
+  // Shared JS
+  "js/vendor/supabase-login.min.js",
+  "js/vendor/supabase.min.js",
+  "js/roleBootstrap.js",
+  "js/appNav.js",
+  "js/dsrSections.js",
+  "js/dsrBootstrap.js",
   "js/errorHandler.js",
   "js/cache.js",
   "js/appConfig.js",
   "js/utils.js",
   "js/printUtils.js",
   "js/pumpSettings.js",
-  "js/vendor/supabase.min.js",
   "js/supabase.js",
   "js/auth.js",
   "js/pageSections.js",
-  "js/dashboard.js",
+  "js/dateRangeFilter.js",
+  "js/dsrQueries.js",
+  "js/purchaseTaxUtils.js",
+  "js/staffEmployees.js",
+  "js/creditCustomerDetail.js",
+  "js/creditOverview.js",
+  "js/creditRecord.js",
+  "js/creditCustomer.js",
+  "js/dsrSummary.js",
   "js/landing.js",
+  // Page-specific JS
+  "js/dashboard.js",
+  "js/dsr.js",
+  "js/expenses.js",
+  "js/credit.js",
+  "js/billing.js",
+  "js/reports.js",
+  "js/analysis.js",
+  "js/day-closing.js",
+  "js/attendance.js",
+  "js/salary.js",
+  "js/staff.js",
+  "js/settings.js",
+  "js/invoices.js",
 ];
 
 const CACHE_MATCH_OPTS = { ignoreSearch: true };
@@ -53,10 +129,11 @@ const API_PATTERNS = [
   /\/functions\/v1\//,
 ];
 
-// Cache TTL for different resource types (in milliseconds)
+// SW API cache TTL — only used for offline fallback on cacheable reference data.
+// Operational/financial tables are excluded (see isNoCacheApiRequest); AppCache owns those TTLs.
 const CACHE_TTL = {
-  api: 2 * 60 * 1000, // 2 minutes for API responses
-  static: 24 * 60 * 60 * 1000, // 24 hours for static assets
+  api: 2 * 60 * 1000,
+  static: 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -180,11 +257,16 @@ function isApiRequest(url) {
   return API_PATTERNS.some((pattern) => pattern.test(url.pathname));
 }
 
-/** API paths that must never be cached (PII, credit, staff, auth-related). */
+/**
+ * API paths that must never be cached in the SW layer.
+ * AppCache (localStorage) owns aggregated dashboard/reports TTLs; SW caching the same
+ * underlying REST/edge responses would serve overlapping stale DSR/expense data.
+ */
 function isNoCacheApiRequest(url) {
   const path = url.pathname;
   const table = url.searchParams?.get("table") ?? "";
   const noCacheTables = [
+    // Credit & staff (PII / financial)
     "credit_customers",
     "credit_entries",
     "credit_payments",
@@ -193,9 +275,22 @@ function isNoCacheApiRequest(url) {
     "employee_attendance",
     "salary_payments",
     "salary_month_exclusions",
+    // DSR, expenses, day closing — AppCache or live pages own freshness
+    "dsr",
+    "dsr_petrol",
+    "dsr_diesel",
+    "expenses",
+    "day_closing",
+    "night_cash_collections",
+    // Billing & settings cached in AppCache
+    "invoices",
+    "invoice_items",
+    "invoice_documents",
+    "pump_settings",
   ];
   if (noCacheTables.some((t) => path.includes(t) || table === t)) return true;
   if (path.includes("/rpc/")) return true;
+  if (path.includes("/functions/v1/")) return true;
   return false;
 }
 

@@ -1,4 +1,4 @@
-/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml, AdminDelete */
+/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml, AdminDelete, formatFuelBadge */
 
 /**
  * Shared credit customer detail helpers (detail page + overdue modal).
@@ -53,7 +53,7 @@
     if (columns === "credit-rich") {
       return entries
         .map((e) => {
-          const fuel = e.fuel_type ? escapeHtml(e.fuel_type) : "—";
+          const fuel = e.fuel_type ? formatFuelBadge(e.fuel_type) : "—";
           const qty = e.quantity != null ? Number(e.quantity).toFixed(3) : "—";
           const settled = Number(e.amount_settled || 0);
           const open = Number(e.amount || 0) - settled;

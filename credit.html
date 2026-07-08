@@ -4,13 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Credit · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/bishnupriya-fuels-logo.png" type="image/png" />
-    <link rel="apple-touch-icon" href="assets/bishnupriya-fuels-logo.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
-    <link rel="stylesheet" href="css/app.css?v=2" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=9" />
+    <link rel="stylesheet" href="css/app-credit.css?v=9" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -22,60 +22,22 @@
     <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/creditCustomerDetail.js"></script>
-    <script defer src="js/printUtils.js"></script>
-    <script defer src="js/credit.js?v=2"></script>
+    <script defer src="js/credit.js?v=3"></script>
   </head>
   <body class="credit-list-view">
-    <header class="topbar">
+    <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
         <span class="page-subtitle">Credit Ledger</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" aria-label="Main navigation">
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="dashboard.html">Dashboard</a>
-            <a href="dsr.html">Meter Reading</a>
-            <a href="sales-daily.html">DSR</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="credit.html">Credit</a>
-            <a href="expenses.html">Expenses</a>
-            <a href="day-closing.html">Day closing &amp; short</a>
-            <a href="billing.html">Billing</a>
-            <a href="invoices.html">Invoices</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="attendance.html">Attendance</a>
-            <a href="salary.html">Salary</a>
-            <a href="staff.html">Staff</a>
-          </div>
-        </div>
-        <div class="nav-group-block">
-          <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
-          <div class="nav-group" role="menu">
-            <a href="analysis.html" data-role="admin-only" style="display:none">Analysis</a>
-            <a href="reports.html" data-role="admin-only" style="display:none">Reports</a>
-            <a href="settings.html" data-role="admin-only" style="display:none">Settings</a>
-          </div>
-        </div>
-        <button id="logout-button" class="link nav-logout">Logout</button>
-      </nav>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout">
       <div class="settings-sidebar">
         <nav id="credit-list-nav" class="settings-nav card" aria-label="Credit sections">
-          <p class="settings-nav-title">Credit</p>
+          <p class="settings-nav-title">Sections</p>
           <button type="button" class="settings-nav-item is-active" data-section="overview">Overview</button>
           <button type="button" class="settings-nav-item" data-section="record">Record sale</button>
           <button type="button" class="settings-nav-item" data-section="outstanding">Outstanding list</button>
@@ -92,9 +54,13 @@
       </div>
 
       <div class="settings-panels">
-        <section id="credit-panel-overview" class="settings-panel card is-visible" data-panel="overview">
-          <h2>Overview</h2>
-          <p class="muted">Portfolio snapshot and period activity. Record sales on Record sale; settlement and full history on each customer’s detail page.</p>
+        <section id="credit-panel-overview" class="settings-panel card dashboard-card is-visible" data-panel="overview">
+          <div class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Overview</h2>
+              <p class="muted panel-lead">Portfolio snapshot and period activity. Record sales on Record sale; settlement and full history on each customer’s detail page.</p>
+            </div>
+          </div>
           <div class="stat-grid">
             <div class="stat-card stat-card-highlight">
               <span class="stat-label">Total outstanding</span>
@@ -355,7 +321,7 @@
         <div class="card-head snapshot-head">
           <div>
             <h2>Outstanding balances</h2>
-            <p class="muted credit-ledger-admin-note" data-role="admin-only" style="display:none">
+            <p class="muted credit-ledger-admin-note" data-role="admin-only">
               Fully settled customers stay in this list so you can open their account and correct credit entries or settlements.
             </p>
             <p id="credit-ledger-summary" class="muted" aria-live="polite"></p>

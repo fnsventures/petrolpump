@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion, PrintUtils */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, formatNumericDate, formatNumberPlain, initDocsAccordion, PrintUtils, fuelRowClass, formatFuelBadge */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -432,7 +432,80 @@ async function loadAndRenderReports() {
   }
 }
 
+function buildExpenseCategoryMap(categories) {
+  const categoryMap = {};
+  (categories ?? []).forEach((c) => {
+    categoryMap[c.name] = c.label;
+  });
+  return categoryMap;
+}
+
+function normalizeReportsPayload(payload) {
+  const errors = [
+    payload.dsrError,
+    payload.stockError,
+    payload.expenseError,
+    payload.invoiceError,
+    payload.invoiceItemsError,
+    payload.categoriesError,
+  ].filter(Boolean);
+  if (errors.length) throw errors[0];
+
+  return {
+    dsrRows: payload.dsrRows ?? [],
+    stockRows: payload.stockRows ?? [],
+    expenseRows: payload.expenseRows ?? [],
+    invoices: payload.invoices ?? [],
+    invoiceItems: payload.invoiceItems ?? [],
+    categoryMap: buildExpenseCategoryMap(payload.expenseCategories),
+    receiptRows: payload.receiptRows ?? [],
+  };
+}
+
+/**
+ * Fetches reports data using Edge Function (single round-trip) with fallback
+ * to parallel client-side queries if the Edge Function is unavailable.
+ */
 async function fetchReportData(start, end) {
+  try {
+    const invoke = () =>
+      supabaseClient.functions.invoke("get-reports-data", {
+        body: {
+          startDate: start,
+          endDate: end,
+          receiptHistoryStart: PumpSettings.getReceiptHistoryStart(),
+        },
+      });
+
+    const { data, error } =
+      typeof AppError !== "undefined" && AppError?.withRetry
+        ? await AppError.withRetry(invoke, { maxAttempts: 3 })
+        : await invoke();
+
+    if (error) throw error;
+
+    return normalizeReportsPayload({
+      dsrRows: data.dsrRows,
+      receiptRows: data.receiptRows,
+      stockRows: data.stockRows,
+      expenseRows: data.expenseRows,
+      invoices: data.invoices,
+      invoiceItems: data.invoiceItems,
+      expenseCategories: data.expenseCategories,
+      dsrError: data.errors?.dsr ? new Error(data.errors.dsr) : null,
+      stockError: data.errors?.stock ? new Error(data.errors.stock) : null,
+      expenseError: data.errors?.expense ? new Error(data.errors.expense) : null,
+      invoiceError: data.errors?.invoice ? new Error(data.errors.invoice) : null,
+      invoiceItemsError: data.errors?.invoiceItems ? new Error(data.errors.invoiceItems) : null,
+      categoriesError: data.errors?.categories ? new Error(data.errors.categories) : null,
+    });
+  } catch {
+    return fetchReportDataDirect(start, end);
+  }
+}
+
+/** Fallback: parallel client-side queries (3–4 round trips). */
+async function fetchReportDataDirect(start, end) {
   const [
     dsrBundle,
     stockResult,
@@ -454,15 +527,6 @@ async function fetchReportData(start, end) {
     supabaseClient.from("expense_categories").select("name, label").order("sort_order"),
   ]);
 
-  const errors = [
-    dsrBundle.error,
-    stockResult.error,
-    expenseResult.error,
-    invoiceResult.error,
-    categoryResult.error,
-  ].filter(Boolean);
-  if (errors.length) throw errors[0];
-
   const invoices = invoiceResult.data ?? [];
   let invoiceItems = [];
   if (invoices.length) {
@@ -475,20 +539,21 @@ async function fetchReportData(start, end) {
     invoiceItems = items ?? [];
   }
 
-  const categoryMap = {};
-  (categoryResult.data ?? []).forEach((c) => {
-    categoryMap[c.name] = c.label;
-  });
-
-  return {
-    dsrRows: dsrBundle.data ?? [],
-    stockRows: stockResult.data ?? [],
-    expenseRows: expenseResult.data ?? [],
+  return normalizeReportsPayload({
+    dsrRows: dsrBundle.data,
+    receiptRows: dsrBundle.receiptRows,
+    stockRows: stockResult.data,
+    expenseRows: expenseResult.data,
     invoices,
     invoiceItems,
-    categoryMap,
-    receiptRows: dsrBundle.receiptRows ?? [],
-  };
+    expenseCategories: categoryResult.data,
+    dsrError: dsrBundle.error,
+    stockError: stockResult.error,
+    expenseError: expenseResult.error,
+    invoiceError: invoiceResult.error,
+    invoiceItemsError: null,
+    categoriesError: categoryResult.error,
+  });
 }
 
 function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rateField) {
@@ -546,7 +611,7 @@ function buildTankDsrSection(product, tankLabel, capacity, pumpIndex, rows, rate
   const productLabel = product === "diesel" ? "Diesel" : "Petrol";
 
   return `
-    <section class="report-tank-section">
+    <section class="report-tank-section report-tank-section--${product}">
       <h3 class="report-tank-title">Tank: ${escapeHtml(tankLabel)} · ${escapeHtml(capacity)} · ${escapeHtml(productLabel)}</h3>
       <table class="report-table report-dsr-table">
         <thead>
@@ -602,7 +667,7 @@ function renderTankWiseDsr(data, range) {
     sections += buildTankDsrSection(tank.product, tank.label, tank.capacity, pumpIndex, rows, rateField);
   });
   if (!any) {
-    sections += `<p class="muted">No meter readings in this period. Enter data on Meter Reading page.</p>`;
+    sections += `<p class="muted">No meter readings in this period. Enter data on Meter Reading.</p>`;
   }
   return sections;
 }
@@ -791,7 +856,7 @@ function renderGstSummaryTable(slabTotals, title, range, inward, options = {}) {
 function renderFuelSalesMonthTable(lines, title) {
   const rows = lines
     .map(
-      (line) => `<tr>
+      (line) => `<tr class="${fuelRowClass(line.product)}">
         <td>${escapeHtml(line.monthLabel)}</td>
         <td>${escapeHtml(line.productLabel)}</td>
         <td class="num">${formatNumberPlain(line.litres)}</td>
@@ -874,7 +939,7 @@ function renderGstSalesDetail(data, range) {
 
   const fuelRows = fuelLines
     .map(
-      (line) => `<tr>
+      (line) => `<tr class="${fuelRowClass(line.product)}">
         <td>${escapeHtml(line.monthLabel)}</td>
         <td>${escapeHtml(line.productLabel)}</td>
         <td>—</td>
@@ -1091,9 +1156,9 @@ function renderGstPurchaseDetail(data, range) {
       (r) => {
         const prod = normalizeProduct(r.product);
         const ref = prod === "petrol" ? "MS" : prod === "diesel" ? "HSD" : String(r.product).toUpperCase();
-        return `<tr>
+        return `<tr class="${fuelRowClass(prod)}">
       <td>${formatNumericDate(r.date)}</td>
-      <td>${escapeHtml(ref)}</td>
+      <td>${formatFuelBadge(ref)}</td>
       <td>${escapeHtml(getFuelSupplierLabel())}</td>
       <td class="num">${formatNumberPlain(r.litres)}</td>
       <td class="num">${formatBuyingRatePerKl(r.rate)}</td>
@@ -1227,10 +1292,10 @@ function computeTradingAndPl(data, range) {
 function renderTradingAccount(data, range) {
   const t = computeTradingAndPl(data, range);
   const creditRows = [
-    ["Sales — Petrol", t.products.petrol.sales],
-    ["Sales — Diesel", t.products.diesel.sales],
-    ["Sales — Lube / Billing", t.products.lube.sales],
-    ["Closing stock (at cost)", t.closingStock],
+    ["Sales — Petrol", t.products.petrol.sales, "petrol"],
+    ["Sales — Diesel", t.products.diesel.sales, "diesel"],
+    ["Sales — Lube / Billing", t.products.lube.sales, null],
+    ["Closing stock (at cost)", t.closingStock, null],
   ];
   const debitRows = [
     ["Opening stock (at cost)", t.openingStock],
@@ -1241,8 +1306,8 @@ function renderTradingAccount(data, range) {
   const renderSide = (title, rows, excludeFromTotal = []) => {
     const body = rows
       .map(
-        ([label, amt]) =>
-          `<tr><td>${escapeHtml(label)}</td><td class="num">${formatNumberPlain(amt)}</td></tr>`
+        ([label, amt, product]) =>
+          `<tr class="${fuelRowClass(product)}"><td>${escapeHtml(label)}</td><td class="num">${formatNumberPlain(amt)}</td></tr>`
       )
       .join("");
     const total = rows
