@@ -475,14 +475,16 @@
         <!-- Access list -->
         <section id="settings-panel-access" class="settings-panel card" data-panel="access" hidden>
           <h2>Current access list</h2>
+          <p class="muted">Remove a user to revoke app access and delete their login from Supabase Auth.</p>
           <table>
             <thead>
-              <tr><th>Email</th><th>Display name</th><th>Role</th><th>Created</th></tr>
+              <tr><th>Email</th><th>Display name</th><th>Role</th><th>Created</th><th>Action</th></tr>
             </thead>
             <tbody id="settings-table-body">
-              <tr><td colspan="4" class="muted">Loading…</td></tr>
+              <tr><td colspan="5" class="muted">Loading…</td></tr>
             </tbody>
           </table>
+          <p id="access-list-error" class="error hidden margin-top"></p>
         </section>
       </div>
     </main>
