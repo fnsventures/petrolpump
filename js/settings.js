@@ -1,5 +1,7 @@
 /* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete */
 
+let currentAuth = null;
+
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin"],
@@ -7,6 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     pageName: "settings",
   });
   if (!auth) return;
+  currentAuth = auth;
   applyRoleVisibility(auth.role);
 
   await loadPumpSettings(true);
@@ -21,6 +24,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindIntegrationsForm(auth);
   initProducts();
   initUsersForm();
+  initAccessListDelete();
   initStaffSalaries();
   initExpenseCategories();
   loadStaffList();
@@ -1034,32 +1038,69 @@ function initStaffSalaries() {
   void loadSalaries();
 }
 
+function initAccessListDelete() {
+  const tbody = document.getElementById("settings-table-body");
+  AdminDelete.bindOnce(tbody, ".staff-access-delete-btn", deleteStaffAccess, "staffAccessDeleteBound");
+}
+
+async function deleteStaffAccess(btn) {
+  const email = btn.dataset.email || "";
+  const errorEl = document.getElementById("access-list-error");
+  errorEl?.classList.add("hidden");
+
+  await AdminDelete.execute({
+    btn,
+    auth: currentAuth,
+    actionLabel: "remove users from the access list",
+    confirmMessage: `Remove ${email} from the access list?\n\nThis deletes their app access and Supabase login. This cannot be undone.`,
+    deleteFn: () => supabaseClient.rpc("delete_staff", { p_email: email }),
+    cacheScope: "operational",
+    onSuccess: async () => {
+      if (typeof invalidateUserRoleCache === "function") invalidateUserRoleCache(email);
+      await loadStaffList();
+    },
+    errorContext: { context: "deleteStaffAccess", email },
+  });
+}
+
 async function loadStaffList() {
   const tbody = document.getElementById("settings-table-body");
   if (!tbody) return;
-  tbody.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
+  tbody.innerHTML = "<tr><td colspan='5' class='muted'>Loading…</td></tr>";
   const { data, error } = await supabaseClient
     .from("users")
     .select("email, display_name, role, created_at")
     .order("created_at", { ascending: false });
   if (error) {
-    tbody.innerHTML = `<tr><td colspan='4' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan='5' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
     return;
   }
   if (!data?.length) {
-    tbody.innerHTML = "<tr><td colspan='4' class='muted'>No users yet.</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='5' class='muted'>No users yet.</td></tr>";
     return;
   }
+  const currentEmail = currentAuth?.session?.user?.email?.toLowerCase() ?? "";
   tbody.innerHTML = data
-    .map(
-      (row) => `
+    .map((row) => {
+      const isSelf = row.email?.toLowerCase() === currentEmail;
+      const actionCell = isSelf
+        ? `<td class="table-actions muted">—</td>`
+        : `<td class="table-actions">${AdminDelete.buttonHtml({
+            selector: "staff-access-delete-btn",
+            data: { email: row.email },
+            label: "Remove",
+            title: "Remove from access list",
+            small: true,
+          })}</td>`;
+      return `
     <tr>
       <td>${escapeHtml(row.email)}</td>
       <td>${escapeHtml(row.display_name ?? "—")}</td>
       <td>${escapeHtml(row.role)}</td>
       <td>${formatSettingsDate(row.created_at)}</td>
-    </tr>`
-    )
+      ${actionCell}
+    </tr>`;
+    })
     .join("");
 }
 
