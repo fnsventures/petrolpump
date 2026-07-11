@@ -496,7 +496,7 @@ function sortSummaryEntriesByDate(entries) {
 function updateCreditSummaryPrintButton() {
   const btn = document.getElementById("customer-summary-print-btn");
   if (!btn) return;
-  const canPrint = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.page().state.customerName);
+  const canPrint = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
   btn.disabled = !canPrint;
 }
 
@@ -544,7 +544,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
   const settlementDone = summary ? Number(summary.settlement_done) : 0;
   const periodCredit = context?.periodCredit ?? 0;
   const periodSettled = context?.periodSettled ?? 0;
-  const name = context?.page().state.customerName || page().state.customerName || "Customer";
+  const name = context?.customerName || page().state.customerName || "Customer";
   const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
   const generatedOn = formatDisplayDate(getLocalDateString());
   const periodActivity = context?.periodActivity || "";
@@ -737,7 +737,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
 }
 
 async function runCreditSummaryPrint() {
-  if (!page().state.lastCustomerSummary || !page().state.lastCustomerSummaryContext?.page().state.customerName) {
+  if (!page().state.lastCustomerSummary || !page().state.lastCustomerSummaryContext?.customerName) {
     const msg = "Load the customer account first, then print.";
     if (typeof AppError?.showGlobalBanner === "function") {
       AppError.showGlobalBanner(msg);
@@ -748,7 +748,7 @@ async function runCreditSummaryPrint() {
   }
 
   const sheetHtml = buildCreditSummaryPrintHtml(page().state.lastCustomerSummary, page().state.lastCustomerSummaryContext);
-  const title = `${page().state.lastCustomerSummaryContext.page().state.customerName} · Credit summary`;
+  const title = `${page().state.lastCustomerSummaryContext.customerName} · Credit summary`;
 
   await PrintUtils.printInIframe({
     title,
