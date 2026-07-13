@@ -2,7 +2,7 @@
 
 This document describes the main **user and data flows** in the Petrol Pump application: how features connect and in what order data is typically entered. Use it to understand end-to-end behaviour and the page → data mapping.
 
-> **Quick commands & deploy:** [Documentation hub](README.md)
+> **Documentation hub:** [README.md](README.md)
 
 ### Flow overview
 

@@ -2,7 +2,7 @@
 
 Scripts for **staging test data**, **production schema migration**, and **backups**.
 
-> **Quick start & release workflow:** [docs/README.md](../docs/README.md) — step-by-step commands on the docs hub.  
+> **Documentation hub:** [docs/README.md](../docs/README.md) — step-by-step commands.  
 > **This file:** setup, internals, troubleshooting, and file reference.
 
 All write operations target **staging** or **production** explicitly — prod data sync is read-only on production.
