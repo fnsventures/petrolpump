@@ -79,7 +79,7 @@ flowchart TB
 
 ## 🎬 Visual guides
 
-*Flow diagrams below — static PNG previews work everywhere; open the matching `.svg` in `docs/assets/` on GitHub for animated versions.*
+*Futuristic animated SVG flows — use the **raw GitHub URLs** below so SMIL animation plays in the rendered README (relative `./assets/` paths get flattened by GitHub’s image proxy).*
 
 | Guide | What it shows | Jump to |
 |:--|:--|:--|
@@ -89,7 +89,9 @@ flowchart TB
 | Deploy path | `feature` → `staging` → `main` | [commands ↓](#-command-recipes) |
 | Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
 
-![Quick start flow — Configure, Run, Provision](./assets/quick-start-flow.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/quick-start-flow.svg?v=1" alt="Quick start flow — Configure, Run, Provision" width="820" />
+</p>
 
 ---
 
@@ -212,7 +214,9 @@ on conflict (email) do update set role = 'admin';
 
 #### Login flow — what happens when someone signs in
 
-![Login and provision flow](./assets/auth-flow.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/auth-flow.svg?v=1" alt="Login and provision flow" width="480" />
+</p>
 
 ```mermaid
 stateDiagram-v2
@@ -272,7 +276,9 @@ stateDiagram-v2
 
 #### Daily operations at the forecourt
 
-![Daily operations loop](./assets/daily-ops-flow.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/daily-ops-flow.svg?v=1" alt="Daily operations loop" width="820" />
+</p>
 
 ```mermaid
 flowchart LR
@@ -290,7 +296,9 @@ flowchart LR
 
 *The safe path — follow these five steps in order.*
 
-![Release pipeline — 5 steps](./assets/release-pipeline.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-pipeline.svg?v=1" alt="Release pipeline — 5 steps" width="900" />
+</p>
 
 ```mermaid
 sequenceDiagram
@@ -349,7 +357,9 @@ stateDiagram-v2
 
 #### How code reaches production
 
-![Deploy path — feature to staging to main](./assets/deploy-path.png)
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg?v=1" alt="Deploy path — feature to staging to main" width="700" />
+</p>
 
 ```mermaid
 flowchart LR
