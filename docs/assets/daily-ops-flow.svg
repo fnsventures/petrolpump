@@ -1,50 +1,91 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 280" role="img" aria-label="Daily operations flow at the petrol pump">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 300" role="img" aria-label="Daily operations flow at the petrol pump">
   <defs>
-    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#020617"/>
+    <linearGradient id="do-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
       <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
+    <linearGradient id="do-orbit" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0070c0"/>
+      <stop offset="50%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <filter id="do-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
-  <rect width="820" height="280" rx="16" fill="url(#bg4)" stroke="#1e3a5f"/>
-  <text x="410" y="28" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="12" letter-spacing="2">DAILY OPERATIONS LOOP</text>
-  <ellipse cx="410" cy="155" rx="280" ry="95" fill="none" stroke="#1e293b" stroke-width="3" stroke-dasharray="10 6"/>
-  <ellipse cx="410" cy="155" rx="280" ry="95" fill="none" stroke="#00d4ff" stroke-width="2" opacity="0.35" stroke-dasharray="10 6">
-    <animateTransform attributeName="transform" type="rotate" from="0 410 155" to="360 410 155" dur="20s" repeatCount="indefinite"/>
+
+  <rect width="820" height="300" rx="18" fill="url(#do-bg)" stroke="#1e3a5f"/>
+  <text x="410" y="34" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="4">DAILY OPERATIONS LOOP</text>
+
+  <!-- orbit rings -->
+  <ellipse cx="410" cy="162" rx="290" ry="100" fill="none" stroke="#1e293b" stroke-width="3"/>
+  <ellipse cx="410" cy="162" rx="290" ry="100" fill="none" stroke="url(#do-orbit)" stroke-width="2" opacity="0.45" stroke-dasharray="12 8">
+    <animateTransform attributeName="transform" type="rotate" from="0 410 162" to="360 410 162" dur="18s" repeatCount="indefinite"/>
   </ellipse>
-  <circle r="6" fill="#00d4ff">
-    <animateMotion dur="6s" repeatCount="indefinite" path="M 690 155 A 280 95 0 1 1 689.9 155"/>
+  <ellipse cx="410" cy="162" rx="250" ry="82" fill="none" stroke="#00d4ff" stroke-width="1" opacity="0.2" stroke-dasharray="4 10">
+    <animateTransform attributeName="transform" type="rotate" from="360 410 162" to="0 410 162" dur="24s" repeatCount="indefinite"/>
+  </ellipse>
+
+  <!-- orbiting particles -->
+  <circle r="5" fill="#00d4ff" filter="url(#do-glow)">
+    <animateMotion dur="5.5s" repeatCount="indefinite" path="M 700 162 A 290 100 0 1 1 699.9 162"/>
   </circle>
-  <g transform="translate(130,155)">
-    <rect x="-55" y="-32" width="110" height="64" rx="12" fill="#0f172a" stroke="#0070c0" stroke-width="2"/>
-    <text text-anchor="middle" y="-8" fill="#38bdf8" font-size="20">&#128202;</text>
-    <text text-anchor="middle" y="12" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">DSR</text>
-    <text text-anchor="middle" y="26" fill="#64748b" font-size="9" font-family="system-ui">meter readings</text>
+  <circle r="4" fill="#a855f7" filter="url(#do-glow)">
+    <animateMotion dur="5.5s" begin="1.8s" repeatCount="indefinite" path="M 700 162 A 290 100 0 1 1 699.9 162"/>
+  </circle>
+  <circle r="3" fill="#34d399" filter="url(#do-glow)">
+    <animateMotion dur="5.5s" begin="3.6s" repeatCount="indefinite" path="M 700 162 A 290 100 0 1 1 699.9 162"/>
+  </circle>
+
+  <!-- nodes -->
+  <g transform="translate(120,162)">
+    <rect x="-58" y="-36" width="116" height="72" rx="6" fill="#0f172a" stroke="#0070c0" stroke-width="2" filter="url(#do-glow)">
+      <animate attributeName="stroke-opacity" values="1;0.4;1" dur="2.2s" repeatCount="indefinite"/>
+    </rect>
+    <text text-anchor="middle" y="-8" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">DSR</text>
+    <text text-anchor="middle" y="10" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Meter readings</text>
+    <text text-anchor="middle" y="26" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">stock sync</text>
   </g>
-  <g transform="translate(290,80)">
-    <rect x="-50" y="-28" width="100" height="56" rx="10" fill="#0f172a" stroke="#00d4ff" stroke-width="1.5"/>
-    <text text-anchor="middle" y="-4" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Credit</text>
-    <text text-anchor="middle" y="14" fill="#64748b" font-size="9" font-family="system-ui">payments</text>
+
+  <g transform="translate(280,82)">
+    <rect x="-52" y="-30" width="104" height="60" rx="6" fill="#0f172a" stroke="#00d4ff" stroke-width="1.5"/>
+    <text text-anchor="middle" y="-2" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Credit</text>
+    <text text-anchor="middle" y="16" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">payments</text>
   </g>
-  <g transform="translate(530,80)">
-    <rect x="-50" y="-28" width="100" height="56" rx="10" fill="#0f172a" stroke="#00d4ff" stroke-width="1.5"/>
-    <text text-anchor="middle" y="-4" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Expenses</text>
-    <text text-anchor="middle" y="14" fill="#64748b" font-size="9" font-family="system-ui">daily costs</text>
+
+  <g transform="translate(540,82)">
+    <rect x="-52" y="-30" width="104" height="60" rx="6" fill="#0f172a" stroke="#00d4ff" stroke-width="1.5"/>
+    <text text-anchor="middle" y="-2" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Expenses</text>
+    <text text-anchor="middle" y="16" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">daily costs</text>
   </g>
-  <g transform="translate(690,155)">
-    <rect x="-55" y="-32" width="110" height="64" rx="12" fill="#0f172a" stroke="#fbbf24" stroke-width="2"/>
-    <text text-anchor="middle" y="-8" fill="#fbbf24" font-size="20">&#127769;</text>
-    <text text-anchor="middle" y="12" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Day close</text>
-    <text text-anchor="middle" y="26" fill="#64748b" font-size="9" font-family="system-ui">cash + short</text>
+
+  <g transform="translate(700,162)">
+    <rect x="-58" y="-36" width="116" height="72" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2.2s" begin="0.5s" repeatCount="indefinite"/>
+    </rect>
+    <text text-anchor="middle" y="-8" fill="#fbbf24" font-family="ui-monospace,monospace" font-size="10">CLOSE</text>
+    <text text-anchor="middle" y="10" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Day closing</text>
+    <text text-anchor="middle" y="26" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">cash + short</text>
   </g>
-  <g transform="translate(530,230)">
-    <rect x="-50" y="-28" width="100" height="56" rx="10" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
-    <text text-anchor="middle" y="-4" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Reports</text>
-    <text text-anchor="middle" y="14" fill="#64748b" font-size="9" font-family="system-ui">admin only</text>
+
+  <g transform="translate(540,242)">
+    <rect x="-52" y="-30" width="104" height="60" rx="6" fill="#0f172a" stroke="#a78bfa" stroke-width="1.5"/>
+    <text text-anchor="middle" y="-2" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">Reports</text>
+    <text text-anchor="middle" y="16" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">admin</text>
   </g>
-  <g transform="translate(290,230)">
-    <rect x="-50" y="-28" width="100" height="56" rx="10" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
-    <text text-anchor="middle" y="-4" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">HR</text>
-    <text text-anchor="middle" y="14" fill="#64748b" font-size="9" font-family="system-ui">attendance</text>
+
+  <g transform="translate(280,242)">
+    <rect x="-52" y="-30" width="104" height="60" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+    <text text-anchor="middle" y="-2" fill="#e2e8f0" font-size="11" font-weight="600" font-family="system-ui">HR</text>
+    <text text-anchor="middle" y="16" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">attendance</text>
   </g>
-  <text x="410" y="268" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="10">Typical day at the forecourt &#8594; see Flows.md for full page &#8594; table mapping</text>
+
+  <!-- center hub -->
+  <circle cx="410" cy="162" r="22" fill="#0f172a" stroke="#00d4ff" stroke-width="1.5" filter="url(#do-glow)">
+    <animate attributeName="r" values="20;24;20" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="410" y="166" text-anchor="middle" fill="#00d4ff" font-family="ui-monospace,monospace" font-size="9">OPS</text>
+
+  <text x="410" y="286" text-anchor="middle" fill="#475569" font-family="ui-monospace,monospace" font-size="10">forecourt loop &#8594; see Flows.md for page mapping</text>
 </svg>
