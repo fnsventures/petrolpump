@@ -79,7 +79,7 @@ flowchart TB
 
 ## 🎬 Visual guides
 
-*Animated diagrams — view this file on **GitHub** (rendered README) to see motion. IDE previews may show "Invalid image source" for local SVG paths.*
+*Flow diagrams below — static PNG previews work everywhere; open the matching `.svg` in `docs/assets/` on GitHub for animated versions.*
 
 | Guide | What it shows | Jump to |
 |:--|:--|:--|
@@ -89,7 +89,7 @@ flowchart TB
 | Deploy path | `feature` → `staging` → `main` | [commands ↓](#-command-recipes) |
 | Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
 
-![Quick start flow — Configure, Run, Provision](./assets/quick-start-flow.svg)
+![Quick start flow — Configure, Run, Provision](./assets/quick-start-flow.png)
 
 ---
 
@@ -212,7 +212,7 @@ on conflict (email) do update set role = 'admin';
 
 #### Login flow — what happens when someone signs in
 
-![Login and provision flow](./assets/auth-flow.svg)
+![Login and provision flow](./assets/auth-flow.png)
 
 ```mermaid
 stateDiagram-v2
@@ -272,7 +272,7 @@ stateDiagram-v2
 
 #### Daily operations at the forecourt
 
-![Daily operations loop](./assets/daily-ops-flow.svg)
+![Daily operations loop](./assets/daily-ops-flow.png)
 
 ```mermaid
 flowchart LR
@@ -290,7 +290,7 @@ flowchart LR
 
 *The safe path — follow these five steps in order.*
 
-![Release pipeline — 5 steps](./assets/release-pipeline.svg)
+![Release pipeline — 5 steps](./assets/release-pipeline.png)
 
 ```mermaid
 sequenceDiagram
@@ -349,7 +349,7 @@ stateDiagram-v2
 
 #### How code reaches production
 
-![Deploy path — feature to staging to main](./assets/deploy-path.svg)
+![Deploy path — feature to staging to main](./assets/deploy-path.png)
 
 ```mermaid
 flowchart LR
