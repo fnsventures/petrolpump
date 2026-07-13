@@ -2,7 +2,7 @@
 
 Reference for all **database tables** used by the Petrol Pump application: purpose, key columns, relationships, and Row Level Security (RLS). Use this for schema work, RPC design, or understanding the data model. The canonical schema is `supabase/schema.sql`; this doc is a summary.
 
-> **Quick start & commands:** [Documentation hub](README.md)
+> **Documentation hub:** [README.md](README.md)
 
 ---
 

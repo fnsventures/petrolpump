@@ -93,7 +93,7 @@ jobs:
           fi
 
           touch _site/.nojekyll
-          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json)
+          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json)
 
           if [ "$target" = "staging" ]; then
             mkdir -p _site/staging

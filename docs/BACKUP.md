@@ -2,7 +2,7 @@
 
 This guide explains how **production Supabase database backups** work: automated monthly uploads to Google Drive, manual triggers, local backups, restore, and troubleshooting.
 
-> **Quick backup commands:** [Documentation hub → DB backup](README.md#db-backup-local) · **Local only:** `./scripts/db.sh backup`
+> **Documentation hub:** [README.md](README.md) · **Local backup:** `./scripts/db.sh backup`
 
 **Scope:** Production database **schema + row data** only. Staging is never backed up by this workflow.
 
