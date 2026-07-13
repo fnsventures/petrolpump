@@ -1,90 +1,139 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 460" role="img" aria-label="Login and provision flow">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 500" role="img" aria-label="Login and provision flow">
   <defs>
     <linearGradient id="af-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#030712"/>
-      <stop offset="100%" stop-color="#111827"/>
+      <stop offset="0%" stop-color="#030712"/><stop offset="100%" stop-color="#111827"/>
     </linearGradient>
-    <marker id="af-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/>
-    </marker>
-    <marker id="af-arrow-bad" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="#f87171"/>
-    </marker>
+    <linearGradient id="af-beam" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/><stop offset="50%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="af-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="af-ok" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/></marker>
+    <marker id="af-bad" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#f87171"/></marker>
   </defs>
 
-  <rect width="480" height="460" rx="16" fill="url(#af-bg)" stroke="#1e3a5f"/>
-  <text x="240" y="32" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="3">SIGN-IN &#8594; AUTH &#8594; ROLE CHECK &#8594; APP</text>
+  <rect width="480" height="500" rx="16" fill="url(#af-bg)" stroke="#1e3a5f"/>
+  <rect x="0" width="480" height="2" fill="url(#af-beam)" opacity="0.15">
+    <animate attributeName="y" values="-4;504;-4" dur="6s" repeatCount="indefinite"/>
+  </rect>
+  <text x="240" y="28" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="2">ACCESS CONTROL FLOW</text>
+  <text x="240" y="44" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="10">Why login alone is not enough without public.users</text>
 
-  <line x1="240" y1="68" x2="240" y2="400" stroke="#1e293b" stroke-width="3" stroke-linecap="round"/>
+  <line x1="240" y1="72" x2="240" y2="430" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <line x1="240" y1="72" x2="240" y2="430" stroke="url(#af-beam)" stroke-width="2" stroke-dasharray="8 10" opacity="0.5">
+    <animate attributeName="stroke-dashoffset" values="36;0" dur="1.2s" repeatCount="indefinite"/>
+  </line>
 
-  <!-- session token traveling the happy path -->
-  <circle r="6" fill="#00d4ff">
-    <animate attributeName="cx" values="240;240;240;240;382;240" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="68;92;162;242;318;388" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.08;0.12;0.7;0.88;0.96;1" dur="10s" repeatCount="indefinite"/>
-  </circle>
-  <text font-family="ui-monospace,monospace" font-size="7" fill="#e2e8f0" text-anchor="middle" opacity="0">
-    <animate attributeName="x" values="240;240;240;240;382;240" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
-    <animate attributeName="y" values="58;82;152;232;308;378" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0;0;1;1;1;1;0" keyTimes="0;0.34;0.38;0.7;0.88;0.96;1" dur="10s" repeatCount="indefinite"/>
-    JWT
+  <!-- status ticker -->
+  <rect x="40" y="452" width="400" height="28" rx="6" fill="#0f172a" stroke="#334155"/>
+  <text x="240" y="470" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">
+    <animate attributeName="opacity" values="1;1;0;1;1;0;1;1" keyTimes="0;0.1;0.14;0.16;0.36;0.4;0.42;1" dur="10s" repeatCount="indefinite"/>
+    [1/5] User opens login page
+  </text>
+  <text x="240" y="470" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0;0;0" keyTimes="0;0.16;0.2;0.36;0.4;0.96;1;1" dur="10s" repeatCount="indefinite"/>
+    [2/5] Supabase validates credentials &#8594; JWT issued
+  </text>
+  <text x="240" y="470" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="8" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;0;1;1;0;0" keyTimes="0;0.36;0.4;0.52;0.56;0.68;0.72;1" dur="10s" repeatCount="indefinite"/>
+    [3/5] App checks public.users for role
+  </text>
+  <text x="240" y="470" text-anchor="middle" fill="#f87171" font-family="ui-monospace,monospace" font-size="8" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;0;0;0;1;1;0;0" keyTimes="0;0.52;0.56;0.58;0.6;0.64;0.66;0.7;0.74;1" dur="10s" repeatCount="indefinite"/>
+    [4a] No row &#8594; RLS blocks all queries
+  </text>
+  <text x="240" y="470" text-anchor="middle" fill="#34d399" font-family="ui-monospace,monospace" font-size="8" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;1;1;0" keyTimes="0;0.68;0.72;0.76;0.8;0.84;0.86;0.88;0.92;0.98;1" dur="10s" repeatCount="indefinite"/>
+    [4b] Row found &#8594; role-based nav unlocked
   </text>
 
-  <!-- failed path token (brief) -->
+  <g filter="url(#af-glow)">
+    <rect width="44" height="18" rx="4" fill="#0c1929" stroke="#00d4ff" stroke-width="1">
+      <animate attributeName="x" values="218;218;218;218;360;218" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
+      <animate attributeName="y" values="54;78;148;228;304;414" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;1;1;1;0" keyTimes="0;0.08;0.12;0.88;0.94;0.98;1" dur="10s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <text font-family="ui-monospace,monospace" font-size="7" fill="#00d4ff" text-anchor="middle" opacity="0">
+    <animate attributeName="x" values="240;240;240;240;382;240" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="y" values="66;90;160;240;316;426" keyTimes="0;0.12;0.38;0.55;0.72;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;1;1;1;1;0" keyTimes="0;0.34;0.38;0.88;0.94;0.98;1" dur="10s" repeatCount="indefinite"/>
+    JWT + role
+  </text>
+
   <circle r="4" fill="#f87171" opacity="0">
-    <animate attributeName="cx" values="240;98" keyTimes="0;1" dur="10s" begin="0s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="242;318" keyTimes="0;1" dur="10s" begin="0s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0;0;0;0.8;0.8;0;0" keyTimes="0;0.52;0.56;0.58;0.66;0.7;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="cx" values="240;98" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="242;318" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0;0;0;0.9;0.9;0;0" keyTimes="0;0.52;0.56;0.58;0.68;0.72;1" dur="10s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="98" cy="318" r="20" fill="none" stroke="#f87171" stroke-width="1" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;0.5;0;0" keyTimes="0;0.58;0.6;0.68;0.72;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="r" values="16;28;16" dur="1s" repeatCount="indefinite"/>
   </circle>
 
   <g transform="translate(240,92)">
     <rect x="-108" y="-24" width="216" height="48" rx="6" fill="#0f172a" stroke="#64748b" stroke-width="1.5">
       <animate attributeName="stroke-opacity" values="1;1;0.3;0.3;0.3;1" keyTimes="0;0.14;0.18;0.88;0.92;1" dur="10s" repeatCount="indefinite"/>
     </rect>
-    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="12">login.html</text>
+    <text text-anchor="middle" y="-4" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">1</text>
+    <text text-anchor="middle" y="12" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">login.html</text>
   </g>
 
   <g transform="translate(240,162)">
-    <rect x="-118" y="-26" width="236" height="52" rx="6" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+    <rect x="-118" y="-28" width="236" height="56" rx="6" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.3;0.3;1;1;0.3;0.3" keyTimes="0;0.16;0.2;0.4;0.44;1" dur="10s" repeatCount="indefinite"/>
     </rect>
-    <text text-anchor="middle" y="-4" fill="#38bdf8" font-family="system-ui" font-size="12" font-weight="600">Supabase Auth</text>
-    <text text-anchor="middle" y="16" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="10">email + password</text>
+    <text text-anchor="middle" y="-6" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">2</text>
+    <text text-anchor="middle" y="8" fill="#38bdf8" font-family="system-ui" font-size="12" font-weight="600">Supabase Auth</text>
+    <text text-anchor="middle" y="24" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="9">password check &#8594; session token</text>
+    <text text-anchor="middle" y="-22" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="7" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;0;1;0;0" keyTimes="0;0.16;0.2;0.24;0.28;0.4;1" dur="10s" repeatCount="indefinite"/>
+      AUTH OK
+    </text>
   </g>
 
   <g transform="translate(240,242)">
-    <rect x="-128" y="-30" width="256" height="60" rx="6" fill="#1a1508" stroke="#fbbf24" stroke-width="2">
+    <polygon points="0,-34 118,-34 128,0 118,34 0,34 -10,0" fill="#1a1508" stroke="#fbbf24" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;1;1;0.3" keyTimes="0;0.38;0.42;0.46;0.68;0.72" dur="10s" repeatCount="indefinite"/>
-    </rect>
-    <text text-anchor="middle" y="-4" fill="#fbbf24" font-family="system-ui" font-size="12" font-weight="600">public.users row?</text>
-    <text text-anchor="middle" y="16" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="10">RLS checks role</text>
+    </polygon>
+    <text text-anchor="middle" y="-8" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">3 DECISION</text>
+    <text text-anchor="middle" y="8" fill="#fbbf24" font-family="system-ui" font-size="12" font-weight="600">public.users row?</text>
+    <text text-anchor="middle" y="24" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="9">RLS reads role from this table</text>
   </g>
 
   <g transform="translate(98,318)">
-    <rect x="-78" y="-24" width="156" height="48" rx="6" fill="#180808" stroke="#f87171" stroke-width="1.5">
+    <rect x="-78" y="-26" width="156" height="52" rx="6" fill="#180808" stroke="#f87171" stroke-width="1.5">
       <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;1;1;0.3" keyTimes="0;0.52;0.56;0.58;0.6;0.68;0.72" dur="10s" repeatCount="indefinite"/>
     </rect>
-    <text text-anchor="middle" y="5" fill="#f87171" font-family="ui-monospace,monospace" font-size="10">NO ROW</text>
-    <text text-anchor="middle" y="18" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">empty screens</text>
+    <text text-anchor="middle" y="-4" fill="#f87171" font-family="ui-monospace,monospace" font-size="9">4a NO ROW</text>
+    <text text-anchor="middle" y="10" fill="#e2e8f0" font-family="system-ui" font-size="10">Empty app</text>
+    <text text-anchor="middle" y="24" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">logged in, zero data</text>
   </g>
 
   <g transform="translate(382,318)">
-    <rect x="-78" y="-24" width="156" height="48" rx="6" fill="#071510" stroke="#34d399" stroke-width="2">
+    <rect x="-78" y="-26" width="156" height="52" rx="6" fill="#071510" stroke="#34d399" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;0.3;1;1;0.3" keyTimes="0;0.56;0.6;0.64;0.68;0.72;0.88;0.92" dur="10s" repeatCount="indefinite"/>
     </rect>
-    <text text-anchor="middle" y="5" fill="#34d399" font-family="ui-monospace,monospace" font-size="10">ROW FOUND</text>
-    <text text-anchor="middle" y="18" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">role loaded</text>
+    <text text-anchor="middle" y="-4" fill="#34d399" font-family="ui-monospace,monospace" font-size="9">4b ROW OK</text>
+    <text text-anchor="middle" y="10" fill="#e2e8f0" font-family="system-ui" font-size="10">Role loaded</text>
+    <text text-anchor="middle" y="24" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">admin or supervisor</text>
   </g>
 
-  <path d="M 240 272 L 98 294" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#af-arrow-bad)" opacity="0.5"/>
-  <path d="M 240 272 L 382 294" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#af-arrow)">
+  <path d="M 240 272 L 98 294" fill="none" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#af-bad)" opacity="0.4"/>
+  <path d="M 240 272 L 382 294" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="4 4" marker-end="url(#af-ok)">
     <animate attributeName="opacity" values="0.3;0.3;0.3;0.3;1;1;0.3" keyTimes="0;0.56;0.6;0.68;0.72;0.88;0.92" dur="10s" repeatCount="indefinite"/>
   </path>
 
   <g transform="translate(240,408)">
-    <rect x="-118" y="-24" width="236" height="48" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="2">
+    <rect x="-118" y="-26" width="236" height="52" rx="6" fill="#0f172a" stroke="#34d399" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;0.3;0.3;1;1" keyTimes="0;0.68;0.72;0.76;0.8;0.84;0.88;1" dur="10s" repeatCount="indefinite"/>
     </rect>
-    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">dashboard.html + role nav</text>
+    <text text-anchor="middle" y="-4" fill="#64748b" font-family="ui-monospace,monospace" font-size="8">5 SUCCESS</text>
+    <text text-anchor="middle" y="12" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">dashboard.html + role nav</text>
+    <circle r="18" fill="none" stroke="#34d399" stroke-width="1" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0.6;0" keyTimes="0;0.68;0.72;0.76;0.84;0.88;0.96;1" dur="10s" repeatCount="indefinite"/>
+      <animate attributeName="r" values="14;24;14" dur="1.2s" repeatCount="indefinite"/>
+    </circle>
   </g>
 </svg>
