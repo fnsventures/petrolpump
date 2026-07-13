@@ -8,8 +8,8 @@
       label: "Operations",
       links: [
         { href: "dashboard.html", label: "Dashboard" },
-        { href: "dsr.html#meter", label: "Meter Reading" },
-        { href: "dsr.html#filters", label: "DSR" },
+        { href: "meter-reading.html", label: "Meter Reading" },
+        { href: "dsr.html", label: "DSR" },
       ],
     },
     {

@@ -1,0 +1,342 @@
+/* Meter Reading page — data entry forms and history */
+/* DSR / meter reading data entry */
+/* DSR layout */
+body.meter-reading-page .dsr-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+body.meter-reading-page .dsr-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+body.meter-reading-page .dsr-card-head h2 {
+  margin: 0;
+  font-size: var(--heading-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+body.meter-reading-page .dsr-card-head p {
+  margin: 0.35rem 0 0;
+  max-width: 32rem;
+}
+
+body.meter-reading-page .sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+body.meter-reading-page .table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+body.meter-reading-page .dsr-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 960px;
+}
+
+/* Inline meter entry tables size to their panel; wide stock row scrolls inside .meter-table-scroll */
+body.meter-reading-page .dsr-card .meter-table.dsr-table {
+  min-width: 0;
+}
+
+body.meter-reading-page .dsr-card .meter-table input[type="date"] {
+  min-width: 0;
+}
+
+.dsr-table th,
+body.meter-reading-page .dsr-table td {
+  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  font-size: var(--text-base);
+  background: var(--surface);
+}
+
+body.meter-reading-page .dsr-table thead th {
+  background: #f8fafc;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+body.meter-reading-page .dsr-table thead tr:nth-child(2) th {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+body.meter-reading-page .dsr-table input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  min-height: var(--input-height);
+}
+
+body.meter-reading-page .dsr-table input[type="date"] {
+  min-width: 140px;
+}
+
+body.meter-reading-page .dsr-table input[type="number"] {
+  text-align: right;
+}
+
+body.meter-reading-page .dsr-table input[type="text"] {
+  text-align: right;
+}
+
+body.meter-reading-page .dsr-table .meter-reading {
+  font-variant-numeric: tabular-nums;
+}
+
+body.meter-reading-page .dsr-table .calc-field[readonly] {
+  background: #f8fafc;
+  color: #475569;
+}
+
+/* ─── Wide data-entry layout (Meter Reading, Sales daily) ───────────────── */
+/* Shell width matches dashboard (app-core settings-layout); tables scroll inside panels. */
+
+body.meter-reading-page .page-layout-wide .settings-panels {
+  min-width: 0;
+  width: 100%;
+}
+
+body.meter-reading-page main.settings-layout.dsr-page-layout {
+  width: min(80rem, 98vw);
+}
+
+body.meter-reading-page .page-layout-wide .settings-panel.card.dsr-card {
+  padding: 1.35rem 1.5rem 1.5rem;
+}
+
+body.meter-reading-page .page-layout-wide .meter-toolbar {
+  margin-bottom: 0.25rem;
+}
+
+/* Meter tables: fixed layout keeps header cells aligned with inputs */
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table th,
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table td {
+  padding: 0.55rem 0.5rem;
+  font-size: var(--text-sm);
+  vertical-align: middle;
+}
+
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--text-base);
+}
+
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input[type="date"] {
+  min-width: 0;
+}
+
+body.meter-reading-page .meter-table .meter-col-date {
+  width: 11.5rem;
+}
+
+body.meter-reading-page .meter-table--closing .meter-col-date--spacer {
+  padding: 0;
+  border-color: transparent;
+  background: transparent !important;
+}
+
+body.meter-reading-page .meter-block-wide .meter-table thead th {
+  white-space: normal;
+  line-height: 1.25;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table .calc-field[readonly] {
+  font-size: var(--text-base);
+}
+
+body.meter-reading-page .page-layout-wide .dsr-card .meter-title {
+  font-size: var(--heading-md);
+}
+
+body.meter-reading-page .page-layout-wide .meter-block-wide .meter-table-scroll .meter-table {
+  min-width: 1080px;
+}
+
+body.meter-reading-page .page-layout-wide .meter-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+body.meter-reading-page .page-layout-wide .sheet-rate-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 16rem));
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+body.meter-reading-page .page-layout-wide .sheet-rate-row .form-field {
+  margin: 0;
+}
+
+body.meter-reading-page .page-layout-wide .sheet-rate-row label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+body.meter-reading-page .page-layout-wide .sheet-rate-row input {
+  width: 100%;
+  min-height: var(--input-height);
+}
+
+body.meter-reading-page .dsr-card--petrol .meter-block {
+  border-left: 3px solid var(--bpcl-blue);
+  background: linear-gradient(90deg, rgba(0, 112, 192, 0.04) 0%, #f8fafc 12%);
+}
+
+body.meter-reading-page .dsr-card--diesel .meter-block {
+  border-left: 3px solid var(--bpcl-yellow-dark);
+  background: linear-gradient(90deg, rgba(255, 204, 0, 0.1) 0%, #f8fafc 12%);
+}
+
+body.meter-reading-page .dsr-card--petrol .meter-table thead th {
+  background: rgba(0, 112, 192, 0.08);
+  color: var(--bpcl-blue-dark);
+}
+
+body.meter-reading-page .dsr-card--diesel .meter-table thead th {
+  background: rgba(255, 204, 0, 0.18);
+  color: #854d0e;
+}
+
+body.meter-reading-page .dsr-card--petrol .dsr-table thead th {
+  background: var(--fuel-petrol-bg-strong);
+  color: var(--fuel-petrol-text);
+}
+
+body.meter-reading-page .dsr-card--diesel .dsr-table thead th {
+  background: var(--fuel-diesel-bg-strong);
+  color: var(--fuel-diesel-text);
+}
+
+body.meter-reading-page .dsr-card--petrol .meter-table .calc-field[readonly] {
+  background: rgba(0, 112, 192, 0.06);
+  color: var(--bpcl-blue-dark);
+}
+
+body.meter-reading-page .dsr-card--diesel .meter-table .calc-field[readonly] {
+  background: rgba(255, 204, 0, 0.14);
+  color: #854d0e;
+}
+
+body.meter-reading-page .dsr-field-legend {
+  margin: 0;
+  font-size: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+body.meter-reading-page .dsr-legend-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+body.meter-reading-page .dsr-legend-dot--calc {
+  background: #f1f5f9;
+}
+
+body.meter-reading-page .dsr-card--petrol .dsr-legend-dot--calc {
+  background: rgba(0, 112, 192, 0.12);
+  border-color: rgba(0, 112, 192, 0.2);
+}
+
+body.meter-reading-page .dsr-card--diesel .dsr-legend-dot--calc {
+  background: rgba(255, 204, 0, 0.22);
+  border-color: rgba(230, 184, 0, 0.35);
+}
+
+body.meter-reading-page .dsr-legend-dot--input {
+  background: #fff;
+}
+
+body.meter-reading-page .dsr-legend-sep {
+  opacity: 0.45;
+}
+
+body.meter-reading-page .dsr-rate-row {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+body.meter-reading-page .dsr-card--petrol .dsr-rate-row {
+  background: rgba(0, 112, 192, 0.05);
+  border-color: rgba(0, 112, 192, 0.18);
+}
+
+body.meter-reading-page .dsr-card--diesel .dsr-rate-row {
+  background: rgba(255, 204, 0, 0.1);
+  border-color: rgba(230, 184, 0, 0.35);
+}
+
+body.meter-reading-page .dsr-card--petrol .sheet-actions {
+  border-top-color: rgba(0, 112, 192, 0.18);
+}
+
+body.meter-reading-page .dsr-card--diesel .sheet-actions {
+  border-top-color: rgba(230, 184, 0, 0.35);
+}
+
+body.meter-reading-page .dsr-card--petrol .dsr-history {
+  border-top-color: rgba(0, 112, 192, 0.18);
+}
+
+body.meter-reading-page .dsr-card--diesel .dsr-history {
+  border-top-color: rgba(230, 184, 0, 0.35);
+}
+
+body.meter-reading-page .dsr-card--petrol .sheet-actions button[type="submit"] {
+  background: var(--bpcl-blue);
+}
+
+body.meter-reading-page .dsr-card--petrol .sheet-actions button[type="submit"]:hover {
+  background: var(--bpcl-blue-dark);
+}
+
+body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"] {
+  background: var(--bpcl-yellow-dark);
+  color: #422006;
+}
+
+body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:hover {
+  background: #c9a300;
+  color: #422006;
+}
+
+@media (max-width: 768px) {
+  body.meter-reading-page .meter-block-head .dsr-field-legend {
+    width: 100%;
+  }
+}

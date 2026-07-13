@@ -39,8 +39,8 @@ function updateDsrQuickLinks(dateStr) {
   const q = dateStr ? `?date=${encodeURIComponent(dateStr)}` : "";
   const petrolCta = document.getElementById("hero-petrol-cta");
   const dieselCta = document.getElementById("hero-diesel-cta");
-  if (petrolCta) petrolCta.href = `dsr.html${q}#petrol`;
-  if (dieselCta) dieselCta.href = `dsr.html${q}#diesel`;
+  if (petrolCta) petrolCta.href = `meter-reading.html${q}#petrol`;
+  if (dieselCta) dieselCta.href = `meter-reading.html${q}#diesel`;
 }
 
 function parseTankCapacityLiters(capacityStr) {
@@ -571,7 +571,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const date = snapshotDateInput?.value || yesterdayStr;
     const base = `dsr.html?date=${encodeURIComponent(date)}`;
     for (const [id, hash] of [
-      ["sales-daily-link", "#filters"],
+      ["sales-daily-link", ""],
       ["sales-daily-ms-link", "#dsr-petrol"],
       ["sales-daily-hsd-link", "#dsr-diesel"],
     ]) {

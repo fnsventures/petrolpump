@@ -9,6 +9,7 @@
    * @param {string} [config.panelSelector]
    * @param {string} [config.defaultSection]
    * @param {string[]} [config.validSections]
+   * @param {(section: string) => string} [config.resolvePanelId]
    * @param {(section: string) => void} [config.onSectionChange]
    */
   function initPageSections(config = {}) {
@@ -29,13 +30,18 @@
       return hashAliases[h] || h;
     }
 
+    function panelIdForSection(section) {
+      return typeof config.resolvePanelId === "function" ? config.resolvePanelId(section) : section;
+    }
+
     function showSection(id) {
       const section = valid.includes(id) ? id : defaultSection;
+      const panelId = panelIdForSection(section);
       navItems.forEach((btn) => {
         btn.classList.toggle("is-active", btn.dataset.section === section);
       });
       panels.forEach((panel) => {
-        const active = panel.dataset.panel === section;
+        const active = panel.dataset.panel === panelId;
         panel.classList.toggle("is-visible", active);
         panel.hidden = !active;
       });

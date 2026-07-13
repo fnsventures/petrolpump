@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v104";
+const CACHE_VERSION = "v106";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -19,6 +19,7 @@ const STATIC_ASSET_PATHS = [
   "login.html",
   "dashboard.html",
   "dsr.html",
+  "meter-reading.html",
   "expenses.html",
   "credit.html",
   "billing.html",
@@ -44,6 +45,7 @@ const STATIC_ASSET_PATHS = [
   "css/app-dashboard.css",
   "css/app-analysis.css",
   "css/app-dsr.css",
+  "css/app-meter-reading.css",
   "css/app-day-closing.css",
   "css/app-credit.css",
   "css/app-billing.css",
@@ -86,7 +88,8 @@ const STATIC_ASSET_PATHS = [
   "js/roleBootstrap.js",
   "js/appNav.js",
   "js/dsrSections.js",
-  "js/dsrBootstrap.js",
+  "js/dsrLegacyRedirect.js",
+  "js/dsrFuelNav.js",
   "js/errorHandler.js",
   "js/cache.js",
   "js/appConfig.js",
@@ -109,6 +112,7 @@ const STATIC_ASSET_PATHS = [
   // Page-specific JS
   "js/dashboard.js",
   "js/dsr.js",
+  "js/meterReading.js",
   "js/expenses.js",
   "js/credit.js",
   "js/billing.js",
