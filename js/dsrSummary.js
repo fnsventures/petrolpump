@@ -1,7 +1,7 @@
 /* global supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getLocalDateString, getValidFilterState, setFilterState */
 
 /**
- * DSR summary section (filters / MS / HSD tabs) — lazy-loaded from dsr.js.
+ * DSR summary section (filters / MS / HSD tabs) — loaded by dsr.html.
  */
 (function () {
   const DSR_DAILY_TABLE_COLS = 11;

@@ -135,22 +135,58 @@ function normalizePanelHeaders() {
   });
 }
 
-function markCurrentNavLink() {
+function navLinkMatchesCurrentPage(href) {
   const path = window.location.pathname;
-  let current = path.split("/").pop() || "";
-  if (!current || current === "index.html") {
-    current = "dashboard.html";
+  let currentFile = path.split("/").pop() || "";
+  if (!currentFile || currentFile === "index.html") {
+    currentFile = "dashboard.html";
   }
 
+  const [linkFile, linkHashPart] = String(href || "").split("#");
+  const linkHash = linkHashPart ? `#${linkHashPart}` : "";
+  const currentHash = window.location.hash || "";
+
+  if (!linkHash) {
+    return linkFile === currentFile;
+  }
+  if (linkFile !== currentFile) return false;
+  return linkHash === currentHash;
+}
+
+function markCurrentNavLink() {
   document.querySelectorAll("header.topbar nav a").forEach((link) => {
-    const href = link.getAttribute("href");
-    if (href === current) {
-      link.classList.add("nav-active");
-      link.setAttribute("aria-current", "page");
-      const block = link.closest(".nav-group-block");
-      if (block) block.classList.add("has-active");
-    }
+    link.classList.remove("nav-active");
+    link.removeAttribute("aria-current");
   });
+  document.querySelectorAll(".nav-group-block.has-active").forEach((block) => {
+    block.classList.remove("has-active");
+  });
+
+  document.querySelectorAll("header.topbar nav a[href]").forEach((link) => {
+    const href = link.getAttribute("href");
+    if (!href || href.startsWith("http") || href.startsWith("//")) return;
+    if (!navLinkMatchesCurrentPage(href)) return;
+    link.classList.add("nav-active");
+    link.setAttribute("aria-current", "page");
+    link.closest(".nav-group-block")?.classList.add("has-active");
+  });
+}
+
+function closeTopbarNavMenus() {
+  const nav = document.querySelector(".topbar .nav-wrap.collapsible");
+  const toggle = document.querySelector(".topbar .nav-toggle");
+  nav?.classList.remove("is-open");
+  toggle?.setAttribute("aria-expanded", "false");
+
+  document.querySelectorAll(".topbar .nav-group-block.is-open").forEach((block) => {
+    block.classList.remove("is-open");
+    block.querySelector(".nav-group-label")?.setAttribute("aria-expanded", "false");
+  });
+
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.closest(".topbar .nav-wrap")) {
+    active.blur();
+  }
 }
 
 /**
@@ -644,6 +680,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   enhanceTopbarBrand();
   normalizePanelHeaders();
   markCurrentNavLink();
+  window.addEventListener("hashchange", markCurrentNavLink);
   initNavToggle();
   const cachedRole =
     typeof window.readCachedUserRole === "function" ? window.readCachedUserRole() : null;
@@ -740,7 +777,7 @@ function initNavToggle() {
 
   /* Mobile: tap group label to expand/collapse that group (accordion) */
   nav.querySelectorAll(".nav-group-label").forEach((label) => {
-    label.addEventListener("click", (e) => {
+    label.addEventListener("click", () => {
       const block = label.closest(".nav-group-block");
       if (!block) return;
       const isOpen = block.classList.toggle("is-open");
@@ -753,6 +790,12 @@ function initNavToggle() {
       if (!block) return;
       const isOpen = block.classList.toggle("is-open");
       label.setAttribute("aria-expanded", String(isOpen));
+    });
+  });
+
+  nav.querySelectorAll(".nav-group a[href]").forEach((link) => {
+    link.addEventListener("click", () => {
+      closeTopbarNavMenus();
     });
   });
 }
