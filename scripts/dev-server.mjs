@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Local preview: sync repo → _site, expand HTML partials, serve on http://localhost:4173
+ * Local preview: sync repo → _site, expand HTML partials, serve on http://localhost:3000
  */
 
 import { spawn } from "node:child_process";
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SITE_DIR = path.join(REPO_ROOT, "_site");
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || 3000);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -93,7 +93,7 @@ async function main() {
   });
 
   server.listen(PORT, () => {
-    console.log(`Preview ready at http://localhost:${PORT}/dashboard.html`);
+    console.log(`Preview ready at http://localhost:${PORT}/`);
     console.log("Re-run npm run dev after editing HTML partials.");
   });
 }
