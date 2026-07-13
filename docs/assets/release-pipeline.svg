@@ -1,90 +1,87 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" role="img" aria-label="Release pipeline: sync, test, preflight, apply, deploy">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 280" role="img" aria-label="Release pipeline: sync, test, preflight, apply, deploy">
   <defs>
     <linearGradient id="rp-bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#030712"/>
       <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
-    <linearGradient id="rp-beam" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#00d4ff" stop-opacity="0"/>
-      <stop offset="40%" stop-color="#00d4ff" stop-opacity="1"/>
-      <stop offset="100%" stop-color="#a855f7" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="rp-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
 
-  <rect width="900" height="260" rx="18" fill="url(#rp-bg)" stroke="#1e3a5f"/>
-  <text x="450" y="34" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="4">RELEASE PIPELINE</text>
+  <rect width="900" height="280" rx="16" fill="url(#rp-bg)" stroke="#1e3a5f"/>
+  <text x="450" y="32" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="3">SHIP TO PROD — 5 STEPS IN ORDER (DO NOT SKIP)</text>
 
-  <!-- track -->
-  <rect x="50" y="118" width="800" height="8" rx="4" fill="#1e293b"/>
-  <rect x="50" y="118" width="220" height="8" rx="4" fill="url(#rp-beam)" opacity="0.85">
-    <animate attributeName="x" values="50;630;50" dur="5s" repeatCount="indefinite"/>
-  </rect>
+  <rect x="50" y="128" width="800" height="6" rx="3" fill="#1e293b"/>
 
-  <!-- runner dot + trail -->
-  <circle r="9" fill="#00d4ff" opacity="0.2" filter="url(#rp-glow)">
-    <animate attributeName="cx" values="90;250;410;570;730;730" dur="6s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="122;122;122;122;122;122" dur="6s" repeatCount="indefinite"/>
-  </circle>
-  <circle r="5" fill="#00d4ff" filter="url(#rp-glow)">
-    <animate attributeName="cx" values="90;250;410;570;730;730" dur="6s" repeatCount="indefinite"/>
-    <animate attributeName="cy" values="122;122;122;122;122;122" dur="6s" repeatCount="indefinite"/>
+  <!-- release captain dot stops at each gate -->
+  <circle r="8" fill="#00d4ff" opacity="0.25"/>
+  <circle r="5" fill="#00d4ff">
+    <animate attributeName="cx" values="90;90;250;250;410;410;570;570;730;730;90" keyTimes="0;0.08;0.12;0.28;0.32;0.48;0.52;0.68;0.72;0.92;1" dur="15s" repeatCount="indefinite"/>
+    <animate attributeName="cy" values="131;131;131;131;131;131;131;131;131;131;131" dur="15s" repeatCount="indefinite"/>
   </circle>
 
-  <g transform="translate(90,122)">
-    <rect x="-58" y="-58" width="116" height="76" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2">
-      <animate attributeName="stroke-opacity" values="1;0.35;0.35;0.35;0.35;0.35" dur="6s" repeatCount="indefinite"/>
+  <g transform="translate(90,131)">
+    <rect x="-58" y="-62" width="116" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="1;1;0.3;0.3;0.3;0.3;0.3;0.3;0.3;0.3;1" keyTimes="0;0.1;0.14;0.88;0.92;0.94;0.96;0.98;0.99;0.995;1" dur="15s" repeatCount="indefinite"/>
     </rect>
-    <text y="-30" text-anchor="middle" fill="#38bdf8" font-size="16" font-family="ui-monospace,monospace">01</text>
-    <text y="-8" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">sync</text>
-    <text y="10" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">db.sh sync</text>
+    <text y="-36" text-anchor="middle" fill="#38bdf8" font-size="14" font-family="ui-monospace,monospace">01</text>
+    <text y="-16" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">sync</text>
+    <text y="2" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">db.sh sync</text>
+    <text y="18" text-anchor="middle" fill="#34d399" font-size="8" font-family="ui-monospace,monospace" opacity="0">
+      <animate attributeName="opacity" values="1;1;0;0;0;0;0;0;0;0;0" keyTimes="0;0.1;0.14;0.88;0.92;0.94;0.96;0.98;0.99;0.995;1" dur="15s" repeatCount="indefinite"/>
+      prod read-only
+    </text>
   </g>
 
-  <g transform="translate(250,122)">
-    <rect x="-58" y="-58" width="116" height="76" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2">
-      <animate attributeName="stroke-opacity" values="0.35;1;0.35;0.35;0.35;0.35" dur="6s" repeatCount="indefinite"/>
+  <g transform="translate(250,131)">
+    <rect x="-58" y="-62" width="116" height="80" rx="6" fill="#0f172a" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;0.3;1;1;0.3;0.3;0.3;0.3;0.3;0.3;0.3" keyTimes="0;0.1;0.14;0.26;0.3;0.88;0.92;0.94;0.96;0.98;1" dur="15s" repeatCount="indefinite"/>
     </rect>
-    <text y="-30" text-anchor="middle" fill="#38bdf8" font-size="16" font-family="ui-monospace,monospace">02</text>
-    <text y="-8" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">test</text>
-    <text y="10" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">/staging/</text>
+    <text y="-36" text-anchor="middle" fill="#38bdf8" font-size="14" font-family="ui-monospace,monospace">02</text>
+    <text y="-16" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">test</text>
+    <text y="2" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">push staging</text>
+    <text y="18" text-anchor="middle" fill="#38bdf8" font-size="8" font-family="ui-monospace,monospace" opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0;0;0;0;0;0" keyTimes="0;0.12;0.16;0.26;0.3;0.88;0.92;0.94;0.96;0.98;1" dur="15s" repeatCount="indefinite"/>
+      /staging/ live
+    </text>
   </g>
 
-  <g transform="translate(410,122)">
-    <rect x="-58" y="-58" width="116" height="76" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="2">
-      <animate attributeName="stroke-opacity" values="0.35;0.35;1;0.35;0.35;0.35" dur="6s" repeatCount="indefinite"/>
+  <g transform="translate(410,131)">
+    <rect x="-58" y="-62" width="116" height="80" rx="6" fill="#0f172a" stroke="#fbbf24" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;1;1;0.3;0.3;0.3;0.3;0.3" keyTimes="0;0.26;0.3;0.32;0.36;0.46;0.5;0.88;0.92;0.96;1" dur="15s" repeatCount="indefinite"/>
     </rect>
-    <text y="-30" text-anchor="middle" fill="#fbbf24" font-size="16" font-family="ui-monospace,monospace">03</text>
-    <text y="-8" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">preflight</text>
-    <text y="10" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">migrate</text>
+    <text y="-36" text-anchor="middle" fill="#fbbf24" font-size="14" font-family="ui-monospace,monospace">03</text>
+    <text y="-16" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">preflight</text>
+    <text y="2" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">migrate dry-run</text>
+    <text y="18" text-anchor="middle" fill="#34d399" font-size="8" font-family="ui-monospace,monospace" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;1;1;0;0;0;0;0" keyTimes="0;0.32;0.36;0.4;0.44;0.46;0.5;0.88;0.92;0.96;1" dur="15s" repeatCount="indefinite"/>
+      prod unchanged
+    </text>
   </g>
 
-  <g transform="translate(570,122)">
-    <rect x="-58" y="-58" width="116" height="76" rx="6" fill="#1a0a0a" stroke="#f87171" stroke-width="2">
-      <animate attributeName="stroke-opacity" values="0.35;0.35;0.35;1;0.35;0.35" dur="6s" repeatCount="indefinite"/>
+  <g transform="translate(570,131)">
+    <rect x="-58" y="-62" width="116" height="80" rx="6" fill="#1a0a0a" stroke="#f87171" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;0.3;0.3;1;1;0.3;0.3;0.3" keyTimes="0;0.46;0.5;0.52;0.56;0.6;0.64;0.74;0.78;0.88;1" dur="15s" repeatCount="indefinite"/>
     </rect>
-    <text y="-30" text-anchor="middle" fill="#f87171" font-size="16" font-family="ui-monospace,monospace">04</text>
-    <text y="-8" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">apply</text>
-    <text y="10" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">--apply</text>
+    <text y="-36" text-anchor="middle" fill="#f87171" font-size="14" font-family="ui-monospace,monospace">04</text>
+    <text y="-16" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">apply</text>
+    <text y="2" text-anchor="middle" fill="#64748b" font-size="9" font-family="ui-monospace,monospace">migrate --apply</text>
+    <text y="18" text-anchor="middle" fill="#f87171" font-size="8" font-family="ui-monospace,monospace" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;1;1;0;0;0" keyTimes="0;0.56;0.6;0.64;0.68;0.72;0.76;0.74;0.78;0.88;1" dur="15s" repeatCount="indefinite"/>
+      quiet window!
+    </text>
   </g>
 
-  <g transform="translate(730,122)">
-    <rect x="-58" y="-58" width="116" height="76" rx="6" fill="#071510" stroke="#34d399" stroke-width="2" filter="url(#rp-glow)">
-      <animate attributeName="stroke-opacity" values="0.35;0.35;0.35;0.35;1;1" dur="6s" repeatCount="indefinite"/>
+  <g transform="translate(730,131)">
+    <rect x="-58" y="-62" width="116" height="80" rx="6" fill="#071510" stroke="#34d399" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.3;0.3;0.3;0.3;0.3;0.3;0.3;0.3;1;1;0.3" keyTimes="0;0.46;0.5;0.52;0.56;0.6;0.64;0.74;0.78;0.9;1" dur="15s" repeatCount="indefinite"/>
     </rect>
-    <text y="-30" text-anchor="middle" fill="#34d399" font-size="16" font-family="ui-monospace,monospace">05</text>
-    <text y="-8" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">deploy</text>
-    <text y="10" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">merge main</text>
+    <text y="-36" text-anchor="middle" fill="#34d399" font-size="14" font-family="ui-monospace,monospace">05</text>
+    <text y="-16" text-anchor="middle" fill="#e2e8f0" font-size="12" font-weight="600" font-family="system-ui">deploy</text>
+    <text y="2" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">merge main</text>
+    <text y="18" text-anchor="middle" fill="#34d399" font-size="8" font-family="ui-monospace,monospace" opacity="0">
+      <animate attributeName="opacity" values="0;0;0;0;0;0;0;0;1;1;0" keyTimes="0;0.68;0.72;0.76;0.78;0.8;0.82;0.84;0.88;0.96;1" dur="15s" repeatCount="indefinite"/>
+      &#10003; prod live
+    </text>
   </g>
 
-  <text x="170" y="210" text-anchor="middle" fill="#34d399" font-size="10" font-family="ui-monospace,monospace">prod read-only</text>
-  <text x="330" y="210" text-anchor="middle" fill="#38bdf8" font-size="10" font-family="ui-monospace,monospace">staging updated</text>
-  <text x="650" y="210" text-anchor="middle" fill="#f87171" font-size="10" font-family="ui-monospace,monospace">quiet window</text>
-  <text x="810" y="210" text-anchor="middle" fill="#34d399" font-size="10" font-family="ui-monospace,monospace">prod live</text>
-
-  <rect x="0" width="900" height="2" fill="url(#rp-beam)" opacity="0.2">
-    <animate attributeName="y" values="240;20;240" dur="6s" repeatCount="indefinite"/>
-  </rect>
+  <text x="450" y="230" text-anchor="middle" fill="#475569" font-family="ui-monospace,monospace" font-size="9">each step completes before the next begins</text>
 </svg>

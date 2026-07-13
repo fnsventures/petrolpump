@@ -79,7 +79,7 @@ flowchart TB
 
 ## 🎬 Visual guides
 
-*Futuristic animated SVG flows — use the **raw GitHub URLs** below so SMIL animation plays in the rendered README (relative `./assets/` paths get flattened by GitHub’s image proxy).*
+*Each diagram animates the real workflow step-by-step — use the **raw GitHub URLs** below so SMIL plays in the rendered README.*
 
 | Guide | What it shows | Jump to |
 |:--|:--|:--|
@@ -90,7 +90,7 @@ flowchart TB
 | Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/quick-start-flow.svg?v=1" alt="Quick start flow — Configure, Run, Provision" width="820" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/quick-start-flow.svg?v=2" alt="Quick start flow — Configure, Run, Provision" width="820" />
 </p>
 
 ---
@@ -215,7 +215,7 @@ on conflict (email) do update set role = 'admin';
 #### Login flow — what happens when someone signs in
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/auth-flow.svg?v=1" alt="Login and provision flow" width="480" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/auth-flow.svg?v=2" alt="Login and provision flow" width="480" />
 </p>
 
 ```mermaid
@@ -277,7 +277,7 @@ stateDiagram-v2
 #### Daily operations at the forecourt
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/daily-ops-flow.svg?v=1" alt="Daily operations loop" width="820" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/daily-ops-flow.svg?v=2" alt="Daily operations loop" width="820" />
 </p>
 
 ```mermaid
@@ -297,7 +297,7 @@ flowchart LR
 *The safe path — follow these five steps in order.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-pipeline.svg?v=1" alt="Release pipeline — 5 steps" width="900" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-pipeline.svg?v=2" alt="Release pipeline — 5 steps" width="900" />
 </p>
 
 ```mermaid
@@ -358,7 +358,7 @@ stateDiagram-v2
 #### How code reaches production
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg?v=1" alt="Deploy path — feature to staging to main" width="700" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg?v=2" alt="Deploy path — feature to staging to main" width="700" />
 </p>
 
 ```mermaid
