@@ -1,22 +1,26 @@
 # Database maintenance scripts
 
-Scripts for **staging test data**, **production schema migration**, and **backups**.  
+Scripts for **staging test data**, **production schema migration**, and **backups**.
+
+> **Quick start & release workflow:** [docs/README.md](../docs/README.md) — step-by-step commands on the docs hub.  
+> **This file:** setup, internals, troubleshooting, and file reference.
+
 All write operations target **staging** or **production** explicitly — prod data sync is read-only on production.
 
 ---
 
 ## Quick reference
 
-| Goal | Command | Writes to prod? | Writes to staging? |
-|------|---------|-----------------|-------------------|
-| Test with real prod data on `/staging/` | `./scripts/db.sh sync` | No (read only) | Yes (replaces data) |
-| Check prod before migration | `./scripts/db.sh migrate` | No | No |
-| Check prod only (same as migrate without apply) | `./scripts/db.sh preflight` | No | No |
-| Backup prod to local files | `./scripts/db.sh backup` | No | No |
-| Backup prod → Google Drive (CI or local) | `./scripts/backup-prod-to-drive.sh` | No | No |
-| Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | Yes (schema) | No |
+| Goal | Command | Prod | Staging |
+|------|---------|------|---------|
+| Test with real prod data on `/staging/` | `./scripts/db.sh sync` | read only | **replaced** |
+| Check prod before migration | `./scripts/db.sh migrate` | no change | — |
+| Same as migrate (alias) | `./scripts/db.sh preflight` | no change | — |
+| Backup prod to local files | `./scripts/db.sh backup` | no change | — |
+| Backup prod → Google Drive | `./scripts/backup-prod-to-drive.sh` | no change | — |
+| Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | **schema** | — |
 
-**Recommended entry point:** `./scripts/db.sh` — see `./scripts/db.sh help`
+**Entry point:** `./scripts/db.sh help`
 
 ---
 
