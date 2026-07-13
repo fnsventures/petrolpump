@@ -1,37 +1,35 @@
-# Bishnupriya Fuels
+<div align="center">
 
-### A F&S Ventures Company
+# ⛽ Bishnupriya Fuels
 
-Web application for **daily operations**, **finance**, and **HR** at a BPCL fuel station.
+### *A F&S Ventures Company*
 
-![Stack](https://img.shields.io/badge/stack-HTML%2FJS%20%2B%20Supabase-0070c0?style=flat-square)
-![Deploy](https://img.shields.io/badge/deploy-GitHub%20Pages-24292f?style=flat-square)
-![Offline](https://img.shields.io/badge/PWA-service_worker-34d399?style=flat-square)
+**Daily operations · finance · HR** for a BPCL fuel station
 
-**Stack:** Static HTML/JS · [Supabase](https://supabase.com) (PostgreSQL, Auth, RLS) · GitHub Pages · Service worker for forecourt offline resilience.
+<br />
+
+![Stack](https://img.shields.io/badge/stack-HTML%2FJS%20%2B%20Supabase-0070c0?style=for-the-badge&logo=html5&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-GitHub%20Pages-24292f?style=for-the-badge&logo=github&logoColor=white)
+![Offline](https://img.shields.io/badge/offline-service_worker-00d4ff?style=for-the-badge)
+
+<br />
+
+[**📖 Open the Documentation Hub →**](docs/README.md)
+
+</div>
 
 ---
 
-## Documentation
+> [!TIP]
+> **Start here:** [**docs/README.md**](docs/README.md) — animated flow diagrams, quick start, release pipeline, and command recipes.  
+> Everything renders **on GitHub** — open `docs/README.md` to see moving SVG flows and Mermaid diagrams.
 
-### **[docs/README.md](docs/README.md)** — start here
-
-Quick start, release pipeline, command recipes, and full doc index — optimized for browsing on GitHub.
-
-| | |
+| I want to… | Command / link |
 |:--|:--|
 | Run locally | `npm run dev` → `http://localhost:4173` |
 | Deploy staging | Push `staging` branch |
-| Ship release | `sync` → test → `migrate --apply` → merge `main` |
-
-| Document | Purpose |
-|:--|:--|
-| [**docs/README.md**](docs/README.md) | **Hub** — quick access, commands, release workflow |
-| [Architecture](docs/ARCHITECTURE.md) | Stack, project structure, security |
-| [Flows](docs/FLOWS.md) | User and data flows |
-| [Data tables](docs/DATA_TABLES.md) | Database tables, RLS, RPCs |
-| [Development](docs/DEVELOPMENT.md) | Full local setup and deployment |
-| [scripts/README.md](scripts/README.md) | DB sync, migrate, backup |
+| Ship a release | `sync` → test → `migrate --apply` → merge `main` |
+| Read the full guide | [**docs/README.md**](docs/README.md) |
 
 ---
 
@@ -50,7 +48,20 @@ Quick start, release pipeline, command recipes, and full doc index — optimized
 | **HR** | Staff roster, attendance, salary, PF slips |
 | **Settings** | Station config, users, products, integrations *(admin)* |
 
-**Roles:** `admin` (full) · `supervisor` (operations + billing + HR recording; no staff/settings/reports/analysis).
+**Roles:** `admin` (full) · `supervisor` (operations + billing + HR recording; no staff / settings / reports / analysis)
+
+---
+
+## Documentation
+
+| Doc | What's inside |
+|:--|:--|
+| [**docs/README.md**](docs/README.md) | **Hub** — animated diagrams + commands |
+| [Architecture](docs/ARCHITECTURE.md) | Stack, folders, security |
+| [Flows](docs/FLOWS.md) | User journeys & page → data mapping |
+| [Data tables](docs/DATA_TABLES.md) | Tables, RLS, RPCs |
+| [Development](docs/DEVELOPMENT.md) | Full setup & deployment |
+| [scripts/README.md](scripts/README.md) | DB sync, migrate, backup |
 
 ---
 
@@ -63,3 +74,11 @@ Quick start, release pipeline, command recipes, and full doc index — optimized
 | **Multi-site** | Multi-tenancy for multiple pump locations |
 | **Live data** | Supabase Realtime for dashboard |
 | **Mobile** | Native or cross-platform operator app |
+
+---
+
+<div align="center">
+
+<sub>Static HTML/JS · Supabase · GitHub Pages · service worker for forecourt offline use</sub>
+
+</div>
