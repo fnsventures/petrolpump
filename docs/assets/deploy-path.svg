@@ -1,44 +1,77 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 220" role="img" aria-label="Deploy branches: feature to staging to production">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 250" role="img" aria-label="Deploy branches: feature to staging to production">
   <defs>
-    <linearGradient id="bg5" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#020617"/>
+    <linearGradient id="dp-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
       <stop offset="100%" stop-color="#0f172a"/>
     </linearGradient>
+    <marker id="dp-a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8"/></marker>
+    <marker id="dp-a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/></marker>
   </defs>
-  <rect width="700" height="220" rx="16" fill="url(#bg5)" stroke="#1e3a5f"/>
-  <text x="350" y="28" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="12" letter-spacing="2">DEPLOY PATH</text>
-  <!-- lanes -->
-  <rect x="40" y="55" width="180" height="130" rx="12" fill="#0f172a" stroke="#334155" stroke-width="1" stroke-dasharray="4 4"/>
-  <rect x="260" y="55" width="180" height="130" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
-  <rect x="480" y="55" width="180" height="130" rx="12" fill="#0f172a" stroke="#34d399" stroke-width="2"/>
-  <text x="130" y="78" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="11">DEVELOP</text>
-  <text x="350" y="78" text-anchor="middle" fill="#38bdf8" font-family="system-ui" font-size="11">STAGING</text>
-  <text x="570" y="78" text-anchor="middle" fill="#34d399" font-family="system-ui" font-size="11">PRODUCTION</text>
-  <!-- nodes -->
-  <rect x="70" y="100" width="120" height="36" rx="8" fill="#1e293b" stroke="#64748b"/>
-  <text x="130" y="123" text-anchor="middle" fill="#e2e8f0" font-family="monospace" font-size="11">feature/*</text>
-  <rect x="290" y="100" width="120" height="36" rx="8" fill="#0c1929" stroke="#38bdf8"/>
-  <text x="350" y="123" text-anchor="middle" fill="#e2e8f0" font-family="monospace" font-size="11">staging</text>
-  <rect x="510" y="100" width="120" height="36" rx="8" fill="#0a1a12" stroke="#34d399"/>
-  <text x="570" y="123" text-anchor="middle" fill="#e2e8f0" font-family="monospace" font-size="11">main</text>
-  <!-- arrows -->
-  <path d="M 190 118 L 285 118" stroke="#38bdf8" stroke-width="2" marker-end="url(#a1)" fill="none"/>
-  <path d="M 410 118 L 505 118" stroke="#34d399" stroke-width="2" marker-end="url(#a2)" fill="none"/>
-  <defs>
-    <marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8"/></marker>
-    <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/></marker>
-  </defs>
-  <!-- animated packets -->
-  <rect width="24" height="14" rx="4" fill="#38bdf8" opacity="0.9">
-    <animate attributeName="x" values="195;260;195" dur="2.5s" repeatCount="indefinite"/>
-    <animate attributeName="y" values="111;111;111" dur="2.5s" repeatCount="indefinite"/>
+
+  <rect width="700" height="250" rx="16" fill="url(#dp-bg)" stroke="#1e3a5f"/>
+  <text x="350" y="32" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="3">CODE PROMOTION  -  feature/* &#8594; staging &#8594; main</text>
+
+  <rect x="30" y="58" width="190" height="130" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="1;1;0.4;0.4;0.4;1" keyTimes="0;0.12;0.16;0.84;0.88;1" dur="10s" repeatCount="indefinite"/>
   </rect>
-  <rect width="24" height="14" rx="4" fill="#34d399" opacity="0.9">
-    <animate attributeName="x" values="415;480;415" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
-    <animate attributeName="y" values="111;111;111" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
+  <rect x="255" y="58" width="190" height="130" rx="10" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;1;1;0.4;0.4" keyTimes="0;0.28;0.32;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
   </rect>
-  <text x="130" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">local dev</text>
-  <text x="350" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">/staging/</text>
-  <text x="570" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">live site</text>
-  <text x="350" y="200" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">GitHub Actions deploys on push &#183; manual workflow also available</text>
+  <rect x="480" y="58" width="190" height="130" rx="10" fill="#071510" stroke="#34d399" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;0.4;0.4;1;1" keyTimes="0;0.56;0.6;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+
+  <text x="125" y="82" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">DEVELOP</text>
+  <text x="350" y="82" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">STAGING</text>
+  <text x="575" y="82" text-anchor="middle" fill="#34d399" font-family="ui-monospace,monospace" font-size="10">PRODUCTION</text>
+
+  <rect x="62" y="108" width="126" height="40" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="1;1;0.4;0.4;0.4;1" keyTimes="0;0.12;0.16;0.84;0.88;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text x="125" y="133" text-anchor="middle" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">feature/*</text>
+
+  <rect x="287" y="108" width="126" height="40" rx="6" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;1;1;0.4;0.4" keyTimes="0;0.28;0.32;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text x="350" y="133" text-anchor="middle" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">staging</text>
+
+  <rect x="512" y="108" width="126" height="40" rx="6" fill="#0a1a12" stroke="#34d399" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;0.4;0.4;1;1" keyTimes="0;0.56;0.6;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text x="575" y="133" text-anchor="middle" fill="#e2e8f0" font-family="ui-monospace,monospace" font-size="11">main</text>
+
+  <path d="M 188 128 L 282 128" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 413 128 L 507 128" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 188 128 L 282 128" fill="none" stroke="#38bdf8" stroke-width="2" stroke-dasharray="6 8" opacity="0">
+    <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.14;0.18;0.32;0.36;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-dashoffset" values="28;0;0;0;0;0" keyTimes="0;0.14;0.18;0.32;0.36;1" dur="10s" repeatCount="indefinite"/>
+  </path>
+  <path d="M 413 128 L 507 128" fill="none" stroke="#34d399" stroke-width="2" stroke-dasharray="6 8" opacity="0">
+    <animate attributeName="opacity" values="0;0;0;0;1;1;0;0" keyTimes="0;0.42;0.46;0.5;0.54;0.68;0.72;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="stroke-dashoffset" values="0;0;0;28;0;0;0;0" keyTimes="0;0.42;0.46;0.5;0.68;0.72;1;1" dur="10s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- commit travels feature ? staging ? main -->
+  <rect width="32" height="18" rx="4" fill="#64748b">
+    <animate attributeName="x" values="95;95;312;312;537;537;95" keyTimes="0;0.1;0.22;0.42;0.54;0.86;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="y" values="119;119;119;119;119;119;119" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="fill" values="#64748b;#64748b;#38bdf8;#38bdf8;#34d399;#34d399;#64748b" keyTimes="0;0.1;0.22;0.42;0.54;0.86;1" dur="10s" repeatCount="indefinite"/>
+  </rect>
+  <text font-family="ui-monospace,monospace" font-size="7" fill="#e2e8f0" text-anchor="middle">
+    <animate attributeName="x" values="111;111;328;328;553;553;111" keyTimes="0;0.1;0.22;0.42;0.54;0.86;1" dur="10s" repeatCount="indefinite"/>
+    <animate attributeName="y" values="131;131;131;131;131;131;131" dur="10s" repeatCount="indefinite"/>
+    commit
+  </text>
+
+  <text x="125" y="168" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9">local dev</text>
+  <text x="350" y="168" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9" opacity="0.4">
+    <animate attributeName="opacity" values="0.4;0.4;1;1;0.4;0.4" keyTimes="0;0.28;0.32;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
+    GH Actions &#8594; /staging/
+  </text>
+  <text x="575" y="168" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9" opacity="0.4">
+    <animate attributeName="opacity" values="0.4;0.4;0.4;0.4;1;1" keyTimes="0;0.56;0.6;0.64;0.68;1" dur="10s" repeatCount="indefinite"/>
+    GH Actions &#8594; live site
+  </text>
+
+  <text x="350" y="210" text-anchor="middle" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="9">test on staging before merging to main</text>
 </svg>
