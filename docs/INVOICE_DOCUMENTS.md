@@ -2,6 +2,8 @@
 
 This guide explains how to set up, deploy, and operate the **supplier / purchase invoice** feature from scratch. A new person should be able to follow it end-to-end without reading source code first.
 
+> **One-time setup** — for daily commands and deploy, see [Documentation hub](README.md).
+
 **Important naming distinction**
 
 | Name in the app | What it is | Page / table |
