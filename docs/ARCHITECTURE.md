@@ -2,7 +2,7 @@
 
 This document describes the architecture of **Bishnupriya Fuels** (Petrol Pump): technology stack, project structure, runtime components, security, and deployment. It is the single source of truth for how the application is organized and how it runs.
 
-**See also:** [Data Tables](DATA_TABLES.md) · [Flows](FLOWS.md) · [Development guide](DEVELOPMENT.md)
+> **Documentation hub:** [README.md](README.md) · **See also:** [Data Tables](DATA_TABLES.md) · [Flows](FLOWS.md) · [Development guide](DEVELOPMENT.md)
 
 ---
 

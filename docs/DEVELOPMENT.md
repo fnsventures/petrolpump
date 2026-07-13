@@ -1,6 +1,11 @@
 # Development guide
 
-This document covers **local development**, **deployment** (prod and staging), and **supervisor/operator login** for Bishnupriya Fuels (Petrol Pump). For project structure and tech stack, see [Architecture](ARCHITECTURE.md).
+This document covers **local development**, **deployment** (prod and staging), and **supervisor/operator login** for Bishnupriya Fuels (Petrol Pump).
+
+> **Documentation hub:** [README.md](README.md) — quick start, release workflow, and command recipes on one page.  
+> **This guide:** full detail for setup, GitHub configuration, edge functions, and deployment.
+
+For project structure and tech stack, see [Architecture](ARCHITECTURE.md).
 
 ---
 
