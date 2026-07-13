@@ -90,7 +90,7 @@ flowchart TB
 | Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/quick-start-flow.svg?v=2" alt="Quick start flow — Configure, Run, Provision" width="820" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/quick-start-flow.svg?v=4" alt="Quick start flow — Configure, Run, Provision" width="820" />
 </p>
 
 ---
@@ -215,7 +215,7 @@ on conflict (email) do update set role = 'admin';
 #### Login flow — what happens when someone signs in
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/auth-flow.svg?v=2" alt="Login and provision flow" width="480" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/auth-flow.svg?v=4" alt="Login and provision flow" width="480" />
 </p>
 
 ```mermaid
@@ -277,7 +277,7 @@ stateDiagram-v2
 #### Daily operations at the forecourt
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/daily-ops-flow.svg?v=2" alt="Daily operations loop" width="820" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/daily-ops-flow.svg?v=4" alt="Daily operations loop" width="820" />
 </p>
 
 ```mermaid
@@ -297,7 +297,7 @@ flowchart LR
 *The safe path — follow these five steps in order.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-pipeline.svg?v=2" alt="Release pipeline — 5 steps" width="900" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-pipeline.svg?v=4" alt="Release pipeline — 5 steps" width="900" />
 </p>
 
 ```mermaid
@@ -358,7 +358,7 @@ stateDiagram-v2
 #### How code reaches production
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg?v=2" alt="Deploy path — feature to staging to main" width="700" />
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg?v=4" alt="Deploy path — feature to staging to main" width="700" />
 </p>
 
 ```mermaid
@@ -375,16 +375,12 @@ flowchart LR
 
 ---
 
-<details>
-<summary>
+<a id="deploy-to-staging"></a>
 
-### 🚀 Deploy to staging
+<details>
+<summary><strong>🚀 Deploy to staging</strong> — prod safe · weekly</summary>
 
 ![safe](https://img.shields.io/badge/prod-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/how_often-weekly-38bdf8?style=flat-square)
-
-</summary>
-
-<br />
 
 | | |
 |:--|:--|
@@ -409,15 +405,9 @@ flowchart LR
 </details>
 
 <details>
-<summary>
-
-### 🌍 Deploy to production
+<summary><strong>🌍 Deploy to production</strong> — frontend only · per release</summary>
 
 ![safe](https://img.shields.io/badge/frontend_only-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/how_often-per_release-fbbf24?style=flat-square)
-
-</summary>
-
-<br />
 
 | | |
 |:--|:--|
@@ -435,15 +425,9 @@ flowchart LR
 </details>
 
 <details>
-<summary>
-
-### 🔄 DB sync — prod → staging
+<summary><strong>🔄 DB sync</strong> — prod → staging (read-only · staging replaced)</summary>
 
 ![safe](https://img.shields.io/badge/prod-read_only-34d399?style=flat-square) ![warn](https://img.shields.io/badge/staging-all_data_replaced-f87171?style=flat-square)
-
-</summary>
-
-<br />
 
 ```bash
 ./scripts/db.sh sync
@@ -463,15 +447,9 @@ flowchart LR
 </details>
 
 <details>
-<summary>
-
-### 🔍 DB migrate — preflight (safe)
+<summary><strong>🔍 DB migrate — preflight</strong> — prod zero changes (safe)</summary>
 
 ![safe](https://img.shields.io/badge/prod-zero_changes-34d399?style=flat-square)
-
-</summary>
-
-<br />
 
 ```bash
 ./scripts/db.sh migrate
@@ -483,16 +461,12 @@ When the output looks right → proceed to [migrate --apply](#db-migrate-apply-p
 
 </details>
 
-<details>
-<summary>
+<a id="db-migrate-apply-production"></a>
 
-### ⚡ DB migrate --apply — production
+<details>
+<summary><strong>⚡ DB migrate --apply</strong> — production schema write</summary>
 
 ![danger](https://img.shields.io/badge/prod-writes_schema-f87171?style=flat-square)
-
-</summary>
-
-<br />
 
 ```bash
 ./scripts/db.sh migrate --apply
@@ -512,15 +486,9 @@ When the output looks right → proceed to [migrate --apply](#db-migrate-apply-p
 </details>
 
 <details>
-<summary>
-
-### 💾 DB backup — local copy
+<summary><strong>💾 DB backup</strong> — local prod copy (read-only)</summary>
 
 ![safe](https://img.shields.io/badge/prod-read_only-34d399?style=flat-square)
-
-</summary>
-
-<br />
 
 ```bash
 ./scripts/db.sh backup
@@ -536,14 +504,10 @@ For off-site monthly backups → [Backup guide](BACKUP.md)
 
 </details>
 
+<a id="add-a-supervisor-operator"></a>
+
 <details>
-<summary>
-
-### 👤 Add a supervisor (operator)
-
-</summary>
-
-<br />
+<summary><strong>👤 Add a supervisor (operator)</strong></summary>
 
 A friendly checklist for onboarding a new forecourt operator:
 
