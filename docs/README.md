@@ -1,59 +1,149 @@
 <div align="center">
 
-# Documentation Hub
+# ⛽ Documentation Hub
 
-**Bishnupriya Fuels** — run locally · deploy safely · ship releases
+### *Everything you need — right here on GitHub.*
+
+**Bishnupriya Fuels** · run locally · deploy safely · ship with confidence
 
 <br />
 
 ![Stack](https://img.shields.io/badge/stack-HTML%2FJS%20%2B%20Supabase-0070c0?style=for-the-badge&logo=html5&logoColor=white)
-![Deploy](https://img.shields.io/badge/deploy-GitHub%20Pages-24292f?style=for-the-badge&logo=github)
-![DB](https://img.shields.io/badge/database-PostgreSQL%20%2B%20RLS-3ecf8e?style=for-the-badge&logo=postgresql&logoColor=white)
+![Deploy](https://img.shields.io/badge/deploy-GitHub%20Pages-24292f?style=for-the-badge&logo=github&logoColor=white)
+![Database](https://img.shields.io/badge/database-PostgreSQL%20%2B%20RLS-3ecf8e?style=for-the-badge&logo=postgresql&logoColor=white)
+![PWA](https://img.shields.io/badge/offline-service_worker-00d4ff?style=for-the-badge)
 
 <br />
 
-[Quick start](#-quick-start) · [Daily tasks](#-daily--weekly) · [Release](#-release--maintenance) · [Commands](#-command-recipes) · [Cheat sheet](#-cheat-sheet) · [Library](#-documentation-library)
+**Jump to:**
+
+[🚀 Quick start](#-quick-start) ·
+[🎬 Visual guides](#-visual-guides) ·
+[⚡ Daily tasks](#-daily--weekly) ·
+[🛰️ Release](#-release--maintenance) ·
+[📟 Commands](#-command-recipes) ·
+[🗂️ Library](#-documentation-library) ·
+[👋 Pick your path](#-pick-your-path)
+
+<br />
+
+<sub>All docs live in this repo — no external site, no extra login. Just browse, copy, and go.</sub>
 
 </div>
 
 ---
 
-## System snapshot
-
-| | |
-|:--|:--|
-| **Stack** | Static HTML/JS · Supabase (Postgres + Auth + RLS) · GitHub Pages |
-| **Production** | `main` branch → site root |
-| **Staging** | `staging` branch → `/staging/` |
-| **Roles** | `admin` (full) · `supervisor` (operations — no staff / settings / reports) |
-| **Schema** | `supabase/schema.sql` (canonical) |
+> [!TIP]
+> **New here?** Start with [Quick start](#-quick-start) — you'll be running the app in about 5 minutes.  
+> **Shipping today?** Jump straight to [Release workflow](#-release-workflow-ship-to-production).
 
 ---
 
-## Quick start
+## 🌐 System snapshot
+
+| | |
+|:--|:--|
+| **What it is** | Petrol pump ops app — DSR, credit, billing, HR, reports |
+| **Stack** | Static HTML/JS · Supabase (Postgres + Auth + RLS) · GitHub Pages |
+| **Production** | `main` branch → live site root |
+| **Staging** | `staging` branch → `/staging/` preview |
+| **Who can do what** | `admin` (full) · `supervisor` (day-to-day ops, no settings/reports/staff) |
+| **Source of truth** | `supabase/schema.sql` |
+
+### How the pieces connect
 
 ```mermaid
-flowchart LR
-  A["① Configure env"] --> B["② npm run dev"]
-  B --> C["③ Provision user"]
+flowchart TB
+  subgraph Client["🖥️ Browser"]
+    HTML["Static HTML pages"]
+    SW["Service worker"]
+  end
+  subgraph Host["☁️ GitHub Pages"]
+    PROD["main → live site"]
+    STG["staging → /staging/"]
+  end
+  subgraph Backend["🗄️ Supabase"]
+    AUTH["Auth"]
+    DB["PostgreSQL + RLS"]
+    RPC["RPCs"]
+  end
+  HTML --> AUTH
+  HTML --> DB
+  HTML --> RPC
+  SW -.-> HTML
+  PROD --> HTML
+  STG --> HTML
+  style Client fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
+  style Host fill:#0f172a,stroke:#0070c0,color:#e2e8f0
+  style Backend fill:#0f172a,stroke:#34d399,color:#e2e8f0
 ```
 
-| Step | Action | Time |
-|:--:|:--|:--:|
-| **1** | `cp js/env.example.js js/env.js` → paste Supabase URL + anon key | ~2 min |
-| **2** | `npm run dev` → open `http://localhost:4173` | ~1 min |
-| **3** | Create Supabase Auth user **and** `public.users` row | ~3 min |
+---
+
+## 🎬 Visual guides
+
+*Animated diagrams — open this file on GitHub to see motion. Each picture matches a section below.*
+
+| Guide | What it shows | Jump to |
+|:--|:--|:--|
+| Quick start flow | Configure → Run → Provision | [below ↓](#-quick-start) |
+| Login & access | Auth + `public.users` decision | [step 3 ↓](#-quick-start) |
+| Daily ops loop | DSR → credit → expenses → close | [Flows →](FLOWS.md) |
+| Deploy path | `feature` → `staging` → `main` | [commands ↓](#-command-recipes) |
+| Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
+
+<p align="center">
+  <img src="assets/quick-start-flow.svg" alt="Animated quick start: Configure, Run, Provision" width="100%"/>
+</p>
+
+---
+
+## 🚀 Quick start
+
+> *You're three steps away from a running app on your machine.*
+
+<p align="center">
+  <img src="assets/quick-start-flow.svg" alt="Animated 3-step quick start flow" width="100%"/>
+</p>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant You
+  participant Env as js/env.js
+  participant Dev as npm run dev
+  participant SB as Supabase
+  participant App as localhost:4173
+
+  You->>Env: cp env.example.js → env.js
+  You->>Env: paste URL + anon key
+  You->>SB: apply schema.sql
+  You->>Dev: npm run dev
+  Dev->>App: serve with partials
+  You->>SB: create Auth user
+  You->>SB: insert public.users row
+  App->>SB: login + fetch role
+  SB-->>App: ✅ dashboard access
+```
+
+| | Step | What you'll do | ~Time |
+|:--:|:--|:--|:--:|
+| ⚙️ | **Configure** | Copy `js/env.js` and paste your Supabase keys | 2 min |
+| ▶️ | **Run** | `npm run dev` → open `http://localhost:4173` | 1 min |
+| 👤 | **Provision** | Create Auth user **and** a `public.users` row | 3 min |
 
 <details>
-<summary><strong>① Configure — Supabase credentials</strong></summary>
+<summary>⚙️ <strong>Step 1 — Configure Supabase</strong> <em>(click to expand)</em></summary>
 
 <br />
+
+First, copy the example config:
 
 ```bash
 cp js/env.example.js js/env.js
 ```
 
-Edit `js/env.js`:
+Then open `js/env.js` and fill in your project details:
 
 ```javascript
 window.__APP_CONFIG__ = {
@@ -63,50 +153,55 @@ window.__APP_CONFIG__ = {
 };
 ```
 
-| Where | What |
+| Where to look | What you need |
 |:--|:--|
 | Supabase → **Project Settings → API** | Project URL + anon key |
-| SQL Editor | Run `supabase/schema.sql` or migrations in filename order |
+| Supabase → **SQL Editor** | Run `supabase/schema.sql` or migrations in order |
 
-> **Expected:** App connects without CORS errors.
+> [!NOTE]
+> **Done when:** The app loads without CORS errors and can reach your Supabase project.
 
 </details>
 
 <details>
-<summary><strong>② Run — dev server</strong></summary>
+<summary>▶️ <strong>Step 2 — Start the dev server</strong> <em>(click to expand)</em></summary>
 
 <br />
 
-**Recommended** (builds partials, mirrors production):
+**Recommended** — builds nav partials, same as production:
 
 ```bash
 npm run dev
 ```
 
-→ **http://localhost:4173/**
+Open → **http://localhost:4173/**
 
-**Alternative:**
+**Quick alternative:**
 
 ```bash
 npm run build:site   # optional
 python3 -m http.server 3000
 ```
 
-→ **http://localhost:3000/login.html**
+Open → **http://localhost:3000/login.html**
 
-> **Tip:** Hard-refresh or unregister `sw.js` if assets look stale.
+> [!TIP]
+> Page looks outdated? Hard-refresh, or unregister the service worker (`sw.js`).
 
 </details>
 
 <details>
-<summary><strong>③ Provision — first login</strong></summary>
+<summary>👤 <strong>Step 3 — Set up your first login</strong> <em>(click to expand)</em></summary>
 
 <br />
 
-> **Auth alone is not enough.** Both steps are required.
+> [!IMPORTANT]
+> Supabase Auth **alone is not enough.** You need **both** steps below — otherwise you'll sign in but see empty screens (RLS blocks unprovisioned users).
 
-1. **Supabase Auth** → Authentication → Users → create email/password
-2. **`public.users`** → add matching email:
+**① Create the Auth user**  
+Supabase → Authentication → Users → add email + password
+
+**② Add the app user row**
 
 ```sql
 insert into public.users (email, role)
@@ -114,205 +209,360 @@ values ('you@example.com', 'admin')
 on conflict (email) do update set role = 'admin';
 ```
 
-| Scenario | What happens |
+| Situation | What happens |
 |:--|:--|
-| **Greenfield** | First user can self-provision as `admin` via Settings → Users |
-| **Unprovisioned** | Can sign in but sees empty data — RLS blocks access |
+| 🌱 **Brand-new project** | First signed-in user can self-provision as `admin` via Settings → Users |
+| ⚠️ **No `public.users` row** | Login works, but every page shows empty data |
 
-→ [Development → First login](DEVELOPMENT.md#14-first-login)
+→ More detail: [Development → First login](DEVELOPMENT.md#14-first-login)
 
 </details>
 
----
+#### Login flow — what happens when someone signs in
 
-## Quick access
+<p align="center">
+  <img src="assets/auth-flow.svg" alt="Animated login and provision flow" width="420"/>
+</p>
 
-### Daily & weekly
-
-| Task | Command / link | Frequency |
-|:--|:--|:--:|
-| Run app locally | `npm run dev` | ![daily](https://img.shields.io/badge/‑-daily-34d399?style=flat-square) |
-| Deploy to staging | Push `staging` or [manual deploy ↓](#deploy-to-staging) | ![daily](https://img.shields.io/badge/‑-weekly-38bdf8?style=flat-square) |
-| Add a supervisor | [Add operator ↓](#add-a-supervisor-operator) | as needed |
-| Understand a feature | [Flows](FLOWS.md) | reference |
-
-### Release & maintenance
-
-| Task | Command / link | Frequency |
-|:--|:--|:--:|
-| **Full release workflow** | [Pipeline ↓](#release-workflow-ship-to-production) | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
-| Copy prod → staging | `./scripts/db.sh sync` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
-| Check migrations (safe) | `./scripts/db.sh migrate` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
-| Apply prod schema | `./scripts/db.sh migrate --apply` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
-| Backup prod locally | `./scripts/db.sh backup` | before risky ops |
-| Deploy production | Merge `staging` → `main` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
-
-### One-time setup
-
-| Task | Guide |
-|:--|:--|
-| Supplier invoices + Google Drive | [Invoice documents](INVOICE_DOCUMENTS.md) |
-| Monthly prod DB → Google Drive | [Backup guide](BACKUP.md) |
-| GitHub Pages + secrets | [Development → Deployment](DEVELOPMENT.md#2-deployment-prod-and-staging) |
-| DB script credentials | [scripts/README.md](../scripts/README.md#one-time-setup) |
-
-### Reference
-
-| Topic | Document |
-|:--|:--|
-| Project structure, security | [Architecture](ARCHITECTURE.md) |
-| Tables, RLS, RPCs | [Data tables](DATA_TABLES.md) |
-| DSR / stock model | [DSR tables](DSR_TABLES.md) |
-| User & data flows | [Flows](FLOWS.md) |
+```mermaid
+stateDiagram-v2
+  [*] --> LoginPage: open login.html
+  LoginPage --> AuthCheck: email + password
+  AuthCheck --> NoRow: JWT ok, no public.users
+  AuthCheck --> HasRow: JWT ok + role found
+  NoRow --> EmptyApp: RLS blocks data ❌
+  HasRow --> Dashboard: role-based nav ✅
+  Dashboard --> OpsPages: admin or supervisor
+  OpsPages --> [*]
+```
 
 ---
 
-## Release workflow (ship to production)
+## ⚡ Quick access
+
+*Grouped by how often you'll need each task — pin this section.*
+
+### 🟢 Daily & weekly
+
+| I want to… | Do this | |
+|:--|:--|:--:|
+| Run the app on my machine | `npm run dev` | ![daily](https://img.shields.io/badge/‑-daily-34d399?style=flat-square) |
+| Deploy to staging for testing | Push `staging` or [manual deploy ↓](#deploy-to-staging) | ![weekly](https://img.shields.io/badge/‑-weekly-38bdf8?style=flat-square) |
+| Add a forecourt operator | [Add supervisor ↓](#add-a-supervisor-operator) | when needed |
+| Understand how a page works | [Flows →](FLOWS.md) | reference |
+
+### 🟡 Release & maintenance
+
+| I want to… | Do this | |
+|:--|:--|:--:|
+| **Ship a full release** | Follow the [pipeline ↓](#-release-workflow-ship-to-production) | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
+| Test with real prod data on staging | `./scripts/db.sh sync` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
+| Check migrations safely (no prod changes) | `./scripts/db.sh migrate` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
+| Apply schema to production | `./scripts/db.sh migrate --apply` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
+| Back up prod before something risky | `./scripts/db.sh backup` | before ops |
+| Go live with the frontend | Merge `staging` → `main` | ![release](https://img.shields.io/badge/‑-per_release-fbbf24?style=flat-square) |
+
+### 🔵 One-time setup
+
+| I want to… | Guide |
+|:--|:--|
+| Store supplier invoice PDFs in Google Drive | [Invoice documents →](INVOICE_DOCUMENTS.md) |
+| Automate monthly prod backups to Drive | [Backup guide →](BACKUP.md) |
+| Configure GitHub Pages + secrets | [Development → Deployment](DEVELOPMENT.md#2-deployment-prod-and-staging) |
+| Set up DB script credentials | [scripts/README →](../scripts/README.md#one-time-setup) |
+
+### 📖 Reference (while coding)
+
+| I need to look up… | Open |
+|:--|:--|
+| Folders, security, how it all fits | [Architecture](ARCHITECTURE.md) |
+| Tables, columns, RLS, RPCs | [Data tables](DATA_TABLES.md) |
+| DSR / meter readings / stock | [DSR tables](DSR_TABLES.md) |
+| User journeys & page → data mapping | [Flows](FLOWS.md) |
+
+#### Daily operations at the forecourt
+
+<p align="center">
+  <img src="assets/daily-ops-flow.svg" alt="Animated daily operations loop" width="100%"/>
+</p>
 
 ```mermaid
 flowchart LR
-  S["① sync"] --> T["② test /staging/"]
-  T --> M["③ migrate"]
-  M --> A["④ migrate --apply"]
-  A --> D["⑤ merge main"]
+  DSR["⛽ DSR<br/>meter readings"] --> CR["💳 Credit<br/>payments"]
+  CR --> EX["🧾 Expenses"]
+  EX --> DC["🌙 Day closing<br/>cash + short"]
+  DC --> DSR
+  DSR -.-> RP["📊 Reports admin"]
+  CR -.-> HR["👥 HR attendance"]
+  style DSR fill:#0f172a,stroke:#0070c0,color:#e2e8f0
+  style CR fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
+  style EX fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
+  style DC fill:#0f172a,stroke:#fbbf24,color:#e2e8f0
+  style RP fill:#0f172a,stroke:#a78bfa,color:#e2e8f0
+  style HR fill:#0f172a,stroke:#34d399,color:#e2e8f0
 ```
 
-| # | Command | Prod | Staging |
-|:-:|:--|:--|:--|
-| 1 | `./scripts/db.sh sync` | read only | data **replaced** |
-| 2 | push `staging` → auto-deploy | — | updated |
-| 3 | `./scripts/db.sh migrate` | no changes | — |
-| 4 | `./scripts/db.sh migrate --apply` | schema upgraded | — |
-| 5 | merge `staging` → `main` | site updated | — |
+---
 
-> **Before step 4:** optional `./scripts/db.sh backup` or Supabase Dashboard backup.  
-> **Quiet window:** run step 4 when no DSR / day-closing entries are in progress.
+## 🛰️ Release workflow (ship to production)
 
-→ [scripts/README → Release workflow](../scripts/README.md#release-workflow)
+*The safe path — follow these five steps in order.*
+
+<p align="center">
+  <img src="assets/release-pipeline.svg" alt="Animated release pipeline with 5 steps" width="100%"/>
+</p>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Dev as Developer
+  participant Script as db.sh
+  participant Prod as Production DB
+  participant Stg as Staging
+  participant GH as GitHub Actions
+  participant Live as Live site
+
+  Dev->>Script: sync
+  Script->>Prod: read dump
+  Script->>Stg: replace data
+  Dev->>GH: push staging
+  GH->>Stg: deploy /staging/
+  Dev->>Script: migrate (preflight)
+  Script->>Prod: dry-run only ✓
+  Dev->>Script: migrate --apply
+  Script->>Prod: backup + schema upgrade
+  Dev->>GH: merge → main
+  GH->>Live: deploy production 🚀
+```
+
+```mermaid
+stateDiagram-v2
+  [*] --> DevBranch: code on feature/*
+  DevBranch --> StagingTest: merge staging
+  StagingTest --> Preflight: tests pass
+  Preflight --> MigrateApply: migrate ok
+  MigrateApply --> ProdLive: merge main
+  ProdLive --> [*]
+  note right of MigrateApply: quiet window<br/>no DSR entry
+```
+
+| # | What | Command | Prod | Staging |
+|:-:|:--|:--|:--|:--|
+| ① | Copy real data for testing | `./scripts/db.sh sync` | read only | **replaced** |
+| ② | Test the app | push `staging` | — | auto-deployed |
+| ③ | Review migrations (safe) | `./scripts/db.sh migrate` | no changes | — |
+| ④ | Upgrade prod schema | `./scripts/db.sh migrate --apply` | schema updated | — |
+| ⑤ | Ship the frontend | merge `staging` → `main` | site live | — |
+
+> [!WARNING]
+> Run step ④ during a **quiet window** — when no one is entering DSR or day-closing data.
+
+> [!TIP]
+> Before step ④, consider `./scripts/db.sh backup` or a Supabase Dashboard backup. Better safe than sorry.
+
+→ Full detail: [scripts/README → Release workflow](../scripts/README.md#release-workflow)
 
 ---
 
-## Command recipes
+## 📟 Command recipes
 
-> **DB setup (once):** `cp scripts/db.env.example scripts/db.env` — add pooler URIs from Supabase → Connect.
+*Copy-paste ready. Expand only what you need.*
+
+#### How code reaches production
+
+<p align="center">
+  <img src="assets/deploy-path.svg" alt="Animated deploy path from feature branch to production" width="100%"/>
+</p>
+
+```mermaid
+gitGraph
+  commit id: "feature work"
+  branch staging
+  checkout staging
+  commit id: "merge + test"
+  checkout main
+  merge staging id: "release" tag: "v-live"
+```
+
+> [!NOTE]
+> **One-time DB setup:** `cp scripts/db.env.example scripts/db.env` — add `PROD_DB_URL` and `STAGING_DB_URL` from Supabase → Connect → Session pooler.
 
 ---
 
-### Deploy to staging
+<details>
+<summary>
 
-![safe](https://img.shields.io/badge/prod-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/frequency-weekly-38bdf8?style=flat-square)
+### 🚀 Deploy to staging
+
+![safe](https://img.shields.io/badge/prod-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/how_often-weekly-38bdf8?style=flat-square)
+
+</summary>
+
+<br />
 
 | | |
 |:--|:--|
-| **URL** | `/staging/` |
-| **Trigger** | Push `staging` **or** Actions → Deploy → target `staging` |
+| **Where it goes** | `/staging/` |
+| **How to trigger** | Push `staging` **or** Actions → Deploy → target `staging` |
 
-**Automatic**
+**Automatic (easiest)**
 
-1. Merge or push into `staging`
-2. GitHub Actions deploys (~1–2 min)
-3. Smoke-test on `/staging/`
+1. Merge or push your branch into `staging`
+2. Wait ~1–2 min for GitHub Actions
+3. Open `/staging/` and click through your changes
 
-**Manual**
+**Manual (any branch)**
 
-1. Actions → **Deploy** → **Run workflow**
-2. **Use workflow from** — your branch
-3. **target** — `staging`
-4. **ref** *(optional)* — commit SHA; empty = branch HEAD
+1. GitHub → **Actions** → **Deploy** → **Run workflow**
+2. **Use workflow from** — pick your branch
+3. **target** → `staging`
+4. **ref** *(optional)* — specific commit; leave empty for latest
 
-**Requires:** `staging` secrets `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+**You'll need:** `staging` environment secrets → `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 
----
+</details>
 
-### Deploy to production
+<details>
+<summary>
 
-![safe](https://img.shields.io/badge/DB-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/frequency-per_release-fbbf24?style=flat-square)
+### 🌍 Deploy to production
+
+![safe](https://img.shields.io/badge/frontend_only-safe-34d399?style=flat-square) ![freq](https://img.shields.io/badge/how_often-per_release-fbbf24?style=flat-square)
+
+</summary>
+
+<br />
 
 | | |
 |:--|:--|
-| **URL** | site root |
-| **Trigger** | Push `main` **or** manual Deploy → target `prod` |
+| **Where it goes** | Live site root |
+| **How to trigger** | Push `main` **or** manual Deploy → target `prod` |
 
-1. Confirm `/staging/` tests pass
+1. ✅ Staging looks good on `/staging/`
 2. Merge `staging` → `main`
-3. Wait for workflow
-4. Smoke-test: login → dashboard → one operational page
+3. Wait for the workflow to finish
+4. Smoke-test: login → dashboard → one real page (e.g. DSR)
 
-> If release includes DB migrations, run [migrate --apply](#db-migrate-apply-production) during a **quiet window** before users enter DSR data.
+> [!IMPORTANT]
+> If this release includes **database migrations**, run [migrate --apply](#db-migrate-apply-production) during a quiet window **before** operators start entering live data.
 
----
+</details>
 
-### DB sync (prod → staging)
+<details>
+<summary>
 
-![safe](https://img.shields.io/badge/prod-read_only-34d399?style=flat-square) ![warn](https://img.shields.io/badge/staging-replaced-f87171?style=flat-square)
+### 🔄 DB sync — prod → staging
+
+![safe](https://img.shields.io/badge/prod-read_only-34d399?style=flat-square) ![warn](https://img.shields.io/badge/staging-all_data_replaced-f87171?style=flat-square)
+
+</summary>
+
+<br />
 
 ```bash
 ./scripts/db.sh sync
 ```
 
-| Step | What happens |
+| Step | What happens behind the scenes |
 |:--:|:--|
-| 1 | Stamp staging migrations + `db push` |
-| 2 | Dump prod auth, public, storage |
-| 3 | Truncate staging |
-| 4 | Load dumps; split legacy `dsr` if needed |
+| 1 | Stamps staging migrations + updates schema |
+| 2 | Dumps prod (auth, public, storage) |
+| 3 | Clears staging |
+| 4 | Loads dumps; splits legacy `dsr` if needed |
 
-**Requires:** `scripts/db.env`, Docker (or `libpq`)  
-**Output:** `scripts/.sync-dumps/` (gitignored)  
-**Not copied:** storage file bytes, session tokens, edge secrets
+**Needs:** `scripts/db.env` configured, Docker running (or `libpq`)  
+**Output:** `scripts/.sync-dumps/` (gitignored — don't commit)  
+**Not copied:** photo files, session tokens, edge function secrets
 
----
+</details>
 
-### DB migrate (preflight)
+<details>
+<summary>
 
-![safe](https://img.shields.io/badge/prod-no_writes-34d399?style=flat-square)
+### 🔍 DB migrate — preflight (safe)
+
+![safe](https://img.shields.io/badge/prod-zero_changes-34d399?style=flat-square)
+
+</summary>
+
+<br />
 
 ```bash
 ./scripts/db.sh migrate
 ```
 
-Shows migration status + dry-run. **Safe anytime.** Review output, then → [migrate --apply](#db-migrate-apply-production).
+Shows migration status and a dry-run. **No production changes.** Run this anytime you're curious or before a release.
 
----
+When the output looks right → proceed to [migrate --apply](#db-migrate-apply-production).
 
-### DB migrate --apply (production)
+</details>
+
+<details>
+<summary>
+
+### ⚡ DB migrate --apply — production
 
 ![danger](https://img.shields.io/badge/prod-writes_schema-f87171?style=flat-square)
+
+</summary>
+
+<br />
 
 ```bash
 ./scripts/db.sh migrate --apply
 ```
 
-| Step | Action |
+| Step | What happens |
 |:--:|:--|
-| 1 | Preflight SQL + migration counts |
-| 2 | Dry-run |
+| 1 | Preflight checks + migration count |
+| 2 | Dry-run review |
 | 3 | Auto-backup → `scripts/.prod-backups/` |
-| 4 | `supabase db push` on prod |
-| 5 | Verification SQL + DSR snapshot |
+| 4 | `supabase db push` on production |
+| 5 | Verification + DSR row snapshot |
 
-> **Quiet window only.** Do **not** run `stamp-staging-migrations.sql` on prod.
+> [!CAUTION]
+> **Quiet window only.** Never run `stamp-staging-migrations.sql` on prod.
 
----
+</details>
 
-### DB backup (local)
+<details>
+<summary>
+
+### 💾 DB backup — local copy
 
 ![safe](https://img.shields.io/badge/prod-read_only-34d399?style=flat-square)
+
+</summary>
+
+<br />
 
 ```bash
 ./scripts/db.sh backup
 ```
 
-→ `scripts/.prod-backups/` — `prod-schema-*.sql`, `prod-data-*.sql`, `dsr-counts-snapshot-*.txt`
+Saves to `scripts/.prod-backups/`:
 
-Off-site: [Backup guide](BACKUP.md) (monthly Google Drive)
+- `prod-schema-*.sql`
+- `prod-data-*.sql`
+- `dsr-counts-snapshot-*.txt`
 
----
+For off-site monthly backups → [Backup guide](BACKUP.md)
 
-### Add a supervisor (operator)
+</details>
 
-1. **Supabase Auth** — create email + password
-2. **Provision** — Settings → Users, or:
+<details>
+<summary>
+
+### 👤 Add a supervisor (operator)
+
+</summary>
+
+<br />
+
+A friendly checklist for onboarding a new forecourt operator:
+
+- [ ] Create user in **Supabase Auth** (email + password)
+- [ ] Add role in **Settings → Users** (admin), or run:
 
 ```sql
 insert into public.users (email, role)
@@ -320,60 +570,83 @@ values ('operator@example.com', 'supervisor')
 on conflict (email) do update set role = 'supervisor';
 ```
 
-3. **Login** at `login.html`
+- [ ] Operator signs in at `login.html`
 
-| Can access | Cannot access |
+| ✅ They can use | 🚫 They cannot use |
 |:--|:--|
-| dashboard, DSR, credit, expenses, day closing, billing, invoices, attendance, salary | staff, analysis, reports, settings |
+| dashboard, DSR, credit, expenses, day closing, billing, invoices, attendance, salary | staff roster, analysis, reports, settings |
 
 → [Development → Supervisor login](DEVELOPMENT.md#3-supervisor--operator-login)
 
+</details>
+
 ---
 
-## Cheat sheet
+## 📋 Cheat sheet
 
-| Goal | Command |
+*Keep this table handy — every command in one glance.*
+
+| I want to… | Run this |
 |:--|:--|
 | Run locally | `npm run dev` |
-| Build site mirror | `npm run build:site` |
-| Sync prod → staging | `./scripts/db.sh sync` |
-| Preflight migrations | `./scripts/db.sh migrate` |
+| Build a production-like mirror | `npm run build:site` |
+| Copy prod data to staging | `./scripts/db.sh sync` |
+| Check migrations (safe) | `./scripts/db.sh migrate` |
 | Apply prod migrations | `./scripts/db.sh migrate --apply` |
-| Local prod backup | `./scripts/db.sh backup` |
-| All DB commands | `./scripts/db.sh help` |
-| Deploy edge function | `supabase functions deploy <name> --project-ref REF` |
+| Back up prod locally | `./scripts/db.sh backup` |
+| See all DB commands | `./scripts/db.sh help` |
+| Deploy an edge function | `supabase functions deploy <name> --project-ref REF` |
 
 ---
 
-## Documentation library
+## 🗂️ Documentation library
 
-| Document | Best for |
+| Doc | Open when you need… |
 |:--|:--|
-| [**Architecture**](ARCHITECTURE.md) | Stack, folders, security, deployment |
-| [**Flows**](FLOWS.md) | Page → table mapping, end-to-end behaviour |
+| [**Architecture**](ARCHITECTURE.md) | How the project is organised, security model, deployment |
+| [**Flows**](FLOWS.md) | End-to-end journeys — which page writes which table |
 | [**Development**](DEVELOPMENT.md) | Full setup, GitHub secrets, edge functions |
-| [**Data tables**](DATA_TABLES.md) | Tables, columns, RLS, RPCs |
-| [**DSR tables**](DSR_TABLES.md) | Meter readings, stock reconciliation |
-| [**Invoice documents**](INVOICE_DOCUMENTS.md) | Google Drive setup (one-time) |
-| [**Backup**](BACKUP.md) | Monthly Drive backup, restore |
-| [**scripts/README**](../scripts/README.md) | DB scripts internals, troubleshooting |
+| [**Data tables**](DATA_TABLES.md) | Every table, column, RLS rule, and RPC |
+| [**DSR tables**](DSR_TABLES.md) | Meter readings, petrol/diesel split, stock math |
+| [**Invoice documents**](INVOICE_DOCUMENTS.md) | Google Drive for supplier PDFs (one-time) |
+| [**Backup**](BACKUP.md) | Monthly Drive backup, restore, troubleshooting |
+| [**scripts/README**](../scripts/README.md) | DB script internals and error fixes |
 
 ---
 
-## Paths by role
+## 👋 Pick your path
 
-| You are… | Start here | Then |
+*Not sure where to start? Choose the row that sounds like you.*
+
+| You are… | Start here | Then explore |
 |:--|:--|:--|
-| **New developer** | [Quick start](#-quick-start) → [Architecture](ARCHITECTURE.md) | [Flows](FLOWS.md) · [Data tables](DATA_TABLES.md) |
-| **Shipping a release** | [Release workflow](#release-workflow-ship-to-production) | [scripts/README](../scripts/README.md) · [Development § Deploy](DEVELOPMENT.md#2-deployment-prod-and-staging) |
-| **Station admin** | [Add supervisor](#add-a-supervisor-operator) | [Flows § Daily ops](FLOWS.md#2-daily-operations-flow) |
-| **Schema / billing** | [Data tables](DATA_TABLES.md) | [DSR tables](DSR_TABLES.md) · [Flows](FLOWS.md) |
-| **HR features** | [Flows §7 HR](FLOWS.md#7-hr-flow-staff-attendance-salary) | [Data tables → employees](DATA_TABLES.md#employees) |
+| 🧑‍💻 **New to the project** | [Quick start](#-quick-start) → [Architecture](ARCHITECTURE.md) | [Flows](FLOWS.md) · [Data tables](DATA_TABLES.md) |
+| 🚀 **Shipping a release today** | [Release workflow](#-release-workflow-ship-to-production) | [scripts/README](../scripts/README.md) · [Development § Deploy](DEVELOPMENT.md#2-deployment-prod-and-staging) |
+| 🏪 **Station admin / manager** | [Add supervisor](#add-a-supervisor-operator) | [Flows § Daily ops](FLOWS.md#2-daily-operations-flow) |
+| 🗄️ **Working on schema or billing** | [Data tables](DATA_TABLES.md) | [DSR tables](DSR_TABLES.md) · [Flows](FLOWS.md) |
+| 👥 **Working on HR features** | [Flows §7 HR](FLOWS.md#7-hr-flow-staff-attendance-salary) | [Data tables → employees](DATA_TABLES.md#employees) |
 
 ---
 
-## Conventions
+## 📌 Conventions
 
-- **Structure** → [Architecture](ARCHITECTURE.md) · **Setup/deploy** → [Development](DEVELOPMENT.md) · **Schema** → `supabase/schema.sql`
-- Each deep doc ends with **Related documentation**
-- Root [README](../README.md) — project overview + links here
+| Topic | Single source of truth |
+|:--|:--|
+| Project structure | [Architecture](ARCHITECTURE.md) |
+| Setup & deploy detail | [Development](DEVELOPMENT.md) |
+| Database schema | `supabase/schema.sql` |
+| This hub | You're reading it |
+
+Each deep doc ends with **Related documentation** links back to siblings.
+
+---
+
+<div align="center">
+
+<br />
+
+**Questions?** Open the relevant doc above, or check [Development](DEVELOPMENT.md) for troubleshooting.
+
+<sub>Bishnupriya Fuels · A F&S Ventures Company · docs live on GitHub — always in sync with the code</sub>
+
+</div>
