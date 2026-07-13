@@ -11,12 +11,10 @@
     <filter id="blur"><feGaussianBlur stdDeviation="3"/></filter>
   </defs>
   <rect width="820" height="200" rx="16" fill="url(#bg)" stroke="#1e3a5f" stroke-width="1"/>
-  <!-- grid -->
   <g opacity="0.15" stroke="#00d4ff" stroke-width="0.5">
     <path d="M0 50 H820 M0 100 H820 M0 150 H820"/>
     <path d="M164 0 V200 M410 0 V200 M656 0 V200"/>
   </g>
-  <!-- paths -->
   <path id="p1" d="M 155 100 L 255 100" fill="none" stroke="#334155" stroke-width="3" stroke-dasharray="6 4"/>
   <path id="p2" d="M 401 100 L 501 100" fill="none" stroke="#334155" stroke-width="3" stroke-dasharray="6 4"/>
   <path d="M 155 100 L 255 100" fill="none" stroke="url(#glow-cyan)" stroke-width="2" opacity="0.5">
@@ -25,42 +23,37 @@
   <path d="M 401 100 L 501 100" fill="none" stroke="url(#glow-cyan)" stroke-width="2" opacity="0.5">
     <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1.2s" begin="0.4s" repeatCount="indefinite"/>
   </path>
-  <!-- traveling dots -->
   <circle r="5" fill="#00d4ff" filter="url(#blur)">
     <animateMotion dur="2.5s" repeatCount="indefinite" path="M 155 100 L 255 100"/>
   </circle>
   <circle r="5" fill="#00d4ff" filter="url(#blur)">
     <animateMotion dur="2.5s" begin="0.8s" repeatCount="indefinite" path="M 401 100 L 501 100"/>
   </circle>
-  <!-- node 1 -->
   <g transform="translate(82,100)">
     <circle r="42" fill="#0f172a" stroke="#00d4ff" stroke-width="2">
       <animate attributeName="stroke-opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
     </circle>
-    <text y="-8" text-anchor="middle" fill="#00d4ff" font-family="system-ui,sans-serif" font-size="22">™</text>
+    <text y="-8" text-anchor="middle" fill="#00d4ff" font-family="system-ui,sans-serif" font-size="22">&#9881;</text>
     <text y="14" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Configure</text>
     <text y="30" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="10">env.js</text>
   </g>
-  <!-- node 2 -->
   <g transform="translate(328,100)">
     <circle r="42" fill="#0f172a" stroke="#0070c0" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="0.3s" repeatCount="indefinite"/>
     </circle>
-    <text y="-8" text-anchor="middle" fill="#38bdf8" font-family="system-ui,sans-serif" font-size="22">¶</text>
+    <text y="-8" text-anchor="middle" fill="#38bdf8" font-family="system-ui,sans-serif" font-size="22">&#9654;</text>
     <text y="14" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Run</text>
     <text y="30" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="10">npm run dev</text>
   </g>
-  <!-- node 3 -->
   <g transform="translate(574,100)">
     <circle r="42" fill="#0f172a" stroke="#34d399" stroke-width="2">
       <animate attributeName="stroke-opacity" values="0.4;1;0.4" dur="2s" begin="0.6s" repeatCount="indefinite"/>
     </circle>
-    <text y="-8" text-anchor="middle" fill="#34d399" font-family="system-ui,sans-serif" font-size="22">=d</text>
+    <text y="-8" text-anchor="middle" fill="#34d399" font-family="system-ui,sans-serif" font-size="22">&#128100;</text>
     <text y="14" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13" font-weight="600">Provision</text>
     <text y="30" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="10">public.users</text>
   </g>
-  <!-- step numbers -->
-  <text x="82" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 1 · ~2 min</text>
-  <text x="328" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 2 · ~1 min</text>
-  <text x="574" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 3 · ~3 min</text>
+  <text x="82" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 1 &#183; ~2 min</text>
+  <text x="328" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 2 &#183; ~1 min</text>
+  <text x="574" y="175" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="11">Step 3 &#183; ~3 min</text>
 </svg>

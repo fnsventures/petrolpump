@@ -10,25 +10,22 @@
   </defs>
   <rect width="480" height="420" rx="16" fill="url(#bg3)" stroke="#1e3a5f"/>
   <text x="240" y="32" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12" letter-spacing="2">LOGIN &amp; ACCESS FLOW</text>
-  <!-- vertical flow lines -->
   <line x1="240" y1="70" x2="240" y2="360" stroke="#1e293b" stroke-width="3" stroke-dasharray="8 6"/>
   <line x1="240" y1="70" x2="240" y2="360" stroke="#00d4ff" stroke-width="2" opacity="0.4" stroke-dasharray="8 6">
     <animate attributeName="stroke-dashoffset" from="28" to="0" dur="1.5s" repeatCount="indefinite"/>
   </line>
-  <!-- pulse down -->
   <circle cx="240" cy="70" r="6" fill="#00d4ff" opacity="0.8">
     <animate attributeName="cy" values="70;360;70" dur="4s" repeatCount="indefinite"/>
     <animate attributeName="opacity" values="0.9;0.2;0.9" dur="4s" repeatCount="indefinite"/>
   </circle>
-  <!-- boxes -->
   <g transform="translate(240,85)">
     <rect x="-100" y="-22" width="200" height="44" rx="10" fill="#0f172a" stroke="#64748b" stroke-width="1.5"/>
-    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="system-ui" font-size="13">< login.html</text>
+    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="system-ui" font-size="13">&#8594; login.html</text>
   </g>
   <g transform="translate(240,155)">
     <rect x="-110" y="-24" width="220" height="48" rx="10" fill="#0f172a" stroke="#0070c0" stroke-width="2"/>
     <text text-anchor="middle" y="-2" fill="#38bdf8" font-family="system-ui" font-size="12" font-weight="600">Supabase Auth</text>
-    <text text-anchor="middle" y="16" fill="#94a3b8" font-family="system-ui" font-size="10">email + password ’ JWT</text>
+    <text text-anchor="middle" y="16" fill="#94a3b8" font-family="system-ui" font-size="10">email + password &#8594; JWT</text>
   </g>
   <g transform="translate(240,235)">
     <rect x="-120" y="-28" width="240" height="56" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="2">
@@ -37,19 +34,18 @@
     <text text-anchor="middle" y="-4" fill="#fbbf24" font-family="system-ui" font-size="12" font-weight="600">public.users row?</text>
     <text text-anchor="middle" y="14" fill="#94a3b8" font-family="system-ui" font-size="10">RLS checks role here</text>
   </g>
-  <!-- branch -->
   <g transform="translate(100,310)">
     <rect x="-75" y="-22" width="150" height="44" rx="8" fill="#1a0a0a" stroke="#f87171" stroke-width="1.5"/>
-    <text text-anchor="middle" y="5" fill="#f87171" font-family="system-ui" font-size="11">L No row ’ empty app</text>
+    <text text-anchor="middle" y="5" fill="#f87171" font-family="system-ui" font-size="11">&#10007; No row &#8594; empty app</text>
   </g>
   <g transform="translate(380,310)">
     <rect x="-75" y="-22" width="150" height="44" rx="8" fill="#0a1a12" stroke="#34d399" stroke-width="1.5"/>
-    <text text-anchor="middle" y="5" fill="#34d399" font-family="system-ui" font-size="11"> Row ’ dashboard</text>
+    <text text-anchor="middle" y="5" fill="#34d399" font-family="system-ui" font-size="11">&#10003; Row &#8594; dashboard</text>
   </g>
   <path d="M 240 263 L 100 288" fill="none" stroke="#f87171" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
   <path d="M 240 263 L 380 288" fill="none" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow)" opacity="0.7"/>
   <g transform="translate(240,375)">
     <rect x="-105" y="-22" width="210" height="44" rx="10" fill="#0f172a" stroke="#34d399" stroke-width="2"/>
-    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="system-ui" font-size="13"><¯ dashboard.html + role nav</text>
+    <text text-anchor="middle" y="5" fill="#e2e8f0" font-family="system-ui" font-size="13">&#8594; dashboard.html + role nav</text>
   </g>
 </svg>

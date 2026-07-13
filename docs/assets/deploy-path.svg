@@ -40,5 +40,5 @@
   <text x="130" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">local dev</text>
   <text x="350" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">/staging/</text>
   <text x="570" y="165" text-anchor="middle" fill="#64748b" font-family="system-ui" font-size="9">live site</text>
-  <text x="350" y="200" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">GitHub Actions deploys on push · manual workflow also available</text>
+  <text x="350" y="200" text-anchor="middle" fill="#94a3b8" font-family="system-ui" font-size="10">GitHub Actions deploys on push &#183; manual workflow also available</text>
 </svg>
