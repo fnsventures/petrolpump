@@ -52,16 +52,16 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 npm run dev
 ```
 
-Open **http://localhost:4173/** — uses `_site/` built from source.
+Open **http://localhost:3000/** — uses `_site/` built from source.
 
 **Quick static serve** (partials not expanded unless you ran `npm run build:site` first):
 
 ```bash
 npm run build:site   # optional: refresh _site/
-python3 -m http.server 3000
+python3 -m http.server 8080
 ```
 
-Then open **http://localhost:3000/**. Use `index.html` or `login.html` as the entry point.
+Then open **http://localhost:8080/**. Use `index.html` or `login.html` as the entry point.
 
 ### 1.4 First login
 
@@ -211,7 +211,7 @@ Source HTML uses Nunjucks partials (`{% include %}`). For a local mirror of the 
 
 ```bash
 npm run build:site    # sync → _site/ + expand partials
-npm run dev           # build:site + serve http://localhost:4173
+npm run dev           # build:site + serve http://localhost:3000
 ```
 
 Serving repo root with `python3 -m http.server` works but nav partials stay unexpanded unless you run `build:html` first.

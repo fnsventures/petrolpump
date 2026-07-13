@@ -54,15 +54,15 @@
 
 ```mermaid
 flowchart TB
-  subgraph Client["🖥️ Browser"]
+  subgraph Client["Browser"]
     HTML["Static HTML pages"]
     SW["Service worker"]
   end
-  subgraph Host["☁️ GitHub Pages"]
-    PROD["main → live site"]
-    STG["staging → /staging/"]
+  subgraph Host["GitHub Pages"]
+    PROD["main - live site"]
+    STG["staging - /staging/"]
   end
-  subgraph Backend["🗄️ Supabase"]
+  subgraph Backend["Supabase"]
     AUTH["Auth"]
     DB["PostgreSQL + RLS"]
     RPC["RPCs"]
@@ -73,16 +73,13 @@ flowchart TB
   SW -.-> HTML
   PROD --> HTML
   STG --> HTML
-  style Client fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
-  style Host fill:#0f172a,stroke:#0070c0,color:#e2e8f0
-  style Backend fill:#0f172a,stroke:#34d399,color:#e2e8f0
 ```
 
 ---
 
 ## 🎬 Visual guides
 
-*Animated diagrams — open this file on GitHub to see motion. Each picture matches a section below.*
+*Animated diagrams — view this file on **GitHub** (rendered README) to see motion. IDE previews may show "Invalid image source" for local SVG paths.*
 
 | Guide | What it shows | Jump to |
 |:--|:--|:--|
@@ -92,44 +89,39 @@ flowchart TB
 | Deploy path | `feature` → `staging` → `main` | [commands ↓](#-command-recipes) |
 | Release pipeline | 5-step ship-to-prod sequence | [release ↓](#-release-workflow-ship-to-production) |
 
-<p align="center">
-  <img src="assets/quick-start-flow.svg" alt="Animated quick start: Configure, Run, Provision" width="100%"/>
-</p>
+![Quick start flow — Configure, Run, Provision](./assets/quick-start-flow.svg)
 
 ---
 
 ## 🚀 Quick start
 
-> *You're three steps away from a running app on your machine.*
-
-<p align="center">
-  <img src="assets/quick-start-flow.svg" alt="Animated 3-step quick start flow" width="100%"/>
-</p>
+> *You're three steps away from a running app on your machine.*  
+> *See the animated diagram in [Visual guides](#-visual-guides) above.*
 
 ```mermaid
 sequenceDiagram
   autonumber
   participant You
-  participant Env as js/env.js
-  participant Dev as npm run dev
+  participant Env as env.js
+  participant Dev as dev server
   participant SB as Supabase
-  participant App as localhost:4173
+  participant App as localhost
 
-  You->>Env: cp env.example.js → env.js
-  You->>Env: paste URL + anon key
+  You->>Env: copy env.example.js
+  You->>Env: paste URL and anon key
   You->>SB: apply schema.sql
   You->>Dev: npm run dev
   Dev->>App: serve with partials
   You->>SB: create Auth user
   You->>SB: insert public.users row
-  App->>SB: login + fetch role
-  SB-->>App: ✅ dashboard access
+  App->>SB: login and fetch role
+  SB-->>App: dashboard access
 ```
 
 | | Step | What you'll do | ~Time |
 |:--:|:--|:--|:--:|
 | ⚙️ | **Configure** | Copy `js/env.js` and paste your Supabase keys | 2 min |
-| ▶️ | **Run** | `npm run dev` → open `http://localhost:4173` | 1 min |
+| ▶️ | **Run** | `npm run dev` → open `http://localhost:3000` | 1 min |
 | 👤 | **Provision** | Create Auth user **and** a `public.users` row | 3 min |
 
 <details>
@@ -174,16 +166,16 @@ window.__APP_CONFIG__ = {
 npm run dev
 ```
 
-Open → **http://localhost:4173/**
+Open → **http://localhost:3000/**
 
 **Quick alternative:**
 
 ```bash
 npm run build:site   # optional
-python3 -m http.server 3000
+python3 -m http.server 8080
 ```
 
-Open → **http://localhost:3000/login.html**
+Open → **http://localhost:8080/login.html**
 
 > [!TIP]
 > Page looks outdated? Hard-refresh, or unregister the service worker (`sw.js`).
@@ -220,18 +212,16 @@ on conflict (email) do update set role = 'admin';
 
 #### Login flow — what happens when someone signs in
 
-<p align="center">
-  <img src="assets/auth-flow.svg" alt="Animated login and provision flow" width="420"/>
-</p>
+![Login and provision flow](./assets/auth-flow.svg)
 
 ```mermaid
 stateDiagram-v2
   [*] --> LoginPage: open login.html
-  LoginPage --> AuthCheck: email + password
-  AuthCheck --> NoRow: JWT ok, no public.users
-  AuthCheck --> HasRow: JWT ok + role found
-  NoRow --> EmptyApp: RLS blocks data ❌
-  HasRow --> Dashboard: role-based nav ✅
+  LoginPage --> AuthCheck: email and password
+  AuthCheck --> NoRow: JWT ok, no users row
+  AuthCheck --> HasRow: JWT ok and role found
+  NoRow --> EmptyApp: RLS blocks data
+  HasRow --> Dashboard: role-based nav
   Dashboard --> OpsPages: admin or supervisor
   OpsPages --> [*]
 ```
@@ -282,24 +272,16 @@ stateDiagram-v2
 
 #### Daily operations at the forecourt
 
-<p align="center">
-  <img src="assets/daily-ops-flow.svg" alt="Animated daily operations loop" width="100%"/>
-</p>
+![Daily operations loop](./assets/daily-ops-flow.svg)
 
 ```mermaid
 flowchart LR
-  DSR["⛽ DSR<br/>meter readings"] --> CR["💳 Credit<br/>payments"]
-  CR --> EX["🧾 Expenses"]
-  EX --> DC["🌙 Day closing<br/>cash + short"]
+  DSR["DSR meter readings"] --> CR["Credit payments"]
+  CR --> EX["Expenses"]
+  EX --> DC["Day closing"]
   DC --> DSR
-  DSR -.-> RP["📊 Reports admin"]
-  CR -.-> HR["👥 HR attendance"]
-  style DSR fill:#0f172a,stroke:#0070c0,color:#e2e8f0
-  style CR fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
-  style EX fill:#0f172a,stroke:#00d4ff,color:#e2e8f0
-  style DC fill:#0f172a,stroke:#fbbf24,color:#e2e8f0
-  style RP fill:#0f172a,stroke:#a78bfa,color:#e2e8f0
-  style HR fill:#0f172a,stroke:#34d399,color:#e2e8f0
+  DSR -.-> RP["Reports admin"]
+  CR -.-> HR["HR attendance"]
 ```
 
 ---
@@ -308,9 +290,7 @@ flowchart LR
 
 *The safe path — follow these five steps in order.*
 
-<p align="center">
-  <img src="assets/release-pipeline.svg" alt="Animated release pipeline with 5 steps" width="100%"/>
-</p>
+![Release pipeline — 5 steps](./assets/release-pipeline.svg)
 
 ```mermaid
 sequenceDiagram
@@ -326,24 +306,23 @@ sequenceDiagram
   Script->>Prod: read dump
   Script->>Stg: replace data
   Dev->>GH: push staging
-  GH->>Stg: deploy /staging/
-  Dev->>Script: migrate (preflight)
-  Script->>Prod: dry-run only ✓
-  Dev->>Script: migrate --apply
-  Script->>Prod: backup + schema upgrade
-  Dev->>GH: merge → main
-  GH->>Live: deploy production 🚀
+  GH->>Stg: deploy staging
+  Dev->>Script: migrate preflight
+  Script->>Prod: dry-run only
+  Dev->>Script: migrate apply
+  Script->>Prod: backup and schema upgrade
+  Dev->>GH: merge to main
+  GH->>Live: deploy production
 ```
 
 ```mermaid
 stateDiagram-v2
-  [*] --> DevBranch: code on feature/*
+  [*] --> DevBranch: code on feature branch
   DevBranch --> StagingTest: merge staging
   StagingTest --> Preflight: tests pass
   Preflight --> MigrateApply: migrate ok
   MigrateApply --> ProdLive: merge main
   ProdLive --> [*]
-  note right of MigrateApply: quiet window<br/>no DSR entry
 ```
 
 | # | What | Command | Prod | Staging |
@@ -370,18 +349,15 @@ stateDiagram-v2
 
 #### How code reaches production
 
-<p align="center">
-  <img src="assets/deploy-path.svg" alt="Animated deploy path from feature branch to production" width="100%"/>
-</p>
+![Deploy path — feature to staging to main](./assets/deploy-path.svg)
 
 ```mermaid
-gitGraph
-  commit id: "feature work"
-  branch staging
-  checkout staging
-  commit id: "merge + test"
-  checkout main
-  merge staging id: "release" tag: "v-live"
+flowchart LR
+  F["feature branch"] --> S["staging branch"]
+  S --> T["test on /staging/"]
+  T --> M["migrate --apply"]
+  M --> P["main branch"]
+  P --> L["live site"]
 ```
 
 > [!NOTE]

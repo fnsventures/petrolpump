@@ -26,7 +26,7 @@
 
 | I want to… | Command / link |
 |:--|:--|
-| Run locally | `npm run dev` → `http://localhost:4173` |
+| Run locally | `npm run dev` → `http://localhost:3000` |
 | Deploy staging | Push `staging` branch |
 | Ship a release | `sync` → test → `migrate --apply` → merge `main` |
 | Read the full guide | [**docs/README.md**](docs/README.md) |
