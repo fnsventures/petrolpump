@@ -1,7 +1,9 @@
 # Documentation Hub
 
-> **Bishnupriya Fuels** — run locally, deploy safely, and maintain production.  
-> Everything you need most often is on this page. Deep references are one click away.
+> **Interactive docs:** open **[index.html](index.html)** in your browser — search, command palette (⌘K), release pipeline, and markdown viewer.  
+> This file is the plain-text fallback.
+
+> **Bishnupriya Fuels** — run locally, deploy safely, and maintain production.
 
 ---
 
