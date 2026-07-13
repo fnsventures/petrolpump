@@ -8,30 +8,17 @@ Web application for **daily operations**, **finance**, and **HR** at a BPCL fuel
 
 ---
 
-## Quick start
+## Documentation
 
-| Step | Command / action |
-|------|------------------|
-| 1. Configure | `cp js/env.example.js js/env.js` → add Supabase URL + anon key |
-| 2. Run | `npm run dev` → [http://localhost:4173](http://localhost:4173) |
-| 3. Login | Create Supabase Auth user **and** `public.users` row |
+**[docs/index.html](docs/index.html)** — interactive docs hub with quick start, command palette, and release pipeline.
 
-**Full step-by-step** (deploy, release, DB scripts, add operators): **[docs/README.md](docs/README.md)**
-
----
-
-## Most-used commands
-
-| Goal | Command |
-|------|---------|
-| Run locally | `npm run dev` |
+| | |
+|---|---|
+| Run locally | `npm run dev` → [localhost:4173](http://localhost:4173) |
 | Deploy staging | Push `staging` branch |
-| Deploy production | Merge `staging` → `main` |
-| Sync prod → staging | `./scripts/db.sh sync` |
-| Migrate production | `./scripts/db.sh migrate --apply` |
-| All DB commands | `./scripts/db.sh help` |
+| Ship release | `./scripts/db.sh sync` → test → `migrate --apply` → merge `main` |
 
-Release order and detailed steps: **[docs/README.md → Release workflow](docs/README.md#release-workflow-ship-to-production)**
+Plain-text fallback: [docs/README.md](docs/README.md)
 
 ---
 
@@ -60,7 +47,8 @@ End-to-end flows: [docs/FLOWS.md](docs/FLOWS.md)
 
 | Priority | Document | Purpose |
 |----------|----------|---------|
-| **Start here** | [**docs/README.md**](docs/README.md) | Quick access, command recipes, release workflow |
+| **Start here** | [**docs/index.html**](docs/index.html) | Interactive hub — search, command palette, release pipeline |
+| Fallback | [docs/README.md](docs/README.md) | Plain-text version of the hub |
 | Reference | [Architecture](docs/ARCHITECTURE.md) | Stack, project structure, security |
 | Reference | [Flows](docs/FLOWS.md) | User and data flows |
 | Reference | [Data tables](docs/DATA_TABLES.md) | Database tables, RLS, RPCs |

@@ -28,7 +28,6 @@ const excludes = [
   "node_modules",
   ".github",
   "supabase",
-  "docs",
   "scripts",
   "_partials",
   "package.json",
