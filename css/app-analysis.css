@@ -693,6 +693,27 @@ body.analysis-page .chart-wrap {
   position: relative;
   height: 280px;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .analysis-kpi-grid--primary,
+  .analysis-kpi-grid--bento,
+  .analysis-kpi-grid--per-litre,
+  .analysis-kpi-grid--secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-page .chart-wrap,
+  body.analysis-page .chart-wrap {
+    height: 220px;
+  }
+
+  .analysis-chart-card {
+    padding: var(--space-3);
+    min-width: 0;
+  }
 }
 
 body.analysis-page .chart-wrap--donut {
@@ -712,7 +733,7 @@ body.analysis-page .chart-wrap--donut {
 .analysis-insights-grid {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
 }
 
 .analysis-insight-card {

@@ -437,21 +437,50 @@
 }
 
 @media (max-width: 900px) {
+  /* Stack earlier than core’s 768 — staff sidebar is wider and cramped sooner */
   .staff-page-layout.settings-layout {
     grid-template-columns: 1fr;
   }
 
-  .staff-roster-nav {
+  .staff-page-layout.settings-layout > .settings-nav {
+    grid-column: 1 / -1;
+    grid-row: 1;
     position: static;
+    overflow: visible;
+  }
+
+  .staff-page-layout.settings-layout > .settings-panels {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .staff-roster-nav {
     max-height: none;
   }
 
   .staff-roster-list {
-    max-height: 220px;
+    max-height: min(40vh, 280px);
   }
 
   .staff-profile-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .staff-roster-list {
+    max-height: min(45vh, 320px);
+  }
+
+  .staff-id-preview-wrap {
+    min-height: 280px;
+    padding: var(--space-3, 0.75rem);
+  }
+
+  .staff-id-preview-mount {
+    min-height: 240px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=9" />
+    <link rel="stylesheet" href="css/app-core.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -122,22 +122,24 @@
           </div>
         </div>
         <p id="expense-total-row" class="muted margin-top hidden">Total for selected period: <strong id="expense-total-value">—</strong></p>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Category</th>
-              <th>Description</th>
-              <th>Amount (₹)</th>
-              <th id="expense-actions-head" class="table-actions" hidden>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="expense-table-body">
-            <tr>
-              <td colspan="4" class="muted">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-wrap margin-top">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Amount (₹)</th>
+                <th id="expense-actions-head" class="table-actions" hidden>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expense-table-body">
+              <tr>
+                <td colspan="4" class="muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <div id="expense-empty-cta" class="empty-state hidden">
           <p>No expenses recorded for this period.</p>
           <p class="empty-cta">Add an expense using the form above.</p>

@@ -9,7 +9,7 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=9" />
+    <link rel="stylesheet" href="css/app-core.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -431,12 +431,14 @@
             <p id="expense-category-add-error" class="error hidden"></p>
             <p id="expense-category-add-success" class="success hidden">Category added.</p>
           </form>
-          <table class="margin-top">
-            <thead><tr><th class="expense-cat-drag-col" aria-label="Reorder"></th><th>Category</th><th>Action</th></tr></thead>
-            <tbody id="settings-expense-categories">
-              <tr><td colspan="3" class="muted">Loading…</td></tr>
-            </tbody>
-          </table>
+          <div class="table-wrap margin-top">
+            <table>
+              <thead><tr><th class="expense-cat-drag-col" aria-label="Reorder"></th><th>Category</th><th>Action</th></tr></thead>
+              <tbody id="settings-expense-categories">
+                <tr><td colspan="3" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <!-- Integrations -->
@@ -476,14 +478,16 @@
         <section id="settings-panel-access" class="settings-panel card" data-panel="access" hidden>
           <h2>Current access list</h2>
           <p class="muted">Remove a user to revoke app access and delete their login from Supabase Auth.</p>
-          <table>
-            <thead>
-              <tr><th>Email</th><th>Display name</th><th>Role</th><th>Created</th><th>Action</th></tr>
-            </thead>
-            <tbody id="settings-table-body">
-              <tr><td colspan="5" class="muted">Loading…</td></tr>
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Email</th><th>Display name</th><th>Role</th><th>Created</th><th>Action</th></tr>
+              </thead>
+              <tbody id="settings-table-body">
+                <tr><td colspan="5" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
           <p id="access-list-error" class="error hidden margin-top"></p>
         </section>
       </div>
