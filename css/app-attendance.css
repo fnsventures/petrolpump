@@ -205,4 +205,47 @@ table.attendance-matrix {
   max-width: 48rem;
 }
 
+@media (max-width: 768px) {
+  .attendance-matrix-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table.attendance-matrix {
+    font-size: 0.75rem;
+  }
+
+  .attendance-matrix th.att-matrix-staff-col,
+  .attendance-matrix td.att-matrix-staff-col {
+    min-width: 7rem;
+    max-width: 9.5rem;
+    font-size: 0.75rem;
+  }
+
+  .attendance-matrix thead th.att-matrix-day {
+    min-width: 1.75rem;
+    padding: 0.3rem 0.1rem;
+  }
+
+  .attendance-mark-table {
+    font-size: 0.8125rem;
+  }
+
+  .attendance-matrix-legend {
+    gap: 0.5rem 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .attendance-matrix th.att-matrix-staff-col,
+  .attendance-matrix td.att-matrix-staff-col {
+    min-width: 5.5rem;
+    max-width: 7.5rem;
+    padding-left: 0.4rem;
+    padding-right: 0.35rem;
+  }
+
+  .att-matrix-wd {
+    display: none;
+  }
+}
 

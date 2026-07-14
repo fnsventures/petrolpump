@@ -277,6 +277,12 @@ body.login-page main.login-card {
   font-size: var(--text-xs);
 }
 
+@media (max-width: 480px) {
+  body.login-page main.login-card {
+    width: min(26rem, calc(100vw - 1.5rem));
+  }
+}
+
 @media (max-width: 380px) {
   .login-card {
     padding: 1.5rem 1.25rem 1.35rem;

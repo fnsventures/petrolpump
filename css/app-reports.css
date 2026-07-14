@@ -443,6 +443,11 @@ body.reports-page main.settings-layout.page-layout-wide {
   .reports-catalog-nav {
     grid-template-columns: 1fr;
   }
+
+  .reports-preview {
+    padding: 0.75rem;
+    min-height: 16rem;
+  }
 }
 
 .reports-preview {
@@ -451,6 +456,8 @@ body.reports-page main.settings-layout.page-layout-wide {
   padding: 1.25rem 1.5rem;
   background: #fafafa;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
   min-height: 22rem;
 }
 

@@ -86,6 +86,13 @@
 /* Reserve scrollbar space so layout/background don't shift when content height changes */
 html {
   scrollbar-gutter: stable;
+  overflow-x: clip;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 body {
@@ -93,8 +100,16 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  max-width: 100%;
+  overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
 }
 
 /* App shell: subtle depth without distracting from data */
@@ -397,9 +412,12 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   z-index: 50;
 }
 
-.topbar .nav-group-block:hover .nav-group,
-.topbar .nav-group-block:focus-within .nav-group {
-  display: flex;
+/* Desktop dropdowns only — mobile uses the accordion under the hamburger */
+@media (min-width: 769px) {
+  .topbar .nav-group-block:hover .nav-group,
+  .topbar .nav-group-block:focus-within .nav-group {
+    display: flex;
+  }
 }
 
 .topbar .nav-group-block .nav-group a {
@@ -646,6 +664,8 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 .topbar .nav-toggle {
   display: none;
   padding: 0.5rem;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
   background: #fff;
   border: 1px solid rgba(0, 112, 192, 0.35);
   border-radius: 6px;
@@ -653,11 +673,18 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   cursor: pointer;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  z-index: 3;
 }
 
 .topbar .nav-toggle svg {
   width: 1.25rem;
   height: 1.25rem;
+}
+
+.topbar .nav-toggle[aria-expanded="true"] {
+  background: var(--bpcl-blue-soft);
+  border-color: rgba(0, 112, 192, 0.55);
 }
 
 .topbar a,
@@ -724,7 +751,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: var(--space-4);
 }
 
@@ -865,7 +892,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  min-width: 10rem;
+  min-width: min(10rem, 100%);
 }
 
 .form-field label {
@@ -987,7 +1014,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
   gap: var(--space-3);
   margin-top: var(--space-3);
 }
@@ -1016,7 +1043,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 
 .fuel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 1.25rem;
   margin-top: 1rem;
 }
@@ -1304,7 +1331,7 @@ body.role-admin .topbar .nav-group-block[data-role="admin-only"] {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
   gap: 0.75rem 1rem;
   align-items: start;
 }
@@ -1435,6 +1462,8 @@ table thead th,
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
@@ -1628,7 +1657,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 /* At-a-glance strip on dashboard */
 .at-a-glance {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -1777,35 +1806,86 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 }
 
 @media (max-width: 768px) {
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: 0;
+    align-items: center;
+  }
+
+  .topbar .brand {
+    flex: 1 1 auto;
+    min-width: 0;
+    order: 1;
+  }
+
+  .topbar .brand-dealer {
+    display: none;
+  }
+
+  /* Subtitle collides with hamburger/avatar on narrow topbars */
+  .topbar .page-subtitle {
+    display: none;
+  }
+
+  .topbar .nav-toggle {
+    display: flex;
+    order: 2;
+    margin-left: auto;
+  }
+
+  .topbar-user-menu {
+    order: 3;
+    margin-left: 0.35rem;
+    z-index: 3;
+  }
+
   .topbar .nav-wrap.collapsible {
     display: none;
+    order: 4;
+    flex: 1 0 100%;
     width: 100%;
+    max-width: 100%;
     flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
     gap: 0;
+    margin: 0.5rem 0 0;
+    padding: 0.35rem 0.25rem 0.5rem;
+    background: #fff;
+    border: 1px solid rgba(0, 112, 192, 0.18);
+    border-radius: var(--radius-md, 10px);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
+    max-height: min(70vh, 28rem);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .topbar .nav-wrap.collapsible.is-open {
     display: flex;
   }
 
-  .topbar .nav-toggle {
-    display: flex;
+  body.topbar-nav-open {
+    overflow: hidden;
   }
 
   /* Mobile: accordion – show only group labels by default; tap to expand links */
   .topbar .nav-group-block {
     position: static;
-    border-bottom: 1px solid rgba(0, 112, 192, 0.15);
+    border-bottom: 1px solid rgba(0, 112, 192, 0.12);
+  }
+
+  .topbar .nav-group-block:last-child {
+    border-bottom: none;
   }
 
   .topbar .nav-group-block .nav-group {
-    position: static;
-    display: none;
+    position: static !important;
+    display: none !important;
     flex-direction: column;
     min-width: 0;
-    padding: 0 0 0.5rem 1rem;
-    margin-top: 0.25rem;
+    width: 100%;
+    padding: 0 0 0.45rem 0.75rem;
+    margin-top: 0.15rem;
     background: transparent;
     border: none;
     border-radius: 0;
@@ -1813,7 +1893,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   }
 
   .topbar .nav-group-block.is-open .nav-group {
-    display: flex;
+    display: flex !important;
   }
 
   .topbar .nav-group-block.is-open .nav-chevron {
@@ -1822,26 +1902,27 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 
   .topbar .nav-group-label {
     width: 100%;
-    padding: 0.6rem 0.5rem;
-    border-radius: 0;
+    min-height: 2.75rem;
+    padding: 0.7rem 0.65rem;
+    border-radius: 6px;
     border: none;
     border-bottom: none;
     justify-content: space-between;
+    font-size: 0.8rem;
   }
 
   .topbar .nav-group-block .nav-group a {
-    padding: 0.45rem 0.5rem;
+    display: block;
+    padding: 0.65rem 0.6rem;
     margin: 0;
-  }
-
-  .topbar-user-menu {
-    margin-left: auto;
-    order: 10;
+    border-radius: 6px;
+    white-space: normal;
   }
 
   .topbar-user-dropdown {
     right: 0;
     left: auto;
+    max-width: min(18rem, calc(100vw - 1.5rem));
   }
 }
 
@@ -1849,6 +1930,8 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   .topbar {
     flex-direction: row;
     align-items: center;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 
   .topbar .brand {
@@ -1860,8 +1943,10 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
     font-size: 0.95rem;
   }
 
-  .topbar nav.nav-wrap.is-open {
-    display: flex;
+  .topbar .brand-logo,
+  .topbar .station-logo--sm {
+    width: 2.25rem;
+    height: 2.25rem;
   }
 
   main:not(.settings-layout):not(.login-card) {
@@ -1869,9 +1954,55 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
     width: min(100%, 96vw);
   }
 
-  /* Section title is in page content; centered subtitle overlaps brand on narrow screens */
-  .topbar .page-subtitle {
-    display: none;
+  .form-field {
+    min-width: 0;
+  }
+
+  .form-grid--inline-button {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    padding: var(--space-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .grid,
+  .stat-grid,
+  .fuel-grid,
+  .form-grid,
+  .at-a-glance {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-bar .form-field,
+  .snapshot-controls .form-field,
+  .dsr-filter .form-field,
+  .dsr-filter-inline .form-field,
+  .filter-form .form-field {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .filter-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .filter-actions button,
+  .filter-actions .button-secondary {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-footer {
+    padding: 1rem;
+    word-break: break-word;
+  }
+
+  .app-footer .footer-support {
+    line-height: 1.5;
   }
 }
 
@@ -1918,7 +2049,9 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   font-weight: 500;
   color: #0f172a;
   cursor: pointer;
-  min-width: 210px;
+  min-width: min(210px, 100%);
+  max-width: 100%;
+  flex: 1 1 10rem;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -2041,6 +2174,15 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   .meter-toolbar {
     top: 0;
     border-radius: 0;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .meter-fuel-select {
+    min-width: 0;
+    width: 100%;
+    flex: 1 1 100%;
   }
 
   .dsr-card.card {
@@ -2050,6 +2192,11 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 
   .dsr-card .meter-block {
     padding: var(--space-2) var(--space-3);
+  }
+
+  .dsr-card .sheet-actions button[type="submit"] {
+    min-width: 0;
+    width: 100%;
   }
 }
 

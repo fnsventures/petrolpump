@@ -1134,8 +1134,10 @@ body.dashboard-page .highlight-card.clickable-card:hover {
     grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr);
   }
 
-  .dashboard-context-rail {
+  /* Must beat .settings-layout.dashboard-page-layout > .dashboard-context-rail { grid-column: 3 } */
+  .settings-layout.dashboard-page-layout > .dashboard-context-rail {
     grid-column: 1 / -1;
+    grid-row: auto;
     position: static;
     max-height: none;
     display: grid;
@@ -1160,21 +1162,22 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   }
 }
 
-@media (max-width: 720px) {
-  .settings-layout.dashboard-page-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .settings-layout.dashboard-page-layout .settings-nav.card {
-    position: static;
-  }
-
+@media (max-width: 768px) {
   .dashboard-context-rail {
     grid-template-columns: 1fr;
   }
 
   .dashboard-tank-row--compact {
     justify-content: center;
+  }
+
+  .pl-todo-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pl-todo-goto {
+    width: 100%;
   }
 }
 
@@ -1199,7 +1202,7 @@ body.dashboard-page .highlight-card.clickable-card:hover {
 .pl-todo-message {
   margin: 0;
   flex: 1;
-  min-width: 200px;
+  min-width: min(200px, 100%);
   font-size: var(--text-base);
 }
 
