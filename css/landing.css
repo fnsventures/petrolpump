@@ -495,7 +495,38 @@
 
 @media (max-width: 768px) {
   .hero-content {
-    padding: 2rem 6vw 2.5rem;
+    padding: 1.5rem 5vw 2rem;
+    gap: 1.75rem;
+  }
+
+  .hero-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .brand-lockup {
+    gap: 0.85rem;
+  }
+
+  .brand-title {
+    font-size: clamp(1.6rem, 7vw, 2.1rem);
+  }
+
+  .brand-tagline,
+  .brand-address {
+    font-size: 0.85rem;
+  }
+
+  .hero-nav {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .about-panel {
+    padding: 1.25rem 4vw;
+    align-items: flex-start;
   }
 
   .hero-meta {
@@ -530,5 +561,21 @@
     gap: 0.85rem;
     padding-top: 0;
     margin-top: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-content {
+    min-height: 65vh;
+    padding: 1.25rem 4vw 1.75rem;
+  }
+
+  .landing-hero--compact .hero-content {
+    min-height: 50vh;
+  }
+
+  .nav-button {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.875rem;
   }
 }

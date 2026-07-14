@@ -177,6 +177,7 @@ function closeTopbarNavMenus() {
   const toggle = document.querySelector(".topbar .nav-toggle");
   nav?.classList.remove("is-open");
   toggle?.setAttribute("aria-expanded", "false");
+  document.body.classList.remove("topbar-nav-open");
 
   document.querySelectorAll(".topbar .nav-group-block.is-open").forEach((block) => {
     block.classList.remove("is-open");
@@ -441,6 +442,7 @@ function initTopbarUserMenuHandlers() {
       if (!dropdown || !toggle) return;
       const isHidden = dropdown.classList.toggle("hidden");
       toggle.setAttribute("aria-expanded", String(!isHidden));
+      if (!isHidden) closeTopbarNavMenus();
       return;
     }
 
@@ -489,6 +491,18 @@ function initTopbarUserMenuHandlers() {
   });
 }
 
+function placeTopbarUserMenu(topbar, menu) {
+  const nav = topbar.querySelector(".nav-wrap");
+  /* Keep avatar outside .nav-wrap so it stays visible when the hamburger menu is collapsed */
+  if (nav?.parentElement === topbar) {
+    if (menu.parentElement !== topbar || menu.previousElementSibling !== nav) {
+      topbar.insertBefore(menu, nav.nextSibling);
+    }
+  } else if (menu.parentElement !== topbar) {
+    topbar.appendChild(menu);
+  }
+}
+
 function ensureTopbarUserMenu() {
   const topbar = document.querySelector("header.topbar");
   if (!topbar) return null;
@@ -496,7 +510,10 @@ function ensureTopbarUserMenu() {
   restoreTopbarStructure(topbar);
 
   let menu = topbar.querySelector(".topbar-user-menu");
-  if (menu) return menu;
+  if (menu) {
+    placeTopbarUserMenu(topbar, menu);
+    return menu;
+  }
 
   menu = document.createElement("div");
   menu.className = "topbar-user-menu";
@@ -571,10 +588,7 @@ function ensureTopbarUserMenu() {
 
   dropdown.append(head, profileBtn, profilePanel, logoutBtn);
   menu.append(toggle, dropdown);
-
-  const nav = topbar.querySelector(".nav-wrap");
-  if (nav) nav.appendChild(menu);
-  else topbar.appendChild(menu);
+  placeTopbarUserMenu(topbar, menu);
 
   initTopbarUserMenuHandlers();
   return menu;
@@ -766,30 +780,64 @@ if (forgotPasswordLink) {
   });
 }
 
+function setTopbarNavOpen(open) {
+  const toggle = document.querySelector(".topbar .nav-toggle");
+  const nav = document.querySelector(".topbar .nav-wrap.collapsible");
+  if (!nav) return;
+  nav.classList.toggle("is-open", open);
+  toggle?.setAttribute("aria-expanded", String(open));
+  document.body.classList.toggle("topbar-nav-open", open);
+  if (!open) {
+    document.querySelectorAll(".topbar .nav-group-block.is-open").forEach((block) => {
+      block.classList.remove("is-open");
+      block.querySelector(".nav-group-label")?.setAttribute("aria-expanded", "false");
+    });
+  }
+}
+
+let topbarNavToggleBound = false;
+
 function initNavToggle() {
   const toggle = document.querySelector(".topbar .nav-toggle");
   const nav = document.querySelector(".topbar .nav-wrap.collapsible");
-  if (!toggle || !nav) return;
-  toggle.addEventListener("click", () => {
-    const open = nav.classList.toggle("is-open");
-    toggle.setAttribute("aria-expanded", String(open));
+  if (!toggle || !nav || topbarNavToggleBound) return;
+  topbarNavToggleBound = true;
+
+  toggle.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !nav.classList.contains("is-open");
+    setTopbarNavOpen(open);
+    if (open) closeTopbarUserMenu();
   });
 
   /* Mobile: tap group label to expand/collapse that group (accordion) */
   nav.querySelectorAll(".nav-group-label").forEach((label) => {
-    label.addEventListener("click", () => {
+    const toggleGroup = () => {
+      /* Desktop uses hover/focus-within dropdowns; accordion is mobile-only */
+      if (window.matchMedia("(min-width: 769px)").matches) return;
       const block = label.closest(".nav-group-block");
       if (!block) return;
-      const isOpen = block.classList.toggle("is-open");
-      label.setAttribute("aria-expanded", String(isOpen));
+      const willOpen = !block.classList.contains("is-open");
+      nav.querySelectorAll(".nav-group-block.is-open").forEach((other) => {
+        if (other === block) return;
+        other.classList.remove("is-open");
+        other.querySelector(".nav-group-label")?.setAttribute("aria-expanded", "false");
+      });
+      block.classList.toggle("is-open", willOpen);
+      label.setAttribute("aria-expanded", String(willOpen));
+    };
+
+    label.addEventListener("click", (e) => {
+      if (window.matchMedia("(min-width: 769px)").matches) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleGroup();
     });
     label.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();
-      const block = label.closest(".nav-group-block");
-      if (!block) return;
-      const isOpen = block.classList.toggle("is-open");
-      label.setAttribute("aria-expanded", String(isOpen));
+      if (window.matchMedia("(min-width: 769px)").matches) return;
+      toggleGroup();
     });
   });
 
@@ -797,6 +845,25 @@ function initNavToggle() {
     link.addEventListener("click", () => {
       closeTopbarNavMenus();
     });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!nav.classList.contains("is-open")) return;
+    if (e.target.closest(".topbar .nav-wrap") || e.target.closest(".topbar .nav-toggle")) return;
+    closeTopbarNavMenus();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && nav.classList.contains("is-open")) {
+      closeTopbarNavMenus();
+      toggle.focus();
+    }
+  });
+
+  window.addEventListener("resize", () => {
+    if (window.matchMedia("(min-width: 769px)").matches) {
+      closeTopbarNavMenus();
+    }
   });
 }
 

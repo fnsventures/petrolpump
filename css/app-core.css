@@ -944,7 +944,6 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
 
 /* ─── Settings page (section navigation) ─────────────────────────────────── */
 
-main.settings-layout,
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(11rem, 13rem) minmax(0, 1fr);
@@ -958,14 +957,14 @@ main.settings-layout,
 }
 
 /* Sidebar nav and main panels share one row so tops align on every page */
-main.settings-layout > .settings-nav,
-main.settings-layout > .settings-sidebar > .settings-nav {
+.settings-layout > .settings-nav,
+.settings-layout > .settings-sidebar > .settings-nav {
   grid-column: 1;
   grid-row: 1;
   align-self: start;
 }
 
-main.settings-layout > .settings-panels {
+.settings-layout > .settings-panels {
   grid-column: 2;
   grid-row: 1;
   align-self: start;
@@ -1190,36 +1189,94 @@ tr.is-editing .expense-cat-drag-handle {
 }
 
 @media (max-width: 768px) {
-  main.settings-layout,
   .settings-layout {
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
     width: min(100%, 98vw);
     padding: 0.75rem;
+    gap: 0.75rem;
   }
 
-  main.settings-layout > .settings-nav,
-  main.settings-layout > .settings-sidebar > .settings-nav,
-  main.settings-layout > .settings-panels,
-  .settings-layout.dashboard-page-layout > .dashboard-context-rail {
-    grid-column: 1;
-    grid-row: auto;
+  /* Stack nav → panels → optional rail so sticky/sidebar never covers content */
+  .settings-layout > .settings-nav,
+  .settings-layout > .settings-sidebar > .settings-nav {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    position: static;
+    z-index: 2;
+    width: 100%;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .settings-layout > .settings-panels {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .settings-layout.dashboard-page-layout > .dashboard-context-rail,
+  .settings-layout > .dashboard-context-rail {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    position: static;
   }
 
   .settings-nav {
-    position: static;
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.35rem;
   }
 
   /* Many section tabs (e.g. Settings): single column reads better than cramped 2-col cells */
   .settings-nav:has(.settings-nav-item:nth-child(6)) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .settings-nav-title,
   .settings-nav-back {
     grid-column: 1 / -1;
+  }
+
+  .settings-layout .settings-panels > .settings-panel.card {
+    padding: 1rem;
+    max-width: 100%;
+  }
+
+  .page-header,
+  .page-intro {
+    padding: var(--space-3) var(--space-4);
+    padding-left: calc(var(--space-4) + 4px);
+  }
+
+  .expense-cat-label-input {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-layout {
+    padding: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .settings-nav {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .settings-nav-item {
+    font-size: var(--text-sm, 0.8125rem);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .page-header h1,
+  .page-intro-title {
+    font-size: var(--heading-lg, 1.125rem);
   }
 }
 
@@ -1270,7 +1327,7 @@ tr.is-editing .expense-cat-drag-handle {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(10rem, 100%), 1fr));
   gap: 1rem;
 }
 
@@ -1461,7 +1518,7 @@ tr.is-editing .expense-cat-drag-handle {
 }
 
 .form-grid-compact {
-  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr));
   align-items: end;
 }
 

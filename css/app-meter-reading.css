@@ -111,7 +111,7 @@ body.meter-reading-page .page-layout-wide .settings-panels {
   width: 100%;
 }
 
-body.meter-reading-page main.settings-layout.dsr-page-layout {
+body.meter-reading-page main.settings-layout.page-layout-wide {
   width: min(80rem, 98vw);
 }
 
@@ -186,7 +186,7 @@ body.meter-reading-page .page-layout-wide .meter-table-scroll {
 
 body.meter-reading-page .page-layout-wide .sheet-rate-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 16rem));
+  grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 16rem));
   gap: 1rem;
   margin-top: 0.5rem;
 }
@@ -336,7 +336,59 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
 }
 
 @media (max-width: 768px) {
+  body.meter-reading-page .meter-block-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   body.meter-reading-page .meter-block-head .dsr-field-legend {
     width: 100%;
+  }
+
+  body.meter-reading-page .meter-block-head .dsr-copy-prev {
+    width: 100%;
+  }
+
+  /* Keep nozzle entry usable: scroll horizontally instead of crushing inputs */
+  body.meter-reading-page .dsr-card .meter-block:not(.meter-block-wide) {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  body.meter-reading-page .dsr-card .meter-table.dsr-table {
+    min-width: 28rem;
+    table-layout: auto;
+  }
+
+  body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
+    font-size: var(--text-sm, 0.8125rem);
+    min-height: 2.25rem;
+  }
+
+  body.meter-reading-page .page-layout-wide .sheet-rate-row {
+    grid-template-columns: 1fr;
+  }
+
+  body.meter-reading-page main.settings-layout.page-layout-wide {
+    width: min(100%, 98vw);
+  }
+
+  body.meter-reading-page .page-layout-wide .settings-panel.card.dsr-card {
+    padding: 1rem;
+  }
+
+  body.meter-reading-page .page-layout-wide .meter-block-wide .meter-table-scroll .meter-table {
+    min-width: 40rem;
+  }
+}
+
+@media (max-width: 480px) {
+  body.meter-reading-page .dsr-card .meter-table.dsr-table {
+    min-width: 24rem;
+  }
+
+  body.meter-reading-page .dsr-card-head {
+    flex-direction: column;
   }
 }

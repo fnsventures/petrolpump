@@ -7,7 +7,9 @@ body.meter-reading-page main.settings-layout.page-layout-wide {
 
 .table-scroll {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dsr-table {
@@ -260,9 +262,10 @@ body.dsr-page .dc-stat-meta {
 }
 
 @media (max-width: 768px) {
+  /* Row stacking handled by app-core; only fuel-nav / table specifics here */
   body.dsr-page .dsr-fuel-nav,
   body.meter-reading-page .dsr-fuel-nav {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   body.dsr-page .settings-nav-item-meta,
@@ -271,5 +274,21 @@ body.dsr-page .dc-stat-meta {
     margin-left: 0;
     width: 100%;
     padding-left: 2.3rem;
+  }
+
+  body.dsr-page .table-scroll {
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+  }
+
+  body.dsr-page .dsr-table {
+    min-width: 40rem;
+  }
+}
+
+@media (max-width: 480px) {
+  body.dsr-page .dsr-fuel-nav,
+  body.meter-reading-page .dsr-fuel-nav {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -458,6 +458,16 @@ function wireChartsSectionResize() {
       }
     });
   });
+
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => {
+    window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      if (document.querySelector('.settings-panel[data-panel="charts"]:not([hidden])')) {
+        resizeAnalysisCharts();
+      }
+    }, 150);
+  });
 }
 
 function destroyCharts() {

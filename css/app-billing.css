@@ -4,7 +4,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .billing-header-grid {
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
 }
 
 .billing-items-section {
@@ -268,9 +268,20 @@
     flex-direction: column;
   }
 
+  .billing-totals-grid .form-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
   .billing-summary {
     margin-left: 0;
+    min-width: 0;
     max-width: 100%;
+  }
+
+  .billing-items-wrap {
+    -webkit-overflow-scrolling: touch;
   }
 
   .billing-items-table {
@@ -278,6 +289,21 @@
   }
 
   .item-cell-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .billing-actions {
+    flex-direction: column;
+  }
+
+  .billing-actions button,
+  .billing-actions .button-secondary {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .billing-header-grid {
     grid-template-columns: 1fr;
   }
 }
