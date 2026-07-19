@@ -51,6 +51,7 @@
 | **5** | [Run locally](#5-run-locally) | Dev server setup |
 | **6** | [Features](#6-features) | What the app covers |
 | **7** | [Docs](#7-docs) | Deep guides |
+| **8** | [License](#8-license) | Ownership & use |
 
 **Playbook** → [OPERATIONS.md](docs/OPERATIONS.md)
 ([Sync](docs/OPERATIONS.md#1-sync-staging-with-production-data) ·
@@ -179,6 +180,17 @@ Create the user in **Auth**, then add them to `public.users` as `admin`.
 | [Invoice documents](docs/INVOICE_DOCUMENTS.md) | Supplier PDFs |
 | [Hub](docs/README.md) | Full index |
 | [Contributing](CONTRIBUTING.md) | Branch · PR · release |
+
+---
+
+<a id="8-license"></a>
+<a id="license"></a>
+
+## 8 · License
+
+Copyright © [F&S Ventures](https://fnsventures.in/). All rights reserved.
+
+This software and documentation are proprietary. Unauthorized copying, modification, distribution, or use is prohibited. See [LICENSE](LICENSE).
 
 ---
 
