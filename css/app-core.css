@@ -1011,23 +1011,6 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
 .settings-nav.card {
   padding: 0.85rem;
   margin-bottom: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.settings-nav.card::before {
-  content: "";
-  display: block;
-  height: 3px;
-  margin: calc(-1 * 0.85rem - 3px) calc(-1 * 0.85rem) 0.5rem;
-  background: linear-gradient(
-    90deg,
-    var(--bpcl-blue) 0%,
-    var(--bpcl-blue) 38%,
-    var(--bpcl-yellow) 38%,
-    var(--bpcl-yellow) 100%
-  );
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .settings-nav-title {
@@ -1076,25 +1059,10 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   margin-bottom: 0;
 }
 
-/* BPCL accent stripe on content panels (matches sidebar nav) */
-.settings-panels > .settings-panel.card:not(.analysis-hero) {
+/* DSR product accent only — page brand stripe lives on .topbar--bpcl */
+.settings-panels > .settings-panel.card.dsr-card {
   position: relative;
   overflow: hidden;
-}
-
-.settings-panels > .settings-panel.card:not(.analysis-hero):not(.dsr-card)::before {
-  content: "";
-  display: block;
-  height: 2px;
-  margin: calc(-1 * var(--space-5) - 2px) calc(-1 * var(--space-5)) var(--space-4);
-  background: linear-gradient(
-    90deg,
-    var(--bpcl-blue) 0%,
-    var(--bpcl-blue) 38%,
-    var(--bpcl-yellow) 38%,
-    var(--bpcl-yellow) 100%
-  );
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .settings-panels > .settings-panel.card.dsr-card::before {
