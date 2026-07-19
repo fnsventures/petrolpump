@@ -4,7 +4,14 @@
 
 # Bishnupriya Fuels
 
-### A F&amp;S Ventures Company · BPCL fuel station ops
+<p>
+  <a href="https://fnsventures.in/" target="_blank" rel="noopener noreferrer">
+    <img src="assets/fns-ventures-logo.png" alt="FnS Ventures" height="40" align="absmiddle" />
+  </a>
+  &nbsp;
+  <a href="https://fnsventures.in/" target="_blank" rel="noopener noreferrer"><strong>A F&amp;S Ventures Company</strong></a>
+  · BPCL fuel station ops
+</p>
 
 <img
   src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=22&duration=2800&pause=800&color=FF6B35&center=true&vCenter=true&width=740&lines=Architecture+%C2%B7+Data+flow+%C2%B7+Entry+points;Sync+staging+%C2%B7+Deploy+%C2%B7+Release+%C2%B7+Backup;sync+%E2%89%A0+deploy+%E2%89%A0+backup;Ship+guide+%E2%86%92+docs%2FOPERATIONS.md"
@@ -38,9 +45,18 @@
 
 </div>
 
-## Jump to
+<div align="center">
 
-[Architecture](#1-architecture) · [Sync](#2-sync-staging--production-data) · [Release](#3-release) · [Backup](#4-backup--google-drive) · [Local](#run-locally) · [Docs](#docs)
+### Menu
+
+[![Architecture](https://img.shields.io/badge/1-Architecture-0070c0?style=for-the-badge)](#1-architecture)
+[![Sync](https://img.shields.io/badge/2-Sync-00d4ff?style=for-the-badge)](#2-sync-staging--production-data)
+[![Release](https://img.shields.io/badge/3-Release-FF6B35?style=for-the-badge)](#3-release)
+[![Backup](https://img.shields.io/badge/4-Backup-3ECF8E?style=for-the-badge)](#4-backup--google-drive)
+[![Local](https://img.shields.io/badge/▶-Run_locally-222222?style=for-the-badge)](#run-locally)
+[![Docs](https://img.shields.io/badge/📚-Docs-6b7280?style=for-the-badge)](#docs)
+
+</div>
 
 ---
 
@@ -51,10 +67,6 @@ Daily operations, finance, and HR for a BPCL fuel station.
 | **Stack** | HTML/JS · Supabase (Auth + Postgres + RLS) · GitHub Pages |
 | **Roles** | `admin` · `supervisor` |
 | **Playbook** | **[docs/OPERATIONS.md](docs/OPERATIONS.md)** — sync ≠ deploy ≠ backup |
-
-<div align="center">
-  <a href="https://github.com/fnsventures/petrolpump"><img src="https://gh-card.dev/repos/fnsventures/petrolpump.svg?fullname=true" alt="Repo card" /></a>
-</div>
 
 ---
 
