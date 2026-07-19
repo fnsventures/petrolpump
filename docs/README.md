@@ -20,17 +20,16 @@ Guides for **Bishnupriya Fuels**.
 
 ## Visual assets
 
-Open the [root README](../README.md) for the full interactive tour. Source SVGs (SMIL animations):
+Open the [root README](../README.md) for the full tour. Use **PNG** in README (GitHub blocks most SVGs).
 
-| Diagram | File |
-|---------|------|
-| Architecture & entry | [assets/architecture-flow.svg](assets/architecture-flow.svg) |
-| Daily data flow | [assets/data-flow.svg](assets/data-flow.svg) |
-| Sync prod → staging | [assets/sync-flow.svg](assets/sync-flow.svg) |
-| Deploy branches | [assets/deploy-path.svg](assets/deploy-path.svg) |
-| Release A→D | [assets/release-steps.svg](assets/release-steps.svg) |
-| Backup → Drive | [assets/backup-flow.svg](assets/backup-flow.svg) |
-| Quick start / auth | [assets/quick-start-flow.svg](assets/quick-start-flow.svg) · [assets/auth-flow.svg](assets/auth-flow.svg) |
+| Diagram | PNG | SVG source |
+|---------|-----|------------|
+| Architecture & entry | [architecture-flow.png](assets/architecture-flow.png) | [svg](assets/architecture-flow.svg) |
+| Daily data flow | [data-flow.png](assets/data-flow.png) | [svg](assets/data-flow.svg) |
+| Sync prod → staging | [sync-flow.png](assets/sync-flow.png) | [svg](assets/sync-flow.svg) |
+| Deploy branches | [deploy-path.png](assets/deploy-path.png) | [svg](assets/deploy-path.svg) |
+| Release A→D | [release-steps.png](assets/release-steps.png) | [svg](assets/release-steps.svg) |
+| Backup → Drive | [backup-flow.png](assets/backup-flow.png) | [svg](assets/backup-flow.svg) |
 
 ---
 
