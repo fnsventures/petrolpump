@@ -299,23 +299,18 @@ body.reports-page main.settings-layout.page-layout-wide {
   }
 }
 
+/* Mobile-first: stack catalog above filters. Grid kicks in at 769px. */
 .reports-generate-layout {
-  display: grid;
-  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  align-items: start;
-}
-
-.page-layout-wide .reports-generate-layout {
-  grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
-  gap: var(--space-5);
+  width: 100%;
+  min-width: 0;
 }
 
 .reports-catalog-aside {
-  position: sticky;
-  top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
-  max-height: calc(100vh - var(--topbar-height, 3.75rem) - 6rem);
-  overflow-y: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .reports-generate-main {
@@ -323,6 +318,26 @@ body.reports-page main.settings-layout.page-layout-wide {
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
+}
+
+@media (min-width: 769px) {
+  .reports-generate-layout {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .page-layout-wide .reports-generate-layout {
+    grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+    gap: var(--space-5);
+  }
+
+  .reports-catalog-aside {
+    position: sticky;
+    top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
+    max-height: calc(100vh - var(--topbar-height, 3.75rem) - 6rem);
+    overflow-y: auto;
+  }
 }
 
 .reports-sidebar-title {
@@ -418,35 +433,70 @@ body.reports-page main.settings-layout.page-layout-wide {
 }
 
 @media (max-width: 768px) {
-  .reports-generate-layout {
-    grid-template-columns: 1fr;
+  .reports-generate-panel {
+    overflow-x: clip;
   }
 
-  .reports-catalog-aside {
-    position: static;
-    max-height: none;
-    overflow-y: visible;
+  .page-layout-wide.reports-panels .reports-generate-panel,
+  .page-layout-wide.reports-panels .reports-guide-panel {
+    padding: 1rem;
   }
 
-  .reports-catalog-nav {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-2) var(--space-3);
+  .reports-output-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .reports-nav-group {
+  .reports-output-head .button-secondary {
+    width: 100%;
+  }
+
+  .reports-generate-main .filter-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reports-generate-main .filter-form .form-field,
+  .reports-generate-main .filter-actions {
+    width: 100%;
     min-width: 0;
   }
-}
 
-@media (max-width: 480px) {
-  .reports-catalog-nav {
-    grid-template-columns: 1fr;
+  .reports-generate-main .filter-actions button {
+    width: 100%;
   }
 
   .reports-preview {
     padding: 0.75rem;
     min-height: 16rem;
+  }
+
+  .reports-preview .report-preview-inner {
+    max-width: 100%;
+  }
+
+  .report-letterhead {
+    gap: 0.65rem;
+  }
+
+  .report-bpcl-logo {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .report-station {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .reports-active-title {
+    font-size: var(--heading-lg, 1.125rem);
+  }
+
+  .reports-preview {
+    padding: 0.65rem;
+    min-height: 14rem;
   }
 }
 
@@ -475,6 +525,12 @@ body.reports-page main.settings-layout.page-layout-wide {
   font-size: 0.75rem;
 }
 
+.reports-preview .report-table th,
+.reports-preview .report-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .reports-preview .report-dsr-table {
   font-size: 0.65rem;
 }
@@ -483,6 +539,17 @@ body.reports-page main.settings-layout.page-layout-wide {
 .reports-preview .report-table th {
   white-space: nowrap;
   font-size: 0.65rem;
+}
+
+/* 7-col fuel month table: keep readable columns; scroll instead of crushing */
+.reports-preview .report-gst-fuel-month {
+  min-width: 36rem;
+  font-size: 0.7rem;
+}
+
+.reports-preview .report-gst-fuel-month th {
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .reports-preview .report-trading-grid {
@@ -594,6 +661,56 @@ body.reports-page main.settings-layout.page-layout-wide {
 .report-table th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* GST summary (5 columns) — screen preview mirrors print widths */
+.report-gst-summary th:nth-child(1),
+.report-gst-summary td:nth-child(1) {
+  width: 22%;
+}
+
+.report-gst-summary th:nth-child(2),
+.report-gst-summary td:nth-child(2),
+.report-gst-summary th:nth-child(3),
+.report-gst-summary td:nth-child(3),
+.report-gst-summary th:nth-child(4),
+.report-gst-summary td:nth-child(4),
+.report-gst-summary th:nth-child(5),
+.report-gst-summary td:nth-child(5) {
+  width: 19.5%;
+}
+
+/* Fuel sales month-wise (7 columns) */
+.report-gst-fuel-month th:nth-child(1),
+.report-gst-fuel-month td:nth-child(1) {
+  width: 14%;
+}
+
+.report-gst-fuel-month th:nth-child(2),
+.report-gst-fuel-month td:nth-child(2) {
+  width: 16%;
+}
+
+.report-gst-fuel-month th:nth-child(3),
+.report-gst-fuel-month td:nth-child(3) {
+  width: 13%;
+}
+
+.report-gst-fuel-month th:nth-child(4),
+.report-gst-fuel-month td:nth-child(4) {
+  width: 17%;
+}
+
+.report-gst-fuel-month th:nth-child(5),
+.report-gst-fuel-month td:nth-child(5),
+.report-gst-fuel-month th:nth-child(6),
+.report-gst-fuel-month td:nth-child(6) {
+  width: 10%;
+}
+
+.report-gst-fuel-month th:nth-child(7),
+.report-gst-fuel-month td:nth-child(7) {
+  width: 17%;
 }
 
 .report-dsr-table {

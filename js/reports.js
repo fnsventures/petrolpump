@@ -873,7 +873,7 @@ function renderFuelSalesMonthTable(lines, title) {
     <section class="report-gst-section">
       <h3 class="report-section-title">${escapeHtml(title)}</h3>
       <p class="report-subtitle muted">Outward fuel supply · NIL rate · Value = daily qty (L) × that day&apos;s selling price from DSR</p>
-      <table class="report-table report-gst-summary">
+      <table class="report-table report-gst-fuel-month">
         <thead>
           <tr>
             <th>Month</th>
@@ -1392,7 +1392,7 @@ function renderProfitLoss(data, range) {
     <p class="report-note muted">Margin-based P&amp;L — same formula as Dashboard and Analysis: net profit = gross profit − operating expenses. MS/HS and density testing are excluded (handled in day closing). Fuel margin uses net sale litres × (selling − landed buying incl. VAT + delivery). Matches Dashboard P&amp;L and Analysis for the same date range.</p>`;
 }
 
-const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=5";
+const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=6";
 
 function reportsAssetUrl(path) {
   return new URL(path, window.location.href).href;
