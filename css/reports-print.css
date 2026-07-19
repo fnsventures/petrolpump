@@ -178,6 +178,39 @@ body.report-print-body {
   width: 19.5%;
 }
 
+/* Fuel sales month-wise (7 columns) */
+.report-gst-fuel-month th:nth-child(1),
+.report-gst-fuel-month td:nth-child(1) {
+  width: 14%;
+}
+
+.report-gst-fuel-month th:nth-child(2),
+.report-gst-fuel-month td:nth-child(2) {
+  width: 16%;
+}
+
+.report-gst-fuel-month th:nth-child(3),
+.report-gst-fuel-month td:nth-child(3) {
+  width: 13%;
+}
+
+.report-gst-fuel-month th:nth-child(4),
+.report-gst-fuel-month td:nth-child(4) {
+  width: 17%;
+}
+
+.report-gst-fuel-month th:nth-child(5),
+.report-gst-fuel-month td:nth-child(5),
+.report-gst-fuel-month th:nth-child(6),
+.report-gst-fuel-month td:nth-child(6) {
+  width: 10%;
+}
+
+.report-gst-fuel-month th:nth-child(7),
+.report-gst-fuel-month td:nth-child(7) {
+  width: 17%;
+}
+
 /* GST detail register (9 columns) */
 .report-gst-detail {
   font-size: 7pt;

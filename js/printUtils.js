@@ -1,5 +1,7 @@
 /**
  * Shared hidden-iframe print pipeline (invoice, reports, salary slips, credit, staff ID).
+ * On mobile Chrome/Safari, iframe.contentWindow.print() prints the parent page instead —
+ * those clients use an in-page print host that calls window.print().
  */
 (function (global) {
   const DEFAULT_IFRAME_STYLE =
@@ -7,6 +9,42 @@
 
   const COMPACT_IFRAME_STYLE =
     "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
+
+  const PRINT_HOST_ID = "print-utils-host";
+
+  const PRINT_HOST_SHELL_CSS = `
+#${PRINT_HOST_ID} {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 210mm;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: #fff;
+}
+@media print {
+  body > *:not(#${PRINT_HOST_ID}) {
+    display: none !important;
+  }
+  #${PRINT_HOST_ID} {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: auto !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+`;
 
   function resolveAssetUrl(path) {
     return new URL(path, window.location.href).href;
@@ -50,6 +88,42 @@
 
   function escapeInlineCss(cssText) {
     return String(cssText || "").replace(/<\/style/gi, "<\\/style");
+  }
+
+  /**
+   * Mobile browsers (esp. Chrome Android) ignore iframe print and print the top page.
+   * Cached after first check — UA does not change mid-session.
+   * @returns {boolean}
+   */
+  let _iframePrintUnreliable;
+  function iframePrintUnreliable() {
+    if (typeof _iframePrintUnreliable === "boolean") return _iframePrintUnreliable;
+    if (typeof navigator === "undefined") {
+      _iframePrintUnreliable = false;
+      return false;
+    }
+    const ua = navigator.userAgent || "";
+    _iframePrintUnreliable =
+      /Android/i.test(ua) ||
+      /iPhone|iPad|iPod/i.test(ua) ||
+      (navigator.platform === "MacIntel" && (navigator.maxTouchPoints || 0) > 1);
+    return _iframePrintUnreliable;
+  }
+
+  /**
+   * Print CSS files target html/body (iframe document). Remap those selectors
+   * onto the in-page print host so host-mode print keeps the same layout.
+   */
+  function adaptPrintCssForHost(cssText) {
+    return String(cssText || "")
+      .replace(
+        /(^|[,{\s>+~])html(\s*,\s*body)?(?=[\s,{>:#[.]|$)/g,
+        (_, pre) => `${pre}#${PRINT_HOST_ID}`
+      )
+      .replace(
+        /(^|[,{\s>+~])body(\.[\w-]+)?(?=[\s,{>:#[.]|$)/g,
+        (_, pre, cls) => `${pre}#${PRINT_HOST_ID}${cls || ""}`
+      );
   }
 
   async function waitForFrameLoad(win, timeoutMs = 5000) {
@@ -144,12 +218,143 @@
 </html>`;
   }
 
+  function clearPrintHostArtifacts() {
+    document.querySelectorAll("[data-print-utils]").forEach((el) => el.remove());
+    document.getElementById(PRINT_HOST_ID)?.remove();
+  }
+
+  async function waitForStylesheet(link, timeoutMs = 2000) {
+    await Promise.race([
+      new Promise((resolve) => {
+        link.addEventListener("load", resolve, { once: true });
+        link.addEventListener("error", resolve, { once: true });
+      }),
+      new Promise((resolve) => window.setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+
+  async function injectHeadExtras(headExtras, { printOnly = false } = {}) {
+    if (!headExtras) return;
+    const template = document.createElement("template");
+    template.innerHTML = String(headExtras).trim();
+    const pending = [];
+    for (const node of Array.from(template.content.children)) {
+      node.setAttribute("data-print-utils", "extra");
+      if (
+        printOnly &&
+        node.tagName === "LINK" &&
+        node.getAttribute("rel") === "stylesheet" &&
+        !node.getAttribute("media")
+      ) {
+        // Avoid restyling the live page while the print dialog is open.
+        node.setAttribute("media", "print");
+      }
+      if (node.tagName === "LINK" && node.getAttribute("rel") === "stylesheet") {
+        pending.push(waitForStylesheet(node));
+      }
+      document.head.appendChild(node);
+    }
+    if (pending.length) await Promise.all(pending);
+  }
+
+  async function resolvePrintCssText(cssText, cssHref) {
+    if (cssText) return String(cssText);
+    if (!cssHref) return "";
+    const res = await fetch(resolveAssetUrl(cssHref), { cache: "default" });
+    if (!res.ok) throw new Error("Could not load print stylesheet.");
+    return await res.text();
+  }
+
+  /**
+   * Print via a temporary host on the current page (mobile-safe).
+   * Hides all other body children under @media print.
+   */
+  async function printInHostDocument(options) {
+    const {
+      title = "Print",
+      bodyHtml = "",
+      cssHref,
+      cssText,
+      headExtras = "",
+      bodyClass = "",
+      containerClass = "",
+      waitForReady,
+      cleanupTimeoutMs = 5000,
+    } = options;
+
+    clearPrintHostArtifacts();
+
+    const prevTitle = document.title;
+    document.title = title;
+
+    const shellStyle = document.createElement("style");
+    shellStyle.setAttribute("data-print-utils", "shell");
+    shellStyle.textContent = PRINT_HOST_SHELL_CSS;
+    document.head.appendChild(shellStyle);
+
+    const resolvedCss = await resolvePrintCssText(cssText, cssHref);
+    if (resolvedCss) {
+      const contentStyle = document.createElement("style");
+      contentStyle.setAttribute("data-print-utils", "css");
+      // Keep slip/report CSS off the live screen; apply only when printing.
+      // Remap html/body selectors onto the host (iframe CSS assumes a full document).
+      contentStyle.textContent = `@media print {\n${escapeInlineCss(
+        adaptPrintCssForHost(resolvedCss)
+      )}\n}`;
+      document.head.appendChild(contentStyle);
+    }
+
+    await injectHeadExtras(headExtras, { printOnly: true });
+
+    const host = document.createElement("div");
+    host.id = PRINT_HOST_ID;
+    if (bodyClass) host.className = bodyClass;
+    host.setAttribute("aria-hidden", "true");
+    host.innerHTML = containerClass
+      ? `<div class="${containerClass}">${bodyHtml}</div>`
+      : bodyHtml;
+    document.body.appendChild(host);
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      clearPrintHostArtifacts();
+      document.title = prevTitle;
+    };
+
+    try {
+      if (typeof waitForReady === "function") {
+        await waitForReady(document, window);
+      } else {
+        await waitForPrintReady(document, window, {
+          ...options,
+          waitForLoad: false,
+        });
+      }
+
+      window.addEventListener("afterprint", cleanup, { once: true });
+      window.focus();
+      window.print();
+      window.setTimeout(cleanup, cleanupTimeoutMs);
+      return true;
+    } catch (err) {
+      cleanup();
+      throw err;
+    }
+  }
+
   /**
    * Print HTML in a hidden iframe, then remove it after printing.
+   * On mobile, uses an in-page print host instead (iframe print is unreliable).
    * @param {Object} options
    * @returns {Promise<boolean>} true when print dialog opened; false when fallback used
    */
   async function printInIframe(options) {
+    if (iframePrintUnreliable()) {
+      return printInHostDocument(options);
+    }
+
     const {
       title = "Print",
       bodyHtml = "",
@@ -222,6 +427,7 @@
     buildPrintDocumentHtml,
     escapeInlineCss,
     getStationLogoPrintUrl,
+    iframePrintUnreliable,
     printInIframe,
     resolveAssetUrl,
     waitForFrameLoad,

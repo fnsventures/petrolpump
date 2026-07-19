@@ -241,13 +241,14 @@ body.modal-open {
 }
 
 .salary-detail-card {
+  --salary-detail-pad-x: var(--space-4);
   max-width: 36rem;
   width: 100%;
   max-height: min(90vh, calc(100dvh - 2 * var(--space-4)));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: var(--space-4) var(--space-4) 0;
+  padding: var(--space-4) var(--salary-detail-pad-x) 0;
   margin-bottom: 0;
 }
 
@@ -282,6 +283,7 @@ body.modal-open {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .salary-detail-meta dd.salary-detail-balance {
@@ -358,15 +360,58 @@ body.modal-open {
   align-items: center;
   justify-content: flex-end;
   flex-shrink: 0;
-  margin: var(--space-3) calc(-1 * var(--space-4)) 0;
-  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) calc(-1 * var(--salary-detail-pad-x)) 0;
+  padding: var(--space-3) var(--salary-detail-pad-x);
   border-top: 1px solid var(--border);
   background: var(--surface);
 }
 
-@media (max-width: 480px) {
+/* Phone: bottom sheet that scrolls — avoids clipped header/actions under browser chrome */
+@media (max-width: 640px) {
+  .overdue-detail-overlay {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overdue-detail-backdrop {
+    position: fixed;
+  }
+
+  .salary-detail-card {
+    --salary-detail-pad-x: var(--space-3);
+    max-width: none;
+    max-height: min(
+      92dvh,
+      calc(100dvh - env(safe-area-inset-top, 0px) - 0.5rem)
+    );
+    margin: 0;
+    border-radius: 1rem 1rem 0 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
   .salary-detail-meta {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    padding: var(--space-2);
+  }
+
+  .salary-detail-payments {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .salary-detail-payments .table-wrap {
+    flex: 0 0 auto;
+    min-height: 0;
+    max-height: min(40vh, 14rem);
   }
 
   .salary-detail-payments-head {
@@ -377,6 +422,12 @@ body.modal-open {
   .salary-detail-payments-tools {
     width: 100%;
     justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .salary-detail-na-tools {
+    flex-wrap: wrap;
+    width: 100%;
   }
 
   .salary-detail-na-tools input {
@@ -394,10 +445,31 @@ body.modal-open {
   .salary-detail-actions {
     flex-direction: column;
     align-items: stretch;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-bottom: max(var(--space-3), env(safe-area-inset-bottom, 0px));
   }
 
   .salary-detail-actions button {
     width: 100%;
+    min-height: 2.75rem;
+  }
+
+  .overdue-detail-head h2 {
+    font-size: var(--heading-md, 1.15rem);
+  }
+
+  .salary-summary-table .table-actions {
+    white-space: normal;
+  }
+
+  .salary-summary-table .table-actions .button-small {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    margin: 0.1rem 0;
   }
 }
 
