@@ -1,12 +1,11 @@
 # Development guide
 
-This document covers **local development**, **deployment** (prod and staging), and **supervisor/operator login** for Bishnupriya Fuels (Petrol Pump).
+This document covers **local development**, **deployment** (prod and staging), **edge functions**, and **supervisor/operator login**.
 
-> **Documentation hub:** [README.md](README.md) — quick start, release workflow, and command recipes on one page.  
-> **This guide:** full detail for setup, GitHub configuration, edge functions, and deployment.
+> **Start here:** [Documentation hub](README.md) · [Project README](../README.md)  
+> **This guide:** full detail for setup, GitHub configuration, and day-to-day engineering tasks.
 
 For project structure and tech stack, see [Architecture](ARCHITECTURE.md).
-
 ---
 
 ## 1. Local development
@@ -222,7 +221,7 @@ When releasing invoice-document changes, deploy the function **before or with** 
 
 ## 3. Supervisor / operator login
 
-Operators can log in with a **supervisor** role: they see operational pages (dashboard, DSR, credit, expenses, day closing, **billing**, **invoice documents**, attendance, salary) but **not** Staff roster, Analysis, **Reports**, or Settings. They cannot edit the employee roster, product catalog, or station config (admin-only RLS). They **can** record attendance, salary payments, and supplier invoice uploads. Both roles must be **provisioned** in `public.users` — an Auth account alone is insufficient. Data access is enforced by RLS and RPC guards; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
+Operators can log in with a **supervisor** role: they see operational pages (dashboard, Meter Reading, DSR, credit, expenses, day closing, **billing**, **invoice documents**, attendance, salary) but **not** Staff roster, Analysis, **Reports**, or Settings. They cannot edit the employee master, product catalog, or station config (admin-only RLS). They **can** record attendance, salary payments, supplier invoice uploads, and night-cash collections. Both roles must be **provisioned** in `public.users` — an Auth account alone is insufficient. Data access is enforced by RLS and RPC guards; see [Architecture → Security model](ARCHITECTURE.md#7-security-model).
 
 ### 3.1 Steps to enable a supervisor
 
@@ -254,8 +253,10 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 
 | Document | Description |
 |----------|-------------|
+| [Documentation hub](README.md) | Index, release checklist, troubleshooting |
 | [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment overview |
 | [Data Tables](DATA_TABLES.md) | Database tables and RLS |
 | [Flows](FLOWS.md) | User and data flows |
 | [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function deploy, troubleshooting |
 | [Backup](BACKUP.md) | Prod DB backup to Google Drive (GitHub Actions, restore, troubleshooting) |
+| [scripts/README](../scripts/README.md) | DB sync, migrate, backup commands |

@@ -2,11 +2,10 @@
 
 Scripts for **staging test data**, **production schema migration**, and **backups**.
 
-> **Documentation hub:** [docs/README.md](../docs/README.md) — step-by-step commands.  
-> **This file:** setup, internals, troubleshooting, and file reference.
+> **Documentation hub:** [docs/README.md](../docs/README.md)  
+> **This file:** setup, command details, internals, and script-specific troubleshooting.
 
 All write operations target **staging** or **production** explicitly — prod data sync is read-only on production.
-
 ---
 
 ## Quick reference
@@ -211,6 +210,8 @@ Never commit these.
 
 ## Related docs
 
+- [Documentation hub](../docs/README.md) — release checklist and secrets map
 - [Backup guide](../docs/BACKUP.md) — prod DB → Google Drive (GitHub Actions, restore)
 - [Development guide §2](../docs/DEVELOPMENT.md#2-deployment-prod-and-staging) — GitHub Pages deploy, branches
 - [Architecture](../docs/ARCHITECTURE.md) — app structure and Supabase model
+- [Project README](../README.md) — commands overview

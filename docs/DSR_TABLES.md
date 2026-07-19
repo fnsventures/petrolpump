@@ -19,8 +19,9 @@ Part of the [Petrol Pump documentation](README.md). For all tables and flows, se
 ## dsr_petrol and dsr_diesel (base tables)
 
 - **Role:** Daily meter readings per fuel: nozzle open/close, `total_sales`, `testing`, `dip_reading`, `stock` (dip litres), `receipts`, selling rates, `buying_price_per_litre` (admin), `tank_capacity`, remarks.
-- **Written by:** The **Meter Reading** page (`dsr.html` → `js/dsr.js`), which upserts into `dsr_petrol` or `dsr_diesel` by product.
-- **Used by:** Day closing (sales), dashboard (snapshot, P&amp;L section), analysis, reports (tank-wise DSR, purchase registers), sales-daily.
+- **Written by:** The **Meter Reading** page (`meter-reading.html` → `js/meterReading.js`), which upserts into `dsr_petrol` or `dsr_diesel` by product.
+- **Listed by:** The **DSR** page (`dsr.html` → `js/dsr.js`) for range summaries and stock views.
+- **Used by:** Day closing (sales), dashboard (snapshot, P&amp;L section), analysis, reports (tank-wise DSR, purchase registers).
 
 Each table has one row per **date** (not per pump). MS and HSD are stored separately so tank capacity and defaults can differ (e.g. 15KL vs 20KL).
 

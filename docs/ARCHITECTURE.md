@@ -44,13 +44,14 @@ petrolPump/
 ├── index.html              # Public landing (hero, about); links to login.html
 ├── login.html              # Operator login (Supabase Auth)
 ├── dashboard.html          # Authenticated home (snapshot, P&L section, quick links)
-├── dsr.html                # Meter Reading + DSR summary (merged; replaces sales-daily)
-├── sales-daily.html        # Legacy redirect → dsr.html#filters
+├── meter-reading.html      # Daily MS/HSD meter form (js/meterReading.js)
+├── dsr.html                # DSR listing / stock summary (js/dsr.js); legacy #meter → meter-reading
+├── sales-daily.html        # Legacy redirect → dsr.html
 ├── credit.html             # Credit ledger, customer detail, overdue tabs
 ├── credit-overdue.html     # Legacy URL → redirects to credit.html#outstanding
 ├── credit-customer.html    # Legacy URL → redirects to credit.html (preserves query/hash)
 ├── expenses.html           # Daily expenses by category
-├── day-closing.html        # Day closing & short (night cash, phone pay, snapshot)
+├── day-closing.html        # Day closing & short; night-cash collection register
 ├── billing.html            # Lube/accessory invoicing (cash memos)
 ├── invoices.html           # Supplier/purchase invoice documents (Google Drive)
 ├── attendance.html         # Employee attendance (status, check-in/out)
@@ -115,7 +116,9 @@ js/
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
 ├── landing.js          # Landing page
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/P&L sections, alerts
-├── dsr.js              # Meter Reading + DSR summary orchestration
+├── dsr.js              # DSR listing / stock summary page
+├── meterReading.js     # Meter Reading form (MS/HSD upserts)
+├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
 ├── credit.js           # Credit list view, lazy tab modules
 ├── creditOverview.js   # Credit overview tab (lazy)
 ├── creditRecord.js     # Credit record tab (lazy)
@@ -134,7 +137,7 @@ js/
 └── settings.js         # pump_settings, users, salaries, products, integrations (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js` (hash-based in-page tabs on dashboard, reports, credit, billing, salary, attendance, invoices, analysis, settings).
+**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js` (hash-based in-page tabs on dashboard, reports, credit, billing, salary, attendance, invoices, analysis, settings).
 
 ### 3.4 Navigation (authenticated pages)
 
@@ -142,7 +145,7 @@ Top navigation is grouped and role-aware (`js/auth.js` → `applyRoleVisibility(
 
 | Group | Pages | Supervisor | Admin |
 |-------|-------|------------|-------|
-| **Operations** | Dashboard, Meter Reading (`dsr.html`) | ✓ | ✓ |
+| **Operations** | Dashboard, Meter Reading (`meter-reading.html`), DSR (`dsr.html`) | ✓ | ✓ |
 | **Finance** | Credit, Expenses, Day closing, Billing, Invoices | ✓ | ✓ |
 | **HR** | Attendance, Salary, **Staff** | Attendance + Salary only | ✓ (incl. Staff) |
 | **Admin** | Analysis, Reports, Settings | ✗ | ✓ |
@@ -248,8 +251,9 @@ docs/
 | Page | Script | Primary purpose |
 |------|--------|-----------------|
 | `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + P&amp;L loaded lazily per section |
-| `dsr.html` | `dsr.js` | Meter Reading + DSR summary (`dsrSummary.js` lazy) |
-| `sales-daily.html` | — | Redirect to `dsr.html#filters` |
+| `meter-reading.html` | `meterReading.js` | Enter/edit MS and HSD meter readings |
+| `dsr.html` | `dsr.js` | DSR listing and stock summary (`dsrSummary.js`) |
+| `sales-daily.html` | — | Legacy redirect to `dsr.html` |
 | `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
 | `expenses.html` | `expenses.js` | Daily expenses by category |
 | `day-closing.html` | `day-closing.js` | Close day + register; admin overwrite/delete |
@@ -334,14 +338,15 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
 | Capability | Admin | Supervisor |
 |------------|-------|------------|
-| Operations + Finance pages (DSR, credit, expenses, day closing, billing, invoices) | ✓ | ✓ |
+| Operations + Finance pages (Meter Reading, DSR, credit, expenses, day closing, billing, invoices) | ✓ | ✓ |
 | Attendance + salary recording | ✓ | ✓ |
 | Staff roster / ID cards (`staff.html`) | ✓ | ✗ |
 | Settings, Analysis, Reports | ✓ | ✗ |
 | Dashboard P&amp;L section + buying price entry | ✓ | ✗ |
 | Product catalog edit (Settings → Billing) | ✓ | ✗ (can bill using existing products) |
 | Employee master mutations (`employees` table) | ✓ | ✗ (reads via `list_employees_*` RPCs) |
-| Day closing overwrite after save | ✓ | ✗ (read-only snapshot) |
+| Day closing overwrite after save | ✓ | ✗ (read-only snapshot; also locked after night-cash collection unless admin) |
+| Night-cash collection (register pickup) | ✓ | ✓ (record); admins may still edit linked closings |
 | Delete latest day closing | ✓ | ✗ |
 | Delete credit entries / payments | ✓ | ✗ |
 | Delete supplier invoice documents | ✓ | ✗ |
@@ -374,3 +379,5 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 | [DSR Tables](DSR_TABLES.md) | `dsr_petrol` / `dsr_diesel`, views, stock reconciliation |
 | [Development guide](DEVELOPMENT.md) | Local development, deployment, supervisor login |
 | [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive integration, edge function, full setup |
+| [Backup](BACKUP.md) | Production database backup to Google Drive |
+| [Documentation hub](README.md) | Index of all guides |

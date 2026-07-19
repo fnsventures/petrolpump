@@ -324,7 +324,7 @@ If the restore target is a **new** Supabase project, update GitHub environment s
 |---------|--------------|-----|
 | `PROD_DB_URL must be set` | Missing GitHub secret | Add `PROD_DB_URL` to prod environment |
 | `Missing Google OAuth env` | OAuth secrets not in GitHub | Add all three OAuth secrets to prod environment |
-| `Google OAuth token error` | Invalid/expired refresh token | Regenerate refresh token via OAuth Playground; update GitHub + Supabase |
+| `Google OAuth token error` / `unauthorized_client` | Client ID/secret do not match the refresh token (often Playground used without “your own credentials”), or secret was rotated | Regenerate: Playground → **Use your own OAuth credentials** → scope `drive` → update **all three** secrets in GitHub **prod** (+ Supabase Edge if invoices share them). Verify with the `curl` in [README §4](../README.md#4-google-drive-invoices--db-backups) before re-running the workflow |
 | `Drive upload failed` | Wrong folder ID or token scope | Verify `GOOGLE_DRIVE_BACKUP_FOLDER_ID`; ensure Drive scope on refresh token |
 | `no route to host` / connection timeout | Wrong DB URL | Use **Session pooler** URI from Supabase Connect, not Direct |
 | `tenant/user not found` | Wrong pooler region | Copy exact URI from prod project's **Connect** tab |
