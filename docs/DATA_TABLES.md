@@ -26,10 +26,11 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [employees](#employees) | Pump employees (for salary and attendance) |
 | [salary_payments](#salary_payments) | Salary installments per employee |
 | [employee_attendance](#employee_attendance) | Daily attendance (present/absent/half_day/leave) |
-| [credit_customers](#credit_customers) | Credit ledger: customer master and current amount_due |
+| [credit_customers](#credit_customers) | Credit ledger: customer master, amount_due, prepaid_balance |
 | [credit_entries](#credit_entries) | One row per credit sale (transaction date = DSR date) |
 | [credit_payments](#credit_payments) | Payments received from credit customers |
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
+| [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
 
 For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
@@ -414,7 +415,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 ## credit_customers
 
-**Purpose:** Credit ledger: customer master. `amount_due` is kept in sync with `credit_entries` by trigger. `date` is used for legacy/day-closing “credit today” when there are no entries yet.
+**Purpose:** Credit ledger: customer master. `amount_due` and `prepaid_balance` are kept in sync with entries/payments by RPC/triggers. Net balance = `amount_due − prepaid_balance`. `date` is used for legacy/day-closing “credit today” when there are no entries yet.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -423,17 +424,17 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | vehicle_no | text | Optional |
 | mobile | text | Optional contact number |
 | address | text | Optional address |
-| amount_due | numeric | Current outstanding (synced by trigger) |
+| amount_due | numeric | Current outstanding from unsettled sales (synced) |
+| prepaid_balance | numeric | Advance from overpayment (≥ 0); net = amount_due − prepaid |
 | date | date | Used for day-closing credit_today legacy |
 | last_payment | date | Last payment date |
 | notes | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** Default operational pattern; UPDATE also allowed for supervisor or admin (contact info; `amount_due` updated by payment RPC/triggers).
+**RLS:** Default operational pattern; UPDATE also allowed for supervisor or admin (contact info; balances updated by payment RPC/triggers).
 
-**Trigger:** `credit_entries_sync_trigger` on `credit_entries` updates `credit_customers.amount_due`.
-
+**Trigger / sync:** Entry and payment RPCs keep `amount_due` and `prepaid_balance` consistent.
 ---
 
 ## credit_entries
@@ -477,8 +478,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**Note:** Payment allocation to entries (FIFO) is done in RPC `record_credit_payment`; then trigger on `credit_entries` updates `credit_customers.amount_due`.
-
+**Note:** Payment allocation to entries (FIFO) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Overpayment increases `prepaid_balance`.
 ---
 
 ## day_closing
@@ -501,13 +501,48 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | credit_today | numeric | New credit that day (snapshot) |
 | expenses_today | numeric | Expenses that day (snapshot) |
 | closing_reference | text | Unique ref (e.g. DC-2026-00001) |
+| night_cash_collection_id | uuid | FK → night_cash_collections when cash was picked up |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** Default operational pattern, with extra rules when `night_cash_collection_id` is set: supervisors cannot update/delete collected closings; admins still can.
 
-**RPCs:** `get_day_closing_breakdown(date)` returns components plus `already_saved` and `can_overwrite` (true when admin and a row exists). When saved and not admin, returns **snapshot** values from the stored row (supervisor sees frozen accounting figures). `save_day_closing(date, night_cash, phone_pay, remarks)` computes short and inserts one row; **admins may overwrite** an existing date (recomputes live components, preserves `closing_reference`, recascades `short_previous` forward). `delete_day_closing(id)` — admin only, **latest date only**. Both call `require_staff_access()`. `recascade_day_closing_short_from` is internal (not callable by clients).
+**RPCs:**
+
+| RPC | Behaviour |
+|-----|-----------|
+| `get_day_closing_breakdown(date)` | Components + `already_saved`, `can_overwrite`, `night_cash_collected` |
+| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Insert or admin overwrite; recascades short |
+| `delete_day_closing(id)` | Admin only, **latest date only** |
+| `get_night_cash_available()` | Uncollected closings ready for pickup |
+| `preview_night_cash_collection(from, to)` | Preview amounts before collecting |
+| `collect_night_cash(from, to, remarks?)` | Create register row and link closings |
+
+`recascade_day_closing_short_from` is internal (not callable by clients).
+
+---
+
+## night_cash_collections
+
+**Purpose:** Immutable (via app) register of physical night-cash pickups from the pump. Each collection covers a date range of `day_closing` rows.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| collection_reference | text | Unique ref (e.g. NCC-2026-00001) |
+| from_date | date | First closing date included |
+| to_date | date | Last closing date included |
+| day_count | int | Number of linked days |
+| total_amount | numeric | Sum of `night_cash` from linked closings |
+| remarks | text | Optional (max 500) |
+| collected_by | uuid | auth.users.id |
+| collected_at | timestamptz | When recorded |
+| created_at | timestamptz | Created at |
+
+**RLS:** SELECT for provisioned staff. Inserts go through `collect_night_cash` (security definer).
+
+**Page:** `day-closing.html` collection UI.
 
 ---
 
@@ -538,11 +573,13 @@ employees
   └── employee_attendance.employee_id
 
 credit_customers
-  ├── credit_entries → trigger syncs amount_due
+  ├── amount_due, prepaid_balance
+  ├── credit_entries → sync balances
   └── credit_payments
 
 day_closing
-  └── short_previous = prev day’s short_today
+  ├── short_previous = prev day’s short_today
+  └── night_cash_collection_id → night_cash_collections
 
 expenses
   └── optional salary_payment_id → salary_payments (salary → expense auto-link)
@@ -571,12 +608,15 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `list_employees_salary()` | Active employees with HR fields | — |
 | `set_employee_photo(id, url)` | Update employee photo URL | admin |
 | `save_employee_attendance_batch(date, jsonb)` | Upsert attendance rows | — |
-| `get_day_closing_breakdown(date)` | Closing components + overwrite flags | — |
-| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing | overwrite: admin |
+| `get_day_closing_breakdown(date)` | Closing components + overwrite / collected flags | — |
+| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing | overwrite: admin (rules apply if collected) |
 | `delete_day_closing(id)` | Remove latest closing | admin |
 | `compute_day_closing_components(date)` | Live component calculation | internal use |
+| `get_night_cash_available()` | Uncollected night cash totals | — |
+| `preview_night_cash_collection(from, to)` | Preview pickup for a date range | — |
+| `collect_night_cash(from, to, remarks?)` | Record pickup; link closings | — |
 | `add_credit_entry(...)` | New credit sale | — |
-| `record_credit_payment(...)` | Payment + FIFO allocation | — |
+| `record_credit_payment(...)` | Payment + FIFO; prepaid on overpay | — |
 | `batch_record_credit_settlements(...)` | Multi-customer payment in one transaction | — |
 | `delete_credit_entry(id)` | Remove unsettled sale | admin |
 | `delete_credit_payment(id)` | Remove payment + reallocate | admin |
@@ -587,7 +627,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
 | `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
 
-Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, `credit_entries_sync_amount_due`, audit trigger functions.
+Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions.
 
 ---
 
@@ -600,3 +640,5 @@ Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `
 | [DSR Tables](DSR_TABLES.md) | DSR vs dsr_stock in detail |
 | [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
 | [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
+| [Backup](BACKUP.md) | Production database backup to Google Drive |
+| [Documentation hub](README.md) | Index of all guides |

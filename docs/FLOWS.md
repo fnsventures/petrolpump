@@ -10,8 +10,8 @@ This document describes the main **user and data flows** in the Petrol Pump appl
 |------|---------|-------------------|
 | Auth & roles | §1 | login → users (role) → dashboard; profile avatar; `check_page_access` |
 | Dashboard | §1b | snapshot, DSR summary, admin P&amp;L, alerts, tank visuals |
-| Daily operations | §2 | dsr_petrol/diesel → credit → expenses → day-closing |
-| Credit ledger | §3 | credit_customers, credit_entries, credit_payments |
+| Daily operations | §2 | meter-reading → credit → expenses → day-closing (+ night-cash collection) |
+| Credit ledger | §3 | credit_customers (amount_due + prepaid_balance), entries, payments |
 | DSR & stock | §4 | dsr_petrol, dsr_diesel, dsr_stock view |
 | Billing | §5 | products, invoices, save_invoice |
 | Invoice documents | §5b | invoice_documents, invoice-documents edge function, Google Drive |
@@ -46,7 +46,7 @@ User opens app (index.html / login.html)
 | `settings`, `staff`, `analysis`, `reports` | admin |
 | `dashboard`, `dsr`, `day-closing`, `expenses`, `credit`, `credit-overdue`, `sales-daily`, `attendance`, `salary`, `billing`, `invoices` | admin or supervisor |
 
-Legacy page name `credit-overdue` remains in the RPC for bookmark compatibility; the UI lives on `credit.html#outstanding`.
+`meter-reading.html` uses page name `dsr` for `check_page_access`. Legacy page name `credit-overdue` remains for bookmark compatibility; the UI lives on `credit.html#outstanding`.
 
 ---
 
@@ -91,14 +91,16 @@ Open dashboard.html
 A typical daily sequence:
 
 ```
-1. Meter Reading (dsr.html)
+1. Meter Reading (meter-reading.html)
    → Upsert dsr_petrol and/or dsr_diesel for today
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → dsr_stock view recalculates opening/closing/variation automatically
+   → Optional: open dsr.html for listing / stock summary
 
 2. Credit (credit.html)
    → Add credit sale → credit_entries (transaction_date = today)
    → Record payment → record_credit_payment (FIFO allocation)
+   → Overpayment stored as prepaid_balance (net = amount_due − prepaid)
 
 3. Expenses (expenses.html)
    → Add expenses for the day → expenses
@@ -109,8 +111,14 @@ A typical daily sequence:
    → save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
    → short_today becomes next day’s short_previous
    → Supervisor: after save, form is read-only (snapshot frozen)
-   → Admin: can_overwrite=true → re-save with fresh live components; recascades short forward
+   → Admin: can_overwrite when allowed → re-save; recascades short forward
    → Admin register tab: delete_day_closing (latest date only) to reopen a day
+
+5. Night-cash collection (day-closing.html — collection UI)
+   → get_night_cash_available / preview_night_cash_collection(from, to)
+   → collect_night_cash(from, to, remarks?) → night_cash_collections row
+   → Links day_closing.night_cash_collection_id for included dates
+   → After collection: supervisors cannot edit those closings; admins still can
 ```
 
 **Data dependencies:**
@@ -120,7 +128,7 @@ A typical daily sequence:
 - **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
-
+- **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---
 
 ## 3. Credit flow (ledger and settlement)
@@ -138,28 +146,33 @@ Customer detail (credit.html#…)
 Receive payment
    → record_credit_payment(customer_id, date, amount, note, payment_mode)
    → FIFO allocation to credit_entries; insert credit_payments
+   → Overpayment increases prepaid_balance (sync RPC updates amount_due + prepaid)
+
+Batch settle (multiple customers)
+   → batch_record_credit_settlements(...)
 
 Admin corrections (admin only)
    → delete_credit_entry(id) — only if amount_settled = 0
    → delete_credit_payment(id) — re-allocates remaining payments FIFO
 ```
 
+- **Net balance:** `amount_due − prepaid_balance`.
 - **Ledger view:** `get_credit_ledger_aggregated()`.
 - **Overdue / outstanding:** `get_outstanding_credit_list_as_of(date)` on `credit.html#outstanding`.
 - **Customer detail:** In-page on `credit.html` (hash routes) — not a separate page. Legacy `credit-customer.html` redirects with query/hash preserved.
 - **Legacy URL:** `credit-overdue.html` redirects to `credit.html#outstanding`.
-
 ---
 
 ## 4. DSR and stock flow
 
-- **Meter form** → `dsr_petrol` or `dsr_diesel` (one row per date per product).
+- **Meter form** (`meter-reading.html` → `js/meterReading.js`) → `dsr_petrol` or `dsr_diesel` (one row per date per product).
+- **DSR listing** (`dsr.html` → `js/dsr.js`) → range views and stock summary.
 - **Stock reconciliation** → read-only `dsr_stock` view (or `get_dsr_stock_range` for date ranges). Dip stock comes from the `stock` column on the meter row.
 - **Union reads** → `dsr` view when code queries “all products”.
+- **Legacy hashes** on `dsr.html` (`#meter`, `#petrol`, `#diesel`) redirect to `meter-reading.html`.
 - **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
 See [DSR_TABLES.md](DSR_TABLES.md).
-
 ---
 
 ## 5. Billing flow (lube / accessories)
@@ -339,14 +352,14 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 |------|------------------------|
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown, update_dsr_buying_price |
-| Meter Reading (DSR) | dsr_petrol, dsr_diesel |
-| DSR listing (sales-daily) | dsr view, dsr_stock, get_dsr_stock_range |
-| Credit | credit_*, add_credit_entry, record_credit_payment, get_customer_credit_detail_as_of, delete_credit_entry, delete_credit_payment |
+| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel |
+| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range |
+| Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
 | Billing | products, invoices, save_invoice |
 | Invoice documents | invoice_documents, edge function invoice-documents, pump_settings.integrations.googleDrive |
 | Expenses | expenses, expense_categories |
-| Day closing | day_closing, get_day_closing_breakdown, save_day_closing, delete_day_closing |
+| Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, collect_night_cash, delete_day_closing |
 | Staff | employees, set_employee_photo, staff-photos bucket (admin) |
 | Attendance | employee_attendance, list_employees_roster, save_employee_attendance_batch |
 | Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees |
@@ -360,8 +373,10 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 
 | Document | Description |
 |----------|-------------|
+| [Documentation hub](README.md) | Index and release checklist |
 | [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment |
 | [Data Tables](DATA_TABLES.md) | Table reference and RLS |
 | [DSR Tables](DSR_TABLES.md) | DSR tables and computed stock |
 | [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
 | [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
+| [Backup](BACKUP.md) | Production database backup to Google Drive |
