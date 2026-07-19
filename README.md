@@ -51,7 +51,7 @@
 | **5** | [Run locally](#5-run-locally) | Dev server setup |
 | **6** | [Features](#6-features) | What the app covers |
 | **7** | [Docs](#7-docs) | Deep guides |
-| **8** | [License](#8-license) | Ownership & use |
+| **8** | [License](#8-license) | Proprietary · F&S Ventures |
 
 **Playbook** → [OPERATIONS.md](docs/OPERATIONS.md)
 ([Sync](docs/OPERATIONS.md#1-sync-staging-with-production-data) ·
@@ -188,9 +188,33 @@ Create the user in **Auth**, then add them to `public.users` as `admin`.
 
 ## 8 · License
 
-Copyright © [F&S Ventures](https://fnsventures.in/). All rights reserved.
+<div align="center">
 
-This software and documentation are proprietary. Unauthorized copying, modification, distribution, or use is prohibited. See [LICENSE](LICENSE).
+[![License](https://img.shields.io/badge/License-Proprietary-222222?style=for-the-badge)](LICENSE)
+[![Copyright](https://img.shields.io/badge/©-F%26S_Ventures-0070c0?style=for-the-badge)](https://fnsventures.in/)
+
+</div>
+
+**Copyright © 2024–2026 [F&S Ventures](https://fnsventures.in/).** All rights reserved.
+
+This repository contains proprietary software developed for **Bishnupriya Fuels** (Authorized BPCL dealer), an F&S Ventures company. Access or use constitutes acceptance of the full agreement in [`LICENSE`](LICENSE).
+
+| | |
+|--|--|
+| **Type** | Proprietary software license — not open source |
+| **Owner** | [F&S Ventures](https://fnsventures.in/) |
+| **Grant** | Limited, non-exclusive, non-transferable, revocable — internal ops only |
+| **Users** | Authorized personnel / contractors only; no credential sharing |
+| **IP** | All rights reserved; feedback assigned to F&S Ventures |
+| **Data** | Production & personal data must stay in approved systems; DPDP / IT Act apply |
+| **Security** | Protect secrets; report incidents promptly; no unauthorized probing |
+| **Third parties** | Cloud/libs keep their own terms (GitHub, Supabase, Drive, etc.) |
+| **Not permitted** | Copy, redistribute, sublicense, compete with, or publicly disclose the Software |
+| **Liability** | AS IS · capped liability · Licensee indemnifies for misuse |
+| **Law** | Laws of India · negotiation then Indian courts |
+| **Full terms** | See [`LICENSE`](LICENSE) (21 sections) |
+
+For licensing or legal notices: [fnsventures.in](https://fnsventures.in/).
 
 ---
 
@@ -200,6 +224,6 @@ This software and documentation are proprietary. Unauthorized copying, modificat
 
 <br /><br />
 
-<sub>HTML/JS · Supabase · GitHub Pages</sub>
+<sub>HTML/JS · Supabase · GitHub Pages · © F&S Ventures</sub>
 
 </div>
