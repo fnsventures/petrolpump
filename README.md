@@ -40,7 +40,7 @@
 
 ## Jump to
 
-[Architecture](#1-architecture) · [Sync](#2-sync-staging--production-data) · [Release](#3-release) · [Backup](#4-backup--google-drive) · [Ship](#ship-it) · [Local](#run-locally) · [Docs](#docs)
+[Architecture](#1-architecture) · [Sync](#2-sync-staging--production-data) · [Release](#3-release) · [Backup](#4-backup--google-drive) · [Local](#run-locally) · [Docs](#docs)
 
 ---
 
@@ -103,25 +103,6 @@ Prod stays **read-only**. Staging data is **replaced**. Does not deploy the site
 
 Actions → **Backup production database** · or `./scripts/db.sh backup` on your laptop.
 
-<img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif" width="900" alt="" />
-
-## Ship it
-
-<div align="center">
-
-<img src="https://user-images.githubusercontent.com/74038190/212749443-0810e511-4f46-4492-96aa-3c110d7bc41a.gif" width="140" alt="" />
-
-### → [docs/OPERATIONS.md](docs/OPERATIONS.md)
-
-| I want to… | Open |
-|------------|------|
-| Sync staging data | §1 |
-| Deploy `/staging/` | §2 |
-| Go live | §3 |
-| Back up prod | §4 |
-
-</div>
-
 ---
 
 ## Run locally
@@ -161,14 +142,20 @@ Add yourself in Auth **and** `public.users` as `admin` — [DEVELOPMENT.md](docs
 
 <div align="center">
 
-<img src="https://user-images.githubusercontent.com/74038190/212284115-f47cd8ff-2ffb-4b04-b5bf-4d1c14c0247f.gif" width="320" alt="" />
+<img src="https://user-images.githubusercontent.com/74038190/212284115-f47cd8ff-2ffb-4b04-b5bf-4d1c14c0247f.gif" width="420" alt="" />
 
 <br />
 
-<sub>
-Funky accents · typing · skillicons · shields · gh-card  
-· inspired by <a href="https://github.com/abhisheknaiidu/awesome-github-profile-readme">awesome-github-profile-readme</a>
-&amp; <a href="https://github.com/Anmol-Baranwal/Cool-GIFs-For-GitHub">Cool-GIFs-For-GitHub</a>
-</sub>
+<img src="https://user-images.githubusercontent.com/74038190/212749168-86d6c7ab-98da-409b-998f-c5b74721badd.gif" width="160" alt="" />
+<img src="https://user-images.githubusercontent.com/74038190/212751818-13da6fd2-27ca-45c4-9c64-3940ccfa6fd3.gif" width="160" alt="" />
+<img src="https://user-images.githubusercontent.com/74038190/212749443-0810e511-4f46-4492-96aa-3c110d7bc41a.gif" width="160" alt="" />
+
+<br />
+
+<img src="https://user-images.githubusercontent.com/74038190/212747657-7a8d59da-69c8-4110-8ea8-f8102fd0b413.gif" width="220" alt="" />
+
+<br /><br />
+
+<sub>HTML/JS · Supabase · GitHub Pages</sub>
 
 </div>
