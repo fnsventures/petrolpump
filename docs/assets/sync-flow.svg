@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 280" role="img" aria-label="Sync production data into staging database">
+  <defs>
+    <linearGradient id="sy-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/><stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <marker id="sy-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="280" rx="16" fill="url(#sy-bg)" stroke="#1e3a5f"/>
+  <text x="450" y="28" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="2.5">DATABASE SYNC</text>
+  <text x="450" y="46" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Copy live data ’ staging (production stays read-only)</text>
+
+  <!-- Prod -->
+  <rect x="60" y="80" width="240" height="130" rx="12" fill="#052e16" stroke="#34d399" stroke-width="2"/>
+  <text x="180" y="110" text-anchor="middle" fill="#34d399" font-family="ui-monospace,monospace" font-size="12">PRODUCTION DB</text>
+  <text x="180" y="140" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="14">Live station data</text>
+  <text x="180" y="165" text-anchor="middle" fill="#86efac" font-family="ui-monospace,monospace" font-size="11">READ ONLY</text>
+  <text x="180" y="190" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">PROD_DB_URL</text>
+
+  <!-- Arrow with packets -->
+  <line x1="320" y1="145" x2="520" y2="145" stroke="#fbbf24" stroke-width="3" marker-end="url(#sy-arrow)" stroke-dasharray="8 6">
+    <animate attributeName="stroke-dashoffset" values="28;0" dur="1s" repeatCount="indefinite"/>
+  </line>
+  <text x="420" y="128" text-anchor="middle" fill="#fbbf24" font-family="ui-monospace,monospace" font-size="11">./scripts/db.sh sync</text>
+  <circle r="6" fill="#fbbf24">
+    <animateMotion dur="2s" repeatCount="indefinite" path="M320,145 L520,145"/>
+  </circle>
+
+  <!-- Staging -->
+  <rect x="540" y="80" width="300" height="130" rx="12" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  <text x="690" y="110" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="12">STAGING DB</text>
+  <text x="690" y="140" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="14">Test copy</text>
+  <text x="690" y="165" text-anchor="middle" fill="#f87171" font-family="ui-monospace,monospace" font-size="11">DATA REPLACED</text>
+  <text x="690" y="190" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">STAGING_DB_URL</text>
+
+  <text x="450" y="250" text-anchor="middle" fill="#64748b" font-family="system-ui,sans-serif" font-size="12">
+    Does <tspan fill="#f87171" font-weight="600">not</tspan> deploy the website · Does <tspan fill="#f87171" font-weight="600">not</tspan> change production
+  </text>
+</svg>

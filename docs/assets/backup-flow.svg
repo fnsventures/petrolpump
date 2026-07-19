@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-label="Production backup to Google Drive">
+  <defs>
+    <linearGradient id="bk-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/><stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <marker id="bk-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#00d4ff"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="300" rx="16" fill="url(#bk-bg)" stroke="#1e3a5f"/>
+  <text x="450" y="28" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="2.5">PRODUCTION BACKUP</text>
+  <text x="450" y="46" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Dump schema + data ’ compress ’ upload to Google Drive</text>
+
+  <!-- Step 1 -->
+  <rect x="40" y="80" width="180" height="120" rx="10" fill="#052e16" stroke="#34d399" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="1;0.4;0.4;1" keyTimes="0;0.25;0.85;1" dur="6s" repeatCount="indefinite"/>
+  </rect>
+  <text x="130" y="115" text-anchor="middle" fill="#34d399" font-family="ui-monospace,monospace" font-size="10">1 · DUMP</text>
+  <text x="130" y="145" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13">Prod Postgres</text>
+  <text x="130" y="168" text-anchor="middle" fill="#86efac" font-family="ui-monospace,monospace" font-size="10">read-only</text>
+
+  <line x1="230" y1="140" x2="270" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#bk-arrow)"/>
+
+  <!-- Step 2 -->
+  <rect x="280" y="80" width="180" height="120" rx="10" fill="#0c1929" stroke="#38bdf8" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.4;1;0.4;0.4" keyTimes="0;0.35;0.55;1" dur="6s" repeatCount="indefinite"/>
+  </rect>
+  <text x="370" y="115" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">2 · COMPRESS</text>
+  <text x="370" y="145" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13">.sql.gz files</text>
+  <text x="370" y="168" text-anchor="middle" fill="#7dd3fc" font-family="ui-monospace,monospace" font-size="10">+ manifest</text>
+
+  <line x1="470" y1="140" x2="510" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#bk-arrow)"/>
+
+  <!-- Step 3 -->
+  <rect x="520" y="80" width="180" height="120" rx="10" fill="#0c1929" stroke="#fbbf24" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;1;0.4" keyTimes="0;0.55;0.75;1" dur="6s" repeatCount="indefinite"/>
+  </rect>
+  <text x="610" y="115" text-anchor="middle" fill="#fbbf24" font-family="ui-monospace,monospace" font-size="10">3 · OAUTH</text>
+  <text x="610" y="145" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="13">Access token</text>
+  <text x="610" y="168" text-anchor="middle" fill="#fcd34d" font-family="ui-monospace,monospace" font-size="10">refresh grant</text>
+
+  <line x1="710" y1="140" x2="750" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#bk-arrow)"/>
+
+  <!-- Step 4 -->
+  <rect x="760" y="80" width="110" height="120" rx="10" fill="#082f49" stroke="#00d4ff" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.4;0.4;0.4;1" keyTimes="0;0.75;0.85;1" dur="6s" repeatCount="indefinite"/>
+  </rect>
+  <text x="815" y="125" text-anchor="middle" fill="#00d4ff" font-family="ui-monospace,monospace" font-size="10">4</text>
+  <text x="815" y="150" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="12">Drive</text>
+  <text x="815" y="172" text-anchor="middle" fill="#7dd3fc" font-family="ui-monospace,monospace" font-size="9">YYYY/MM</text>
+
+  <!-- Moving packet -->
+  <circle r="5" fill="#00d4ff">
+    <animateMotion dur="6s" repeatCount="indefinite" path="M130,140 L370,140 L610,140 L815,140"/>
+  </circle>
+
+  <rect x="40" y="230" width="820" height="44" rx="8" fill="#0c1929" stroke="#1e3a5f"/>
+  <text x="60" y="257" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="12">
+    Trigger: Actions ’ Backup production database · or monthly cron (1st @ 03:00 UTC)
+  </text>
+</svg>

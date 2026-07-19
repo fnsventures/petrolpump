@@ -150,7 +150,16 @@ select public.check_page_access('invoices');
 
 ### Step 2 — Deploy the edge function
 
-Edge functions are **not** deployed by GitHub Actions in this repo. You must deploy manually after code changes.
+**Preferred:** GitHub Actions deploys all edge functions when `supabase/functions/**` changes on `main` or `staging` (workflow: `.github/workflows/deploy-supabase-functions.yml`). You can also run **Actions → Deploy Supabase Functions → Run workflow**.
+
+Required GitHub environment secrets (per **staging** / **prod**):
+
+| Secret | Purpose |
+|--------|---------|
+| `SUPABASE_ACCESS_TOKEN` | [Supabase Account → Access Tokens](https://supabase.com/dashboard/account/tokens) |
+| `SUPABASE_PROJECT_REF` | Project Settings → General → Reference ID |
+
+**Manual deploy** (alternative or first-time before CI is wired):
 
 1. **Install Supabase CLI** (if not already):
 
@@ -673,12 +682,16 @@ If uploads start failing with OAuth token errors, generate a new refresh token (
 
 ### Edge function updates
 
-After editing `supabase/functions/invoice-documents/index.ts`:
+After editing `supabase/functions/invoice-documents/index.ts`, either:
+
+- Push to `main` / `staging` (Actions deploys when `supabase/functions/**` changes), or
+- Deploy manually:
 
 ```bash
 supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
 ```
 
+Repeat for each Supabase project (staging and prod).
 ---
 
 ## 14. Source files reference

@@ -1,18 +1,31 @@
-# Contributing Guidelines
+# Contributing
 
-Thank you for your interest in contributing! 🎉  
-All contributions are welcome and appreciated.
+Thanks for contributing to **Bishnupriya Fuels**.
 
-Please note: this is a personal repository, and all changes are reviewed by the maintainer before being merged.
+**Repo:** [github.com/fnsventures/petrolpump](https://github.com/fnsventures/petrolpump)
 
 ---
 
-## How to Contribute
+## How we ship
 
-### 1. Fork the Repository
-Click the **Fork** button at the top right of this page to create your own copy.
+Use **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for sync, staging deploy, release, and backup.
 
-### 2. Clone Your Fork
+1. Branch from `staging`
+2. Open a PR into `staging`
+3. Test on `/staging/`
+4. Release with the Operations playbook (migrate if needed, then merge to `main`)
+
+Never commit secrets, dumps, `js/env.js`, or `scripts/db.env`.
+
+---
+
+## Local setup
+
 ```bash
-git clone https://github.com/privatefnsventures-maker/petrolpump.git
-cd petrol-pump-app
+git clone https://github.com/fnsventures/petrolpump.git
+cd petrolpump
+cp js/env.example.js js/env.js
+npm run dev
+```
+
+Full setup: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)

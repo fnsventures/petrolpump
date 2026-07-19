@@ -1,12 +1,11 @@
 # Database maintenance scripts
 
-Scripts for **staging test data**, **production schema migration**, and **backups**.
+Scripts for sync, migrate, and backup.
 
-> **Documentation hub:** [docs/README.md](../docs/README.md) — step-by-step commands.  
-> **This file:** setup, internals, troubleshooting, and file reference.
+> **Day-to-day steps:** [docs/OPERATIONS.md](../docs/OPERATIONS.md)  
+> **This file:** tool setup, what each script does internally, and error messages.
 
-All write operations target **staging** or **production** explicitly — prod data sync is read-only on production.
-
+Prod data sync is always **read-only** on production.
 ---
 
 ## Quick reference
@@ -53,27 +52,9 @@ Legacy env files (`sync-prod-to-staging.env`, `migrate-prod.env`) still work if 
 
 ## Release workflow
 
-Use this order when shipping a new version:
+Follow **[docs/OPERATIONS.md](../docs/OPERATIONS.md)** — short numbered steps for sync, deploy, migrate, and go-live.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. ./scripts/db.sh sync                                     │
-│    Prod data → staging (prod unchanged)                     │
-├─────────────────────────────────────────────────────────────┤
-│ 2. Push to staging branch → test https://…/staging/         │
-├─────────────────────────────────────────────────────────────┤
-│ 3. ./scripts/db.sh migrate                                  │
-│    Review preflight + pending migrations (no prod changes)  │
-├─────────────────────────────────────────────────────────────┤
-│ 4. ./scripts/db.sh migrate --apply                          │
-│    Quiet window: backup prod → run migrations → verify      │
-├─────────────────────────────────────────────────────────────┤
-│ 5. Merge staging → main → smoke-test live site              │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Optional before step 4: `./scripts/db.sh backup` or Supabase Dashboard backup.
-
+Do not use a second checklist here; this file only explains script behaviour.
 ---
 
 ## Commands in detail
@@ -211,6 +192,7 @@ Never commit these.
 
 ## Related docs
 
-- [Backup guide](../docs/BACKUP.md) — prod DB → Google Drive (GitHub Actions, restore)
-- [Development guide §2](../docs/DEVELOPMENT.md#2-deployment-prod-and-staging) — GitHub Pages deploy, branches
-- [Architecture](../docs/ARCHITECTURE.md) — app structure and Supabase model
+- [Operations playbook](../docs/OPERATIONS.md) — sync, deploy, release, backup steps
+- [Backup guide](../docs/BACKUP.md) — Drive restore and troubleshooting
+- [Development](../docs/DEVELOPMENT.md) — GitHub environments
+- [Project README](../README.md)
