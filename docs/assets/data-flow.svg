@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" role="img" aria-label="Daily data flow from meter reading to day closing">
+  <defs>
+    <linearGradient id="df-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/><stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <marker id="df-arrow" markerWidth="7" markerHeight="7" refX="5" refY="2.5" orient="auto">
+      <path d="M0,0 L5,2.5 L0,5 Z" fill="#00d4ff"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="300" rx="16" fill="url(#df-bg)" stroke="#1e3a5f"/>
+  <text x="450" y="28" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="2.5">DAILY DATA FLOW</text>
+  <text x="450" y="46" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">How forecourt data moves through the app</text>
+
+  <!-- Steps -->
+  <g font-family="system-ui,sans-serif">
+    <!-- 1 -->
+    <rect x="30" y="90" width="150" height="100" rx="10" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.35;1;0.35;0.35" keyTimes="0;0.15;0.3;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="105" y="120" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">1</text>
+    <text x="105" y="145" text-anchor="middle" fill="#e2e8f0" font-size="13">Meter Reading</text>
+    <text x="105" y="168" text-anchor="middle" fill="#64748b" font-size="10">dsr_petrol / diesel</text>
+
+    <line x1="185" y1="140" x2="215" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#df-arrow)"/>
+
+    <!-- 2 -->
+    <rect x="220" y="90" width="150" height="100" rx="10" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.35;0.35;1;0.35;0.35" keyTimes="0;0.2;0.35;0.5;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="295" y="120" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">2</text>
+    <text x="295" y="145" text-anchor="middle" fill="#e2e8f0" font-size="13">Credit</text>
+    <text x="295" y="168" text-anchor="middle" fill="#64748b" font-size="10">entries + payments</text>
+
+    <line x1="375" y1="140" x2="405" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#df-arrow)"/>
+
+    <!-- 3 -->
+    <rect x="410" y="90" width="150" height="100" rx="10" fill="#0c1929" stroke="#38bdf8" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.35;0.35;0.35;1;0.35;0.35" keyTimes="0;0.35;0.4;0.55;0.7;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="485" y="120" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">3</text>
+    <text x="485" y="145" text-anchor="middle" fill="#e2e8f0" font-size="13">Expenses</text>
+    <text x="485" y="168" text-anchor="middle" fill="#64748b" font-size="10">daily costs</text>
+
+    <line x1="565" y1="140" x2="595" y2="140" stroke="#00d4ff" stroke-width="2" marker-end="url(#df-arrow)"/>
+
+    <!-- 4 -->
+    <rect x="600" y="90" width="150" height="100" rx="10" fill="#0c1929" stroke="#34d399" stroke-width="2">
+      <animate attributeName="stroke-opacity" values="0.35;0.35;0.35;0.35;1;1" keyTimes="0;0.55;0.6;0.65;0.8;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <text x="675" y="120" text-anchor="middle" fill="#34d399" font-family="ui-monospace,monospace" font-size="10">4</text>
+    <text x="675" y="145" text-anchor="middle" fill="#e2e8f0" font-size="13">Day Closing</text>
+    <text x="675" y="168" text-anchor="middle" fill="#64748b" font-size="10">cash + short</text>
+
+    <!-- pulse packet -->
+    <circle r="5" fill="#00d4ff">
+      <animateMotion dur="8s" repeatCount="indefinite" path="M105,140 L295,140 L485,140 L675,140"/>
+      <animate attributeName="opacity" values="0;1;1;1;0" keyTimes="0;0.05;0.7;0.9;1" dur="8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- Entry points strip -->
+  <rect x="30" y="220" width="840" height="52" rx="10" fill="#0c1929" stroke="#1e3a5f"/>
+  <text x="50" y="242" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">ENTRY POINTS</text>
+  <text x="50" y="258" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="11">
+    meter-reading.html · credit.html · expenses.html · day-closing.html
+  </text>
+  <text x="620" y="250" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">auth gate:</text>
+  <text x="700" y="250" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="10">requireAuth()</text>
+</svg>

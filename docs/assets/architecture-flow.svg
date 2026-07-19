@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 320" role="img" aria-label="System architecture: Browser to GitHub Pages to Supabase">
+  <defs>
+    <linearGradient id="arch-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/><stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="arch-beam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0070c0" stop-opacity="0"/><stop offset="50%" stop-color="#00d4ff"/><stop offset="100%" stop-color="#0070c0" stop-opacity="0"/>
+    </linearGradient>
+    <marker id="arch-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#00d4ff"/>
+    </marker>
+  </defs>
+
+  <rect width="900" height="320" rx="16" fill="url(#arch-bg)" stroke="#1e3a5f"/>
+  <rect x="0" width="900" height="2" fill="url(#arch-beam)" opacity="0.25">
+    <animate attributeName="y" values="-4;324;-4" dur="6s" repeatCount="indefinite"/>
+  </rect>
+
+  <text x="450" y="28" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10" letter-spacing="2.5">SYSTEM ARCHITECTURE</text>
+  <text x="450" y="46" text-anchor="middle" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="12">Browser  ·  GitHub Pages  ·  Supabase (Auth + Postgres + Edge)</text>
+
+  <!-- Browser -->
+  <rect x="40" y="80" width="200" height="180" rx="12" fill="#0c1929" stroke="#38bdf8" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
+  </rect>
+  <text x="140" y="108" text-anchor="middle" fill="#38bdf8" font-family="ui-monospace,monospace" font-size="11">BROWSER</text>
+  <rect x="60" y="124" width="160" height="36" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="140" y="146" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="12">HTML / CSS / JS</text>
+  <rect x="60" y="172" width="160" height="36" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="140" y="194" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="12">Service worker</text>
+  <rect x="60" y="220" width="160" height="24" rx="6" fill="#082f49" stroke="#0ea5e9" stroke-opacity="0.5"/>
+  <text x="140" y="236" text-anchor="middle" fill="#7dd3fc" font-family="ui-monospace,monospace" font-size="10">login ’ dashboard</text>
+
+  <!-- Arrow 1 -->
+  <line x1="250" y1="170" x2="310" y2="170" stroke="#00d4ff" stroke-width="2" marker-end="url(#arch-arrow)" stroke-dasharray="6 4">
+    <animate attributeName="stroke-dashoffset" values="20;0" dur="1.2s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- GitHub Pages -->
+  <rect x="320" y="80" width="200" height="180" rx="12" fill="#0c1929" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="420" y="108" text-anchor="middle" fill="#94a3b8" font-family="ui-monospace,monospace" font-size="11">GITHUB PAGES</text>
+  <rect x="340" y="130" width="160" height="44" rx="6" fill="#052e16" stroke="#34d399"/>
+  <text x="420" y="148" text-anchor="middle" fill="#86efac" font-family="ui-monospace,monospace" font-size="10">main ’ live</text>
+  <text x="420" y="164" text-anchor="middle" fill="#6ee7b7" font-family="system-ui,sans-serif" font-size="11">site root</text>
+  <rect x="340" y="188" width="160" height="44" rx="6" fill="#0c1929" stroke="#38bdf8"/>
+  <text x="420" y="206" text-anchor="middle" fill="#7dd3fc" font-family="ui-monospace,monospace" font-size="10">staging ’ /staging/</text>
+  <text x="420" y="222" text-anchor="middle" fill="#93c5fd" font-family="system-ui,sans-serif" font-size="11">test site</text>
+
+  <!-- Arrow 2 -->
+  <line x1="530" y1="170" x2="590" y2="170" stroke="#00d4ff" stroke-width="2" marker-end="url(#arch-arrow)" stroke-dasharray="6 4">
+    <animate attributeName="stroke-dashoffset" values="20;0" dur="1.2s" begin="0.3s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Supabase -->
+  <rect x="600" y="80" width="260" height="180" rx="12" fill="#0c1929" stroke="#3ecf8e" stroke-width="1.5">
+    <animate attributeName="stroke-opacity" values="0.45;1;0.45" dur="3.5s" repeatCount="indefinite"/>
+  </rect>
+  <text x="730" y="108" text-anchor="middle" fill="#3ecf8e" font-family="ui-monospace,monospace" font-size="11">SUPABASE</text>
+  <rect x="620" y="124" width="100" height="50" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="670" y="146" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="11">Auth</text>
+  <text x="670" y="162" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9">JWT</text>
+  <rect x="740" y="124" width="100" height="50" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="790" y="146" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="11">Postgres</text>
+  <text x="790" y="162" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9">RLS + RPC</text>
+  <rect x="620" y="190" width="220" height="50" rx="6" fill="#1e293b" stroke="#334155"/>
+  <text x="730" y="212" text-anchor="middle" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="11">Edge Functions</text>
+  <text x="730" y="228" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="9">reports · invoices · Drive</text>
+
+  <text x="450" y="298" text-anchor="middle" fill="#64748b" font-family="ui-monospace,monospace" font-size="10">
+    <tspan>Entry: </tspan>
+    <tspan fill="#38bdf8">index.html</tspan>
+    <tspan> ’ </tspan>
+    <tspan fill="#38bdf8">login.html</tspan>
+    <tspan> ’ </tspan>
+    <tspan fill="#34d399">dashboard.html</tspan>
+  </text>
+</svg>

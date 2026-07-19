@@ -1,12 +1,13 @@
 # Production database backup (Google Drive)
 
-This guide explains how **production Supabase database backups** work: automated monthly uploads to Google Drive, manual triggers, local backups, restore, and troubleshooting.
+Deep reference for **automated / manual prod DB backups** to Google Drive, restore, and troubleshooting.
 
-> **Documentation hub:** [README.md](README.md) · **Local backup:** `./scripts/db.sh backup`
+> **Simple steps first:** [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database)  
+> **Local backup only:** `./scripts/db.sh backup`
 
 **Scope:** Production database **schema + row data** only. Staging is never backed up by this workflow.
 
-**Not covered here:** Supplier invoice PDFs in Google Drive — see [Invoice documents guide](INVOICE_DOCUMENTS.md).
+**Not covered here:** Supplier invoice PDFs — see [Invoice documents](INVOICE_DOCUMENTS.md).
 
 ---
 

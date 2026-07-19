@@ -1,11 +1,11 @@
 # Development guide
 
-This document covers **local development**, **deployment** (prod and staging), **edge functions**, and **supervisor/operator login**.
+Local setup, GitHub environments, edge functions, and supervisor login.
 
-> **Start here:** [Documentation hub](README.md) · [Project README](../README.md)  
-> **This guide:** full detail for setup, GitHub configuration, and day-to-day engineering tasks.
+> **Sync, deploy, release, backup:** use the [Operations playbook](OPERATIONS.md) — simple numbered steps.  
+> **This guide:** first-time laptop setup and environment details only.
 
-For project structure and tech stack, see [Architecture](ARCHITECTURE.md).
+For project structure, see [Architecture](ARCHITECTURE.md).
 ---
 
 ## 1. Local development
@@ -118,43 +118,32 @@ Each deploy uses that environment’s GitHub secrets and pushes to **`gh-pages`*
    - `SUPABASE_URL` — Supabase project URL for that environment.
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
-   **Prod only** — for the monthly database backup workflow (full guide: [Backup](BACKUP.md)):
+   **Prod only** — for the monthly database backup workflow (steps: [OPERATIONS §4](OPERATIONS.md#4-backup-production-database), deep guide: [Backup](BACKUP.md)):
    - `PROD_DB_URL` — Session pooler URI from Supabase → Connect.
    - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN` — same values as Supabase Edge Function secrets (invoice documents).
    - `GOOGLE_DRIVE_BACKUP_FOLDER_ID` — Google Drive folder ID for DB backups (create a dedicated folder; not the invoice root).
 
 Use one Supabase project for prod and another for staging.
 
-### 2.3 Deploy flow
+### 2.3 Deploy and release (day-to-day)
 
-1. **Test in staging**  
-   Merge a PR into `staging`, or run **Deploy** manually with target `staging` from your feature branch.
+Use the **[Operations playbook](OPERATIONS.md)** for simple steps:
 
-2. **Promote to production**  
-   Merge `staging` into `main`, or run **Deploy** manually with target `prod` (typically from `main` or `staging`).
+- Sync staging with prod data
+- Deploy staging / production websites
+- Full release checklist (including migrations)
+- Database backup to Google Drive
 
-### 2.4 Database scripts (sync, migrate, backup)
+This section only documents GitHub wiring. Do not follow a second release order here.
 
-Maintenance scripts live in **`scripts/`**. Full guide: **[scripts/README.md](../scripts/README.md)**.
+### 2.4 Database scripts
 
-**Setup once:**
+Scripts live in **`scripts/`**. Day-to-day commands: [OPERATIONS.md](OPERATIONS.md). Internals and errors: [scripts/README.md](../scripts/README.md).
 
 ```bash
 cp scripts/db.env.example scripts/db.env
 # PROD_DB_URL + STAGING_DB_URL from Supabase → Connect → Session pooler
 ```
-
-**Release order:**
-
-| Step | Command | Prod | Staging |
-|------|---------|------|---------|
-| 1. Copy real data for testing | `./scripts/db.sh sync` | read only | replaced |
-| 2. Test app | push `staging` branch → `/staging/` | — | — |
-| 3. Preflight prod migration | `./scripts/db.sh migrate` | no changes | — |
-| 4. Migrate prod schema | `./scripts/db.sh migrate --apply` | schema upgraded | — |
-| 5. Deploy app | merge `staging` → `main` | site updated | — |
-
-Optional: `./scripts/db.sh backup` before step 4.
 
 ### 2.5 Edge functions
 
@@ -253,10 +242,11 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 
 | Document | Description |
 |----------|-------------|
-| [Documentation hub](README.md) | Index, release checklist, troubleshooting |
-| [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment overview |
+| [Operations playbook](OPERATIONS.md) | Sync, deploy, release, backup — start here |
+| [Documentation hub](README.md) | Index of all guides |
+| [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security |
 | [Data Tables](DATA_TABLES.md) | Database tables and RLS |
 | [Flows](FLOWS.md) | User and data flows |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function deploy, troubleshooting |
-| [Backup](BACKUP.md) | Prod DB backup to Google Drive (GitHub Actions, restore, troubleshooting) |
-| [scripts/README](../scripts/README.md) | DB sync, migrate, backup commands |
+| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive invoices |
+| [Backup](BACKUP.md) | Drive backup restore and troubleshooting |
+| [scripts/README](../scripts/README.md) | DB script internals |

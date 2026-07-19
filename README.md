@@ -1,178 +1,177 @@
+<div align="center">
+
 # Bishnupriya Fuels
 
-Daily operations, finance, and HR for a BPCL fuel station.
+### A F&amp;S Ventures Company · BPCL fuel station ops
 
-| | |
-|--|--|
-| **Stack** | HTML/JS · Supabase (Postgres, Auth, RLS) · GitHub Pages · service worker |
-| **Production** | `main` → site root |
-| **Staging** | `staging` → `/staging/` |
-| **Roles** | `admin` (full) · `supervisor` (operations; no settings, reports, analysis, or staff roster edits) |
-| **Schema** | `supabase/schema.sql` |
+[![Stack](https://img.shields.io/badge/stack-HTML%2FJS%20%2B%20Supabase-0070c0?style=for-the-badge&logo=html5&logoColor=white)](docs/ARCHITECTURE.md)
+[![Deploy](https://img.shields.io/badge/deploy-GitHub%20Pages-24292f?style=for-the-badge&logo=github&logoColor=white)](docs/OPERATIONS.md)
+[![Ops](https://img.shields.io/badge/playbook-OPERATIONS.md-00d4ff?style=for-the-badge)](docs/OPERATIONS.md)
 
-**Documentation hub:** [docs/README.md](docs/README.md)
+<br />
+
+<img
+  src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3500&pause=900&color=00D4FF&center=true&vCenter=true&width=780&lines=Architecture+%C2%B7+Data+flow+%C2%B7+Entry+points;Sync+staging+%C2%B7+Deploy+%C2%B7+Release+%C2%B7+Backup;sync+%E2%89%A0+deploy+%E2%89%A0+backup+%E2%80%94+keep+them+separate;Start+here+%E2%86%92+docs%2FOPERATIONS.md"
+  alt="Typing overview of architecture and operations"
+/>
+
+<br />
+
+**Live:** `main` · **Test:** `staging` → `/staging/` · **Domain:** [bishnupriyafuels.fnsventures.in](https://bishnupriyafuels.fnsventures.in)
+
+</div>
+
+---
+
+## Visual tour
+
+*Animations play on GitHub (open this README on github.com). Click any title for the written steps.*
+
+### 1. Architecture & entry points
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/architecture-flow.svg" alt="Architecture: Browser → GitHub Pages → Supabase" width="900" />
+</p>
+
+```mermaid
+flowchart LR
+  A[index / login] --> B[dashboard]
+  B --> C[meter-reading]
+  B --> D[credit / expenses]
+  B --> E[day-closing]
+  C --> F[(Supabase Postgres + RLS)]
+  D --> F
+  E --> F
+```
+
+**Entry:** `index.html` → `login.html` → `dashboard.html` (after Auth + `public.users` role).
+
+---
+
+### 2. Daily data flow
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/data-flow.svg" alt="Daily data flow: meter → credit → expenses → day closing" width="900" />
+</p>
+
+| Step | Page | Writes |
+|------|------|--------|
+| 1 | `meter-reading.html` | `dsr_petrol` / `dsr_diesel` |
+| 2 | `credit.html` | credit entries & payments |
+| 3 | `expenses.html` | expenses |
+| 4 | `day-closing.html` | day closing + night-cash collection |
+
+Deep dive: [docs/FLOWS.md](docs/FLOWS.md)
+
+---
+
+### 3. Sync staging with production data
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/sync-flow.svg" alt="Sync: production DB read-only into staging DB" width="900" />
+</p>
+
+```bash
+./scripts/db.sh sync
+```
+
+Production is **read-only**. Staging data is **replaced**. This does **not** deploy the website.
+
+Steps: [OPERATIONS §1](docs/OPERATIONS.md#1-sync-staging-with-production-data)
+
+---
+
+### 4. Deploy & release
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/deploy-path.svg" alt="Deploy path: feature → staging → production" width="700" />
+</p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/release-steps.svg" alt="Release steps A B C D" width="900" />
+</p>
+
+| Step | Action | Command / trigger |
+|------|--------|-------------------|
+| **A** | Sync data (optional) | `./scripts/db.sh sync` |
+| **B** | Deploy test site | Push / merge to `staging` |
+| **C** | DB migrate (only if needed) | `./scripts/db.sh migrate` then `--apply` |
+| **D** | Go live | Merge `staging` → `main` |
+
+Full checklist: [OPERATIONS §2–3](docs/OPERATIONS.md#2-deploy-the-website-to-staging)
+
+---
+
+### 5. Production backup → Google Drive
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fnsventures/petrolpump/main/docs/assets/backup-flow.svg" alt="Backup: dump → compress → OAuth → Google Drive" width="900" />
+</p>
+
+```text
+GitHub Actions → Backup production database → Drive folder YYYY/YYYY-MM/
+```
+
+Or locally: `./scripts/db.sh backup` (laptop only) · `./scripts/backup-prod-to-drive.sh` (Drive).
+
+Steps: [OPERATIONS §4](docs/OPERATIONS.md#4-backup-production-database)
+
+---
+
+## Do this when you ship
+
+Open the playbook — numbered steps, no fluff:
+
+### → [docs/OPERATIONS.md](docs/OPERATIONS.md)
+
+| I want to… | Go to |
+|------------|-------|
+| Copy live data into staging | §1 Sync |
+| Publish `/staging/` | §2 Deploy |
+| Release to production | §3 Release |
+| Back up the live DB | §4 Backup |
+
+---
+
+## Run locally
+
+```bash
+cp js/env.example.js js/env.js   # Supabase URL + anon key
+npm run dev                      # http://localhost:3000
+```
+
+Provision Auth **and** `public.users` as `admin` — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ---
 
 ## Features
 
-| Area | What it covers |
-|------|----------------|
-| Meter reading | Daily MS/HSD nozzle readings (`meter-reading.html`) |
-| DSR | Stock reconciliation and daily listing (`dsr.html`) |
-| Credit | Customer ledger, FIFO payments, prepaid overpayment, outstanding |
-| Day closing | Night cash, phone pay, short carry-forward, night-cash collection |
-| Billing | Outward lube/accessory invoices (GST) |
-| Invoice documents | Inward supplier PDFs in Google Drive |
-| Expenses | Daily expenses by category |
-| Reports / Analysis | DSR, GST, trading, P&L, KPIs *(admin)* |
-| HR | Staff roster, attendance, salary, PF slips |
-| Settings | Station config, users, products, integrations *(admin)* |
+| Area | Covers |
+|------|--------|
+| Meter reading / DSR | MS/HSD readings and stock |
+| Credit | Ledger, FIFO payments, prepaid, outstanding |
+| Day closing | Night cash, phone pay, short, cash collection |
+| Billing / invoices | Outward GST · inward supplier PDFs (Drive) |
+| Expenses · HR · Reports | Costs, attendance, salary, admin reports |
 
 ---
 
-## 1. Quick start (local)
+## Documentation map
 
-**Prerequisites:** Node.js, a Supabase project, schema applied (`supabase/schema.sql` or migrations in order).
-
-### Step 1 — Configure
-
-```bash
-cp js/env.example.js js/env.js
-```
-
-Edit `js/env.js` with values from Supabase → **Project Settings → API**:
-
-```javascript
-window.__APP_CONFIG__ = {
-  SUPABASE_URL: "https://YOUR_PROJECT.supabase.co",
-  SUPABASE_ANON_KEY: "your-anon-key",
-  APP_ENV: "development",
-};
-```
-
-### Step 2 — Run
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-### Step 3 — Provision the first admin
-
-1. Supabase → **Authentication → Users** → create email + password.
-2. Add the app role (Auth alone is not enough):
-
-```sql
-insert into public.users (email, role)
-values ('you@example.com', 'admin')
-on conflict (email) do update set role = 'admin';
-```
-
-Full detail: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
-
----
-
-## 2. Everyday commands
-
-| Goal | Command |
-|------|---------|
-| Run locally | `npm run dev` |
-| Build site mirror | `npm run build:site` |
-| Copy prod data → staging | `./scripts/db.sh sync` |
-| Review migrations (safe) | `./scripts/db.sh migrate` |
-| Apply prod migrations | `./scripts/db.sh migrate --apply` |
-| Local prod backup | `./scripts/db.sh backup` |
-| Prod backup → Google Drive | `./scripts/backup-prod-to-drive.sh` |
-| DB help | `./scripts/db.sh help` |
-
-One-time DB credentials:
-
-```bash
-cp scripts/db.env.example scripts/db.env
-# Set PROD_DB_URL and STAGING_DB_URL (Session pooler, port 5432)
-```
-
----
-
-## 3. Release to production
-
-Run in this order:
-
-| Step | Action | Effect |
-|------|--------|--------|
-| 1 | `./scripts/db.sh sync` | Prod data onto staging (prod read-only) |
-| 2 | Push `staging` | Test at `/staging/` |
-| 3 | `./scripts/db.sh migrate` | Dry-run / review (no prod writes) |
-| 4 | `./scripts/db.sh migrate --apply` | Quiet window; auto-backup then schema upgrade |
-| 5 | Merge `staging` → `main` | Frontend goes live |
-
-Deploy also runs from Actions → **Deploy** (`staging` or `prod`). Needs environment secrets `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
-
-When `supabase/functions/**` changes, Actions deploys edge functions (needs `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF`).
-
----
-
-## 4. Google Drive (invoices + DB backups)
-
-| Feature | Guide | Folder config |
-|---------|-------|---------------|
-| Supplier invoice PDFs | [docs/INVOICE_DOCUMENTS.md](docs/INVOICE_DOCUMENTS.md) | App → **Settings → Integrations** |
-| Monthly DB backups | [docs/BACKUP.md](docs/BACKUP.md) | GitHub secret `GOOGLE_DRIVE_BACKUP_FOLDER_ID` |
-
-Both share the same OAuth client and Gmail account. Store these three secrets in **GitHub prod** and **Supabase Edge Function secrets**:
-
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_REFRESH_TOKEN`
-
-**Get a matching refresh token**
-
-1. Enable **Google Drive API** in Google Cloud.
-2. Create an OAuth client (**Web application**).
-3. Add redirect URI: `https://developers.google.com/oauthplayground`
-4. Open [OAuth Playground](https://developers.google.com/oauthplayground) → gear → **Use your own OAuth credentials** → paste Client ID + Secret.
-5. Authorize scope `https://www.googleapis.com/auth/drive` → exchange code → copy the refresh token.
-6. Update all three secrets together (they must match).
-
-**If backup fails with `unauthorized_client`:** the refresh token was issued for a different client. Regenerate with step 4 enabled, then update all three secrets and re-run. Verify:
-
-```bash
-curl -sS -X POST "https://oauth2.googleapis.com/token" \
-  -d "client_id=$GOOGLE_OAUTH_CLIENT_ID" \
-  -d "client_secret=$GOOGLE_OAUTH_CLIENT_SECRET" \
-  -d "refresh_token=$GOOGLE_OAUTH_REFRESH_TOKEN" \
-  -d "grant_type=refresh_token"
-```
-
-Success returns an `access_token`.
-
----
-
-## 5. Documentation map
-
-| Document | Use when you need… |
-|----------|-------------------|
-| [docs/README.md](docs/README.md) | Full documentation index and how-to paths |
-| [Architecture](docs/ARCHITECTURE.md) | Folders, security, components |
-| [Development](docs/DEVELOPMENT.md) | Setup, GitHub Pages, edge functions, supervisors |
+| Document | Purpose |
+|----------|---------|
+| [**Operations playbook**](docs/OPERATIONS.md) | Sync · deploy · release · backup |
+| [Documentation hub](docs/README.md) | Index + visual links |
+| [Architecture](docs/ARCHITECTURE.md) | Folders, security, stack |
 | [Flows](docs/FLOWS.md) | Page → data journeys |
-| [Data tables](docs/DATA_TABLES.md) | Tables, RLS, RPCs |
-| [DSR tables](docs/DSR_TABLES.md) | Meter readings and stock math |
-| [Invoice documents](docs/INVOICE_DOCUMENTS.md) | Supplier PDFs → Google Drive |
-| [Backup](docs/BACKUP.md) | Prod DB → Drive, restore, troubleshooting |
-| [scripts/README.md](scripts/README.md) | DB script internals |
-| [Contributing](CONTRIBUTING.md) | Branch and PR workflow |
+| [Development](docs/DEVELOPMENT.md) | First-time setup |
+| [Backup (deep)](docs/BACKUP.md) | Restore & Drive troubleshooting |
+| [Invoice documents](docs/INVOICE_DOCUMENTS.md) | Supplier PDFs → Drive |
 
----
+<div align="center">
 
-## Roadmap
+<br />
 
-| Area | Direction |
-|------|-----------|
-| Frontend | Framework migration (React / Vue / Svelte) |
-| Offline | Fuller PWA + background sync |
-| Multi-site | Multi-tenancy for multiple pumps |
-| Live data | Supabase Realtime on dashboard |
-| Mobile | Native or cross-platform operator app |
+<sub>Static HTML/JS · Supabase · GitHub Pages · service worker</sub>
+
+</div>

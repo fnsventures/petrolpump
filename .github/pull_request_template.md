@@ -11,6 +11,8 @@ What changed and why?
 
 ## Release impact
 
+See [docs/OPERATIONS.md](../docs/OPERATIONS.md).
+
 - [ ] Frontend only (merge `staging` → `main` when ready)
 - [ ] Needs `./scripts/db.sh migrate --apply` (quiet window)
 - [ ] Needs edge function deploy (`supabase/functions/**` or manual)
