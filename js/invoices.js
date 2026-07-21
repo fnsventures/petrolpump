@@ -3,13 +3,24 @@
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const FALLBACK_DOCUMENT_CATEGORIES = [
+  { value: "purchase", label: "Purchase invoice" },
+  { value: "license", label: "License / permit" },
+  { value: "insurance", label: "Insurance" },
+  { value: "compliance", label: "Tax / compliance" },
+  { value: "bank", label: "Bank / finance" },
+  { value: "other", label: "Other" },
+];
 const INVOICE_LIST_COLUMNS =
-  "id, invoice_date, year, month, title, vendor, amount, file_name, mime_type, drive_web_view_link, created_at";
-const TABLE_COLSPAN = 6;
+  "id, invoice_date, year, month, category, title, vendor, amount, file_name, mime_type, drive_web_view_link, created_at";
+const TABLE_COLSPAN = 7;
 
 let currentAuth = null;
 let driveConfigured = false;
 let loadInvoicesController = null;
+let documentCategoryLabelMap = Object.fromEntries(
+  FALLBACK_DOCUMENT_CATEGORIES.map((c) => [c.value, c.label])
+);
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -35,8 +46,69 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindUploadForm();
   bindInvoiceTableActions();
 
-  await Promise.all([refreshDriveStatus(), loadInvoices()]);
+  await Promise.all([refreshDriveStatus(), loadDocumentCategories(), loadInvoices()]);
 });
+
+function getDocumentCategoryLabel(value) {
+  return documentCategoryLabelMap[value] || value || "Other";
+}
+
+function fillSelectOptions(select, options, { selectedValue, placeholder } = {}) {
+  if (!select) return;
+  select.innerHTML = "";
+  if (placeholder) {
+    const opt = document.createElement("option");
+    opt.value = placeholder.value;
+    opt.textContent = placeholder.label;
+    select.appendChild(opt);
+  }
+  if (!options.length && !placeholder) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No types configured";
+    select.appendChild(opt);
+    return;
+  }
+  options.forEach((c, index) => {
+    const opt = document.createElement("option");
+    opt.value = c.value;
+    opt.textContent = c.label;
+    select.appendChild(opt);
+    if (!selectedValue && !placeholder && index === 0) opt.selected = true;
+  });
+  if (selectedValue) select.value = selectedValue;
+}
+
+async function loadDocumentCategories() {
+  const uploadSelect = document.getElementById("invoice-category");
+  const filterSelect = document.getElementById("invoice-category-filter");
+  const previousFilter = filterSelect?.value || "all";
+  const previousUpload = uploadSelect?.value || "";
+
+  const { data, error } = await supabaseClient
+    .from("document_categories")
+    .select("name, label")
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true });
+
+  let categories = [];
+  if (!error && data?.length) {
+    categories = data.map((row) => ({ value: row.name, label: row.label }));
+  } else {
+    if (error) AppError.report(error, { context: "loadDocumentCategories" });
+    categories = FALLBACK_DOCUMENT_CATEGORIES.slice();
+  }
+
+  documentCategoryLabelMap = Object.fromEntries(categories.map((c) => [c.value, c.label]));
+
+  fillSelectOptions(uploadSelect, categories, {
+    selectedValue: categories.some((c) => c.value === previousUpload) ? previousUpload : "",
+  });
+  fillSelectOptions(filterSelect, categories, {
+    selectedValue: categories.some((c) => c.value === previousFilter) ? previousFilter : "all",
+    placeholder: { value: "all", label: "All types" },
+  });
+}
 
 function applyInvoicesBranding() {
   const name = PumpSettings.getStationDisplayName();
@@ -234,7 +306,7 @@ function bindUploadForm() {
       hideProgress();
       if (submitBtn) {
         submitBtn.disabled = !driveConfigured;
-        submitBtn.textContent = "Upload invoice";
+        submitBtn.textContent = "Upload document";
       }
     }
   });
@@ -287,7 +359,8 @@ async function loadInvoices() {
   if (tableEl) tableEl.classList.remove("hidden");
 
   const { start, end } = getInvoiceDateRange();
-  const { data, error } = await supabaseClient
+  const categoryFilter = document.getElementById("invoice-category-filter")?.value || "all";
+  let query = supabaseClient
     .from("invoice_documents")
     .select(INVOICE_LIST_COLUMNS)
     .gte("invoice_date", start)
@@ -295,6 +368,10 @@ async function loadInvoices() {
     .order("invoice_date", { ascending: false })
     .order("created_at", { ascending: false })
     .abortSignal(controller.signal);
+  if (categoryFilter !== "all") {
+    query = query.eq("category", categoryFilter);
+  }
+  const { data, error } = await query;
 
   if (controller.signal.aborted) return;
 
@@ -322,8 +399,10 @@ async function loadInvoices() {
       : "";
     const actions = [viewBtn, downloadBtn, deleteBtn].filter(Boolean).join(" · ");
 
+    const categoryLabel = getDocumentCategoryLabel(row.category);
     return `<tr>
       <td>${escapeHtml(row.invoice_date)}<br><small class="muted">${escapeHtml(folderLabel)}</small></td>
+      <td>${escapeHtml(categoryLabel)}</td>
       <td>${escapeHtml(row.vendor || "—")}</td>
       <td>${escapeHtml(row.title || "—")}</td>
       <td>${row.amount != null ? formatCurrency(row.amount) : "—"}</td>
@@ -387,7 +466,7 @@ async function downloadInvoice(id, btn) {
 
 async function deleteInvoice(id) {
   if (!id || currentAuth?.role !== "admin") return;
-  if (!confirm("Delete this invoice from Google Drive and the app?")) return;
+  if (!confirm("Delete this document from Google Drive and the app?")) return;
 
   showProgress();
   try {

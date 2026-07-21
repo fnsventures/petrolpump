@@ -1,5 +1,5 @@
 // Supabase Edge Function: invoice-documents
-// Upload, list metadata, download invoice files to/from Google Drive (year/month folders).
+// Upload, download, and delete vault documents (purchase invoices + other pump files) in Google Drive.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
@@ -381,6 +381,19 @@ Deno.serve(async (req: Request) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(invoiceDate)) {
         return jsonResponse({ error: "invoiceDate is required (YYYY-MM-DD)" }, 400);
       }
+      const category = String(form.get("category") || "purchase").trim().toLowerCase();
+      const { data: categoryRow, error: categoryError } = await supabaseAdmin
+        .from("document_categories")
+        .select("name")
+        .eq("name", category)
+        .maybeSingle();
+      if (categoryError) {
+        console.error("document category lookup failed", categoryError);
+        return jsonResponse({ error: "Could not validate document type" }, 500);
+      }
+      if (!categoryRow) {
+        return jsonResponse({ error: "Invalid document type" }, 400);
+      }
       if (file.size <= 0 || file.size > MAX_FILE_BYTES) {
         return jsonResponse({ error: `File must be between 1 byte and ${MAX_FILE_BYTES / (1024 * 1024)} MB` }, 400);
       }
@@ -415,6 +428,7 @@ Deno.serve(async (req: Request) => {
           invoice_date: invoiceDate,
           year,
           month,
+          category,
           title: String(form.get("title") || "").trim() || null,
           vendor: String(form.get("vendor") || "").trim() || null,
           amount: Number.isFinite(amount) ? amount : null,
@@ -427,7 +441,7 @@ Deno.serve(async (req: Request) => {
           notes: String(form.get("notes") || "").trim() || null,
           uploaded_by: auth.userId,
         })
-        .select("id, invoice_date, year, month, title, vendor, amount, file_name, mime_type, file_size, drive_web_view_link, created_at")
+        .select("id, invoice_date, year, month, category, title, vendor, amount, file_name, mime_type, file_size, drive_web_view_link, created_at")
         .single();
 
       if (insertError) {

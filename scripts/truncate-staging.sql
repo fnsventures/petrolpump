@@ -9,6 +9,8 @@ set session_replication_role = replica;
 truncate table
   public.invoice_items,
   public.invoices,
+  public.invoice_documents,
+  public.letterhead_letters,
   public.credit_payments,
   public.credit_entries,
   public.day_closing,
@@ -22,6 +24,7 @@ truncate table
   public.employees,
   public.products,
   public.expense_categories,
+  public.document_categories,
   public.pump_settings,
   public.users,
   public.audit_log

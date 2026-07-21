@@ -1,0 +1,202 @@
+/* Station letterhead stationery — isolated iframe print; A4 portrait
+   Letterhead block reuses invoice stationery classes for visual consistency. */
+
+@page {
+  size: A4 portrait;
+  margin: 12mm 14mm;
+}
+
+:root {
+  --inv-blue: #0070c0;
+  --inv-blue-dark: #005a9c;
+  --inv-border: #b8d4e8;
+  --inv-text: #1a2332;
+  --inv-muted: #4a5f7a;
+  /* Stationery uses a larger mark than invoices (~16mm) */
+  --station-logo-size-print: 28mm;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  background: #fff;
+  color: var(--inv-text);
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  letter-spacing: normal;
+  word-spacing: normal;
+  word-break: normal;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+body.letterhead-print-body {
+  display: block;
+}
+
+.letterhead-print-container {
+  display: block;
+  width: 100%;
+  max-width: 182mm;
+  margin: 0 auto;
+}
+
+.letterhead-print-container * {
+  letter-spacing: normal;
+  word-spacing: normal;
+}
+
+.letterhead-sheet {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+}
+
+/* Same letterhead as tax invoices */
+.invoice-letterhead {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 3px solid var(--inv-blue);
+  margin-bottom: 16pt;
+}
+
+.invoice-logo-wrap {
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.invoice-bpcl-logo {
+  display: block;
+  width: var(--station-logo-size-print);
+  height: var(--station-logo-size-print);
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.invoice-letterhead-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.invoice-brand {
+  margin: 0 0 4px;
+  font-size: 18pt;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--inv-blue-dark);
+}
+
+.invoice-brand span {
+  color: var(--inv-blue);
+  font-weight: 800;
+}
+
+.invoice-tagline {
+  margin: 0 0 4px;
+  font-size: 8.5pt;
+  font-weight: 600;
+  color: var(--inv-blue);
+}
+
+.invoice-address {
+  margin: 0 0 6px;
+  font-size: 8pt;
+  color: var(--inv-muted);
+  line-height: 1.35;
+}
+
+.invoice-contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 16px;
+  font-size: 7.5pt;
+  color: var(--inv-text);
+}
+
+.invoice-contact-grid em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--inv-muted);
+  margin-right: 4px;
+}
+
+.letterhead-doc-body {
+  min-height: 0;
+}
+
+.letterhead-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 14pt;
+}
+
+.letterhead-date {
+  margin: 0;
+  font-size: 10pt;
+  color: var(--inv-text);
+}
+
+.letterhead-subject {
+  margin: 0 0 14pt;
+  font-size: 11pt;
+  color: var(--inv-text);
+}
+
+.letterhead-subject-label {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.letterhead-paragraph {
+  margin: 0 0 10pt;
+  font-size: 11pt;
+  line-height: 1.5;
+  color: var(--inv-text);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.letterhead-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.letterhead-blank-spacer {
+  min-height: 170mm;
+}
+
+.letterhead-sign {
+  margin-top: 32pt;
+  text-align: right;
+  page-break-inside: avoid;
+}
+
+.letterhead-sign-for {
+  margin: 0 0 36pt;
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--inv-blue-dark);
+}
+
+.letterhead-sign-role {
+  margin: 0;
+  font-size: 9pt;
+  font-weight: 600;
+  color: var(--inv-muted);
+}

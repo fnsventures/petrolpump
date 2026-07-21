@@ -70,6 +70,8 @@ fi
 
 echo
 echo "Done. Staging mirrors production data."
+echo "    Reseed vault document types (not in older prod dumps)…"
+run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/seed-document-categories.sql"
 echo "Dumps: ${DUMP_DIR}/"
 echo "Next: test at /staging/ → then scripts/db.sh migrate --apply → merge staging → main"
 echo "Guide: scripts/README.md"
