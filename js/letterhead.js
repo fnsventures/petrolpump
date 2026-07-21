@@ -6,12 +6,44 @@
   const HISTORY_COLSPAN = 5;
 
   let currentAuth = null;
+  let letterheadPrintBusy = false;
+  let letterheadPrintCssCache = null;
   let historyPagination = {
     offset: 0,
     hasMore: true,
     totalCount: 0,
     isLoading: false,
   };
+
+  function letterheadAssetUrl(path) {
+    return typeof PrintUtils !== "undefined" && PrintUtils.resolveAssetUrl
+      ? PrintUtils.resolveAssetUrl(path)
+      : new URL(path, window.location.href).href;
+  }
+
+  async function getLetterheadPrintCssText() {
+    if (letterheadPrintCssCache) return letterheadPrintCssCache;
+    const url = letterheadAssetUrl(PRINT_CSS);
+    const res = await fetch(url, { cache: "default" });
+    if (!res.ok) throw new Error("Could not load letterhead print styles.");
+    letterheadPrintCssCache = await res.text();
+    return letterheadPrintCssCache;
+  }
+
+  function setPrintButtonsBusy(busy) {
+    ["letterhead-print-blank", "letterhead-print-content"].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.disabled = busy;
+      if (busy) {
+        btn.dataset.prevLabel = btn.textContent || "";
+        btn.textContent = "Preparing…";
+      } else if (btn.dataset.prevLabel != null) {
+        btn.textContent = btn.dataset.prevLabel;
+        delete btn.dataset.prevLabel;
+      }
+    });
+  }
 
   function getComposeValues() {
     return {
@@ -193,6 +225,7 @@
   }
 
   async function printLetterhead({ includeContent, values: overrideValues, saveHistory = true }) {
+    if (letterheadPrintBusy) return;
     clearMessages();
     const values = overrideValues || getComposeValues();
     const useContent = Boolean(includeContent);
@@ -201,30 +234,36 @@
       return;
     }
 
-    const sheetHtml = PrintUtils.applyPrintLogos(
-      buildSheetHtml({
-        date: useContent ? values.date : "",
-        subject: useContent ? values.subject : "",
-        body: useContent ? values.body : "",
-        includeSign: useContent && hasLetterContent(values),
-      })
-    );
+    letterheadPrintBusy = true;
+    setPrintButtonsBusy(true);
 
     const title = useContent
       ? values.subject || "Letter"
       : `${stationParts().legalName} — Letterhead`;
 
     try {
+      const [sheetHtml, cssText] = await Promise.all([
+        Promise.resolve(
+          PrintUtils.applyPrintLogos(
+            buildSheetHtml({
+              date: useContent ? values.date : "",
+              subject: useContent ? values.subject : "",
+              body: useContent ? values.body : "",
+              includeSign: useContent && hasLetterContent(values),
+            })
+          )
+        ),
+        getLetterheadPrintCssText(),
+      ]);
+
       await PrintUtils.printInIframe({
         title,
         bodyHtml: sheetHtml,
-        cssHref: PRINT_CSS,
+        cssText,
         containerClass: "letterhead-print-container",
         bodyClass: "letterhead-print-body",
         iframeTitle: "Letterhead print",
         imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
-        cleanupTimeoutMs: 5000,
-        onFallback: () => window.print(),
       });
 
       let historyNote = "";
@@ -246,6 +285,9 @@
     } catch (err) {
       AppError?.report?.(err, { context: "letterheadPrint" });
       showError("Could not open print dialog. Try again.");
+    } finally {
+      letterheadPrintBusy = false;
+      setPrintButtonsBusy(false);
     }
   }
 
