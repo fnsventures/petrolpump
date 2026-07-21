@@ -249,6 +249,7 @@ begin
     when 'salary' then v_role in ('admin', 'supervisor')
     when 'billing' then v_role in ('admin', 'supervisor')
     when 'invoices' then v_role in ('admin', 'supervisor')
+    when 'letterhead' then v_role in ('admin', 'supervisor')
     else false
   end;
 
@@ -734,12 +735,112 @@ create policy "invoices_delete_admin" on public.invoices
   for delete to authenticated using (public.is_admin());
 
 
--- Supplier / purchase invoice documents (files in Google Drive)
+-- Typed letterhead history (blank stationery is not stored)
+create table if not exists public.letterhead_letters (
+  id uuid primary key default uuid_generate_v4(),
+  letter_date date not null default current_date,
+  subject text not null default '',
+  body text not null default '',
+  export_type text not null default 'print'
+    check (export_type in ('print', 'word')),
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  constraint letterhead_letters_has_content check (
+    length(trim(subject)) > 0 or length(trim(body)) > 0
+  )
+);
+
+create index if not exists letterhead_letters_date_idx
+  on public.letterhead_letters (letter_date desc, created_at desc);
+
+create index if not exists letterhead_letters_created_at_idx
+  on public.letterhead_letters (created_at desc);
+
+comment on table public.letterhead_letters is
+  'History of typed station letterhead letters (print/Word). Blank stationery is not recorded.';
+
+alter table public.letterhead_letters enable row level security;
+
+drop policy if exists "letterhead_letters_select" on public.letterhead_letters;
+create policy "letterhead_letters_select" on public.letterhead_letters
+  for select to authenticated
+  using (public.is_supervisor_or_admin());
+
+drop policy if exists "letterhead_letters_insert_own" on public.letterhead_letters;
+create policy "letterhead_letters_insert_own" on public.letterhead_letters
+  for insert to authenticated
+  with check (
+    public.is_supervisor_or_admin()
+    and created_by = auth.uid()
+  );
+
+drop policy if exists "letterhead_letters_update_by_role" on public.letterhead_letters;
+create policy "letterhead_letters_update_by_role" on public.letterhead_letters
+  for update to authenticated
+  using (
+    public.is_supervisor_or_admin()
+    and (created_by = auth.uid() or public.is_admin())
+  )
+  with check (
+    public.is_supervisor_or_admin()
+    and (created_by = auth.uid() or public.is_admin())
+  );
+
+drop policy if exists "letterhead_letters_delete_admin" on public.letterhead_letters;
+create policy "letterhead_letters_delete_admin" on public.letterhead_letters
+  for delete to authenticated
+  using (public.is_admin());
+
+
+-- Document types (user-managed; admin add/edit/delete in Settings)
+create table if not exists public.document_categories (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null unique,
+  label text not null,
+  sort_order int not null default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+create index if not exists document_categories_sort_idx on public.document_categories (sort_order, label);
+
+comment on table public.document_categories is
+  'User-managed document types shown in Vault upload/filter and Settings.';
+
+alter table public.document_categories enable row level security;
+
+drop policy if exists "document_categories_select_authenticated" on public.document_categories;
+create policy "document_categories_select_authenticated" on public.document_categories
+  for select to authenticated using (public.is_supervisor_or_admin());
+
+drop policy if exists "document_categories_insert_admin" on public.document_categories;
+create policy "document_categories_insert_admin" on public.document_categories
+  for insert to authenticated with check (public.is_admin());
+
+drop policy if exists "document_categories_update_admin" on public.document_categories;
+create policy "document_categories_update_admin" on public.document_categories
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "document_categories_delete_admin" on public.document_categories;
+create policy "document_categories_delete_admin" on public.document_categories
+  for delete to authenticated using (public.is_admin());
+
+insert into public.document_categories (name, label, sort_order)
+values
+  ('purchase', 'Purchase invoice', 1),
+  ('license', 'License / permit', 2),
+  ('insurance', 'Insurance', 3),
+  ('compliance', 'Tax / compliance', 4),
+  ('bank', 'Bank / finance', 5),
+  ('other', 'Other', 6)
+on conflict (name) do update set label = excluded.label, sort_order = excluded.sort_order;
+
+-- Pump vault documents (purchase invoices + other important files in Google Drive)
 create table if not exists public.invoice_documents (
   id uuid primary key default uuid_generate_v4(),
   invoice_date date not null,
   year smallint not null,
   month smallint not null check (month between 1 and 12),
+  category text not null default 'purchase',
   title text,
   vendor text,
   amount numeric(14, 2),
@@ -756,9 +857,14 @@ create table if not exists public.invoice_documents (
 
 create index if not exists invoice_documents_date_idx on public.invoice_documents (invoice_date desc);
 create index if not exists invoice_documents_year_month_idx on public.invoice_documents (year desc, month desc);
+create index if not exists invoice_documents_category_idx on public.invoice_documents (category);
 
 comment on table public.invoice_documents is
-  'Supplier / purchase invoice files stored in Google Drive under year/month folders.';
+  'Pump vault documents (purchase invoices and other important files) stored in Google Drive under year/month folders.';
+comment on column public.invoice_documents.category is
+  'Document type slug; display label comes from document_categories.';
+comment on column public.invoice_documents.invoice_date is
+  'Document date used for year/month Drive folders and library filters.';
 
 alter table public.invoice_documents enable row level security;
 
