@@ -1,5 +1,5 @@
 /**
- * Shared hidden-iframe print pipeline (invoice, reports, salary slips, credit, staff ID).
+ * Shared hidden-iframe print pipeline (invoice, reports, salary slips, credit, staff ID, letterhead).
  * On mobile Chrome/Safari, iframe.contentWindow.print() prints the parent page instead —
  * those clients use an in-page print host that calls window.print().
  */
