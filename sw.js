@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v111";
+const CACHE_VERSION = "v115";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -31,6 +31,7 @@ const STATIC_ASSET_PATHS = [
   "staff.html",
   "settings.html",
   "invoices.html",
+  "letterhead.html",
   "sales-daily.html",
   "credit-customer.html",
   "credit-overdue.html",
@@ -58,6 +59,8 @@ const STATIC_ASSET_PATHS = [
   "css/salary-slip-print.css",
   "css/credit-summary-print.css",
   "css/staff-id-print.css",
+  "css/letterhead-print.css",
+  "css/app-letterhead.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
   "assets/icon-192.png",
@@ -124,6 +127,7 @@ const STATIC_ASSET_PATHS = [
   "js/staff.js",
   "js/settings.js",
   "js/invoices.js",
+  "js/letterhead.js",
 ];
 
 const CACHE_MATCH_OPTS = { ignoreSearch: true };

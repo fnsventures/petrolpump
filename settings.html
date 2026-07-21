@@ -43,6 +43,7 @@
         <button type="button" class="settings-nav-item" data-section="attendance">Attendance shifts</button>
         <button type="button" class="settings-nav-item" data-section="alerts">Alerts &amp; thresholds</button>
         <button type="button" class="settings-nav-item" data-section="expenses">Expense categories</button>
+        <button type="button" class="settings-nav-item" data-section="documents">Document types</button>
         <button type="button" class="settings-nav-item" data-section="integrations">Integrations</button>
         <button type="button" class="settings-nav-item" data-section="access">Access list</button>
       </nav>
@@ -435,6 +436,33 @@
             <table>
               <thead><tr><th class="expense-cat-drag-col" aria-label="Reorder"></th><th>Category</th><th>Action</th></tr></thead>
               <tbody id="settings-expense-categories">
+                <tr><td colspan="3" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Document types -->
+        <section id="settings-panel-documents" class="settings-panel card" data-panel="documents" hidden>
+          <h2>Document types</h2>
+          <p class="muted">Types and order shown in Vault upload and library filters. Drag rows to reorder; Edit changes the display name only. Cannot delete if used by existing documents.</p>
+          <form id="document-category-add-form" class="form">
+            <div class="form-grid form-grid--inline-button">
+              <div class="form-field">
+                <label for="document-category-label">New type</label>
+                <input id="document-category-label" type="text" maxlength="80" required />
+              </div>
+              <div class="form-field">
+                <button type="submit">Add</button>
+              </div>
+            </div>
+            <p id="document-category-add-error" class="error hidden"></p>
+            <p id="document-category-add-success" class="success hidden">Document type added.</p>
+          </form>
+          <div class="table-wrap margin-top">
+            <table>
+              <thead><tr><th class="expense-cat-drag-col" aria-label="Reorder"></th><th>Type</th><th>Action</th></tr></thead>
+              <tbody id="settings-document-categories">
                 <tr><td colspan="3" class="muted">Loading…</td></tr>
               </tbody>
             </table>

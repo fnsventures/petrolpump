@@ -19,7 +19,6 @@
         { href: "expenses.html", label: "Expenses" },
         { href: "day-closing.html", label: "Day closing & short" },
         { href: "billing.html", label: "Billing" },
-        { href: "invoices.html", label: "Invoices" },
       ],
     },
     {
@@ -28,6 +27,8 @@
         { href: "attendance.html", label: "Attendance" },
         { href: "salary.html", label: "Salary" },
         { href: "staff.html", label: "Staff" },
+        { href: "invoices.html", label: "Vault" },
+        { href: "letterhead.html", label: "Letter Desk" },
       ],
     },
     {

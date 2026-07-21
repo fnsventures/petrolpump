@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Invoice documents · Bishnupriya Fuels</title>
+    <title>Vault · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="stylesheet" href="css/base.css" />
@@ -27,40 +27,46 @@
     <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
-        <span class="page-subtitle">Invoice documents</span>
+        <span class="page-subtitle">Vault</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
       <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout">
-      <nav class="settings-nav card" aria-label="Invoice sections">
+      <nav class="settings-nav card" aria-label="Vault sections">
         <p class="settings-nav-title">Sections</p>
-        <button type="button" class="settings-nav-item is-active" data-section="upload">Upload invoice</button>
-        <button type="button" class="settings-nav-item" data-section="library">Invoice library</button>
+        <button type="button" class="settings-nav-item is-active" data-section="upload">Upload document</button>
+        <button type="button" class="settings-nav-item" data-section="library">Document library</button>
       </nav>
       <div class="settings-panels">
         <section class="settings-panel card dashboard-card is-visible" data-panel="upload">
           <div class="panel-head">
             <div>
-              <h2 class="dashboard-section-title">Upload invoice</h2>
-              <p class="muted panel-lead">Supplier invoices are stored in Google Drive under <strong>Year → Month</strong> folders based on the invoice date.</p>
+              <h2 class="dashboard-section-title">Upload document</h2>
+              <p class="muted panel-lead">Store purchase invoices, licenses, insurance, and other pump documents in Google Drive under <strong>Year → Month</strong> folders.</p>
             </div>
           </div>
           <div id="invoice-drive-banner" class="smart-alert smart-alert--warning hidden" role="status"></div>
           <form id="invoice-upload-form" class="form">
             <div class="form-grid">
               <div class="form-field">
-                <label for="invoice-date">Invoice date</label>
+                <label for="invoice-category">Document type</label>
+                <select id="invoice-category" name="category" required>
+                  <option value="">Loading…</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="invoice-date">Document date</label>
                 <input id="invoice-date" name="invoiceDate" type="date" required />
               </div>
               <div class="form-field">
-                <label for="invoice-vendor">Vendor / supplier <span class="optional-label">(optional)</span></label>
-                <input id="invoice-vendor" name="vendor" type="text" maxlength="120" placeholder="e.g. BPCL" />
+                <label for="invoice-vendor">From / party <span class="optional-label">(optional)</span></label>
+                <input id="invoice-vendor" name="vendor" type="text" maxlength="120" placeholder="e.g. BPCL, insurer, bank" />
               </div>
               <div class="form-field">
                 <label for="invoice-title">Title / reference <span class="optional-label">(optional)</span></label>
-                <input id="invoice-title" name="title" type="text" maxlength="120" placeholder="Invoice no. or description" />
+                <input id="invoice-title" name="title" type="text" maxlength="120" placeholder="Invoice no., license name, or description" />
               </div>
               <div class="form-field">
                 <label for="invoice-amount">Amount (₹) <span class="optional-label">(optional)</span></label>
@@ -75,8 +81,8 @@
                 <input id="invoice-file" name="file" type="file" accept=".pdf,image/jpeg,image/png,image/webp" required />
               </div>
             </div>
-            <button type="submit" id="invoice-upload-btn">Upload invoice</button>
-            <p id="invoice-upload-success" class="success hidden">Invoice uploaded successfully.</p>
+            <button type="submit" id="invoice-upload-btn">Upload document</button>
+            <p id="invoice-upload-success" class="success hidden">Document uploaded successfully.</p>
             <p id="invoice-upload-error" class="error hidden"></p>
             <p class="muted" data-role="admin-only">Configure Google Drive in <a href="settings.html#integrations">Settings → Integrations</a>.</p>
           </form>
@@ -85,10 +91,16 @@
         <section class="settings-panel card dashboard-card" data-panel="library" hidden>
           <div class="panel-head card-head snapshot-head">
             <div>
-              <h2 class="dashboard-section-title">Invoice library</h2>
-              <p class="muted panel-lead">Browse and download supplier invoices uploaded by your team.</p>
+              <h2 class="dashboard-section-title">Document library</h2>
+              <p class="muted panel-lead">Browse and download vault documents uploaded by your team.</p>
             </div>
             <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="invoice-category-filter">Type</label>
+                <select id="invoice-category-filter">
+                  <option value="all" selected>All types</option>
+                </select>
+              </div>
               <div class="form-field">
                 <label for="invoice-range">Period</label>
                 <select id="invoice-range">
@@ -117,7 +129,8 @@
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Vendor</th>
+                  <th>Type</th>
+                  <th>From</th>
                   <th>Title</th>
                   <th>Amount (₹)</th>
                   <th>File</th>
@@ -126,14 +139,14 @@
               </thead>
               <tbody id="invoice-table-body">
                 <tr>
-                  <td colspan="6" class="muted">Loading…</td>
+                  <td colspan="7" class="muted">Loading…</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <div id="invoice-empty-cta" class="empty-state hidden">
-            <p>No invoices found for this period.</p>
-            <p class="empty-cta">Upload an invoice using the form above.</p>
+            <p>No documents found for this period.</p>
+            <p class="empty-cta">Upload a document using the form above.</p>
           </div>
         </section>
       </div>
