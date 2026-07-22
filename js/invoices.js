@@ -1,10 +1,10 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getMonthRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const FALLBACK_DOCUMENT_CATEGORIES = [
-  { value: "purchase", label: "Purchase invoice" },
+  { value: "purchase", label: "Purchase invoices" },
   { value: "license", label: "License / permit" },
   { value: "insurance", label: "Insurance" },
   { value: "compliance", label: "Tax / compliance" },
@@ -313,26 +313,20 @@ function bindUploadForm() {
 }
 
 function getInvoiceDateRange() {
-  const mode = document.getElementById("invoice-range")?.value || "this-month";
-  if (mode === "this-year") {
-    const y = new Date().getFullYear();
-    return { start: `${y}-01-01`, end: `${y}-12-31` };
-  }
   const range = readDateRangeFromControls(
     document.getElementById("invoice-range"),
     document.getElementById("invoice-start"),
     document.getElementById("invoice-end")
   );
   if (range) return { start: range.start, end: range.end };
-  const today = new Date();
-  return getMonthRange(today.getFullYear(), today.getMonth());
+  return getYearRange(new Date().getFullYear());
 }
 
 function initInvoiceFilter() {
   createDateRangeFilter({
     storageKey: "invoices",
-    ranges: ["this-month", "this-year", "custom"],
-    defaultRange: "this-month",
+    ranges: ["this-year", "last-year", "all-time"],
+    defaultRange: "this-year",
     rangeSelect: "invoice-range",
     startInput: "invoice-start",
     endInput: "invoice-end",
@@ -363,11 +357,11 @@ async function loadInvoices() {
   let query = supabaseClient
     .from("invoice_documents")
     .select(INVOICE_LIST_COLUMNS)
-    .gte("invoice_date", start)
-    .lte("invoice_date", end)
     .order("invoice_date", { ascending: false })
     .order("created_at", { ascending: false })
     .abortSignal(controller.signal);
+  if (start) query = query.gte("invoice_date", start);
+  if (end) query = query.lte("invoice_date", end);
   if (categoryFilter !== "all") {
     query = query.eq("category", categoryFilter);
   }

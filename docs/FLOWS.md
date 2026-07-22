@@ -206,10 +206,10 @@ Admin one-time setup (Settings → Integrations + Supabase secrets + edge functi
 
 Upload (invoices.html → Upload tab)
    → multipart POST to edge function invoice-documents
-   → file → Google Drive (Root/YYYY/MM); metadata → invoice_documents
+   → file → Google Drive (purchase: Root/YYYY/Purchase invoices/Month; other: Root/YYYY); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
-   → SELECT invoice_documents (date filter)
+   → SELECT invoice_documents (this year / last year / all time)
    → View: drive_web_view_link | Download/Delete: edge function actions
 ```
 

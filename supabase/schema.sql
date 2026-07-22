@@ -797,6 +797,8 @@ create table if not exists public.document_categories (
   id uuid primary key default uuid_generate_v4(),
   name text not null unique,
   label text not null,
+  folder_layout text not null default 'year'
+    check (folder_layout in ('year_month', 'year')),
   sort_order int not null default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
@@ -804,7 +806,7 @@ create table if not exists public.document_categories (
 create index if not exists document_categories_sort_idx on public.document_categories (sort_order, label);
 
 comment on table public.document_categories is
-  'User-managed document types shown in Vault upload/filter and Settings.';
+  'User-managed document types shown in Vault upload/filter and Settings. folder_layout controls Drive path (year_month vs year).';
 
 alter table public.document_categories enable row level security;
 
@@ -824,15 +826,18 @@ drop policy if exists "document_categories_delete_admin" on public.document_cate
 create policy "document_categories_delete_admin" on public.document_categories
   for delete to authenticated using (public.is_admin());
 
-insert into public.document_categories (name, label, sort_order)
+insert into public.document_categories (name, label, folder_layout, sort_order)
 values
-  ('purchase', 'Purchase invoice', 1),
-  ('license', 'License / permit', 2),
-  ('insurance', 'Insurance', 3),
-  ('compliance', 'Tax / compliance', 4),
-  ('bank', 'Bank / finance', 5),
-  ('other', 'Other', 6)
-on conflict (name) do update set label = excluded.label, sort_order = excluded.sort_order;
+  ('purchase', 'Purchase invoices', 'year_month', 1),
+  ('license', 'License / permit', 'year', 2),
+  ('insurance', 'Insurance', 'year', 3),
+  ('compliance', 'Tax / compliance', 'year', 4),
+  ('bank', 'Bank / finance', 'year', 5),
+  ('other', 'Other', 'year', 6)
+on conflict (name) do update set
+  label = excluded.label,
+  folder_layout = excluded.folder_layout,
+  sort_order = excluded.sort_order;
 
 -- Pump vault documents (purchase invoices + other important files in Google Drive)
 create table if not exists public.invoice_documents (

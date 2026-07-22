@@ -51,6 +51,14 @@ function formatDateRangeLabel(range, modeInfo, opts = {}) {
     return `This month · ${monthLabel}`;
   }
 
+  if (mode === "this-year") {
+    return `This year · ${String(range.start).slice(0, 4)}`;
+  }
+
+  if (mode === "last-year") {
+    return `Last year · ${String(range.start).slice(0, 4)}`;
+  }
+
   if (mode === "this-week") {
     if (style === "compact") {
       return startLabel === endLabel ? startLabel : `${startLabel} – ${endLabel}`;
@@ -286,6 +294,11 @@ const DATE_RANGE_PRESETS = {
     { value: "this-month", label: "This month" },
     { value: "all-time", label: "All time" },
     { value: "custom", label: "Custom dates" },
+  ],
+  vault: [
+    { value: "this-year", label: "This year" },
+    { value: "last-year", label: "Last year" },
+    { value: "all-time", label: "All time" },
   ],
 };
 
