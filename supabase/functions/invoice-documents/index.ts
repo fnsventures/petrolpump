@@ -213,23 +213,45 @@ function monthFolderName(year: number, month: number): string {
   return new Date(year, month - 1, 1).toLocaleDateString("en-IN", { month: "long" });
 }
 
-async function ensureYearMonthFolder(token: string, rootFolderId: string, year: number, month: number): Promise<string> {
-  const cacheKey = `${rootFolderId}:${year}:${month}`;
+async function ensureChildFolder(token: string, parentId: string, name: string): Promise<string> {
+  let folderId = await findFolder(token, parentId, name);
+  if (!folderId) folderId = await createFolder(token, parentId, name);
+  return folderId;
+}
+
+/**
+ * Drive layout from document_categories.folder_layout:
+ *   year_month → Root / YYYY / {categoryLabel} / MonthName /
+ *   year       → Root / YYYY /  (flat; licenses and other non-purchase docs)
+ */
+async function ensureDocumentDriveFolder(
+  token: string,
+  rootFolderId: string,
+  year: number,
+  month: number,
+  folderLayout: string,
+  categoryLabel: string
+): Promise<string> {
+  const layout = folderLayout === "year_month" ? "year_month" : "year";
+  const typeFolder = (categoryLabel || "Documents").trim() || "Documents";
+  const cacheKey =
+    layout === "year_month"
+      ? `${rootFolderId}:${year}:${typeFolder}:${month}`
+      : `${rootFolderId}:${year}:flat`;
   const now = Date.now();
   const cached = folderCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.id;
 
-  const yearStr = String(year);
-  const monthStr = monthFolderName(year, month);
+  const yearFolderId = await ensureChildFolder(token, rootFolderId, String(year));
+  let targetFolderId = yearFolderId;
 
-  let yearFolderId = await findFolder(token, rootFolderId, yearStr);
-  if (!yearFolderId) yearFolderId = await createFolder(token, rootFolderId, yearStr);
+  if (layout === "year_month") {
+    const typeFolderId = await ensureChildFolder(token, yearFolderId, typeFolder);
+    targetFolderId = await ensureChildFolder(token, typeFolderId, monthFolderName(year, month));
+  }
 
-  let monthFolderId = await findFolder(token, yearFolderId, monthStr);
-  if (!monthFolderId) monthFolderId = await createFolder(token, yearFolderId, monthStr);
-
-  folderCache.set(cacheKey, { id: monthFolderId, expiresAt: now + FOLDER_CACHE_MS });
-  return monthFolderId;
+  folderCache.set(cacheKey, { id: targetFolderId, expiresAt: now + FOLDER_CACHE_MS });
+  return targetFolderId;
 }
 
 async function uploadToDrive(
@@ -384,7 +406,7 @@ Deno.serve(async (req: Request) => {
       const category = String(form.get("category") || "purchase").trim().toLowerCase();
       const { data: categoryRow, error: categoryError } = await supabaseAdmin
         .from("document_categories")
-        .select("name")
+        .select("name, label, folder_layout")
         .eq("name", category)
         .maybeSingle();
       if (categoryError) {
@@ -407,13 +429,22 @@ Deno.serve(async (req: Request) => {
       const amountRaw = String(form.get("amount") || "").trim();
       const amount = amountRaw ? Number(amountRaw) : null;
       const safeName = file.name.replace(/[^\w.\-() ]+/g, "_").slice(0, 200);
+      const folderLayout = String(categoryRow.folder_layout || "year");
+      const categoryLabel = String(categoryRow.label || category);
 
       const bytesPromise = file.arrayBuffer();
       const [token, rootFolderId] = await Promise.all([
         getDriveAccessToken(),
         getDriveConfig(),
       ]);
-      const folderId = await ensureYearMonthFolder(token, rootFolderId, year, month);
+      const folderId = await ensureDocumentDriveFolder(
+        token,
+        rootFolderId,
+        year,
+        month,
+        folderLayout,
+        categoryLabel
+      );
       const { fileId, webViewLink } = await uploadToDrive(
         token,
         folderId,

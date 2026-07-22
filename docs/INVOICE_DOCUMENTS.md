@@ -37,7 +37,9 @@ These are separate features. This document covers **invoice documents** only.
 ## 1. What the feature does
 
 - Staff upload **supplier invoices** (PDF, JPEG, PNG, WebP; max 15 MB) from **Finance → Invoices** (`invoices.html`).
-- Files are stored in **Google Drive** under a folder layout: `RootFolder → YYYY → MonthName` (e.g. `2026/June`).
+- Files are stored in **Google Drive** under:
+  - **Purchase invoices:** `RootFolder → YYYY → Purchase invoices → MonthName`
+  - **Other types** (license, insurance, etc.): `RootFolder → YYYY` (flat under the year)
 - Metadata (date, vendor, amount, Drive file ID, etc.) is stored in PostgreSQL table `invoice_documents`.
 - The library lists documents by date range; users can **view** (Drive link), **download** (via edge function), or **delete** (admin only).
 - Configuration lives in **Settings → Integrations** (admin only): enable flag + root folder ID.
@@ -97,7 +99,7 @@ You do **not** need Google secrets in GitHub. Only `SUPABASE_URL` and `SUPABASE_
 3. Function verifies JWT and `check_page_access('invoices')`.
 4. Function reads `pump_settings.config.integrations.googleDrive` for root folder ID.
 5. Function obtains Google access token (OAuth refresh token or service account).
-6. Function creates/finds `YYYY` and `MM` folders under root, uploads file to Drive.
+6. Function creates/finds Drive folders from the document type’s `folder_layout`, then uploads the file.
 7. Function inserts row into `invoice_documents` via service role.
 8. Function sets Drive file permission to **anyone with link can view** (so View link works).
 9. Browser refreshes the library (reads metadata directly from `invoice_documents` via Supabase client + RLS).
@@ -438,7 +440,7 @@ Enforcement:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| Invoice date | Yes | `YYYY-MM-DD`; determines `YYYY/MonthName` folder (e.g. `2026/June`) |
+| Invoice date | Yes | `YYYY-MM-DD`; drives year (and month for purchase) folder placement |
 | File | Yes | PDF, JPEG, PNG, WebP; 1 byte – 15 MB |
 | Vendor | No | Free text |
 | Title | No | Free text |
@@ -450,21 +452,23 @@ Enforcement:
 ```
 Root folder (from Settings)
 ├── 2026/
-│   ├── January/
-│   │   ├── invoice-jan.pdf
-│   │   └── ...
-│   ├── February/
-│   └── June/
-│       └── supplier-scan.png
+│   ├── Purchase invoices/
+│   │   ├── January/
+│   │   │   └── supplier-bill.pdf
+│   │   └── July/
+│   │       └── iocl-scan.png
+│   ├── explosive-license.pdf          ← license / other types (flat under year)
+│   └── insurance-policy.pdf
 └── 2025/
-    └── December/
+    └── Purchase invoices/
+        └── December/
 ```
 
-Folders are created automatically on first upload for each year/month.
+Layout is controlled by `document_categories.folder_layout` (`year_month` for purchase, `year` for other types). Folders are created automatically on first upload.
 
 ### Library filtering
 
-Default filter: **this month**. Also supports **this year** and **custom date range**. Metadata is queried from Postgres; files are not listed from Drive directly.
+Default filter: **this year**. Also supports **last year** and **all time**. Metadata is queried from Postgres; files are not listed from Drive directly.
 
 ### Status banner
 
@@ -553,7 +557,7 @@ Table: `public.invoice_documents`
 | mime_type | text | e.g. `application/pdf` |
 | file_size | bigint | Bytes |
 | drive_file_id | text | Google Drive file ID |
-| drive_folder_id | text | Month folder ID |
+| drive_folder_id | text | Target Drive folder ID (month folder for purchase; year folder for other types) |
 | drive_web_view_link | text | Optional view URL |
 | notes | text | Optional |
 | uploaded_by | uuid | FK → auth.users |

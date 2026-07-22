@@ -229,7 +229,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ## invoice_documents
 
-**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (year/month folders under a configured root). Not related to billing table `invoices`.
+**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (purchase: `Root/YYYY/Purchase invoices/Month`; other types: `Root/YYYY`). Not related to billing table `invoices`.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -244,7 +244,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | mime_type | text | e.g. `application/pdf` |
 | file_size | bigint | Size in bytes |
 | drive_file_id | text | Google Drive file ID |
-| drive_folder_id | text | Month folder ID in Drive |
+| drive_folder_id | text | Drive folder ID (month folder for purchase; year folder for other types) |
 | drive_web_view_link | text | Optional view URL (anyone-with-link if shared on upload) |
 | notes | text | Optional |
 | uploaded_by | uuid | FK → auth.users |
