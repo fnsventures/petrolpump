@@ -240,6 +240,10 @@ function getMonthRange(year, monthIndex) {
   return { start: formatDateInput(start), end: formatDateInput(end) };
 }
 
+function getYearRange(year) {
+  return { start: `${year}-01-01`, end: `${year}-12-31` };
+}
+
 function getMonthNameOptions() {
   return Array.from({ length: 12 }, (_, i) => ({
     value: String(i + 1).padStart(2, "0"),
@@ -304,7 +308,7 @@ function getCustomRange(startValue, endValue) {
 
 /**
  * Resolve date range from a filter selection value.
- * @param {string} selection - today | this-week | this-month | last-3-months | custom | date
+ * @param {string} selection - today | this-week | this-month | this-year | last-year | last-3-months | all-time | custom | date
  * @param {{ startInput?: HTMLInputElement, endInput?: HTMLInputElement, singleDate?: string }} [opts]
  * @returns {{ start: string, end: string, modeInfo?: object }|null}
  */
@@ -312,6 +316,7 @@ function resolveDateRange(selection, opts = {}) {
   const { startInput, endInput, singleDate } = opts;
   const today = new Date();
   const todayStr = toLocalDateString(today);
+  const currentYear = today.getFullYear();
 
   if (selection === "today" || selection === "date") {
     const d = singleDate || startInput?.value || todayStr;
@@ -326,9 +331,15 @@ function resolveDateRange(selection, opts = {}) {
   }
   if (selection === "this-month") {
     return {
-      ...getMonthRange(today.getFullYear(), today.getMonth()),
+      ...getMonthRange(currentYear, today.getMonth()),
       modeInfo: { mode: "this-month" },
     };
+  }
+  if (selection === "this-year") {
+    return { ...getYearRange(currentYear), modeInfo: { mode: "this-year" } };
+  }
+  if (selection === "last-year") {
+    return { ...getYearRange(currentYear - 1), modeInfo: { mode: "last-year" } };
   }
   if (selection === "last-3-months") {
     return { ...getLast3MonthsRange(), modeInfo: { mode: "last-3-months" } };
@@ -600,6 +611,7 @@ window.formatQuantity = formatQuantity;
 window.formatGstLabel = formatGstLabel;
 window.getWeekRange = getWeekRange;
 window.getMonthRange = getMonthRange;
+window.getYearRange = getYearRange;
 window.getMonthNameOptions = getMonthNameOptions;
 window.populateMonthYearSelects = populateMonthYearSelects;
 window.readMonthYearValue = readMonthYearValue;

@@ -797,6 +797,8 @@ create table if not exists public.document_categories (
   id uuid primary key default uuid_generate_v4(),
   name text not null unique,
   label text not null,
+  folder_layout text not null default 'year'
+    check (folder_layout in ('year_month', 'year')),
   sort_order int not null default 0,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
@@ -804,7 +806,7 @@ create table if not exists public.document_categories (
 create index if not exists document_categories_sort_idx on public.document_categories (sort_order, label);
 
 comment on table public.document_categories is
-  'User-managed document types shown in Vault upload/filter and Settings.';
+  'User-managed document types shown in Vault upload/filter and Settings. folder_layout controls Drive path (year_month vs year).';
 
 alter table public.document_categories enable row level security;
 
@@ -824,15 +826,18 @@ drop policy if exists "document_categories_delete_admin" on public.document_cate
 create policy "document_categories_delete_admin" on public.document_categories
   for delete to authenticated using (public.is_admin());
 
-insert into public.document_categories (name, label, sort_order)
+insert into public.document_categories (name, label, folder_layout, sort_order)
 values
-  ('purchase', 'Purchase invoice', 1),
-  ('license', 'License / permit', 2),
-  ('insurance', 'Insurance', 3),
-  ('compliance', 'Tax / compliance', 4),
-  ('bank', 'Bank / finance', 5),
-  ('other', 'Other', 6)
-on conflict (name) do update set label = excluded.label, sort_order = excluded.sort_order;
+  ('purchase', 'Purchase invoices', 'year_month', 1),
+  ('license', 'License / permit', 'year', 2),
+  ('insurance', 'Insurance', 'year', 3),
+  ('compliance', 'Tax / compliance', 'year', 4),
+  ('bank', 'Bank / finance', 'year', 5),
+  ('other', 'Other', 'year', 6)
+on conflict (name) do update set
+  label = excluded.label,
+  folder_layout = excluded.folder_layout,
+  sort_order = excluded.sort_order;
 
 -- Pump vault documents (purchase invoices + other important files in Google Drive)
 create table if not exists public.invoice_documents (
@@ -2874,36 +2879,36 @@ comment on function public.delete_credit_entry(uuid) is
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)
 returns numeric
-language plpgsql security definer stable
+language sql
+security definer
+stable
+set search_path = public
 as $$
-declare
-  v_total numeric;
-begin
-  perform public.require_staff_access();
-
-  with bal as (
-    select e.credit_customer_id, coalesce(sum(e.amount), 0) as credit_tot
+  with _auth as (select public.require_staff_access()),
+  bal as (
+    select lower(trim(c.customer_name)) as name_key,
+           coalesce(sum(e.amount), 0) as credit_tot
     from public.credit_entries e
+    inner join public.credit_customers c on c.id = e.credit_customer_id
     where e.transaction_date <= p_date
-    group by e.credit_customer_id
+    group by 1
   ),
   pay as (
-    select credit_customer_id, coalesce(sum(amount), 0) as payment_tot
-    from public.credit_payments
-    where date <= p_date
-    group by credit_customer_id
+    select lower(trim(c.customer_name)) as name_key,
+           coalesce(sum(p.amount), 0) as payment_tot
+    from public.credit_payments p
+    inner join public.credit_customers c on c.id = p.credit_customer_id
+    where p.date <= p_date
+    group by 1
   )
   select coalesce(sum(
     greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)
   ), 0)
-  into v_total
-  from public.credit_customers c
-  left join bal b on b.credit_customer_id = c.id
-  left join pay p on p.credit_customer_id = c.id;
-  return v_total;
-end;
+  from bal b
+  full outer join pay p using (name_key);
 $$;
-comment on function public.get_open_credit_as_of(date) is 'Total outstanding credit as of date D; all customers, clamped >= 0 (matches overdue list).';
+comment on function public.get_open_credit_as_of(date) is
+  'Total outstanding credit as of date D; one balance per customer name (clamped >= 0), matching credit ledger / Total outstanding.';
 
 create or replace function public.get_outstanding_credit_list_as_of(p_date date)
 returns table (
@@ -2913,50 +2918,53 @@ returns table (
   last_payment_date date,
   sale_date date
 )
-language plpgsql security definer stable
+language sql
+security definer
+stable
+set search_path = public
 as $$
-begin
-  perform public.require_staff_access();
-  return query
-  with bal as (
-    select e.credit_customer_id,
+  with _auth as (select public.require_staff_access()),
+  cust as (
+    select distinct on (lower(trim(c.customer_name)))
+           lower(trim(c.customer_name)) as name_key,
+           c.customer_name::text as customer_name,
+           c.vehicle_no::text as vehicle_no
+    from public.credit_customers c
+    order by lower(trim(c.customer_name)),
+             c.amount_due desc nulls last,
+             c.created_at desc
+  ),
+  bal as (
+    select lower(trim(c.customer_name)) as name_key,
            coalesce(sum(e.amount), 0) as credit_tot,
            max(e.transaction_date) as last_txn_date
     from public.credit_entries e
+    inner join public.credit_customers c on c.id = e.credit_customer_id
     where e.transaction_date <= p_date
-    group by e.credit_customer_id
+    group by 1
   ),
   pay as (
-    select credit_customer_id,
-           coalesce(sum(amount), 0) as payment_tot,
-           max(date) as last_pay_date
-    from public.credit_payments
-    where date <= p_date
-    group by credit_customer_id
-  ),
-  per_customer as (
-    select c.customer_name,
-           c.vehicle_no,
-           greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric as amt,
-           p.last_pay_date as last_pay,
-           b.last_txn_date as last_txn
-    from public.credit_customers c
-    left join bal b on b.credit_customer_id = c.id
-    left join pay p on p.credit_customer_id = c.id
-    where greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0) > 0
+    select lower(trim(c.customer_name)) as name_key,
+           coalesce(sum(p.amount), 0) as payment_tot,
+           max(p.date) as last_pay_date
+    from public.credit_payments p
+    inner join public.credit_customers c on c.id = p.credit_customer_id
+    where p.date <= p_date
+    group by 1
   )
-  select (max(pc.customer_name))::text as customer_name,
-         (max(pc.vehicle_no))::text as vehicle_no,
-         sum(pc.amt)::numeric as amount_due_as_of,
-         max(pc.last_pay) as last_payment_date,
-         max(pc.last_txn) as sale_date
-  from per_customer pc
-  group by lower(trim(pc.customer_name))
-  order by amount_due_as_of desc;
-end;
+  select cust.customer_name,
+         cust.vehicle_no,
+         greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric,
+         p.last_pay_date,
+         b.last_txn_date
+  from bal b
+  full outer join pay p using (name_key)
+  inner join cust on cust.name_key = coalesce(b.name_key, p.name_key)
+  where greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0) > 0
+  order by 3 desc, 1;
 $$;
-comment on function public.get_outstanding_credit_list_as_of(date) is 'Customers with outstanding balance as of date D; one row per customer (grouped by name). sale_date is the latest credit entry date on or before D; last_payment_date is as of D.';
-
+comment on function public.get_outstanding_credit_list_as_of(date) is
+  'Customers with outstanding balance as of date D; one row per customer name with net (credit - payments) clamped >= 0.';
 -- Credit summary for a single customer (by name) as of a date (for overdue page detail modal)
 create or replace function public.get_customer_credit_summary_as_of(
   p_customer_name text,

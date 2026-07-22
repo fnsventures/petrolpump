@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, supabaseClient, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete */
+/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css?v=3";
@@ -489,15 +489,14 @@
       document.getElementById("letterhead-end")
     );
     if (range) return { start: range.start, end: range.end };
-    const today = new Date();
-    return getMonthRange(today.getFullYear(), today.getMonth());
+    return getYearRange(new Date().getFullYear());
   }
 
   function initHistoryFilters() {
     createDateRangeFilter({
       storageKey: "letterhead_history",
-      ranges: ["today", "this-week", "this-month", "custom"],
-      defaultRange: "this-month",
+      ranges: ["this-year", "last-year", "all-time"],
+      defaultRange: "this-year",
       rangeSelect: "letterhead-range",
       startInput: "letterhead-start",
       endInput: "letterhead-end",
@@ -559,21 +558,23 @@
 
     try {
       if (reset) {
-        const { count } = await supabaseClient
+        let countQuery = supabaseClient
           .from("letterhead_letters")
-          .select("id", { count: "exact", head: true })
-          .gte("letter_date", start)
-          .lte("letter_date", end);
+          .select("id", { count: "exact", head: true });
+        if (start) countQuery = countQuery.gte("letter_date", start);
+        if (end) countQuery = countQuery.lte("letter_date", end);
+        const { count } = await countQuery;
         historyPagination.totalCount = count || 0;
       }
 
-      const { data, error } = await supabaseClient
+      let listQuery = supabaseClient
         .from("letterhead_letters")
         .select("id, letter_date, subject, body, export_type, created_at")
-        .gte("letter_date", start)
-        .lte("letter_date", end)
         .order("created_at", { ascending: false })
         .range(historyPagination.offset, historyPagination.offset + PAGE_SIZE - 1);
+      if (start) listQuery = listQuery.gte("letter_date", start);
+      if (end) listQuery = listQuery.lte("letter_date", end);
+      const { data, error } = await listQuery;
 
       if (error) {
         if (reset) {
