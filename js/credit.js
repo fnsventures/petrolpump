@@ -9,6 +9,7 @@ let creditPagination = {
   isLoading: false,
   ledgerData: [],
   searchQuery: "",
+  openCreditTotal: null,
 };
 
 
@@ -207,6 +208,7 @@ function invalidateAndRefreshCreditPortfolio() {
 }
 
 function invalidateCreditCaches() {
+  creditPagination.openCreditTotal = null;
   if (typeof AppCache !== "undefined" && AppCache) {
     CacheInvalidation.invalidate("credit");
     CacheInvalidation.invalidate("operational");
@@ -253,13 +255,28 @@ function getFilteredLedger() {
   });
 }
 
-function updateSummaryStats(filtered) {
+function updateSummaryStats(filtered, portfolioTotal = null) {
   const withBalance = filtered.filter((r) => !ledgerRowIsFullyCleared(r));
-  const total = withBalance.reduce((s, r) => s + Math.max(0, ledgerRowNetBalance(r)), 0);
+  const total =
+    portfolioTotal != null
+      ? Number(portfolioTotal) || 0
+      : withBalance.reduce((s, r) => s + Math.max(0, ledgerRowNetBalance(r)), 0);
   const totalEl = document.getElementById("credit-total-outstanding");
   const countEl = document.getElementById("credit-customer-count");
   if (totalEl) totalEl.textContent = formatCurrency(total);
   if (countEl) countEl.textContent = String(withBalance.length);
+}
+
+async function fetchOpenCreditTotal(forceReload = false) {
+  if (!forceReload && creditPagination.openCreditTotal != null) {
+    return creditPagination.openCreditTotal;
+  }
+  const { data, error } = await supabaseClient.rpc("get_open_credit_as_of", {
+    p_date: getLocalDateString(),
+  });
+  if (error) throw error;
+  creditPagination.openCreditTotal = Number(data) || 0;
+  return creditPagination.openCreditTotal;
 }
 
 async function fetchLedgerData() {
@@ -268,13 +285,43 @@ async function fetchLedgerData() {
   creditPagination.ledgerData = ledgerData ?? [];
 }
 
+async function ensurePortfolioData(forceReload = false) {
+  if (forceReload) {
+    creditPagination.ledgerData = [];
+    creditPagination.openCreditTotal = null;
+  }
+  const needLedger = creditPagination.ledgerData.length === 0;
+  const needTotal = creditPagination.openCreditTotal == null;
+  if (!needLedger && !needTotal) return;
+  await Promise.all([
+    needLedger ? fetchLedgerData() : Promise.resolve(),
+    needTotal ? fetchOpenCreditTotal() : Promise.resolve(),
+  ]);
+}
+
+function refreshSummaryStats(filtered = getFilteredLedger()) {
+  if (creditPagination.searchQuery) {
+    updateSummaryStats(filtered, null);
+    return;
+  }
+  if (creditPagination.openCreditTotal != null) {
+    updateSummaryStats(filtered, creditPagination.openCreditTotal);
+    return;
+  }
+  void fetchOpenCreditTotal()
+    .then((total) => updateSummaryStats(filtered, total))
+    .catch((err) => {
+      updateSummaryStats(filtered, null);
+      AppError.report(err, { context: "refreshSummaryStats" });
+    });
+}
+
 async function loadPortfolioSnapshot(forceReload = false) {
   if (creditPagination.isLoading) return;
   creditPagination.isLoading = true;
   try {
-    if (forceReload) creditPagination.ledgerData = [];
-    if (creditPagination.ledgerData.length === 0) await fetchLedgerData();
-    updateSummaryStats(getFilteredLedger());
+    await ensurePortfolioData(forceReload);
+    refreshSummaryStats(getFilteredLedger());
   } catch (err) {
     AppError.report(err, { context: "loadPortfolioSnapshot" });
   } finally {
@@ -305,7 +352,7 @@ function renderLedgerPage(resetTable) {
 
   const filtered = getFilteredLedger();
   creditPagination.totalCount = filtered.length;
-  updateSummaryStats(filtered);
+  refreshSummaryStats(filtered);
 
   if (filtered.length === 0) {
     let msg;
@@ -365,7 +412,6 @@ async function loadCreditLedger(reset = false) {
 
   if (reset) {
     creditPagination.offset = 0;
-    creditPagination.ledgerData = [];
     tbody.innerHTML = "<tr><td colspan='5' class='muted'>Fetching credit ledger…</td></tr>";
   }
 
@@ -376,9 +422,9 @@ async function loadCreditLedger(reset = false) {
   }
 
   try {
-    if (reset || creditPagination.ledgerData.length === 0) {
+    if (reset || creditPagination.ledgerData.length === 0 || creditPagination.openCreditTotal == null) {
       try {
-        await fetchLedgerData();
+        await ensurePortfolioData(reset);
       } catch (error) {
         tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
         AppError.report(error, { context: "loadCreditLedger" });
