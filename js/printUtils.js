@@ -442,6 +442,19 @@
     );
     doc.close();
 
+    // Chrome/Safari Save-as-PDF often uses the top-level document.title, not the
+    // iframe <title>. Mirror the host-print path so PDF names match buildPrintFilename.
+    const prevTitle = document.title;
+    document.title = title;
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      iframe.remove();
+      document.title = prevTitle;
+    };
+
     try {
       if (typeof waitForReady === "function") {
         await waitForReady(doc, win);
@@ -449,14 +462,13 @@
         await waitForPrintReady(doc, win, options);
       }
 
-      const cleanup = () => iframe.remove();
       win.addEventListener("afterprint", cleanup, { once: true });
       win.focus();
       win.print();
       window.setTimeout(cleanup, cleanupTimeoutMs);
       return true;
     } catch (err) {
-      iframe.remove();
+      cleanup();
       throw err;
     }
   }
