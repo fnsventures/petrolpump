@@ -164,6 +164,16 @@
                 <small class="muted">When ticked, lube invoices appear in GST Sales Summary and Detail on the Reports page. Fuel (petrol/diesel) sales are always shown.</small>
               </div>
               <div class="form-field">
+                <label for="bill-fuel-supplier-label">Fuel supplier label</label>
+                <input id="bill-fuel-supplier-label" type="text" maxlength="120" placeholder="BPCL / Fuel supplier" />
+                <small class="muted">Party name on GST purchase reports.</small>
+              </div>
+              <div class="form-field">
+                <label for="bill-fuel-supplier-gstin">Default fuel supplier GSTIN <span class="optional-label">(optional)</span></label>
+                <input id="bill-fuel-supplier-gstin" type="text" maxlength="15" placeholder="21AAAAA0000A1Z5" />
+                <small class="muted">Used when a receipt has no GSTIN. First 2 digits set place of supply vs station GSTIN.</small>
+              </div>
+              <div class="form-field">
                 <label for="bill-receipt-start">Receipt history from</label>
                 <input id="bill-receipt-start" type="date" />
               </div>

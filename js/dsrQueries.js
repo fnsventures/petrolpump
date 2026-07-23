@@ -5,11 +5,12 @@
  */
 (function (global) {
   const DSR_SELECT_FULL =
-    "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre";
+    "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
   const DSR_SELECT_PL =
-    "date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre";
+    "date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
   const DSR_SELECT_SUMMARY = "date, product, total_sales, testing, stock, petrol_rate, diesel_rate";
   const DSR_SELECT_RECEIPT = "date, product, receipts, buying_price_per_litre";
+  const RECEIPT_LOOKBACK_PRODUCTS = ["petrol", "diesel"];
 
   function filterDsrByRange(rows, startDate, endDate) {
     return (rows ?? []).filter((row) => row.date >= startDate && row.date <= endDate);
@@ -26,22 +27,31 @@
   }
 
   /**
-   * Receipt rows before the report range — only rows with receipts and buying price.
-   * Avoids pulling full DSR history when the report window is short.
+   * Latest priced receipt on/before the report window, per product.
+   * Buying-rate carry-forward only needs this prior rate + in-range receipts.
    */
   async function fetchReceiptHistoryBefore(startDate, receiptStart) {
     if (!startDate || !receiptStart || receiptStart >= startDate) {
       return { data: [], error: null };
     }
-    const { data, error } = await supabaseClient
-      .from("dsr")
-      .select(DSR_SELECT_RECEIPT)
-      .gte("date", receiptStart)
-      .lt("date", startDate)
-      .gt("receipts", 0)
-      .gt("buying_price_per_litre", 0)
-      .order("date", { ascending: true });
-    return { data: data ?? [], error };
+    const results = await Promise.all(
+      RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
+        supabaseClient
+          .from("dsr")
+          .select(DSR_SELECT_RECEIPT)
+          .eq("product", product)
+          .gte("date", receiptStart)
+          .lt("date", startDate)
+          .gt("receipts", 0)
+          .gt("buying_price_per_litre", 0)
+          .order("date", { ascending: false })
+          .limit(1)
+      )
+    );
+    const error = results.find((r) => r.error)?.error ?? null;
+    if (error) return { data: [], error };
+    const data = results.flatMap((r) => r.data ?? []);
+    return { data, error: null };
   }
 
   /**
@@ -121,7 +131,7 @@
 
         const { data, error } = await supabaseClient
           .from("dsr")
-          .select("id, date, product, receipts, buying_price_per_litre")
+          .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id")
           .gte("date", startStr)
           .lte("date", endStr)
           .gt("receipts", 0)

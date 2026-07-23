@@ -92,8 +92,37 @@
     } catch (_) {}
   }
 
+  /**
+   * Collapse legacy multi-section tanks (HSD 1 / HSD 2) to one row per product,
+   * using physical pump tank label/capacity when available.
+   */
+  function normalizeReportTanks(tanks, pumps) {
+    const list = Array.isArray(tanks) ? tanks : [];
+    const dieselCfg = list.find((t) => t && t.product === "diesel") || {};
+    const petrolCfg = list.find((t) => t && t.product === "petrol") || {};
+    const dieselPump = pumps?.diesel || {};
+    const petrolPump = pumps?.petrol || {};
+    return [
+      {
+        key: "hsd",
+        label: dieselPump.tankLabel || dieselCfg.label || "HSD",
+        product: "diesel",
+        capacity: dieselPump.tankCapacity || dieselCfg.capacity || "20KL",
+      },
+      {
+        key: "ms",
+        label: petrolPump.tankLabel || petrolCfg.label || "MS",
+        product: "petrol",
+        capacity: petrolPump.tankCapacity || petrolCfg.capacity || "15KL",
+      },
+    ];
+  }
+
   function normalize(settings) {
-    return deepMerge(getDefaults(), settings || {});
+    const merged = deepMerge(getDefaults(), settings || {});
+    if (!merged.reports) merged.reports = {};
+    merged.reports.tanks = normalizeReportTanks(merged.reports.tanks, merged.pumps);
+    return merged;
   }
 
   function cacheInMemory(settings) {

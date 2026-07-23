@@ -122,7 +122,9 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | stock | numeric | Dip stock (L) — feeds `dsr_stock.dip_stock` |
 | receipts | numeric | Fuel received (L) |
 | petrol_rate, diesel_rate | numeric | Selling rates (₹/L) |
-| buying_price_per_litre | numeric | Admin; cost for P&amp;L |
+| buying_price_per_litre | numeric | Admin; pre-VAT cost for P&amp;L / purchase GST |
+| supplier_invoice_no | text | BPCL / supplier invoice no (purchase GST register) |
+| supplier_gstin | text | Supplier GSTIN for this receipt (else Settings default) |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
@@ -139,7 +141,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **RLS:** Same as `dsr_petrol`.
 
-**RPC:** `update_dsr_buying_price(uuid, numeric)` updates `buying_price_per_litre` on whichever table contains the row id.
+**RPC:** `update_dsr_buying_price(uuid, numeric, text, text)` updates `buying_price_per_litre` and optional `supplier_invoice_no` / `supplier_gstin` on whichever table contains the row id.
 
 ---
 

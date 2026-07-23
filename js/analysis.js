@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, computeProfitLossSummary, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion */
 
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
@@ -28,40 +28,73 @@ function formatPercent(value) {
 
 
 async function fetchAnalysisData(startDate, endDate) {
-  const [dsrBundle, expenseResult, lubeResult] = await Promise.all([
+  const [dsrBundle, expenseResult, lubeResult, vaultResult, categoryResult] = await Promise.all([
     DsrQueries.fetchDsrRows(startDate, endDate),
     DsrQueries.fetchExpenses(startDate, endDate),
     DsrQueries.fetchLubeSales(startDate, endDate),
+    supabaseClient
+      .from("invoice_documents")
+      .select("invoice_date, amount")
+      .eq("category", "purchase")
+      .gte("invoice_date", startDate)
+      .lte("invoice_date", endDate)
+      .gt("amount", 0),
+    supabaseClient.from("expense_categories").select("name, label"),
   ]);
 
   if (dsrBundle.error) throw dsrBundle.error;
   if (expenseResult.error) throw expenseResult.error;
   if (lubeResult.error) throw lubeResult.error;
 
+  const vaultByDate = new Map();
+  let lubeCogs = 0;
+  (vaultResult.data ?? []).forEach((row) => {
+    const amt = Number(row.amount ?? 0);
+    if (!Number.isFinite(amt) || amt <= 0) return;
+    lubeCogs += amt;
+    const key = row.invoice_date;
+    if (!key) return;
+    vaultByDate.set(key, (vaultByDate.get(key) ?? 0) + amt);
+  });
+
   return {
     dsrData: dsrBundle.data ?? [],
     expenseData: expenseResult.data ?? [],
     receiptRows: dsrBundle.receiptRows ?? [],
     lubeSales: lubeResult.total,
+    lubeCogs,
     lubeByDate: lubeResult.byDate,
+    vaultByDate,
+    categoryMap: buildExpenseCategoryMap(categoryResult.data),
   };
 }
 
 /** Period totals via shared P&L helper (same as Dashboard and Reports P&L). */
-function computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales, buyingContext) {
+function computePeriodTotals(
+  dsrData,
+  expenseData,
+  receiptRows,
+  lubeSales,
+  buyingContext,
+  lubeCogs = 0,
+  categoryMap = null
+) {
   return computeProfitLossSummary({
     dsrRows: dsrData,
     receiptRows,
     expenseRows: expenseData,
     lubeSales,
+    lubeCogs,
     requireAllBuying: true,
     buyingContext,
+    categoryMap,
   });
 }
 
 /**
- * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹), petrol L, diesel L.
- * Cost uses landed buying rate: (pre-VAT + delivery/L) × (1 + VAT%). Profit = sales − cost − expenses (testing excluded).
+ * Build daily series: for each date in [start, end], compute sales (₹), cost (₹), expenses (₹), profit (₹).
+ * Cost uses landed buying rate for fuel; vault purchase amounts are lube COGS by invoice date.
+ * Profit = sales − fuel cost − vault COGS − expenses (testing excluded).
  */
 function buildDailySeries(
   dsrData,
@@ -70,7 +103,9 @@ function buildDailySeries(
   endDate,
   lubeByDate,
   canCalculate = true,
-  buyingContext = null
+  buyingContext = null,
+  vaultByDate = null,
+  categoryMap = null
 ) {
   const buyingCtx = canCalculate ? buyingContext : null;
   const byDate = new Map();
@@ -82,6 +117,7 @@ function buildDailySeries(
       date: key,
       salesRupees: 0,
       costRupees: 0,
+      lubeCogsRupees: 0,
       expenseRupees: 0,
       lubeRupees: 0,
       petrolL: 0,
@@ -119,10 +155,15 @@ function buildDailySeries(
     entry.salesRupees += amount;
   });
 
+  (vaultByDate ?? new Map()).forEach((amount, key) => {
+    if (!byDate.has(key)) return;
+    byDate.get(key).lubeCogsRupees += amount;
+  });
+
   (expenseData ?? []).forEach((row) => {
     const key = row.date;
     if (!byDate.has(key)) return;
-    if (isTestingExpenseCategory(row.category, row.description)) return;
+    if (isTestingExpenseRow(row, categoryMap)) return;
     const amount = Number(row.amount ?? 0);
     if (!Number.isFinite(amount)) return;
     byDate.get(key).expenseRupees += amount;
@@ -133,7 +174,7 @@ function buildDailySeries(
     .map(([, v]) => ({
       ...v,
       profitRupees: canCalculate
-        ? v.salesRupees - v.costRupees - v.expenseRupees
+        ? v.salesRupees - v.costRupees - v.lubeCogsRupees - v.expenseRupees
         : null,
     }));
 
@@ -246,9 +287,17 @@ function renderBuyingAlert(pl) {
   const alertEl = document.getElementById("analysis-buying-alert");
   if (!alertEl) return;
   const missing = pl?.missingBuyingPrice ?? [];
-  if (missing.length > 0) {
+  const unresolved = pl?.unresolvedBuying ?? [];
+  if (!pl?.canCalculate) {
+    const n = unresolved.length || missing.length;
     alertEl.classList.remove("hidden");
-    alertEl.textContent = `${missing.length} receipt day(s) need a buying price before net profit can be calculated. Enter pre-VAT ₹/KL on the Dashboard P&L.`;
+    alertEl.textContent =
+      n > 0
+        ? `${n} sale/receipt day(s) have no resolvable buying rate (no prior receipt rate available). Enter pre-VAT ₹/KL on the Dashboard P&L.`
+        : "Some days have no resolvable buying rate. Enter pre-VAT ₹/KL on the Dashboard P&L.";
+  } else if (pl?.usingProvisionalBuying && missing.length > 0) {
+    alertEl.classList.remove("hidden");
+    alertEl.textContent = `${missing.length} receipt day(s) still need an entered buying price — figures use the previous receipt rate until you save ₹/KL on the Dashboard P&L.`;
   } else {
     alertEl.classList.add("hidden");
     alertEl.textContent = "";
@@ -383,6 +432,9 @@ function renderInsights(series, totals, insights) {
   }
   if (totals.lubeSalesRupees > 0) {
     items.push(`Includes ${formatCurrency(totals.lubeSalesRupees)} lube/billing in sales and net profit.`);
+  }
+  if (totals.lubeCogsRupees > 0) {
+    items.push(`Vault purchase amounts ${formatCurrency(totals.lubeCogsRupees)} counted as lube COGS.`);
   }
   if (!totals.canCalculate) {
     items.push("Net profit unavailable — enter buying prices on receipt days in Dashboard P&L.");
@@ -726,12 +778,18 @@ async function loadAndRender(range) {
     await loadPumpSettings();
     await loadChartJs();
 
-    const { dsrData, expenseData, receiptRows, lubeSales, lubeByDate } = await fetchAnalysisData(
-      range.start,
-      range.end
-    );
+    const { dsrData, expenseData, receiptRows, lubeSales, lubeCogs, lubeByDate, vaultByDate, categoryMap } =
+      await fetchAnalysisData(range.start, range.end);
     const buyingContext = createBuyingRateContext(receiptRows);
-    const pl = computePeriodTotals(dsrData, expenseData, receiptRows, lubeSales, buyingContext);
+    const pl = computePeriodTotals(
+      dsrData,
+      expenseData,
+      receiptRows,
+      lubeSales,
+      buyingContext,
+      lubeCogs,
+      categoryMap
+    );
     const series = buildDailySeries(
       dsrData,
       expenseData,
@@ -739,13 +797,16 @@ async function loadAndRender(range) {
       range.end,
       lubeByDate,
       pl.canCalculate,
-      buyingContext
+      buyingContext,
+      vaultByDate,
+      categoryMap
     );
 
     const totals = {
       salesRupees: pl.revenue + pl.lubeSales,
       fuelSalesRupees: pl.revenue,
       lubeSalesRupees: pl.lubeSales,
+      lubeCogsRupees: pl.lubeCogs,
       costRupees: pl.costOfGoods,
       grossProfitRupees: pl.grossProfit,
       expenseRupees: pl.totalExpenses,
@@ -763,7 +824,9 @@ async function loadAndRender(range) {
         prevData.expenseData,
         prevData.receiptRows,
         prevData.lubeSales,
-        prevBuyingContext
+        prevBuyingContext,
+        prevData.lubeCogs,
+        prevData.categoryMap
       );
       const prevSales = prevPl.revenue + prevPl.lubeSales;
       const prevProfit = prevPl.canCalculate ? prevPl.netProfit : null;

@@ -599,7 +599,8 @@ function populatePrintInvoice(invoice, items) {
   document.getElementById("print-gross").textContent = Number(invoice.total_amount).toFixed(2);
   const roundOff = Number(invoice.round_off) || 0;
   document.getElementById("print-roundoff").textContent = roundOff.toFixed(2);
-  togglePrintTaxRow("print-roundoff-row", Math.abs(roundOff) >= 0.01);
+  // Always show round-off on the cash memo (0.00 when none) — matches pump retail bills.
+  togglePrintTaxRow("print-roundoff-row", true);
 }
 
 function togglePrintTaxRow(rowId, show) {
