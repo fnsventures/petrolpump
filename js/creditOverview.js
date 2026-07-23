@@ -323,7 +323,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
 
 async function ensureOverviewPrintDeps() {
   if (typeof PrintUtils === "undefined") {
-    await loadScript("js/printUtils.js?v=3");
+    await loadScript("js/printUtils.js?v=7");
   }
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();
@@ -345,7 +345,13 @@ async function runOverviewPrint() {
 
   const periodLabel = lastOverviewPeriodLabel || getOverviewPeriodLabel();
   const sheetHtml = buildOverviewPrintHtml(lastOverviewData, periodLabel);
-  const title = `Credit overview · ${periodLabel}`;
+  const { start, end } = getOverviewDateRange();
+  const title = PrintUtils.buildPrintFilename(
+    "credit-overview",
+    periodLabel,
+    start || null,
+    start !== end ? end : null
+  );
 
   await PrintUtils.printInIframe({
     title,
