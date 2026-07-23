@@ -1532,8 +1532,11 @@ async function runReportPrint() {
   const bodyHtml = sanitizeReportHtmlForPrint(reportBodyHtml);
   const sheetWrapped = buildPrintSheetWrapped(bodyHtml, activeReport, cachedRange);
   const cssText = await getReportPrintCssText();
-  const meta = findReportMeta(activeReport);
-  const title = meta?.title || "Report";
+  const title = PrintUtils.buildPrintFilename(
+    activeReport || "report",
+    cachedRange?.start,
+    cachedRange?.start !== cachedRange?.end ? cachedRange?.end : null
+  );
 
   await PrintUtils.printInIframe({
     title,

@@ -508,7 +508,7 @@ function initOutstandingTab() {
 
 async function ensureCreditCustomer() {
   await loadScript("js/creditCustomerDetail.js");
-  await loadScript("js/printUtils.js?v=3");
+  await loadScript("js/printUtils.js?v=6");
   await loadScript("js/creditCustomer.js");
   return window.CreditCustomer.init();
 }
