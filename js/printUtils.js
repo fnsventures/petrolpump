@@ -91,6 +91,48 @@
   }
 
   /**
+   * Sanitize one segment for Print → Save as PDF default filenames.
+   * Keeps letters/numbers (incl. Unicode), collapses spaces to hyphens, lowercases.
+   * @param {unknown} text
+   * @param {number} [maxLen=48]
+   * @returns {string}
+   */
+  function sanitizeFilenamePart(text, maxLen = 48) {
+    const lim = Number.isFinite(maxLen) && maxLen > 0 ? maxLen : 48;
+    return String(text ?? "")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\/\\]+/g, "-")
+      .replace(/[^\p{L}\p{N}\s._-]+/gu, "")
+      .trim()
+      .replace(/[\s._]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, lim)
+      .replace(/-+$/g, "")
+      .toLowerCase();
+  }
+
+  /**
+   * Hyphenated print/PDF title from parts (type, name, month, dates, …).
+   * Empty parts are skipped. Example:
+   * buildPrintFilename("salary-slip", "Rajesh Kumar", "2025-07")
+   * → "salary-slip-rajesh-kumar-2025-07"
+   * @param {...unknown} parts
+   * @returns {string}
+   */
+  function buildPrintFilename(...parts) {
+    const joined = parts
+      .flat()
+      .map((p) => sanitizeFilenamePart(p))
+      .filter(Boolean)
+      .join("-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return joined || "document";
+  }
+
+  /**
    * Mobile browsers (esp. Chrome Android) ignore iframe print and print the top page.
    * Cached after first check — UA does not change mid-session.
    * @returns {boolean}
@@ -425,11 +467,13 @@
     PRINT_LOGO_IMAGE_SELECTORS,
     applyPrintLogos,
     buildPrintDocumentHtml,
+    buildPrintFilename,
     escapeInlineCss,
     getStationLogoPrintUrl,
     iframePrintUnreliable,
     printInIframe,
     resolveAssetUrl,
+    sanitizeFilenamePart,
     waitForFrameLoad,
     waitForImages,
     waitForPaint,

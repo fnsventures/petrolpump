@@ -238,8 +238,8 @@
     setPrintButtonsBusy(true);
 
     const title = useContent
-      ? values.subject || "Letter"
-      : `${stationParts().legalName} — Letterhead`;
+      ? PrintUtils.buildPrintFilename("letterhead", values.subject || "letter", values.date)
+      : PrintUtils.buildPrintFilename("letterhead", "blank");
 
     try {
       const [sheetHtml, cssText] = await Promise.all([
@@ -412,14 +412,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
-  function safeFilenamePart(text) {
-    return String(text || "")
-      .replace(/[^\w\s-]+/g, "")
-      .trim()
-      .replace(/\s+/g, "-")
-      .slice(0, 40);
-  }
-
   async function downloadWord({ includeContent }) {
     clearMessages();
     const values = getComposeValues();
@@ -449,11 +441,10 @@
       const blob = new Blob(["\ufeff", html], {
         type: "application/msword",
       });
-      const base = safeFilenamePart(stationParts().legalName) || "letterhead";
-      const suffix = useContent
-        ? safeFilenamePart(values.subject) || "letter"
-        : "blank";
-      downloadBlob(`${base}-${suffix}.doc`, blob);
+      const name = useContent
+        ? PrintUtils.buildPrintFilename("letterhead", values.subject || "letter", values.date)
+        : PrintUtils.buildPrintFilename("letterhead", "blank");
+      downloadBlob(`${name}.doc`, blob);
 
       let historyNote = "";
       if (useContent) {

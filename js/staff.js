@@ -258,7 +258,7 @@ async function runStaffIdPrintInIframe(emp) {
   ].join("\n  ");
 
   await PrintUtils.printInIframe({
-    title: `${emp.name || "Staff"} · ID card`,
+    title: PrintUtils.buildPrintFilename("staff-id", emp.name || "staff"),
     bodyHtml: sheetHtml,
     headExtras,
     containerClass: "staff-id-sheet",

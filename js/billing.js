@@ -109,7 +109,10 @@ async function runInvoicePrint(invoiceNumber) {
 
   let sheetHtml = PrintUtils.applyPrintLogos(printRoot.innerHTML);
 
-  const title = invoiceNumber ? String(invoiceNumber) : "Tax Invoice";
+  const title = PrintUtils.buildPrintFilename(
+    "tax-invoice",
+    invoiceNumber || "draft"
+  );
 
   try {
     await PrintUtils.printInIframe({

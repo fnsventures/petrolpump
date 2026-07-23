@@ -840,7 +840,8 @@ body.modal-open {
   margin-bottom: var(--space-3);
 }
 
-.customer-summary-print-btn:disabled {
+.customer-summary-print-btn:disabled,
+.credit-overview-print-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
