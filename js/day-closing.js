@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 let dayClosingBreakdown = null;
@@ -7,6 +7,8 @@ let dcBreakdownRequestId = 0;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
 let expenseCategoryLabels = null;
 let dcDom = null;
+let dcRegisterPrintRows = [];
+let dcRegisterPrintRange = null;
 const dcBreakdownEls = {};
 const DC_LOADING = "…";
 const DC_EMPTY = "—";
@@ -507,6 +509,167 @@ function updateDayClosingShortLive() {
   updateShortDisplay(shortToday);
 }
 
+function dcPrintStationHeader(title, subtitle) {
+  const station = PumpSettings.getCachedSync()?.station || {};
+  const legal = PumpSettings.getStationLegalName?.() || station.legalName || station.displayName || "Petrol Pump";
+  const gstin = PumpSettings.getStationGstin?.() || station.gstin || "";
+  const tagline = station.tagline || "";
+  return `
+    <header class="dc-print-header">
+      <img class="dc-print-logo station-logo-print" src="assets/logo-print.webp" alt="" />
+      <h1>${escapeHtml(legal)}</h1>
+      ${tagline ? `<p>${escapeHtml(tagline)}</p>` : ""}
+      ${gstin ? `<p>GSTIN: ${escapeHtml(gstin)}</p>` : ""}
+      <p class="dc-print-title"><strong>${escapeHtml(title)}</strong></p>
+      ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ""}
+    </header>`;
+}
+
+function buildDayClosingStatementHtml() {
+  const dateStr = dcDom?.dateInput?.value?.trim();
+  if (!dateStr || !dayClosingBreakdown) {
+    throw new Error("Load a day closing first.");
+  }
+  const b = dayClosingBreakdown;
+  const nightCash = Number(dcDom.nightCashInput?.value ?? b.night_cash ?? 0) || 0;
+  const phonePay = Number(dcDom.phonePayInput?.value ?? b.phone_pay ?? 0) || 0;
+  const totalSale = Number(b.total_sale ?? 0);
+  const collection = Number(b.collection ?? 0);
+  const shortPrevious = Number(b.short_previous ?? 0);
+  const creditToday = Number(b.credit_today ?? 0);
+  const expensesToday = Number(b.expenses_today ?? 0);
+  const shortToday =
+    totalSale + collection + shortPrevious - (nightCash + phonePay + creditToday + expensesToday);
+  const remarks = dcDom.remarksInput?.value?.trim() || b.remarks || "";
+  const ref = b.closing_reference || "";
+
+  const rows = [
+    ["Total sale", totalSale],
+    ["Collection", collection],
+    ["Short previous", shortPrevious],
+    ["Night cash", nightCash],
+    ["Phone pay", phonePay],
+    ["Credit today", creditToday],
+    ["Expenses today", expensesToday],
+    ["Today's short", shortToday],
+  ];
+
+  return `
+    <div class="dc-print-sheet">
+      ${dcPrintStationHeader("Day closing statement", formatDisplayDate(dateStr))}
+      ${ref ? `<p><strong>Reference:</strong> ${escapeHtml(ref)}</p>` : ""}
+      <table class="dc-print-table">
+        <thead><tr><th>Particulars</th><th class="num">Amount (₹)</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              ([label, amt]) =>
+                `<tr><td>${escapeHtml(label)}</td><td class="num">${escapeHtml(formatCurrency(amt))}</td></tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+      ${remarks ? `<p><strong>Remarks:</strong> ${escapeHtml(remarks)}</p>` : ""}
+      <p class="dc-print-note">Formula: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short.</p>
+    </div>`;
+}
+
+function buildDayClosingRegisterHtml() {
+  if (!dcRegisterPrintRows?.length || !dcRegisterPrintRange) {
+    throw new Error("Load the register for a date range first.");
+  }
+  const { start, end, status } = dcRegisterPrintRange;
+  const statusLabel =
+    status === "pending" ? "at pump only" : status === "collected" ? "collected only" : "all";
+  const body = dcRegisterPrintRows
+    .map((row) => {
+      const collected = !!row.night_cash_collection_id;
+      const statusText = collected
+        ? `Collected${row.night_cash_collections?.collection_reference ? ` (${row.night_cash_collections.collection_reference})` : ""}`
+        : "At pump";
+      return `<tr>
+        <td>${escapeHtml(formatDisplayDate(row.date))}</td>
+        <td>${escapeHtml(row.closing_reference ?? "—")}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.collection))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.credit_today))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.expenses_today))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.night_cash))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.phone_pay))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.total_sale))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.short_previous))}</td>
+        <td class="num">${escapeHtml(formatCurrency(row.short_today))}</td>
+        <td>${escapeHtml(statusText)}</td>
+        <td>${escapeHtml(row.remarks ?? "—")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `
+    <div class="dc-print-sheet">
+      ${dcPrintStationHeader(
+        "Day closing register",
+        `${formatDisplayDate(start)} – ${formatDisplayDate(end)} (${statusLabel})`
+      )}
+      <table class="dc-print-table">
+        <thead>
+          <tr>
+            <th>Date</th><th>Ref</th>
+            <th class="num">Collection</th><th class="num">Credit</th><th class="num">Expenses</th>
+            <th class="num">Night cash</th><th class="num">Phone pay</th>
+            <th class="num">Total sale</th><th class="num">Short prev</th><th class="num">Short</th>
+            <th>Status</th><th>Remarks</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+      <p class="dc-print-note">${dcRegisterPrintRows.length} closing statement(s).</p>
+    </div>`;
+}
+
+async function runDayClosingPrint(bodyHtml, filenamePart) {
+  await loadPumpSettings();
+  let cssText = "";
+  try {
+    const res = await fetch(new URL("css/day-closing-print.css", window.location.href).href);
+    if (res.ok) cssText = await res.text();
+  } catch (_) {
+    /* print still works with minimal styling */
+  }
+  const html = typeof PrintUtils.applyPrintLogos === "function"
+    ? PrintUtils.applyPrintLogos(bodyHtml)
+    : bodyHtml;
+  await PrintUtils.printInIframe({
+    title: filenamePart,
+    bodyHtml: html,
+    cssText,
+    bodyClass: "dc-print-body",
+    iframeTitle: filenamePart,
+  });
+}
+
+async function printDayClosingStatement() {
+  try {
+    const bodyHtml = buildDayClosingStatementHtml();
+    const dateStr = dcDom?.dateInput?.value?.trim() || "statement";
+    await runDayClosingPrint(bodyHtml, `Day closing ${dateStr}`);
+  } catch (err) {
+    AppError.handle(err, { target: dcDom?.errorEl });
+  }
+}
+
+async function printDayClosingRegister() {
+  try {
+    const bodyHtml = buildDayClosingRegisterHtml();
+    const start = dcRegisterPrintRange?.start || "";
+    const end = dcRegisterPrintRange?.end || "";
+    await runDayClosingPrint(bodyHtml, `Day closing register ${start}_${end}`);
+  } catch (err) {
+    AppError.report(err, { context: "printDayClosingRegister" });
+    const summaryEl = document.getElementById("dc-register-summary");
+    if (summaryEl) summaryEl.textContent = err?.message || "Print failed.";
+  }
+}
+
 async function initializeDayClosing() {
   cacheDayClosingDom();
   const { dateInput, form, refreshBtn, nightCashInput, phonePayInput } = dcDom;
@@ -615,6 +778,9 @@ async function initializeDayClosing() {
   if (refreshBtn) {
     refreshBtn.addEventListener("click", () => loadDayClosingBreakdown(dateInput.value || todayStr));
   }
+  document.getElementById("day-closing-print")?.addEventListener("click", () => {
+    printDayClosingStatement();
+  });
 
   document.querySelector(".day-closing-breakdown")?.addEventListener("click", (event) => {
     const toggle = event.target.closest(".dc-breakdown-toggle");
@@ -1183,8 +1349,11 @@ async function loadDayClosingRegister() {
     if (error) throw error;
 
     const rows = data || [];
+    dcRegisterPrintRows = rows;
+    dcRegisterPrintRange = { start, end, status };
 
     if (!rows.length) {
+      dcRegisterPrintRows = [];
       registerBody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>No closing statements match this filter.</td></tr>`;
       if (registerFoot) registerFoot.hidden = true;
       updateRegisterPeriodStats({ visible: false });
@@ -1308,6 +1477,7 @@ async function loadDayClosingRegister() {
 function initRegisterSection() {
   const { registerStart, registerEnd, registerLoadBtn, registerStatus } = dcDom;
   const refreshAllBtn = document.getElementById("dc-register-refresh-all");
+  const registerPrintBtn = document.getElementById("dc-register-print");
 
   if (registerStart && registerEnd) {
     const endDate = new Date();
@@ -1325,6 +1495,7 @@ function initRegisterSection() {
     if (registerLoadedOnce) loadDayClosingRegister();
   });
   refreshAllBtn?.addEventListener("click", () => refreshRegisterPanel());
+  registerPrintBtn?.addEventListener("click", () => printDayClosingRegister());
 
   initNightCashCollection();
 }

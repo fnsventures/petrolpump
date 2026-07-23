@@ -229,19 +229,24 @@ Reports (reports.html)
    → Report catalog (REPORT_CATALOG in reports.js):
 
        Operations
-         → dsr — Tank-wise DSR
+         → dsr — Tank-wise DSR (HSD + MS; shortage, book total, variance, TVA)
+         → fuel-income — Fuel Income (daily MS/HSD margin: litres × (selling − landed buying))
 
        GST — Sales
-         → gst-sales-summary — GST Sales Summary
-         → gst-sales-detail — GST Sales Detail
+         → gst-sales-summary — GST Sales Summary (inside/outside state; fuel NIL + optional billing)
+         → gst-sales-detail — GST Sales Detail (daily SFC fuel NIL invoices; billing GSTIN/IGST)
 
        GST — Purchases
-         → gst-purchase-summary — GST Purchase Summary
-         → gst-purchase-detail — GST Purchase Detail
+         → gst-purchase-summary — GST Purchase Summary (inside/outside via supplier GSTIN)
+         → gst-purchase-detail — GST Purchase Detail (INV no, GSTIN, VAT)
 
        Accounts
-         → trading — Trading account
-         → pl — Profit & Loss
+         → trading — Trading account (stock-based GI; vault lube purchases when present)
+         → pl — Profit & Loss (margin-based; same as Dashboard / Analysis)
+         → pl — Profit & Loss (books debit/credit layout; margin formula = Dashboard)
+
+       GST — Filing aids
+         → gstr1 — GSTR-1 style register (B2B / B2CS / NIL fuel; CSV download)
 
    → Data from dsr_*, invoices, expenses, pump_settings (purchase VAT %, delivery)
    → Print-friendly layout (css/reports-print.css; no-print chrome)

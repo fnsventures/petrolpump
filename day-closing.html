@@ -20,6 +20,7 @@
     <script defer src="js/utils.js?v=9"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/printUtils.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/day-closing.js"></script>
@@ -182,6 +183,7 @@
           <p id="dc-reference-line" class="muted hidden"></p>
           <div class="form-actions">
             <button type="button" id="day-closing-refresh">Refresh</button>
+            <button type="button" id="day-closing-print" class="button-secondary">Print statement</button>
             <button type="submit" id="day-closing-save">Save day closing</button>
           </div>
           <p id="day-closing-already-saved" class="muted hidden">Day closing already saved for this date.</p>
@@ -223,6 +225,7 @@
                 </div>
                 <div class="filter-actions">
                   <button type="button" id="dc-register-load">Load</button>
+                  <button type="button" id="dc-register-print" class="button-secondary">Print register</button>
                 </div>
               </div>
             </div>

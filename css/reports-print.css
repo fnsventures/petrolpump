@@ -292,15 +292,15 @@ body.report-print-body {
   width: 16%;
 }
 
-/* DSR register (12 columns) */
+/* DSR register (15 columns including Short, Total, TVA) */
 .report-dsr-table {
-  font-size: 6.5pt;
+  font-size: 6pt;
 }
 
 .report-dsr-table th,
 .report-dsr-table td {
-  font-size: 6.5pt;
-  padding: 1.5pt 1.5pt;
+  font-size: 6pt;
+  padding: 1.5pt 1pt;
 }
 
 .report-dsr-table th {
@@ -308,6 +308,25 @@ body.report-print-body {
 }
 
 .report-dsr-table td:first-child {
+  white-space: nowrap;
+}
+
+/* Fuel Income (10 columns: date + MS×4 + HSD×4 + total) */
+.report-fuel-income-table {
+  font-size: 6.5pt;
+}
+
+.report-fuel-income-table th,
+.report-fuel-income-table td {
+  font-size: 6.5pt;
+  padding: 1.5pt 1.5pt;
+}
+
+.report-fuel-income-table thead th {
+  white-space: nowrap;
+}
+
+.report-fuel-income-table td:first-child {
   white-space: nowrap;
 }
 

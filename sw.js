@@ -56,6 +56,7 @@ const STATIC_ASSET_PATHS = [
   "css/app-staff.css",
   "css/invoice-print.css",
   "css/reports-print.css",
+  "css/day-closing-print.css",
   "css/salary-slip-print.css",
   "css/credit-summary-print.css",
   "css/staff-id-print.css",

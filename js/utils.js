@@ -745,7 +745,20 @@ function createBuyingRateContext(receiptRows) {
     const list = byProduct.get(p);
     let stored = null;
     if (list?.length) {
-      const found = list.find((r) => r.date <= date);
+      // list is sorted newest→oldest; binary-search first date <= target
+      let lo = 0;
+      let hi = list.length - 1;
+      let foundIdx = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid].date <= date) {
+          foundIdx = mid;
+          hi = mid - 1; // seek newer (smaller index) that still qualifies
+        } else {
+          lo = mid + 1;
+        }
+      }
+      const found = foundIdx >= 0 ? list[foundIdx] : null;
       if (found != null && Number.isFinite(found.buying_price_per_litre) && found.buying_price_per_litre > 0) {
         stored = found.buying_price_per_litre;
       }
@@ -882,9 +895,9 @@ function computeFuelGrossProfit(dsrRows, getBuyingOrCtx) {
   return accumulateFuelPnL(dsrRows, getBuyingOrCtx).fuelGrossProfit;
 }
 
-function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false } = {}) {
+function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false, categoryMap = null } = {}) {
   return (expenseRows ?? []).reduce((sum, row) => {
-    const isTesting = isTestingExpenseCategory(row.category, row.label ?? row.description);
+    const isTesting = isTestingExpenseRow(row, categoryMap);
     if (testingOnly && !isTesting) return sum;
     if (excludeTesting && isTesting) return sum;
     const amount = Number(row.amount ?? 0);
@@ -925,17 +938,60 @@ function isTestingExpenseCategory(category, label) {
 }
 
 /**
- * Receipt days with no resolvable buying rate (blocks P&L until admin enters ₹/KL).
- * @param {Function|Array} getStoredOrReceiptRows - getStored fn or receipt rows array
+ * Display / detection label for an expense row.
+ * When categoryMap is provided (Reports), use Settings label — same as books bucketing.
+ * Otherwise fall back to row.label, then description (Dashboard / Analysis).
  */
-function findMissingBuyingPriceRows(dsrRows, getStoredOrReceiptRows) {
-  const getStored =
-    typeof getStoredOrReceiptRows === "function"
-      ? getStoredOrReceiptRows
-      : createBuyingRateContext(getStoredOrReceiptRows ?? []).getStored;
+function getExpenseCategoryLabel(row, categoryMap) {
+  const key = row?.category || "misc";
+  if (categoryMap && Object.prototype.hasOwnProperty.call(categoryMap, key)) {
+    return categoryMap[key] || key || "Miscellaneous";
+  }
+  if (row?.label) return String(row.label);
+  if (!categoryMap && row?.description) return String(row.description);
+  if (categoryMap) return key || "Miscellaneous";
+  return key || "Miscellaneous";
+}
+
+/** Single rule for testing vs operating expense (Reports, Dashboard, Analysis). */
+function isTestingExpenseRow(row, categoryMap) {
+  return isTestingExpenseCategory(row?.category, getExpenseCategoryLabel(row, categoryMap));
+}
+
+/** name → label map from expense_categories rows (Settings). Empty → null (use description fallback). */
+function buildExpenseCategoryMap(categories) {
+  const categoryMap = {};
+  (categories ?? []).forEach((c) => {
+    if (c?.name == null) return;
+    categoryMap[c.name] = c.label ?? c.name;
+  });
+  return Object.keys(categoryMap).length > 0 ? categoryMap : null;
+}
+
+/**
+ * Receipt days with no buying price entered on the row itself.
+ * Used for the warning UI; calculations may still use the previous receipt rate.
+ */
+function findMissingBuyingPriceRows(dsrRows) {
   return (dsrRows ?? []).filter((row) => {
     if (Number(row.receipts ?? 0) <= 0) return false;
-    const rate = resolveStoredBuyingRate(row, getStored);
+    const rate = Number(row.buying_price_per_litre);
+    return !Number.isFinite(rate) || rate <= 0;
+  });
+}
+
+/**
+ * Sale / receipt rows that cannot resolve any landed buying rate even via prior receipts.
+ * @param {Function|object} getBuyingOrCtx - buying context or getStored fn
+ */
+function findUnresolvedBuyingRateRows(dsrRows, getBuyingOrCtx) {
+  return (dsrRows ?? []).filter((row) => {
+    const product = normalizeProduct(row?.product);
+    if (product !== "petrol" && product !== "diesel") return false;
+    const needsRate =
+      getDsrNetSaleLitres(row) > 0 || Number(row?.receipts ?? 0) > 0;
+    if (!needsRate) return false;
+    const rate = getEffectiveBuyingRate(row, getBuyingOrCtx);
     return rate == null || !Number.isFinite(rate) || rate <= 0;
   });
 }
@@ -943,39 +999,51 @@ function findMissingBuyingPriceRows(dsrRows, getStoredOrReceiptRows) {
 /**
  * Unified P&L for dashboard, reports, and analysis.
  * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%).
- * Net profit = fuel gross profit + lube − operating expenses (MS/HS and density testing excluded).
- * Requires purchaseTaxUtils.js (loaded before utils.js).
+ * Missing receipt-day rates fall back to the previous receipt rate for calculation;
+ * missingBuyingPrice lists rows that still need an entered rate (warning only).
+ * Net profit = fuel gross profit + lube sales − lube COGS − operating expenses
+ * (MS/HS and density testing excluded). Requires purchaseTaxUtils.js (loaded before utils.js).
  */
 function computeProfitLossSummary({
   dsrRows,
   receiptRows,
   expenseRows,
   lubeSales = 0,
+  lubeCogs = 0,
   requireAllBuying = true,
   buyingContext = null,
+  categoryMap = null,
 } = {}) {
   const ctx = buyingContext ?? createBuyingRateContext(receiptRows ?? []);
-  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows, ctx.getStored);
-  const canCalculate = !requireAllBuying || missingBuyingPrice.length === 0;
+  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows);
+  const unresolvedBuying = findUnresolvedBuyingRateRows(dsrRows, ctx);
+  // Calculate whenever a prior (or own) rate can be resolved; warn separately for unentered rows.
+  const canCalculate = !requireAllBuying || unresolvedBuying.length === 0;
   const fuelPnL = accumulateFuelPnL(dsrRows, canCalculate ? ctx : null);
   const lube = Number(lubeSales ?? 0);
-  const testingExpenses = sumExpenseAmounts(expenseRows, { testingOnly: true });
-  const totalExpenses = sumExpenseAmounts(expenseRows, { excludeTesting: true });
+  const lubeCost = Math.max(0, Number(lubeCogs ?? 0));
+  const testingExpenses = sumExpenseAmounts(expenseRows, { testingOnly: true, categoryMap });
+  const totalExpenses = sumExpenseAmounts(expenseRows, { excludeTesting: true, categoryMap });
   const fuelGrossProfit = canCalculate ? fuelPnL.fuelGrossProfit : null;
-  const grossProfit = fuelGrossProfit != null ? fuelGrossProfit + lube : null;
+  const lubeGrossProfit = lube - lubeCost;
+  const grossProfit = fuelGrossProfit != null ? fuelGrossProfit + lubeGrossProfit : null;
   const netProfit = grossProfit != null ? grossProfit - totalExpenses : null;
 
   return {
     revenue: fuelPnL.revenue,
     missingRates: fuelPnL.missingRates,
-    costOfGoods: canCalculate ? fuelPnL.costOfGoods : 0,
+    costOfGoods: canCalculate ? fuelPnL.costOfGoods + lubeCost : lubeCost,
     fuelGrossProfit,
     lubeSales: lube,
+    lubeCogs: lubeCost,
+    lubeGrossProfit,
     grossProfit,
     testingExpenses,
     totalExpenses,
     netProfit,
     missingBuyingPrice,
+    unresolvedBuying,
+    usingProvisionalBuying: canCalculate && missingBuyingPrice.length > 0,
     canCalculate,
   };
 }
@@ -997,7 +1065,11 @@ window.computeFuelCostOfGoods = computeFuelCostOfGoods;
 window.computeFuelGrossProfit = computeFuelGrossProfit;
 window.sumExpenseAmounts = sumExpenseAmounts;
 window.isTestingExpenseCategory = isTestingExpenseCategory;
+window.getExpenseCategoryLabel = getExpenseCategoryLabel;
+window.isTestingExpenseRow = isTestingExpenseRow;
+window.buildExpenseCategoryMap = buildExpenseCategoryMap;
 window.findMissingBuyingPriceRows = findMissingBuyingPriceRows;
+window.findUnresolvedBuyingRateRows = findUnresolvedBuyingRateRows;
 window.computeProfitLossSummary = computeProfitLossSummary;
 
 /** MS/HSD or petrol/diesel → product key for styling. */
