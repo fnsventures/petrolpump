@@ -173,9 +173,48 @@
   line-height: 1.35;
 }
 
+/* Overview — all-customer period list */
+.credit-overview-print-table th:nth-child(1),
+.credit-overview-print-table td:nth-child(1) {
+  width: 6%;
+  text-align: center;
+}
+
+.credit-overview-print-table th:nth-child(2),
+.credit-overview-print-table td:nth-child(2) {
+  width: 34%;
+}
+
+.credit-overview-print-table th:nth-child(3),
+.credit-overview-print-table td:nth-child(3),
+.credit-overview-print-table th:nth-child(4),
+.credit-overview-print-table td:nth-child(4),
+.credit-overview-print-table th:nth-child(5),
+.credit-overview-print-table td:nth-child(5) {
+  width: 20%;
+}
+
+.credit-overview-print-overpaid {
+  color: #15803d;
+}
+
+.credit-overview-print-sheet .credit-summary-block {
+  page-break-inside: auto;
+}
+
 @media print {
   .credit-summary-kpis,
   .credit-summary-block {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .credit-overview-print-sheet .credit-summary-block {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .credit-overview-print-table tr {
     page-break-inside: avoid;
     break-inside: avoid;
   }

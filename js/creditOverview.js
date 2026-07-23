@@ -1,10 +1,14 @@
-/* global supabaseClient, formatCurrency, AppCache, AppError, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection */
+/* global supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, formatNumberPlain, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
 
 (function () {
   const page = () => window.CreditPage;
   let overviewRequestId = 0;
   let ready = false;
+  let overviewPrintBusy = false;
+  let lastOverviewData = null;
+  let lastOverviewPeriodLabel = "";
   const OVERVIEW_EMPTY = Object.freeze({ credit_taken: 0, settled: 0, overdue: 0, customers: [] });
+  const CREDIT_OVERVIEW_PRINT_CSS = "css/credit-summary-print.css?v=2";
 
 function readOverviewDateRange() {
   return readDateRangeFromControls(
@@ -31,6 +35,12 @@ function getOverviewDateRange() {
   return { start: fallback.start, end: fallback.end };
 }
 
+function getOverviewPeriodLabel() {
+  const range = readOverviewDateRange();
+  if (!range) return "All time";
+  return formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
+}
+
 function initOverviewPanel() {
   createDateRangeFilter({
     storageKey: "credit_overview_period",
@@ -44,6 +54,10 @@ function initOverviewPanel() {
     trigger: "apply",
     runOnInit: true,
     onApply: () => loadOverviewPeriodActivity(),
+  });
+
+  document.getElementById("credit-overview-print-btn")?.addEventListener("click", () => {
+    void handleOverviewPrintClick();
   });
 }
 
@@ -79,6 +93,12 @@ function overviewCacheKey(start, end) {
   return `credit_overview_${start || "all"}_${end}`;
 }
 
+function updateOverviewPrintButton() {
+  const btn = document.getElementById("credit-overview-print-btn");
+  if (!btn) return;
+  btn.disabled = overviewPrintBusy || !lastOverviewData?.customers?.length;
+}
+
 function applyOverviewPeriodData(data, periodFilter = getOverviewFilterForLinks()) {
   const tbody = document.getElementById("credit-overview-body");
   const emptyCta = document.getElementById("credit-overview-empty");
@@ -86,7 +106,10 @@ function applyOverviewPeriodData(data, periodFilter = getOverviewFilterForLinks(
   if (!tbody) return;
 
   const normalized = normalizeOverviewPeriodData(data);
+  lastOverviewData = normalized;
+  lastOverviewPeriodLabel = getOverviewPeriodLabel();
   setOverviewPeriodStats(normalized.credit_taken, normalized.settled, normalized.overdue);
+  updateOverviewPrintButton();
 
   if (!normalized.customers.length) {
     tbody.innerHTML = "";
@@ -143,6 +166,8 @@ async function loadOverviewPeriodActivity() {
   if (hasCached) {
     applyOverviewPeriodData(cached.data, periodFilter);
   } else {
+    lastOverviewData = null;
+    updateOverviewPrintButton();
     tbody.innerHTML = "<tr><td colspan='4' class='muted'>Loading…</td></tr>";
     emptyCta?.classList.add("hidden");
     tableEl?.classList.remove("hidden");
@@ -172,8 +197,192 @@ async function loadOverviewPeriodActivity() {
     if (!hasCached) applyOverviewPeriodData(data, periodFilter);
   } catch (err) {
     if (requestId !== overviewRequestId) return;
+    lastOverviewData = null;
+    updateOverviewPrintButton();
     tbody.innerHTML = `<tr><td colspan="4" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
     AppError.report(err, { context: "loadOverviewPeriodActivity" });
+  }
+}
+
+function overviewReportHeader(title, subtitleLines) {
+  const gstin = PumpSettings.getStationGstin();
+  const subtitles = (subtitleLines || [])
+    .filter(Boolean)
+    .map((line) => `<p class="report-subtitle">${line}</p>`)
+    .join("");
+  return `
+    <header class="report-print-head">
+      <div class="report-letterhead">
+        <img src="${PrintUtils.getStationLogoPrintUrl()}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="128" height="128" />
+        <div class="report-letterhead-text">
+          <h1 class="report-station">${escapeHtml(PumpSettings.getStationLegalName())}</h1>
+          <p class="report-dealer">${escapeHtml(PumpSettings.getStationTagline())}</p>
+          ${gstin ? `<p class="report-gstin">GSTIN: ${escapeHtml(gstin)}</p>` : ""}
+          <p class="report-title">${escapeHtml(title)}</p>
+          ${subtitles}
+        </div>
+      </div>
+    </header>`;
+}
+
+function buildOverviewCustomerPrintRows(customers) {
+  if (!customers.length) {
+    return `<tr><td colspan="5" class="muted" style="text-align:center">No credit activity for this period</td></tr>`;
+  }
+  return customers
+    .map((row, i) => {
+      const outstanding = Number(row.overdue) || 0;
+      const outstandingClass = outstanding < 0 ? ' class="num credit-overview-print-overpaid"' : ' class="num"';
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${escapeHtml(row.customer_name)}</td>
+          <td class="num">₹ ${formatNumberPlain(row.credit_taken)}</td>
+          <td class="num">₹ ${formatNumberPlain(row.settled)}</td>
+          <td${outstandingClass}>₹ ${formatNumberPlain(outstanding)}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function buildOverviewPrintHtml(data, periodLabel) {
+  const generatedOn = formatDisplayDate(getLocalDateString());
+  const period = periodLabel || "All time";
+  const creditTaken = Number(data.credit_taken) || 0;
+  const settled = Number(data.settled) || 0;
+  const outstanding = Number(data.overdue) || 0;
+  const customers = Array.isArray(data.customers) ? data.customers : [];
+  const customerCount = customers.length;
+
+  return `
+    <article class="credit-summary-sheet report-print-sheet credit-overview-print-sheet">
+      ${overviewReportHeader("Credit overview — customer list", [
+        `Period: <strong>${escapeHtml(period)}</strong>`,
+        `Generated: ${escapeHtml(generatedOn)} · ${customerCount} customer${customerCount === 1 ? "" : "s"}`,
+      ])}
+
+      <div class="credit-summary-title-band">
+        <h2 class="credit-summary-doc-title">Period activity by customer</h2>
+        <p class="credit-summary-doc-meta">
+          Credit taken, settlements received, and outstanding for sales in the selected period.
+        </p>
+      </div>
+
+      <div class="credit-summary-kpis">
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Credit taken</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(creditTaken)}</span>
+        </div>
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Settled</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(settled)}</span>
+        </div>
+        <div class="credit-summary-kpi credit-summary-kpi--outstanding">
+          <span class="credit-summary-kpi-label">Outstanding</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(outstanding)}</span>
+          <span class="credit-summary-kpi-meta">Credit taken minus settled</span>
+        </div>
+      </div>
+
+      <section class="credit-summary-block">
+        <h3 class="credit-summary-block-title">By customer</h3>
+        <p class="credit-summary-block-lead">All customers with credit activity in ${escapeHtml(period)}.</p>
+        <table class="report-table credit-overview-print-table">
+          <thead>
+            <tr>
+              <th style="width:6%">#</th>
+              <th>Customer</th>
+              <th class="num">Credit taken (₹)</th>
+              <th class="num">Settled (₹)</th>
+              <th class="num">Outstanding (₹)</th>
+            </tr>
+          </thead>
+          <tbody>${buildOverviewCustomerPrintRows(customers)}</tbody>
+          <tfoot>
+            <tr class="report-total-row">
+              <td colspan="2">Total</td>
+              <td class="num">₹ ${formatNumberPlain(creditTaken)}</td>
+              <td class="num">₹ ${formatNumberPlain(settled)}</td>
+              <td class="num">₹ ${formatNumberPlain(outstanding)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>
+
+      <p class="credit-summary-note">
+        Computer-generated credit overview. Outstanding = credit taken minus settlements for the selected period
+        (not the live portfolio due). Negative outstanding means settlements exceeded credit in this period.
+      </p>
+
+      <footer class="report-print-foot">
+        <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
+        <span>Credit overview · ${escapeHtml(period)}</span>
+      </footer>
+    </article>`;
+}
+
+async function ensureOverviewPrintDeps() {
+  if (typeof PrintUtils === "undefined") {
+    await loadScript("js/printUtils.js?v=3");
+  }
+  if (typeof loadPumpSettings === "function") {
+    await loadPumpSettings();
+  }
+}
+
+async function runOverviewPrint() {
+  if (!lastOverviewData?.customers?.length) {
+    const msg = "Load period activity first, then print.";
+    if (typeof AppError?.showGlobalBanner === "function") {
+      AppError.showGlobalBanner(msg);
+    } else {
+      alert(msg);
+    }
+    return;
+  }
+
+  await ensureOverviewPrintDeps();
+
+  const periodLabel = lastOverviewPeriodLabel || getOverviewPeriodLabel();
+  const sheetHtml = buildOverviewPrintHtml(lastOverviewData, periodLabel);
+  const title = `Credit overview · ${periodLabel}`;
+
+  await PrintUtils.printInIframe({
+    title,
+    bodyHtml: sheetHtml,
+    cssHref: CREDIT_OVERVIEW_PRINT_CSS,
+    bodyClass: "report-print-body",
+    containerClass: "report-print-container",
+    iframeTitle: "Credit overview print",
+    imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
+  });
+}
+
+async function handleOverviewPrintClick() {
+  if (overviewPrintBusy) return;
+  const btn = document.getElementById("credit-overview-print-btn");
+  const prevLabel = btn?.textContent || "Print report";
+
+  overviewPrintBusy = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Preparing…";
+  }
+
+  try {
+    await runOverviewPrint();
+  } catch (err) {
+    AppError?.report?.(err, { context: "runOverviewPrint" });
+    const msg = AppError?.getUserMessage?.(err) || "Could not open the print dialog.";
+    if (typeof AppError?.showGlobalBanner === "function") {
+      AppError.showGlobalBanner(msg);
+    } else {
+      alert(msg);
+    }
+  } finally {
+    overviewPrintBusy = false;
+    if (btn) btn.textContent = prevLabel;
+    updateOverviewPrintButton();
   }
 }
 

@@ -510,7 +510,7 @@ async function runSalarySlipPrint(staff, staffPayments, monthValue) {
   ]);
 
   await PrintUtils.printInIframe({
-    title: `${staff.name || "Staff"} · Salary slip`,
+    title: PrintUtils.buildPrintFilename("salary-slip", staff.name || "staff", monthValue),
     bodyHtml: sheetHtml,
     cssText,
     iframeTitle: "Salary slip print",
