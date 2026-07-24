@@ -46,7 +46,7 @@ $$;
 
 comment on function public.is_admin() is 'Returns true if the current authenticated user has admin role.';
 
--- RPC to update DSR buying price (used from P&L dashboard); bypasses RLS so admin update always succeeds.
+-- RPC to update DSR buying price (used from Meter Reading → Purchase cost); bypasses RLS so admin update always succeeds.
 -- Checks both dsr_petrol and dsr_diesel since caller only has the row UUID.
 create or replace function public.update_dsr_buying_price(
   p_dsr_id uuid,
@@ -418,6 +418,16 @@ create index if not exists dsr_petrol_receipts_buying_idx
 create index if not exists dsr_diesel_receipts_buying_idx
   on public.dsr_diesel (date desc)
   where receipts > 0 and buying_price_per_litre is not null;
+
+create index if not exists dsr_petrol_missing_buying_idx
+  on public.dsr_petrol (date desc)
+  where receipts > 0
+    and (buying_price_per_litre is null or buying_price_per_litre <= 0);
+
+create index if not exists dsr_diesel_missing_buying_idx
+  on public.dsr_diesel (date desc)
+  where receipts > 0
+    and (buying_price_per_litre is null or buying_price_per_litre <= 0);
 
 create index if not exists dsr_petrol_invoice_document_idx
   on public.dsr_petrol (invoice_document_id)

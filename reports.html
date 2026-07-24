@@ -18,12 +18,12 @@
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=1"></script>
-    <script defer src="js/utils.js?v=10"></script>
+    <script defer src="js/utils.js?v=11"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/pageSections.js"></script>
-    <script defer src="js/printUtils.js?v=7"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
     <script defer src="js/reports.js?v=14"></script>
   </head>
   <body class="reports-page">
@@ -135,7 +135,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Daily MS and HSD margin: net litres × (selling rate − landed buying rate). Same fuel-margin basis as Dashboard P&amp;L. Requires buying prices on receipt days.</p>
+                      <p>Daily MS and HSD margin: net litres × (selling rate − landed buying rate). Same fuel-margin basis as Analysis and Reports P&amp;L. Requires buying prices on receipt days.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -157,7 +157,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Dashboard P&amp;L). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
+                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Meter Reading → Purchase cost). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -179,7 +179,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Books-style debit/credit layout: expense heads and Nett Profit on debit; Gross profit on credit. Same margin formula as Dashboard P&amp;L and Analysis.</p>
+                      <p>Books-style debit/credit layout: expense heads and Nett Profit on debit; Gross profit on credit. Same margin formula as Analysis and the Dashboard Net profit glance.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -270,13 +270,14 @@
               <summary>
                 <span class="reports-about-summary-text">
                   <span class="reports-about-summary-title">Profit &amp; loss (net profit)</span>
-                  <span class="reports-about-summary-desc muted">Margin-based · Dashboard &amp; Analysis</span>
+                  <span class="reports-about-summary-desc muted">Margin-based · Analysis &amp; Dashboard glance</span>
                 </span>
               </summary>
               <div class="reports-about-item-body">
                 <p>
-                  Margin-based P&amp;L for the period. Identical calculation on <strong>Dashboard → P&amp;L</strong>,
-                  <strong>Analysis</strong>, and this report when the date range and buying prices match.
+                  Margin-based P&amp;L for the period. Identical calculation on <strong>Analysis</strong>,
+                  <strong>Dashboard → Net profit</strong> (glance), and this report when the date range and buying prices match.
+                  Enter buying prices on <strong>Meter Reading → Purchase cost</strong>.
                 </p>
                 <div class="reports-about-formula" role="note">
                   <span class="reports-about-formula-label">Formula</span>
@@ -311,7 +312,7 @@
               <div class="reports-about-item-body">
                 <div class="reports-about-callout">
                   <p class="reports-about-callout-label">Remember this</p>
-                  <p style="margin:0"><strong>Nett Profit</strong> (Profit &amp; Loss / Dashboard P&amp;L) is your <strong>real profit</strong> for the period.</p>
+                  <p style="margin:0"><strong>Nett Profit</strong> (Profit &amp; Loss / Analysis / Dashboard Net profit) is your <strong>real profit</strong> for the period.</p>
                 </div>
                 <table class="report-table reports-about-table">
                   <thead>
@@ -361,7 +362,7 @@
                 <p class="muted">
                   The Dashboard <strong>Day summary</strong> is a single-date cash reconciliation: total sale ₹ includes testing litres;
                   expenses include all categories. It supports day closing and in-hand cash — not margin-based net profit.
-                  Use Dashboard P&amp;L, Analysis, or Reports P&amp;L for profit calculations.
+                  Enter buying prices on Meter Reading → Purchase cost. Use Analysis or Reports P&amp;L for profit calculations; Dashboard shows a Net profit glance only.
                 </p>
               </div>
             </details>

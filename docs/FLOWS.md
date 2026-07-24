@@ -68,21 +68,25 @@ Open dashboard.html
         → Day summary: expenses, credit entries, net cash
 
     pl (admin only — hidden for supervisor)
-        → P&L range filter
-        → Buying price alerts for receipt days missing pre-VAT cost
-        → Inline ₹/KL entry → update_dsr_buying_price
-        → Net sale, expenses, estimated profit
+        → Net profit range filter (quick glance)
+        → Links to Analysis / Reports P&L and Meter Reading → Purchase cost
 
     notifications (all roles)
         → Day-closing reminder (if enabled in alerts)
         → Low stock MS/HSD vs pump_settings thresholds
-        → Smart alerts: high credit, high variation
-        → Admin: P&L todo banner when buying prices missing
+        → Smart alerts (each toggleable in Settings → Alerts): total high credit,
+          individual high credit (expandable customer links), stale credit (expandable),
+          high variation, cash shortage/surplus, uncollected night cash, missing meter/rate/dip,
+          unpaid salary (admin), attendance after shift end,
+          MTD expense ratio, receipt without invoice upload (Drive on)
+        → Admin: missing buying-price banner → Meter Reading → Purchase cost
 
     At a glance (aside rail)
         → MS/HSD selling rates (today's DSR or last known)
         → Animated tank meters (% of pump_settings.config.pumps tank capacity)
 ```
+
+Meter Reading also has an admin-only **Purchase cost** section (`#purchase-cost`) for pre-VAT ₹/KL entry (feeds P&L / GST purchase register).
 
 ---
 
@@ -94,6 +98,7 @@ A typical daily sequence:
 1. Meter Reading (meter-reading.html)
    → Upsert dsr_petrol and/or dsr_diesel for today
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
+   → Admin: if receipts > 0, enter pre-VAT ₹/KL under Purchase cost
    → dsr_stock view recalculates opening/closing/variation automatically
    → Optional: open dsr.html for listing / stock summary
 
@@ -267,7 +272,7 @@ Analysis (analysis.html)
    → Data via DsrQueries + expenses (same sources as dashboard/reports, different presentation)
 ```
 
-**Note:** Analysis is a **business intelligence dashboard** (KPIs + charts). Printable P&amp;L register is on **Reports** (`pl`). Quick buying-price entry and live P&amp;L is on **Dashboard → P&amp;L** section.
+**Note:** Analysis is a **business intelligence dashboard** (KPIs + charts). Printable P&amp;L register is on **Reports** (`pl`). Buying-price entry is on **Meter Reading → Purchase cost**. Dashboard → Net profit is a quick glance only.
 
 ## 7. HR flow (staff, attendance, salary)
 
@@ -332,7 +337,7 @@ Side nav sections (hash routing via `pageSections.js`):
 | `users` | Email, display name, role, password → `upsert_staff` |
 | `salaries` | Per-employee monthly salary + **fixed PF contribution (₹/month)** |
 | `attendance` | Morning/afternoon shift names and times |
-| `alerts` | Low stock MS/HSD, high credit, high variation, day-closing reminder |
+| `alerts` | Dashboard notification toggles & thresholds (stock, credit, day-closing, night cash, readings, aging, payroll, attendance, expense ratio, invoices) |
 | `expenses` | Expense category add/delete |
 | `integrations` | Google Drive enable + root folder ID (see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md)) |
 | `access` | Read-only list of provisioned `users` |
@@ -346,7 +351,8 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Staff (`staff.html`):** Roster, ID cards — see §7.1.
 - **Analysis (`analysis.html`):** BI dashboard — see §6b.
 - **Reports (`reports.html`):** Printable registers — see §6.
-- **Dashboard P&amp;L section:** Inline buying price — see §1b.
+- **Dashboard Net profit:** Quick glance — see §1b.
+- **Meter Reading → Purchase cost:** Inline buying price — see §1b.
 - **Audit log:** Admins read `audit_log`; writes via triggers only.
 
 ---
@@ -356,8 +362,8 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Page | Primary tables / RPCs |
 |------|------------------------|
 | Login | Supabase Auth, public.users (role), forgot password |
-| Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown, update_dsr_buying_price |
-| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel |
+| Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
+| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, update_dsr_buying_price (Purchase cost) |
 | DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |

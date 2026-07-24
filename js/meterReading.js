@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -113,12 +113,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   currentUserRole = auth.role ?? "supervisor";
   applyRoleVisibility(auth.role);
 
+  const meterSections =
+    currentUserRole === "admin"
+      ? ["petrol", "diesel", "purchase-cost"]
+      : ["petrol", "diesel"];
+
   initPageSections({
     navItemSelector: "#meter-sidebar-nav .settings-nav-item",
     panelSelector: ".settings-panels .settings-panel",
     defaultSection: "petrol",
-    validSections: ["petrol", "diesel"],
-    hashAliases: { meter: "petrol" },
+    validSections: meterSections,
+    hashAliases: { meter: "petrol", pl: "purchase-cost" },
+    onSectionChange: (section) => {
+      if (section === "purchase-cost" && currentUserRole === "admin") {
+        void ensurePurchaseCostLoaded();
+      }
+    },
   });
 
   PRODUCTS.forEach((product) => {
@@ -127,7 +137,45 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
   initMeterDeleteHandlers();
   await Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
+
+  const landingHash = (location.hash || "").replace(/^#/, "");
+  const landingPurchaseCost =
+    currentUserRole === "admin" &&
+    (landingHash === "purchase-cost" || landingHash === "pl");
+  if (landingPurchaseCost) {
+    // Ensure list is rendered before focusing (onSectionChange refresh may still be in flight).
+    await ensurePurchaseCostLoaded();
+    setTimeout(() => BuyingPriceEntry?.focusFirstInput?.(), 200);
+  }
 });
+
+function getPurchaseCostEntryOpts() {
+  return {
+    listEl: document.getElementById("purchase-cost-missing-list"),
+    alertEl: document.getElementById("purchase-cost-alert"),
+    emptyEl: document.getElementById("purchase-cost-empty"),
+    errorEl: document.getElementById("purchase-cost-error"),
+    onSaved: async () => {
+      await BuyingPriceEntry.refresh({ ...getPurchaseCostEntryOpts(), force: true });
+    },
+  };
+}
+
+let purchaseCostLoadPromise = null;
+
+async function ensurePurchaseCostLoaded() {
+  if (typeof BuyingPriceEntry?.refresh !== "function") return;
+  if (purchaseCostLoadPromise) return purchaseCostLoadPromise;
+
+  const hintEl = document.getElementById("purchase-cost-hint");
+  if (hintEl && typeof getPlBuyingPriceHint === "function") {
+    hintEl.textContent = getPlBuyingPriceHint();
+  }
+  purchaseCostLoadPromise = BuyingPriceEntry.refresh(getPurchaseCostEntryOpts()).finally(() => {
+    purchaseCostLoadPromise = null;
+  });
+  return purchaseCostLoadPromise;
+}
 
 /** Column count for recent-entries table (includes Actions for admin). */
 function getHistoryColCount(product) {
@@ -495,11 +543,6 @@ function initReadingForm(product) {
       return;
     }
 
-    const hasReceipts = Number(payload.receipts) > 0;
-    if (hasReceipts && typeof sessionStorage !== "undefined") {
-      sessionStorage.setItem("pl_todo_pending", "1");
-    }
-
     finishRecordFormSave(form, { date: payload.date }, {
       date: meterDateStorageKey(product),
     });
@@ -510,12 +553,13 @@ function initReadingForm(product) {
     await refreshMeterFormForSelectedDate(product, form);
     successEl?.classList.remove("hidden");
     if (successEl) {
+      const hasReceipts = Number(payload.receipts) > 0;
       if (hasReceipts && currentUserRole === "admin") {
         successEl.innerHTML =
-          'Entry saved. Receipts recorded — <a href="dashboard.html#pl">Enter pre-VAT ₹/KL on P&amp;L</a> to calculate profit from this day until the next receipt.';
+          'Entry saved. Receipts recorded — <a href="#purchase-cost">Enter pre-VAT ₹/KL under Purchase cost</a> to calculate profit from this day until the next receipt.';
       } else if (hasReceipts) {
         successEl.textContent =
-          "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL on the P&L dashboard to calculate profit.";
+          "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL under Meter Reading → Purchase cost to calculate profit.";
       } else {
         successEl.textContent = "Entry saved successfully.";
       }
@@ -910,7 +954,7 @@ function meterDateStorageKey(product) {
 
 function initMeterFormDate(form, product) {
   const dateInput = form.querySelector("input[name='date']");
-  if (dateInput) initPersistedDateInput(dateInput, meterDateStorageKey(product));
+  if (dateInput) initPersistedDateInput(dateInput, meterDateStorageKey(product), { urlParam: "date" });
 }
 
 function toNumber(value) {

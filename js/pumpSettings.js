@@ -9,12 +9,21 @@
   let loadPromise = null;
 
   function deepMerge(base, patch) {
-    if (!patch || typeof patch !== "object") return base;
-    const out = Array.isArray(base) ? [...base] : { ...base };
+    if (patch == null || typeof patch !== "object" || Array.isArray(patch)) return base;
+    const out = Array.isArray(base) ? [...(base || [])] : { ...(base || {}) };
     Object.keys(patch).forEach((key) => {
       const pv = patch[key];
-      if (pv && typeof pv === "object" && !Array.isArray(pv) && base[key] && typeof base[key] === "object") {
-        out[key] = deepMerge(base[key], pv);
+      const bv = out[key];
+      // Use == null / typeof checks so boolean false and 0 are preserved as values.
+      if (
+        pv !== null &&
+        typeof pv === "object" &&
+        !Array.isArray(pv) &&
+        bv !== null &&
+        typeof bv === "object" &&
+        !Array.isArray(bv)
+      ) {
+        out[key] = deepMerge(bv, pv);
       } else if (pv !== undefined) {
         out[key] = pv;
       }
@@ -22,8 +31,16 @@
     return out;
   }
 
+  function cloneDefaults() {
+    try {
+      return JSON.parse(JSON.stringify(AppConfig.DEFAULT_PUMP_SETTINGS));
+    } catch (_) {
+      return deepMerge({}, AppConfig.DEFAULT_PUMP_SETTINGS);
+    }
+  }
+
   function getDefaults() {
-    return AppConfig.DEFAULT_PUMP_SETTINGS;
+    return cloneDefaults();
   }
 
   function readLegacyLocalStorage() {
@@ -161,6 +178,7 @@
           .maybeSingle();
 
         if (!error && data?.config) {
+          // defaults ← legacy ← DB (DB wins, including explicit false toggles)
           const merged = normalize(deepMerge(readLegacyLocalStorage(), data.config));
           return cacheInMemory(merged);
         }
@@ -191,10 +209,15 @@
       if (error) throw error;
     }
 
-    cacheInMemory(next);
+    // Invalidate stale entries first, then write the saved config back into cache so
+    // subsequent reads (and form re-bind) keep the values just persisted — including `false`.
     if (typeof CacheInvalidation !== "undefined") {
       CacheInvalidation.invalidate("pump_settings");
+    } else if (typeof AppCache !== "undefined" && AppCache) {
+      AppCache.remove(CACHE_KEY);
+      AppCache.invalidateByType("pump_settings");
     }
+    cacheInMemory(next);
     return next;
   }
 
@@ -255,18 +278,46 @@
 
   function getAlertThresholds() {
     const a = getCachedSync().alerts || {};
+    const d = AppConfig.DEFAULT_ALERTS;
     const shortage =
       Number(a.dayClosingShortage) >= 0
         ? Number(a.dayClosingShortage)
-        : AppConfig.DEFAULT_ALERTS.dayClosingShortage;
+        : d.dayClosingShortage;
+    const nightCashMin =
+      Number(a.nightCashMinAmount) >= 0
+        ? Number(a.nightCashMinAmount)
+        : d.nightCashMinAmount;
+    const staleDays =
+      Number(a.staleCreditDays) > 0 ? Number(a.staleCreditDays) : d.staleCreditDays;
+    const expensePct =
+      Number(a.expenseRatioPct) > 0 ? Number(a.expenseRatioPct) : d.expenseRatioPct;
+    const invoiceLookback =
+      Number(a.missingInvoiceLookbackDays) > 0
+        ? Number(a.missingInvoiceLookbackDays)
+        : d.missingInvoiceLookbackDays;
     return {
-      petrol: Number(a.lowStockPetrol) >= 0 ? Number(a.lowStockPetrol) : AppConfig.DEFAULT_ALERTS.lowStockPetrol,
-      diesel: Number(a.lowStockDiesel) >= 0 ? Number(a.lowStockDiesel) : AppConfig.DEFAULT_ALERTS.lowStockDiesel,
+      petrol: Number(a.lowStockPetrol) >= 0 ? Number(a.lowStockPetrol) : d.lowStockPetrol,
+      diesel: Number(a.lowStockDiesel) >= 0 ? Number(a.lowStockDiesel) : d.lowStockDiesel,
       highCredit: Number(a.highCredit) || 0,
+      individualHighCredit: Number(a.individualHighCredit) || 0,
       highVariation: Number(a.highVariation) || 0,
       dayClosingReminder: a.dayClosingReminder !== false,
       dayClosingShortage: shortage,
       shortageAlert: a.shortageAlert !== false,
+      surplusAlert: a.surplusAlert !== false,
+      nightCashAlert: a.nightCashAlert !== false,
+      nightCashMinAmount: nightCashMin,
+      missingMeterAlert: a.missingMeterAlert !== false,
+      missingRateAlert: a.missingRateAlert !== false,
+      missingDipAlert: a.missingDipAlert !== false,
+      staleCreditAlert: a.staleCreditAlert !== false,
+      staleCreditDays: staleDays,
+      unpaidSalaryAlert: a.unpaidSalaryAlert !== false,
+      attendanceAlert: a.attendanceAlert !== false,
+      expenseRatioAlert: a.expenseRatioAlert === true,
+      expenseRatioPct: expensePct,
+      missingInvoiceAlert: a.missingInvoiceAlert !== false,
+      missingInvoiceLookbackDays: invoiceLookback,
     };
   }
 

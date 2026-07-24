@@ -62,7 +62,7 @@ const REPORT_CATALOG = [
         id: "pl",
         title: "Profit & Loss",
         description:
-          "Your real profit is Nett Profit here. Gross Profit = margin before expenses; same as Dashboard P&L.",
+          "Your real profit is Nett Profit here. Gross Profit = margin before expenses; same engine as Analysis and Dashboard Net profit.",
       },
     ],
   },
@@ -89,7 +89,6 @@ let activeReport = "dsr";
 let cachedData = null;
 let cachedRange = null;
 let reportsLoadInFlight = null;
-let reportPrintCssCache = null;
 let reportPrintBusy = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -366,7 +365,7 @@ function initReportsPage() {
 
   renderReportCatalog();
   setActiveReportTab(activeReport);
-  preloadReportPrintCss();
+  PrintUtils.preloadReportPrintCss?.();
   initReportsAboutAccordion();
   initPageSections({
     navItemSelector: ".reports-nav .settings-nav-item",
@@ -702,7 +701,7 @@ function renderFuelIncome(data, range) {
   const totalIncome = totalPetrolInc + totalDieselInc;
   const missingNote =
     missingBuyDays > 0
-      ? `<p class="report-note warning">${missingBuyDays} day(s) have sale litres but no landed buying rate — P.Rate / P.Income blank for those products. Enter buying price on the Dashboard P&amp;L for receipt days.</p>`
+      ? `<p class="report-note warning">${missingBuyDays} day(s) have sale litres but no landed buying rate — P.Rate / P.Income blank for those products. Enter buying price on Meter Reading → Purchase cost for receipt days.</p>`
       : "";
 
   return `
@@ -746,7 +745,7 @@ function renderFuelIncome(data, range) {
       </tfoot>
     </table>
     ${missingNote}
-    <p class="report-note muted">P.Income = net litres (meter − testing) × (selling rate − landed buying rate incl. VAT + delivery). Same fuel-margin basis as Dashboard P&amp;L.</p>`;
+    <p class="report-note muted">P.Income = net litres (meter − testing) × (selling rate − landed buying rate incl. VAT + delivery). Same fuel-margin basis as Analysis and Reports P&amp;L.</p>`;
 }
 
 function reportHeader(title, start, end) {
@@ -1605,7 +1604,7 @@ function renderGstPurchaseSummary(data, range) {
     getFuelPurchaseRows(data, range);
   const missingNote =
     missingBuyingCount > 0
-      ? `<p class="report-note warning">${missingBuyingCount} receipt(s) in this period have no buying price — excluded. Enter buying price on the P&amp;L dashboard.</p>`
+      ? `<p class="report-note warning">${missingBuyingCount} receipt(s) in this period have no buying price — excluded. Enter buying price on Meter Reading → Purchase cost.</p>`
       : "";
   const emptyNote =
     detailRows.length === 0
@@ -1699,10 +1698,10 @@ function renderGstPurchaseDetail(data, range) {
     </table>
     ${
       missingBuyingCount > 0
-        ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on dashboard.</p>`
+        ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on Meter Reading → Purchase cost.</p>`
         : ""
     }
-    <p class="report-note muted">Vault PDF links match DSR receipt → Invoices (purchase) by document id or invoice title. Enter invoice no with buying price on Dashboard P&amp;L. ${escapeHtml(getPurchaseGstDetailNote())}</p>`;
+    <p class="report-note muted">Vault PDF links match DSR receipt → Invoices (purchase) by document id or invoice title. Enter invoice no with buying price on Meter Reading → Purchase cost. ${escapeHtml(getPurchaseGstDetailNote())}</p>`;
 }
 
 /** Trading account (stock-based) + P&L figures via shared computeProfitLossSummary. */
@@ -1880,7 +1879,7 @@ function renderTradingAccount(data, range) {
 
   const provisionalNote =
     t.usingProvisionalBuying && t.missingBuyingPrice?.length
-      ? `<p class="report-note warning">${t.missingBuyingPrice.length} receipt day(s) use the previous buying rate for stock/purchases — enter pre-VAT ${escapeHtml(getBuyingPriceUnitLabel())} on Dashboard P&amp;L to lock the correct rate.</p>`
+      ? `<p class="report-note warning">${t.missingBuyingPrice.length} receipt day(s) use the previous buying rate for stock/purchases — enter pre-VAT ${escapeHtml(getBuyingPriceUnitLabel())} on Meter Reading → Purchase cost to lock the correct rate.</p>`
       : !t.canCalculate
         ? formatUnresolvedBuyingWarning(t)
         : "";
@@ -1920,10 +1919,10 @@ function formatUnresolvedBuyingWarning(t) {
         : "Some days have no resolvable buying rate";
     const ownNote =
       missingOwn > 0 ? ` (${missingOwn} receipt day(s) also have no entered ₹/KL yet)` : "";
-    return `<p class="report-note warning">${dayNote}${ownNote}. Enter pre-VAT ${unit} on the Dashboard P&amp;L before net profit can be calculated.</p>`;
+    return `<p class="report-note warning">${dayNote}${ownNote}. Enter pre-VAT ${unit} on Meter Reading → Purchase cost before net profit can be calculated.</p>`;
   }
   if (t.usingProvisionalBuying && missingOwn > 0) {
-    return `<p class="report-note warning">${missingOwn} receipt day(s) still need an entered buying price — figures below use the previous receipt rate until you save ${unit} on Dashboard P&amp;L.</p>`;
+    return `<p class="report-note warning">${missingOwn} receipt day(s) still need an entered buying price — figures below use the previous receipt rate until you save ${unit} on Meter Reading → Purchase cost.</p>`;
   }
   return "";
 }
@@ -2006,7 +2005,7 @@ function renderProfitLoss(data, range) {
     t.lubeCogs > 0 || t.products.lube.sales > 0
       ? ` + lube gross <strong>${formatCurrency(t.lubeGrossProfit)}</strong> (sales − vault purchases)`
       : ""
-  }. Same formula as Dashboard P&amp;L and Analysis.</p>`;
+  }. Same formula as Analysis and the Dashboard Net profit glance.</p>`;
 
   return `
     ${reportHeader("Profit & loss account", range.start, range.end)}
@@ -2772,60 +2771,6 @@ function updateReportsCsvButtonVisibility() {
   }
 }
 
-const REPORT_PRINT_CSS_URL = "css/reports-print.css?v=6";
-
-function reportsAssetUrl(path) {
-  return new URL(path, window.location.href).href;
-}
-
-function preloadReportPrintCss() {
-  getReportPrintCssText().catch(() => {});
-}
-
-async function getReportPrintCssText() {
-  if (reportPrintCssCache) return reportPrintCssCache;
-  const url = reportsAssetUrl(REPORT_PRINT_CSS_URL);
-  const res = await fetch(url, { cache: "default" });
-  if (!res.ok) {
-    return fetchReportPrintCssViaLink(url);
-  }
-  reportPrintCssCache = await res.text();
-  return reportPrintCssCache;
-}
-
-/** Fallback when fetch() is blocked or fails (e.g. offline file quirks). */
-function fetchReportPrintCssViaLink(url) {
-  return new Promise((resolve, reject) => {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = url;
-    const timeout = window.setTimeout(() => {
-      link.remove();
-      reject(new Error("Timed out loading print styles."));
-    }, 8000);
-    link.onload = () => {
-      window.clearTimeout(timeout);
-      let cssText = "";
-      try {
-        cssText = [...link.sheet.cssRules].map((r) => r.cssText).join("\n");
-      } catch {
-        link.remove();
-        reject(new Error("Could not read print styles."));
-        return;
-      }
-      link.remove();
-      reportPrintCssCache = cssText;
-      resolve(cssText);
-    };
-    link.onerror = () => {
-      window.clearTimeout(timeout);
-      link.remove();
-      reject(new Error("Could not load report print styles."));
-    };
-    document.head.appendChild(link);
-  });
-}
-
 /** Render report body HTML for the active type (same output as preview / print). */
 function renderReportHtml(reportId, data, range) {
   switch (reportId) {
@@ -2917,7 +2862,7 @@ async function runReportPrint() {
 
   const bodyHtml = sanitizeReportHtmlForPrint(reportBodyHtml);
   const sheetWrapped = buildPrintSheetWrapped(bodyHtml, activeReport, cachedRange);
-  const cssText = await getReportPrintCssText();
+  const cssText = await PrintUtils.getReportPrintCssText();
   const title = PrintUtils.buildPrintFilename(
     activeReport || "report",
     cachedRange?.start,

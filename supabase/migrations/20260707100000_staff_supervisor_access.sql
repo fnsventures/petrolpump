@@ -40,15 +40,18 @@ end;
 $$;
 
 drop policy if exists "employees_select_admin" on public.employees;
+drop policy if exists "employees_select_staff" on public.employees;
 create policy "employees_select_staff" on public.employees
   for select to authenticated using (public.is_supervisor_or_admin());
 
 drop policy if exists "employees_insert_admin" on public.employees;
+drop policy if exists "employees_insert_staff" on public.employees;
 create policy "employees_insert_staff" on public.employees
   for insert to authenticated
   with check (public.is_supervisor_or_admin());
 
 drop policy if exists "employees_update_admin" on public.employees;
+drop policy if exists "employees_update_staff" on public.employees;
 create policy "employees_update_staff" on public.employees
   for update to authenticated
   using (public.is_supervisor_or_admin())
@@ -79,17 +82,20 @@ comment on function public.set_employee_photo(uuid, text) is
   'Set or clear photo_url for an active employee (admin or supervisor).';
 
 drop policy if exists "staff_photos_insert_admin" on storage.objects;
+drop policy if exists "staff_photos_insert_staff" on storage.objects;
 create policy "staff_photos_insert_staff" on storage.objects
   for insert to authenticated
   with check (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
 
 drop policy if exists "staff_photos_update_admin" on storage.objects;
+drop policy if exists "staff_photos_update_staff" on storage.objects;
 create policy "staff_photos_update_staff" on storage.objects
   for update to authenticated
   using (bucket_id = 'staff-photos' and public.is_supervisor_or_admin())
   with check (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
 
 drop policy if exists "staff_photos_delete_admin" on storage.objects;
+drop policy if exists "staff_photos_delete_staff" on storage.objects;
 create policy "staff_photos_delete_staff" on storage.objects
   for delete to authenticated
   using (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());

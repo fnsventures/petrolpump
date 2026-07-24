@@ -289,7 +289,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | `reports.petrolPurchaseVatPct` / `dieselPurchaseVatPct` | Fuel purchase VAT/LST % for P&amp;L and purchase reports |
 | `reports.purchaseDeliveryPerKl` | Delivery charge ₹/KL on inward fuel |
 | `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
-| `alerts.*` | Low stock, high credit, high variation, day-closing reminder thresholds |
+| `alerts.*` | Low stock, credit/variation, day-closing, shortage/surplus, night cash, missing meter/rate/dip, stale credit, unpaid salary, attendance, expense ratio, missing invoice |
 | `shifts.*` | Morning/afternoon shift names and times for attendance |
 
 Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` for upload path. Full setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
@@ -603,7 +603,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_staff(email)` | Remove app user | admin |
 | `update_my_avatar(url)` | Set operator profile photo URL | own row |
 | `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
-| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row | — |
+| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number | — |
 | `save_invoice(...)` | Atomic invoice + line items | — |
 | `list_employees_roster()` | Active employees without PII | — |

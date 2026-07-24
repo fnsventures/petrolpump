@@ -293,11 +293,11 @@ function renderBuyingAlert(pl) {
     alertEl.classList.remove("hidden");
     alertEl.textContent =
       n > 0
-        ? `${n} sale/receipt day(s) have no resolvable buying rate (no prior receipt rate available). Enter pre-VAT ₹/KL on the Dashboard P&L.`
-        : "Some days have no resolvable buying rate. Enter pre-VAT ₹/KL on the Dashboard P&L.";
+        ? `${n} sale/receipt day(s) have no resolvable buying rate (no prior receipt rate available). Enter pre-VAT ₹/KL on Meter Reading → Purchase cost.`
+        : "Some days have no resolvable buying rate. Enter pre-VAT ₹/KL on Meter Reading → Purchase cost.";
   } else if (pl?.usingProvisionalBuying && missing.length > 0) {
     alertEl.classList.remove("hidden");
-    alertEl.textContent = `${missing.length} receipt day(s) still need an entered buying price — figures use the previous receipt rate until you save ₹/KL on the Dashboard P&L.`;
+    alertEl.textContent = `${missing.length} receipt day(s) still need an entered buying price — figures use the previous receipt rate until you save ₹/KL on Meter Reading → Purchase cost.`;
   } else {
     alertEl.classList.add("hidden");
     alertEl.textContent = "";
@@ -437,7 +437,7 @@ function renderInsights(series, totals, insights) {
     items.push(`Vault purchase amounts ${formatCurrency(totals.lubeCogsRupees)} counted as lube COGS.`);
   }
   if (!totals.canCalculate) {
-    items.push("Net profit unavailable — enter buying prices on receipt days in Dashboard P&L.");
+    items.push("Net profit unavailable — enter buying prices on receipt days in Meter Reading → Purchase cost.");
   }
   if (insights.profitGrowthPercent != null && Number.isFinite(insights.profitGrowthPercent)) {
     const dir = insights.profitGrowthPercent >= 0 ? "up" : "down";

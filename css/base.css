@@ -1313,6 +1313,10 @@ html.role-admin [data-role="admin-only"],
 body.role-admin [data-role="admin-only"] {
   display: revert;
 }
+html.role-admin .settings-panel.is-visible[data-role="admin-only"],
+body.role-admin .settings-panel.is-visible[data-role="admin-only"] {
+  display: block;
+}
 html.role-admin .settings-nav-item[data-role="admin-only"],
 body.role-admin .settings-nav-item[data-role="admin-only"] {
   display: block;

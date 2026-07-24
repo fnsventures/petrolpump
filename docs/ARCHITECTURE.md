@@ -114,10 +114,11 @@ js/
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
 ├── pageSections.js     # Settings-style section tabs
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
+├── buyingPriceEntry.js # Admin receipt-day ₹/KL entry (Meter Reading → Purchase cost)
 ├── landing.js          # Landing page
-├── dashboard.js        # Dashboard snapshot, lazy DSR/P&L sections, alerts
+├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
-├── meterReading.js     # Meter Reading form (MS/HSD upserts)
+├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
 ├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
 ├── credit.js           # Credit list view, lazy tab modules
 ├── creditOverview.js   # Credit overview tab (lazy)
@@ -250,8 +251,8 @@ docs/
 
 | Page | Script | Primary purpose |
 |------|--------|-----------------|
-| `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + P&amp;L loaded lazily per section |
-| `meter-reading.html` | `meterReading.js` | Enter/edit MS and HSD meter readings |
+| `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + Net profit glance loaded lazily per section |
+| `meter-reading.html` | `meterReading.js` | Enter/edit MS and HSD meter readings; admin Purchase cost (buying prices) |
 | `dsr.html` | `dsr.js` | DSR listing and stock summary (`dsrSummary.js`) |
 | `sales-daily.html` | — | Legacy redirect to `dsr.html` |
 | `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
@@ -342,7 +343,8 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 | Attendance + salary recording | ✓ | ✓ |
 | Staff roster / ID cards (`staff.html`) | ✓ | ✗ |
 | Settings, Analysis, Reports | ✓ | ✗ |
-| Dashboard P&amp;L section + buying price entry | ✓ | ✗ |
+| Dashboard Net profit glance | ✓ | ✗ |
+| Meter Reading → Purchase cost (buying price entry) | ✓ | ✗ |
 | Product catalog edit (Settings → Billing) | ✓ | ✗ (can bill using existing products) |
 | Employee master mutations (`employees` table) | ✓ | ✗ (reads via `list_employees_*` RPCs) |
 | Day closing overwrite after save | ✓ | ✗ (read-only snapshot; also locked after night-cash collection unless admin) |

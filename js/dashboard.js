@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, DsrQueries */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries */
 
 /**
  * Generate cache key for dashboard data queries
@@ -24,6 +24,68 @@ function getCreditSummaryCacheKey(dateStr) {
 let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
+let dashboardRole = null;
+
+const DAY_CLOSING_LOOKBACK_DAYS = 7;
+
+/**
+ * Shared notification card markup for the inbox feed.
+ * @param {{ type: string, label: string, message: string, meta?: string, cta?: string, href?: string, role?: string, dataNotif?: string, expandHtml?: string }} opts
+ */
+function renderNotifItem({
+  type,
+  label,
+  message,
+  meta,
+  cta,
+  href,
+  role = "alert",
+  dataNotif,
+  expandHtml,
+}) {
+  const metaHtml = meta ? `<span class="notif-item-meta">${escapeHtml(meta)}</span>` : "";
+  const expandBlock = expandHtml || "";
+  const ctaHtml =
+    cta && href
+      ? `<a href="${escapeHtml(href)}" class="button-secondary notif-item-cta">${escapeHtml(cta)}</a>`
+      : "";
+  const dataAttr = dataNotif ? ` data-notif="${escapeHtml(dataNotif)}"` : "";
+  return `<article class="notif-item notif-item--${escapeHtml(type)}" role="${escapeHtml(role)}"${dataAttr}>
+    <div class="notif-item-body">
+      <span class="notif-item-label">${escapeHtml(label)}</span>
+      <p class="notif-item-message">${escapeHtml(message)}</p>
+      ${metaHtml}
+      ${expandBlock}
+    </div>
+    ${ctaHtml}
+  </article>`;
+}
+
+function creditCustomerDetailHref(customerName) {
+  return `credit.html?${new URLSearchParams({ name: customerName || "" }).toString()}`;
+}
+
+/**
+ * Expandable customer list for credit alerts.
+ * @param {{ name: string, href: string, detail: string }[]} rows
+ * @param {string} summaryLabel
+ */
+function renderNotifCustomerExpand(rows, summaryLabel) {
+  if (!rows?.length) return "";
+  const items = rows
+    .map(
+      (r) =>
+        `<li class="notif-customer-row">
+          <a class="notif-customer-link" href="${escapeHtml(r.href)}">${escapeHtml(r.name)}</a>
+          <span class="notif-customer-detail">${escapeHtml(r.detail)}</span>
+        </li>`
+    )
+    .join("");
+  return `<details class="notif-customer-expand">
+    <summary>${escapeHtml(summaryLabel)}</summary>
+    <ul class="notif-customer-list">${items}</ul>
+  </details>`;
+}
 
 function formatRatePerLitre(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) {
@@ -422,7 +484,7 @@ function updateFuelVolumeSplit(petrolLiters, dieselLiters) {
 }
 
 function getLowStockThresholds() {
-  const t = PumpSettings.getAlertThresholds();
+  const t = getAlertThresholds();
   return { petrol: t.petrol, diesel: t.diesel };
 }
 
@@ -433,19 +495,78 @@ function updateLowStockAlert(petrolStock, dieselStock) {
   const th = getLowStockThresholds();
   const parts = [];
   if (Number.isFinite(petrolStock) && petrolStock < th.petrol) {
-    parts.push(`Petrol: ${formatQuantity(petrolStock)} L (below ${formatQuantity(th.petrol)} L)`);
+    parts.push(`Petrol ${formatQuantity(petrolStock)} L (below ${formatQuantity(th.petrol)} L)`);
   }
   if (Number.isFinite(dieselStock) && dieselStock < th.diesel) {
-    parts.push(`Diesel: ${formatQuantity(dieselStock)} L (below ${formatQuantity(th.diesel)} L)`);
+    parts.push(`Diesel ${formatQuantity(dieselStock)} L (below ${formatQuantity(th.diesel)} L)`);
   }
   if (parts.length === 0) {
     wrap.classList.add("hidden");
     updateDashboardAlertsVisibility();
     return;
   }
-  msg.textContent = "Low stock alert: " + parts.join(" · ");
+  msg.textContent = parts.join(" · ");
   wrap.classList.remove("hidden");
   updateDashboardAlertsVisibility();
+}
+
+function countVisibleNotificationItems() {
+  let count = 0;
+  const dayClosing = document.getElementById("day-closing-banners");
+  if (dayClosing) {
+    count += dayClosing.querySelectorAll(".notif-item:not(.notif-item--success)").length;
+  }
+  const alerts = document.getElementById("dashboard-alerts");
+  const alertsVisible = alerts && !alerts.classList.contains("dashboard-alerts-empty");
+  if (alertsVisible) {
+    const lowStock = document.getElementById("low-stock-alert");
+    if (lowStock && !lowStock.classList.contains("hidden")) count += 1;
+    const smartPanel = document.getElementById("smart-alerts-panel");
+    if (smartPanel && !smartPanel.classList.contains("hidden")) {
+      count += smartPanel.querySelectorAll(".notif-item").length;
+    }
+  }
+  const plTodo = document.getElementById("pl-todo-banner");
+  if (plTodo && !plTodo.classList.contains("hidden")) count += 1;
+  return count;
+}
+
+function updateNotificationsPanelState() {
+  const feed = document.getElementById("notifications-feed");
+  const empty = document.getElementById("notifications-empty");
+  const countBadge = document.getElementById("notifications-count-badge");
+  const navBadge = document.getElementById("notifications-nav-badge");
+
+  const dayBlock = document.getElementById("day-closing-block");
+  const dayHasItems = dayBlock && !dayBlock.classList.contains("hidden");
+  const alerts = document.getElementById("dashboard-alerts");
+  const alertsVisible = alerts && !alerts.classList.contains("dashboard-alerts-empty");
+  const plTodo = document.getElementById("pl-todo-banner");
+  const plVisible = plTodo && !plTodo.classList.contains("hidden");
+
+  const hasAny = Boolean(dayHasItems || alertsVisible || plVisible);
+  feed?.classList.toggle("hidden", !hasAny);
+  empty?.classList.toggle("hidden", hasAny);
+
+  const openCount = countVisibleNotificationItems();
+  if (countBadge) {
+    if (openCount > 0) {
+      countBadge.textContent = openCount === 1 ? "1 open" : `${openCount} open`;
+      countBadge.classList.remove("hidden");
+    } else {
+      countBadge.classList.add("hidden");
+    }
+  }
+  if (navBadge) {
+    if (openCount > 0) {
+      navBadge.textContent = String(openCount);
+      navBadge.classList.remove("hidden");
+      navBadge.setAttribute("aria-label", `${openCount} open notification${openCount === 1 ? "" : "s"}`);
+    } else {
+      navBadge.classList.add("hidden");
+      navBadge.removeAttribute("aria-label");
+    }
+  }
 }
 
 function updateDashboardAlertsVisibility() {
@@ -456,6 +577,7 @@ function updateDashboardAlertsVisibility() {
   const hasVisible = (lowStock && !lowStock.classList.contains("hidden")) ||
     (smartPanel && !smartPanel.classList.contains("hidden") && smartPanel.children.length > 0);
   container.classList.toggle("dashboard-alerts-empty", !hasVisible);
+  updateNotificationsPanelState();
 }
 
 let snapshotDsrRows = [];
@@ -533,6 +655,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadPumpSettings();
 
   const { session, role } = auth;
+  dashboardRole = role;
   applyRoleVisibility(role);
 
   if (typeof initPageSections === "function") {
@@ -626,19 +749,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       await ensurePlSectionLoaded();
     }
 
-    await updateSmartAlerts();
-    await loadDayClosingBanners();
-    if (role === "admin") void loadPlTodoBanner();
+    const closingWindow = await fetchDayClosingWindow();
+    await Promise.all([
+      updateSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
+      loadDayClosingBanners(closingWindow),
+      role === "admin" ? refreshMissingBuyingPriceUi() : Promise.resolve(),
+    ]);
     updateDashboardAlertsVisibility();
-    if (window.location.hash === "#pl") {
-      setTimeout(scrollToPlBuyingPriceAlert, 300);
-    }
-
-    document.getElementById("pl-todo-goto")?.addEventListener("click", () => {
-      void ensurePlSectionLoaded().then(() => {
-        setTimeout(scrollToPlBuyingPriceAlert, 150);
-      });
-    });
     scheduleAutoFitStats();
   } catch (error) {
     AppError.handle(error, { context: { source: "dashboardInit" } });
@@ -651,61 +768,571 @@ document.addEventListener("DOMContentLoaded", async () => {
 function getAlertThresholds() {
   const t = PumpSettings.getAlertThresholds();
   return {
+    petrol: t.petrol,
+    diesel: t.diesel,
     highCredit: t.highCredit > 0 ? t.highCredit : 0,
+    individualHighCredit: t.individualHighCredit > 0 ? t.individualHighCredit : 0,
     highVariation: t.highVariation > 0 ? t.highVariation : 0,
     dayClosingReminder: t.dayClosingReminder,
     dayClosingShortage: t.dayClosingShortage,
     shortageAlert: t.shortageAlert,
+    surplusAlert: t.surplusAlert,
+    nightCashAlert: t.nightCashAlert,
+    nightCashMinAmount: t.nightCashMinAmount,
+    missingMeterAlert: t.missingMeterAlert,
+    missingRateAlert: t.missingRateAlert,
+    missingDipAlert: t.missingDipAlert,
+    staleCreditAlert: t.staleCreditAlert,
+    staleCreditDays: t.staleCreditDays,
+    unpaidSalaryAlert: t.unpaidSalaryAlert,
+    attendanceAlert: t.attendanceAlert,
+    expenseRatioAlert: t.expenseRatioAlert,
+    expenseRatioPct: t.expenseRatioPct,
+    missingInvoiceAlert: t.missingInvoiceAlert,
+    missingInvoiceLookbackDays: t.missingInvoiceLookbackDays,
   };
 }
 
-async function updateSmartAlerts() {
+function daysBetweenDateStrings(fromStr, toStr) {
+  if (!fromStr || !toStr) return null;
+  const from = new Date(`${fromStr}T00:00:00`);
+  const to = new Date(`${toStr}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+  return Math.floor((to.getTime() - from.getTime()) / 86400000);
+}
+
+function isPastLocalHm(hhmm) {
+  const parts = String(hhmm || "22:00").split(":");
+  const h = Number(parts[0]);
+  const m = Number(parts[1] || 0);
+  if (!Number.isFinite(h)) return false;
+  const now = new Date();
+  const minsNow = now.getHours() * 60 + now.getMinutes();
+  return minsNow >= h * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+function currentSalaryMonthValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function approxNetMonthlySalary(emp) {
+  const gross = Math.max(0, Number(emp?.monthly_salary ?? 0));
+  const pf = Math.max(0, Number(emp?.pf_contribution ?? 0));
+  return Math.max(0, gross - Math.min(pf, gross));
+}
+
+/**
+ * One day_closing window for banners (date) + shortage/surplus alert (short_today).
+ */
+async function fetchDayClosingWindow() {
+  const today = new Date();
+  const todayStr = formatDateInput(today);
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - DAY_CLOSING_LOOKBACK_DAYS);
+  const startStr = formatDateInput(startDate);
+  const th = getAlertThresholds();
+
+  if (!th.dayClosingReminder && !th.shortageAlert && !th.surplusAlert) {
+    return { data: [], error: null, todayStr, startStr };
+  }
+
+  const { data, error } = await supabaseClient
+    .from("day_closing")
+    .select("date, short_today")
+    .gte("date", startStr)
+    .lte("date", todayStr);
+
+  return { data: data ?? [], error, todayStr, startStr };
+}
+
+/**
+ * Patch only the outstanding-credit smart alert (no network).
+ * Used when credit SWR refreshes so the inbox stays in sync.
+ */
+function syncCreditSmartAlert() {
+  const panel = document.getElementById("smart-alerts-panel");
+  if (!panel) return;
+  const th = getAlertThresholds();
+  const existing = panel.querySelector('[data-notif="credit"]');
+  const shouldShow =
+    th.highCredit > 0 &&
+    Number.isFinite(lastCreditTotalRupees) &&
+    lastCreditTotalRupees > th.highCredit;
+
+  if (!shouldShow) {
+    if (!existing) return;
+    existing.remove();
+    if (!panel.querySelector(".notif-item")) {
+      panel.classList.add("hidden");
+      panel.innerHTML = "";
+    }
+    updateDashboardAlertsVisibility();
+    return;
+  }
+
+  const html = renderNotifItem({
+    type: "warning",
+    label: "Total high credit",
+    message: `${formatCurrency(lastCreditTotalRupees)} is above your portfolio limit (${formatCurrency(th.highCredit)}).`,
+    cta: "Open credit",
+    href: "credit.html#outstanding",
+    dataNotif: "credit",
+  });
+  if (existing) existing.outerHTML = html;
+  else {
+    panel.insertAdjacentHTML("afterbegin", html);
+    panel.classList.remove("hidden");
+  }
+  updateDashboardAlertsVisibility();
+}
+
+async function updateSmartAlerts(options = {}) {
   const panel = document.getElementById("smart-alerts-panel");
   if (!panel) return;
   const alerts = [];
   const th = getAlertThresholds();
+  const todayStr = options.todayStr || getLocalDateString();
+  const driveEnabled = PumpSettings.getCachedSync()?.integrations?.googleDrive?.enabled === true;
+  const isAdmin = dashboardRole === "admin";
 
   if (th.highCredit > 0 && Number.isFinite(lastCreditTotalRupees) && lastCreditTotalRupees > th.highCredit) {
     alerts.push({
       type: "warning",
-      message: `Outstanding credit (${formatCurrency(lastCreditTotalRupees)}) is above your alert threshold (${formatCurrency(th.highCredit)}).`,
-      cta: "Credit",
-      href: "credit.html",
+      label: "Total high credit",
+      message: `${formatCurrency(lastCreditTotalRupees)} is above your portfolio limit (${formatCurrency(th.highCredit)}).`,
+      cta: "Open credit",
+      href: "credit.html#outstanding",
+      dataNotif: "credit",
     });
   }
 
-  if (th.highVariation > 0 && (Number(lastPetrolVariation) > th.highVariation || Number(lastDieselVariation) > th.highVariation)) {
-    const parts = [];
-    if (Number(lastPetrolVariation) > th.highVariation) parts.push(`Petrol ${formatQuantity(lastPetrolVariation)} L`);
-    if (Number(lastDieselVariation) > th.highVariation) parts.push(`Diesel ${formatQuantity(lastDieselVariation)} L`);
-    alerts.push({
-      type: "warning",
-      message: `Stock variation exceeds threshold (${formatQuantity(th.highVariation)} L): ${parts.join(", ")}. Verify meter readings.`,
-      cta: "View DSR",
-      href: "dsr.html",
-    });
+  const needClosingFetch = (th.shortageAlert || th.surplusAlert) && !Array.isArray(options.closingRows);
+  const needDsrToday = th.missingMeterAlert || th.missingRateAlert || th.missingDipAlert;
+  const needStockToday = th.missingDipAlert || th.highVariation > 0;
+  const needCreditList = th.staleCreditAlert || th.individualHighCredit > 0;
+  const salaryMonth = currentSalaryMonthValue();
+  const monthRange = getMonthRange(new Date().getFullYear(), new Date().getMonth());
+  const invoiceStart = (() => {
+    const d = new Date(`${todayStr}T00:00:00`);
+    d.setDate(d.getDate() - (Number(th.missingInvoiceLookbackDays) || 30));
+    return formatDateInput(d);
+  })();
+
+  const [
+    closingRes,
+    nightRes,
+    dsrRes,
+    stockRes,
+    creditListRes,
+    rosterRes,
+    attendanceRes,
+    salaryEmpRes,
+    salaryPayRes,
+    salaryExclRes,
+    mtdDsrRes,
+    mtdExpenseRes,
+    missingInvoiceRes,
+  ] = await Promise.all([
+    needClosingFetch
+      ? supabaseClient.from("day_closing").select("short_today").eq("date", todayStr).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    th.nightCashAlert
+      ? supabaseClient.rpc("get_night_cash_available")
+      : Promise.resolve({ data: null, error: null }),
+    needDsrToday
+      ? supabaseClient
+          .from("dsr")
+          .select("date, product, petrol_rate, diesel_rate, stock, dip_reading")
+          .eq("date", todayStr)
+      : Promise.resolve({ data: [], error: null }),
+    needStockToday
+      ? supabaseClient.rpc("get_dsr_stock_range", { p_start: todayStr, p_end: todayStr })
+      : Promise.resolve({ data: [], error: null }),
+    needCreditList
+      ? supabaseClient.rpc("get_outstanding_credit_list_as_of", { p_date: todayStr })
+      : Promise.resolve({ data: [], error: null }),
+    th.attendanceAlert
+      ? supabaseClient.rpc("list_employees_roster")
+      : Promise.resolve({ data: [], error: null }),
+    th.attendanceAlert
+      ? supabaseClient
+          .from("employee_attendance")
+          .select("id, employee_id")
+          .eq("date", todayStr)
+      : Promise.resolve({ data: [], error: null }),
+    th.unpaidSalaryAlert && isAdmin
+      ? supabaseClient.rpc("list_employees_salary")
+      : Promise.resolve({ data: [], error: null }),
+    th.unpaidSalaryAlert && isAdmin
+      ? supabaseClient
+          .from("salary_payments")
+          .select("employee_id, amount")
+          .eq("salary_month", salaryMonth)
+      : Promise.resolve({ data: [], error: null }),
+    th.unpaidSalaryAlert && isAdmin
+      ? supabaseClient
+          .from("salary_month_exclusions")
+          .select("employee_id")
+          .eq("salary_month", salaryMonth)
+      : Promise.resolve({ data: [], error: null }),
+    th.expenseRatioAlert
+      ? supabaseClient
+          .from("dsr")
+          .select("product, total_sales, testing, petrol_rate, diesel_rate")
+          .gte("date", monthRange.start)
+          .lte("date", monthRange.end)
+      : Promise.resolve({ data: [], error: null }),
+    th.expenseRatioAlert
+      ? supabaseClient
+          .from("expenses")
+          .select("amount")
+          .gte("date", monthRange.start)
+          .lte("date", monthRange.end)
+      : Promise.resolve({ data: [], error: null }),
+    th.missingInvoiceAlert && driveEnabled
+      ? supabaseClient
+          .from("dsr")
+          .select("date, product, receipts, invoice_document_id")
+          .gt("receipts", 0)
+          .is("invoice_document_id", null)
+          .gte("date", invoiceStart)
+          .lte("date", todayStr)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  const dsrToday = dsrRes.error ? [] : dsrRes.data ?? [];
+  const stockToday = stockRes.error ? [] : stockRes.data ?? [];
+
+  if (lastPetrolVariation == null && stockToday.length) {
+    lastPetrolVariation = sumByProduct(stockToday, "petrol", (row) => row.variation);
+    lastDieselVariation = sumByProduct(stockToday, "diesel", (row) => row.variation);
   }
 
-  if (th.shortageAlert) {
-    const todayStr = formatDateInput(new Date());
-    const { data: closingRow, error: closingError } = await supabaseClient
-      .from("day_closing")
-      .select("short_today")
-      .eq("date", todayStr)
-      .maybeSingle();
-
-    if (!closingError && closingRow?.short_today != null && PumpSettings.isDayClosingShortage(closingRow.short_today)) {
-      const shortAmount = Number(closingRow.short_today);
-      const thresholdLabel =
-        th.dayClosingShortage > 0
-          ? `your alert threshold (${formatCurrency(th.dayClosingShortage)})`
-          : "zero";
+  if (th.highVariation > 0) {
+    const petrolVar = Math.abs(Number(lastPetrolVariation));
+    const dieselVar = Math.abs(Number(lastDieselVariation));
+    const petrolOver = Number.isFinite(petrolVar) && petrolVar > th.highVariation;
+    const dieselOver = Number.isFinite(dieselVar) && dieselVar > th.highVariation;
+    if (petrolOver || dieselOver) {
+      const parts = [];
+      if (petrolOver) parts.push(`Petrol ${formatQuantity(petrolVar)} L`);
+      if (dieselOver) parts.push(`Diesel ${formatQuantity(dieselVar)} L`);
       alerts.push({
         type: "warning",
-        message: `Today's short (${formatCurrency(shortAmount)}) is above ${thresholdLabel}. Review night cash and PhonePe totals.`,
+        label: "Stock variation",
+        message: `Above ${formatQuantity(th.highVariation)} L: ${parts.join(", ")}. Verify meter readings.`,
+        cta: "View DSR",
+        href: "dsr.html",
+      });
+    }
+  }
+
+  let shortAmount = null;
+  if (th.shortageAlert || th.surplusAlert) {
+    if (Array.isArray(options.closingRows)) {
+      const row = options.closingRows.find((r) => r.date === todayStr);
+      if (row?.short_today != null) shortAmount = Number(row.short_today);
+    } else if (!closingRes.error && closingRes.data?.short_today != null) {
+      shortAmount = Number(closingRes.data.short_today);
+    }
+  }
+
+  if (shortAmount != null) {
+    const thresholdLabel =
+      th.dayClosingShortage > 0
+        ? `your threshold (${formatCurrency(th.dayClosingShortage)})`
+        : "zero";
+    if (th.shortageAlert && PumpSettings.isDayClosingShortage(shortAmount)) {
+      alerts.push({
+        type: "warning",
+        label: "Cash shortage",
+        message: `Today's short is ${formatCurrency(shortAmount)} (above ${thresholdLabel}). Review night cash and PhonePe.`,
         cta: "Day closing",
         href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
       });
+    } else if (th.surplusAlert && PumpSettings.isDayClosingSurplus(shortAmount)) {
+      alerts.push({
+        type: "warning",
+        label: "Cash surplus",
+        message: `Today's closing is over by ${formatCurrency(Math.abs(shortAmount))} (beyond ${thresholdLabel}). Check PhonePe and night cash.`,
+        cta: "Day closing",
+        href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
+      });
+    }
+  }
+
+  if (th.nightCashAlert) {
+    if (!nightRes.error && nightRes.data) {
+      const nightTotal = Number(nightRes.data.total_available ?? 0);
+      const nightDays = Number(nightRes.data.day_count ?? 0);
+      const minAmount = Number(th.nightCashMinAmount) || 0;
+      if (nightDays > 0 && nightTotal > 0 && nightTotal >= minAmount) {
+        const rangeHint =
+          nightRes.data.from_date && nightRes.data.to_date
+            ? nightRes.data.from_date === nightRes.data.to_date
+              ? formatDisplayDate(nightRes.data.from_date)
+              : `${formatDisplayDate(nightRes.data.from_date)} – ${formatDisplayDate(nightRes.data.to_date)}`
+            : "";
+        alerts.push({
+          type: "warning",
+          label: "Night cash at pump",
+          message: `${formatCurrency(nightTotal)} across ${nightDays} day${nightDays === 1 ? "" : "s"} still uncollected${rangeHint ? ` (${rangeHint})` : ""}.`,
+          cta: "Collect",
+          href: "day-closing.html#register",
+        });
+      }
+    } else if (nightRes.error) {
+      AppError.report(nightRes.error, { context: "updateSmartAlerts", type: "night_cash" });
+    }
+  }
+
+  if (dsrRes.error) AppError.report(dsrRes.error, { context: "updateSmartAlerts", type: "dsr_today" });
+  if (stockRes.error) AppError.report(stockRes.error, { context: "updateSmartAlerts", type: "stock_today" });
+
+  const hasPetrolMeter = dsrToday.some((row) => normalizeProduct(row.product) === "petrol");
+  const hasDieselMeter = dsrToday.some((row) => normalizeProduct(row.product) === "diesel");
+
+  const missingMeter = [];
+  if (th.missingMeterAlert) {
+    if (!hasPetrolMeter) missingMeter.push("Petrol");
+    if (!hasDieselMeter) missingMeter.push("Diesel");
+    if (missingMeter.length > 0) {
+      const hash = !hasPetrolMeter && hasDieselMeter ? "#petrol" : hasPetrolMeter && !hasDieselMeter ? "#diesel" : "";
+      alerts.push({
+        type: "danger",
+        label: "Meter reading",
+        message: `No reading for today (${missingMeter.join(" · ")}). Enter nozzle totals before day closing.`,
+        cta: "Enter reading",
+        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
+      });
+    }
+  }
+
+  if (th.missingRateAlert) {
+    // Match settings copy: alert only when there is no usable rate (today or last entered).
+    const rates = await resolveRatesForDate(todayStr, dsrToday);
+    const missingRate = [];
+    if (!(Number.isFinite(rates.petrolRate) && rates.petrolRate > 0)) missingRate.push("Petrol");
+    if (!(Number.isFinite(rates.dieselRate) && rates.dieselRate > 0)) missingRate.push("Diesel");
+    if (missingRate.length > 0) {
+      const hash =
+        missingRate.length === 1 && missingRate[0] === "Petrol"
+          ? "#petrol"
+          : missingRate.length === 1
+            ? "#diesel"
+            : "";
+      alerts.push({
+        type: "warning",
+        label: "Selling rate",
+        message: `No selling rate for ${missingRate.join(" · ")}. Enter today's rate so sale value is correct.`,
+        cta: "Enter rate",
+        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
+      });
+    }
+  }
+
+  if (th.missingDipAlert) {
+    const meterMissingPetrol = th.missingMeterAlert ? missingMeter.includes("Petrol") : !hasPetrolMeter;
+    const meterMissingDiesel = th.missingMeterAlert ? missingMeter.includes("Diesel") : !hasDieselMeter;
+    const missingDip = [];
+    if (!meterMissingPetrol && !dipStockOnDate(stockToday, dsrToday, "petrol", todayStr)) {
+      missingDip.push("Petrol");
+    }
+    if (!meterMissingDiesel && !dipStockOnDate(stockToday, dsrToday, "diesel", todayStr)) {
+      missingDip.push("Diesel");
+    }
+    if (missingDip.length > 0) {
+      const hash =
+        missingDip.length === 1 && missingDip[0] === "Petrol"
+          ? "#petrol"
+          : missingDip.length === 1
+            ? "#diesel"
+            : "";
+      alerts.push({
+        type: "warning",
+        label: "Dip stock",
+        message: `No dip for today (${missingDip.join(" · ")}). Tank levels and variation need a current reading.`,
+        cta: "Enter dip",
+        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
+      });
+    }
+  }
+
+  if (th.staleCreditAlert || th.individualHighCredit > 0) {
+    if (creditListRes.error) {
+      AppError.report(creditListRes.error, { context: "updateSmartAlerts", type: "credit_list" });
+    } else {
+      const creditRows = creditListRes.data ?? [];
+
+      if (th.individualHighCredit > 0) {
+        const overLimit = creditRows
+          .filter((row) => Number(row.amount_due_as_of ?? 0) > th.individualHighCredit)
+          .sort((a, b) => Number(b.amount_due_as_of ?? 0) - Number(a.amount_due_as_of ?? 0));
+        if (overLimit.length > 0) {
+          const totalOver = overLimit.reduce((s, r) => s + Number(r.amount_due_as_of ?? 0), 0);
+          const expandRows = overLimit.map((row) => {
+            const due = Number(row.amount_due_as_of ?? 0);
+            const overBy = due - th.individualHighCredit;
+            return {
+              name: row.customer_name || "Customer",
+              href: creditCustomerDetailHref(row.customer_name),
+              detail: `${formatCurrency(due)} · over by ${formatCurrency(overBy)}`,
+            };
+          });
+          alerts.push({
+            type: "warning",
+            label: "Individual high credit",
+            message: `${overLimit.length} customer${overLimit.length === 1 ? "" : "s"} above ${formatCurrency(th.individualHighCredit)} (${formatCurrency(totalOver)} total).`,
+            cta: "Outstanding",
+            href: "credit.html#outstanding",
+            dataNotif: "credit-individual",
+            expandHtml: renderNotifCustomerExpand(
+              expandRows,
+              `Show ${overLimit.length} customer${overLimit.length === 1 ? "" : "s"}`
+            ),
+          });
+        }
+      }
+
+      if (th.staleCreditAlert) {
+        const staleDays = Number(th.staleCreditDays) || 30;
+        const stale = creditRows
+          .filter((row) => {
+            const due = Number(row.amount_due_as_of ?? 0);
+            if (!(due > 0)) return false;
+            const anchor = row.last_payment_date || row.sale_date;
+            const age = daysBetweenDateStrings(anchor, todayStr);
+            return age != null && age >= staleDays;
+          })
+          .sort((a, b) => Number(b.amount_due_as_of ?? 0) - Number(a.amount_due_as_of ?? 0));
+        if (stale.length > 0) {
+          const totalDue = stale.reduce((s, r) => s + Number(r.amount_due_as_of ?? 0), 0);
+          const expandRows = stale.map((row) => {
+            const due = Number(row.amount_due_as_of ?? 0);
+            const age = daysBetweenDateStrings(row.last_payment_date || row.sale_date, todayStr);
+            const ageLabel = age != null ? `${age} day${age === 1 ? "" : "s"}` : "—";
+            return {
+              name: row.customer_name || "Customer",
+              href: creditCustomerDetailHref(row.customer_name),
+              detail: `${formatCurrency(due)} · ${ageLabel}`,
+            };
+          });
+          alerts.push({
+            type: "warning",
+            label: "Stale credit",
+            message: `${stale.length} customer${stale.length === 1 ? "" : "s"} unpaid ${staleDays}+ days (${formatCurrency(totalDue)}).`,
+            cta: "Outstanding",
+            href: "credit.html#outstanding",
+            dataNotif: "credit-stale",
+            expandHtml: renderNotifCustomerExpand(
+              expandRows,
+              `Show ${stale.length} customer${stale.length === 1 ? "" : "s"}`
+            ),
+          });
+        }
+      }
+    }
+  }
+
+  if (th.unpaidSalaryAlert && isAdmin) {
+    if (salaryEmpRes.error) {
+      AppError.report(salaryEmpRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_employees" });
+    } else if (salaryPayRes.error) {
+      AppError.report(salaryPayRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_payments" });
+    } else {
+      const excluded = new Set((salaryExclRes.data ?? []).map((r) => r.employee_id));
+      if (salaryExclRes.error) {
+        AppError.report(salaryExclRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_exclusions" });
+      }
+      const paidMap = new Map();
+      for (const p of salaryPayRes.data ?? []) {
+        paidMap.set(p.employee_id, (paidMap.get(p.employee_id) || 0) + Number(p.amount ?? 0));
+      }
+      let unpaidCount = 0;
+      let pendingTotal = 0;
+      for (const emp of salaryEmpRes.data ?? []) {
+        if (excluded.has(emp.id)) continue;
+        const payable = approxNetMonthlySalary(emp);
+        if (payable <= 0) continue;
+        const pending = Math.max(0, payable - (paidMap.get(emp.id) || 0));
+        if (pending > 0.009) {
+          unpaidCount += 1;
+          pendingTotal += pending;
+        }
+      }
+      if (unpaidCount > 0) {
+        alerts.push({
+          type: "info",
+          label: "Unpaid salary",
+          message: `${unpaidCount} staff with ${formatCurrency(pendingTotal)} pending for ${salaryMonth}.`,
+          cta: "Open salary",
+          href: "salary.html",
+        });
+      }
+    }
+  }
+
+  if (th.attendanceAlert) {
+    const shifts = PumpSettings.getShiftConfig();
+    if (isPastLocalHm(shifts.afternoonEnd)) {
+      if (rosterRes.error) {
+        AppError.report(rosterRes.error, { context: "updateSmartAlerts", type: "attendance_roster" });
+      } else if (attendanceRes.error) {
+        AppError.report(attendanceRes.error, { context: "updateSmartAlerts", type: "attendance_today" });
+      } else {
+        const rosterCount = (rosterRes.data ?? []).length;
+        const markedCount = (attendanceRes.data ?? []).length;
+        if (rosterCount > 0 && markedCount === 0) {
+          alerts.push({
+            type: "warning",
+            label: "Attendance",
+            message: `No attendance marked for today after ${shifts.afternoonEnd} (${rosterCount} on roster).`,
+            cta: "Mark attendance",
+            href: `attendance.html?date=${encodeURIComponent(todayStr)}`,
+          });
+        }
+      }
+    }
+  }
+
+  if (th.expenseRatioAlert) {
+    if (mtdDsrRes.error) {
+      AppError.report(mtdDsrRes.error, { context: "updateSmartAlerts", type: "expense_ratio_dsr" });
+    } else if (mtdExpenseRes.error) {
+      AppError.report(mtdExpenseRes.error, { context: "updateSmartAlerts", type: "expense_ratio_expenses" });
+    } else {
+      const sales = calculateDsrSaleRupees(mtdDsrRes.data ?? [], { includeTesting: true });
+      const expenses = (mtdExpenseRes.data ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0);
+      if (sales > 0) {
+        const ratioPct = (expenses / sales) * 100;
+        if (ratioPct > th.expenseRatioPct) {
+          alerts.push({
+            type: "warning",
+            label: "Expense ratio",
+            message: `MTD expenses are ${ratioPct.toFixed(1)}% of fuel sales (threshold ${th.expenseRatioPct}%).`,
+            cta: "Open analysis",
+            href: "analysis.html",
+          });
+        }
+      }
+    }
+  }
+
+  if (th.missingInvoiceAlert && driveEnabled) {
+    if (missingInvoiceRes.error) {
+      AppError.report(missingInvoiceRes.error, { context: "updateSmartAlerts", type: "missing_invoice" });
+    } else {
+      const rows = missingInvoiceRes.data ?? [];
+      if (rows.length > 0) {
+        const uniqueDays = new Set(rows.map((r) => r.date)).size;
+        alerts.push({
+          type: "info",
+          label: "Invoice upload",
+          message: `${rows.length} receipt row${rows.length === 1 ? "" : "s"} across ${uniqueDays} day${uniqueDays === 1 ? "" : "s"} missing a linked invoice PDF.`,
+          cta: "Open vault",
+          href: "invoices.html",
+        });
+      }
     }
   }
 
@@ -715,26 +1342,17 @@ async function updateSmartAlerts() {
     updateDashboardAlertsVisibility();
     return;
   }
+  panel.innerHTML = alerts.map((a) => renderNotifItem(a)).join("");
   panel.classList.remove("hidden");
   updateDashboardAlertsVisibility();
-  panel.innerHTML = alerts
-    .map(
-      (a) =>
-        `<div class="smart-alert smart-alert--${a.type}" role="alert">
-          <p class="smart-alert-message">${escapeHtml(a.message)}</p>
-          <a href="${escapeHtml(a.href)}" class="button-secondary smart-alert-cta">${escapeHtml(a.cta)}</a>
-        </div>`
-    )
-    .join("");
 }
 
-const DAY_CLOSING_LOOKBACK_DAYS = 7;
-
 /**
- * Load day closing status for today and past days; render one banner per day (done or not done).
- * Respects dayClosingReminder setting. No "Day closing" title; separate banner per event.
+ * Load day closing status for today and past days; render one card per day.
+ * Respects dayClosingReminder setting.
+ * @param {{ data?: Array, error?: unknown, todayStr?: string }|null} [prefetched]
  */
-async function loadDayClosingBanners() {
+async function loadDayClosingBanners(prefetched = null) {
   const block = document.getElementById("day-closing-block");
   const container = document.getElementById("day-closing-banners");
   if (!block || !container) return;
@@ -743,30 +1361,35 @@ async function loadDayClosingBanners() {
   if (!th.dayClosingReminder) {
     block.classList.add("hidden");
     container.innerHTML = "";
+    updateNotificationsPanelState();
     return;
   }
 
-  const today = new Date();
-  const todayStr = formatDateInput(today);
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - DAY_CLOSING_LOOKBACK_DAYS);
-  const startStr = formatDateInput(startDate);
+  let closedRows;
+  let error;
+  let todayStr;
 
-  const { data: closedRows, error } = await supabaseClient
-    .from("day_closing")
-    .select("date")
-    .gte("date", startStr)
-    .lte("date", todayStr);
+  if (prefetched) {
+    closedRows = prefetched.data;
+    error = prefetched.error;
+    todayStr = prefetched.todayStr || getLocalDateString();
+  } else {
+    const windowResult = await fetchDayClosingWindow();
+    closedRows = windowResult.data;
+    error = windowResult.error;
+    todayStr = windowResult.todayStr;
+  }
 
   if (error) {
     AppError.report(error, { context: "loadDayClosingBanners" });
     block.classList.add("hidden");
     container.innerHTML = "";
+    updateNotificationsPanelState();
     return;
   }
 
   const closedSet = new Set((closedRows ?? []).map((r) => r.date));
-
+  const today = new Date();
   const datesToShow = [];
   for (let i = 0; i <= DAY_CLOSING_LOOKBACK_DAYS; i++) {
     const d = new Date(today);
@@ -774,34 +1397,43 @@ async function loadDayClosingBanners() {
     datesToShow.push(formatDateInput(d));
   }
 
-  const parts = [];
-
   function bannerForDate(dateStr, showDone) {
     const done = closedSet.has(dateStr);
     if (!showDone && done) return null;
     const label = formatDisplayDate(dateStr);
     const isToday = dateStr === todayStr;
-    const dayLabel = isToday ? "today" : label;
+    const dayLabel = isToday ? "Today" : label;
     if (done) {
-      return `<div class="day-closing-banner day-closing-cta done" role="status">
-        <span class="cta-text">Day closing done for ${escapeHtml(dayLabel)}</span>
-      </div>`;
+      return renderNotifItem({
+        type: "success",
+        label: "Done",
+        message: `Day closing complete for ${isToday ? "today" : label}`,
+        role: "status",
+      });
     }
-    const fillUrl = `day-closing.html?date=${encodeURIComponent(dateStr)}`;
-    return `<div class="day-closing-banner day-closing-cta" role="alert">
-      <span class="cta-text">Day closing not done for ${escapeHtml(dayLabel)}</span>
-      <a href="${escapeHtml(fillUrl)}" class="day-closing-cta-btn">Fill day closing</a>
-    </div>`;
+    return renderNotifItem({
+      type: isToday ? "warning" : "danger",
+      label: dayLabel,
+      message: "Day closing not done",
+      meta: isToday
+        ? "Finish tonight's cash, PhonePe, and short before you leave."
+        : "Past day still open — fill it to keep DSR and cash aligned.",
+      cta: "Fill day closing",
+      href: `day-closing.html?date=${encodeURIComponent(dateStr)}`,
+    });
   }
 
+  const parts = [];
   parts.push(bannerForDate(datesToShow[0], true));
   datesToShow.slice(1).forEach((dateStr) => {
     const html = bannerForDate(dateStr, false);
     if (html) parts.push(html);
   });
 
-  container.innerHTML = parts.join("");
-  block.classList.toggle("hidden", parts.length === 0);
+  const visible = parts.filter(Boolean);
+  container.innerHTML = visible.join("");
+  block.classList.toggle("hidden", visible.length === 0);
+  updateNotificationsPanelState();
 }
 
 let dsrFilterApi = null;
@@ -862,14 +1494,6 @@ async function ensurePlSectionLoaded() {
   if (!plSectionLoaded) {
     plSectionLoaded = true;
     await plFilterApi.refresh();
-  }
-  let pendingFromDsr = false;
-  try {
-    pendingFromDsr = sessionStorage.getItem("pl_todo_pending") === "1";
-    if (pendingFromDsr) sessionStorage.removeItem("pl_todo_pending");
-  } catch (_) {}
-  if (pendingFromDsr) {
-    setTimeout(scrollToPlBuyingPriceAlert, 200);
   }
 }
 
@@ -1101,12 +1725,14 @@ function renderCreditSummary(total, creditTotal) {
   if (total === null || total === undefined) {
     lastCreditTotalRupees = null;
     if (creditTotal) creditTotal.textContent = "—";
+    syncCreditSmartAlert();
     return;
   }
 
   const value = Number(total);
   lastCreditTotalRupees = value;
   if (creditTotal) creditTotal.textContent = formatCurrency(value);
+  syncCreditSmartAlert();
 }
 
 /**
@@ -1384,10 +2010,9 @@ function renderDsrSummary(data, elements, range) {
 }
 
 /**
- * Fetch missing buying-price rows once and update banner (and optionally the P&L list).
+ * Fetch missing buying-price rows and update the notifications banner.
  */
-async function refreshMissingBuyingPriceUi(options = {}) {
-  const { renderList = false } = options;
+async function refreshMissingBuyingPriceUi() {
   const bannerEl = document.getElementById("pl-todo-banner");
   const countEl = document.getElementById("pl-todo-count");
 
@@ -1395,7 +2020,7 @@ async function refreshMissingBuyingPriceUi(options = {}) {
   if (error) {
     AppError.report(error, { context: "refreshMissingBuyingPriceUi" });
     bannerEl?.classList.add("hidden");
-    if (renderList) renderPlMissingBuyingList([]);
+    updateNotificationsPanelState();
     return [];
   }
 
@@ -1406,243 +2031,21 @@ async function refreshMissingBuyingPriceUi(options = {}) {
       bannerEl.classList.remove("hidden");
     } else {
       bannerEl.classList.add("hidden");
-      try { sessionStorage.removeItem("pl_todo_pending"); } catch (_) {}
     }
   }
-  if (renderList) renderPlMissingBuyingList(rows);
+  updateNotificationsPanelState();
   return rows;
 }
 
-async function loadPlTodoBanner() {
-  await refreshMissingBuyingPriceUi({ renderList: false });
-}
-
-/**
- * Get current P&L range from the filter form (for reload after saving buying price).
- */
-function getCurrentPlRange() {
-  const rangeSelect = document.getElementById("pl-range");
-  const startEl = document.getElementById("pl-start");
-  const endEl = document.getElementById("pl-end");
-  if (!rangeSelect || !startEl || !endEl) return null;
-  return getRangeForSelection(rangeSelect.value, startEl, endEl);
-}
-
-/**
- * Match a vault purchase PDF by invoice title (and optional receipt date).
- * Exact title first, then case-insensitive partial — avoids scanning unrelated docs.
- * @returns {Promise<string|null>} invoice_documents.id
- */
-async function findVaultDocumentIdForInvoice(invoiceNo, receiptDate) {
-  const title = String(invoiceNo || "").trim();
-  if (!title) return null;
-
-  const exactQuery = (withDate) => {
-    let q = supabaseClient
-      .from("invoice_documents")
-      .select("id")
-      .eq("category", "purchase")
-      .eq("title", title)
-      .order("invoice_date", { ascending: false })
-      .limit(1);
-    if (withDate && receiptDate) q = q.eq("invoice_date", receiptDate);
-    return q;
-  };
-
-  let { data, error } = await exactQuery(true);
-  if (!error && data?.[0]?.id) return data[0].id;
-  if (receiptDate) {
-    ({ data, error } = await exactQuery(false));
-    if (!error && data?.[0]?.id) return data[0].id;
-  }
-
-  const safePattern = `%${title.replace(/[%_\\]/g, "\\$&")}%`;
-  let fuzzy = supabaseClient
-    .from("invoice_documents")
-    .select("id, title")
-    .eq("category", "purchase")
-    .ilike("title", safePattern)
-    .order("invoice_date", { ascending: false })
-    .limit(10);
-  if (receiptDate) fuzzy = fuzzy.eq("invoice_date", receiptDate);
-  const fuzzyResult = await fuzzy;
-  if (fuzzyResult.error || !fuzzyResult.data?.length) {
-    if (receiptDate) return findVaultDocumentIdForInvoice(title, null);
-    return null;
-  }
-  const needle = title.toLowerCase();
-  const exact = fuzzyResult.data.find((d) => String(d.title || "").trim().toLowerCase() === needle);
-  if (exact) return exact.id;
-  const partial = fuzzyResult.data.find((d) => String(d.title || "").toLowerCase().includes(needle));
-  return partial?.id ?? null;
-}
-
-/**
- * Save buying price for a DSR row (receipt day) and reload P&L summary.
- */
-async function handleSaveBuyingPrice(dsrId) {
-  const input = document.getElementById(`pl-buying-${dsrId}`);
-  const invInput = document.getElementById(`pl-inv-${dsrId}`);
-  const gstinInput = document.getElementById(`pl-gstin-${dsrId}`);
-  const saveBtn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
-  const itemEl = document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`);
-  const product =
-    saveBtn?.dataset?.product || itemEl?.dataset?.product;
-  const receiptDate = itemEl?.dataset?.date || null;
-  const valueKl = Number.parseFloat((input?.value ?? "").trim());
-  const parsed = validateBuyingRateKlInput(valueKl);
-  if (!parsed.ok) {
-    showPlBuyingPriceError(
-      parsed.message || `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`
-    );
-    return;
-  }
-  const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
-  if (value == null) {
-    showPlBuyingPriceError(`Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
-    return;
-  }
-  const supplierInvoiceNo = (invInput?.value ?? "").trim();
-  let supplierGstin = (gstinInput?.value ?? "").trim().toUpperCase();
-  if (!supplierGstin) {
-    supplierGstin = (
-      PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
-      AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ||
-      ""
-    )
-      .toString()
-      .trim()
-      .toUpperCase();
-  }
-  if (supplierGstin && !/^[0-9A-Z]{15}$/.test(supplierGstin)) {
-    showPlBuyingPriceError("Supplier GSTIN must be 15 characters (or leave blank).");
-    return;
-  }
-  document.getElementById("pl-buying-price-error")?.classList.add("hidden");
-  const btn = saveBtn;
-  const resetBtn = () => {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Save";
-      btn.classList.remove("pl-save-success");
-    }
-  };
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Saving…";
-  }
-
-  let vaultDocId = null;
-  try {
-    if (supplierInvoiceNo) {
-      vaultDocId = await findVaultDocumentIdForInvoice(supplierInvoiceNo, receiptDate || null);
-    }
-  } catch (_) {
-    vaultDocId = null;
-  }
-
-  const rpc = await supabaseClient.rpc("update_dsr_buying_price", {
-    p_dsr_id: dsrId,
-    p_value: value,
-    p_supplier_invoice_no: supplierInvoiceNo || null,
-    p_supplier_gstin: supplierGstin || null,
-    p_invoice_document_id: vaultDocId,
-  });
-  if (rpc.error) {
-    AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
-    showPlBuyingPriceError(rpc.error.message || "Could not save. Ensure you are logged in as admin.");
-    resetBtn();
-    return;
-  }
-  if (btn) {
-    btn.textContent = "Saved";
-    btn.classList.add("pl-save-success");
-  }
-  // Invalidate cache so other tabs / next load see updated P&L immediately
-  if (typeof AppCache !== "undefined" && AppCache) {
-    CacheInvalidation.invalidate("reports");
-  }
-  const range = getCurrentPlRange();
-  if (range) await loadProfitLossSummary(range);
-  else await refreshMissingBuyingPriceUi({ renderList: true });
-  resetBtn();
-}
-
-function showPlBuyingPriceError(message) {
-  const el = document.getElementById("pl-buying-price-error");
-  if (!el) return;
-  el.textContent = message;
-  el.classList.remove("hidden");
-}
-
-function scrollToPlBuyingPriceAlert() {
-  const alert = document.getElementById("pl-buying-price-alert");
-  if (alert && !alert.classList.contains("hidden")) {
-    alert.scrollIntoView({ behavior: "smooth", block: "start" });
-    document.querySelector(".pl-buying-input")?.focus({ preventScroll: true });
-    return;
-  }
-  document.getElementById("pl")?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function renderPlMissingBuyingList(rows) {
-  const plAlertEl = document.getElementById("pl-buying-price-alert");
-  const plMissingListEl = document.getElementById("pl-missing-buying-list");
-  if (!plAlertEl || !plMissingListEl) return;
-
-  if (!rows?.length) {
-    plAlertEl.classList.add("hidden");
-    plMissingListEl.innerHTML = "";
-    return;
-  }
-
-  plAlertEl.classList.remove("hidden");
-  const defaultGstin =
-    PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
-    AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ||
-    "";
-  plMissingListEl.innerHTML = rows
-    .map((row) => {
-      const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
-      const rowId = row.id;
-      const invVal = escapeHtml(row.supplier_invoice_no || "");
-      const gstinVal = escapeHtml(row.supplier_gstin || defaultGstin || "");
-      return `
-        <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}" data-date="${escapeHtml(row.date)}">
-          <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
-          <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
-          <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
-          <label for="pl-inv-${rowId}" class="sr-only">Supplier invoice no</label>
-          <input id="pl-inv-${rowId}" type="text" maxlength="40" placeholder="BPCL invoice no" class="pl-inv-input" value="${invVal}" data-dsr-id="${escapeHtml(rowId)}" />
-          <label for="pl-gstin-${rowId}" class="sr-only">Supplier GSTIN</label>
-          <input id="pl-gstin-${rowId}" type="text" maxlength="15" placeholder="Supplier GSTIN" class="pl-gstin-input" value="${gstinVal}" data-dsr-id="${escapeHtml(rowId)}" />
-          <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
-        </li>`;
-    })
-    .join("");
-  plMissingListEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
-    btn.addEventListener("click", () => handleSaveBuyingPrice(btn.dataset.dsrId));
-  });
-}
-
 async function loadProfitLossSummary(range) {
-  const plNetSaleEl = document.getElementById("pl-net-sale");
-  const plExpenseEl = document.getElementById("pl-expense");
   const plValueEl = document.getElementById("pl-value");
   const plLabelEl = document.getElementById("pl-label");
-  const incomeEl = document.getElementById("income-total");
-  const incomeNoteEl = document.getElementById("income-note");
+  const plProfitHintEl = document.getElementById("pl-profit-hint");
 
-  if (plNetSaleEl) plNetSaleEl.textContent = "Loading…";
-  if (plExpenseEl) plExpenseEl.textContent = "Loading…";
   if (plValueEl) plValueEl.textContent = "Loading…";
-  if (incomeEl) incomeEl.textContent = "Loading…";
-  if (incomeNoteEl) incomeNoteEl.textContent = "";
-  const plBuyingErrorEl = document.getElementById("pl-buying-price-error");
-  if (plBuyingErrorEl) plBuyingErrorEl.classList.add("hidden");
-  const plBuyingHintEl = document.getElementById("pl-buying-hint");
-  if (plBuyingHintEl && typeof getPlBuyingPriceHint === "function") {
-    plBuyingHintEl.textContent = getPlBuyingPriceHint();
+  if (plProfitHintEl) {
+    plProfitHintEl.classList.add("hidden");
+    plProfitHintEl.textContent = "";
   }
 
   const plData = await fetchProfitLossData(range);
@@ -1650,49 +2053,27 @@ async function loadProfitLossSummary(range) {
   if (plData.expenseError) AppError.report(plData.expenseError, { context: "profitLossSummary", type: "expense" });
   if (plData.lubeError) AppError.report(plData.lubeError, { context: "profitLossSummary", type: "lube" });
 
-  const dsrRows = plData.dsrRows;
-  const receiptRows = plData.receiptRows;
-  const expenseData = plData.expenseRows;
-
   const hasDsr = !plData.dsrError;
   const hasExpense = !plData.expenseError;
   const pl = computeProfitLossSummary({
-    dsrRows,
-    receiptRows,
-    expenseRows: expenseData,
+    dsrRows: plData.dsrRows,
+    receiptRows: plData.receiptRows,
+    expenseRows: plData.expenseRows,
     lubeSales: plData.lubeSales,
     lubeCogs: plData.lubeCogs ?? 0,
     categoryMap: plData.categoryMap ?? null,
   });
-  const income = { total: pl.revenue, missingRates: pl.missingRates };
-  const allBuyingPricesEntered = pl.canCalculate;
-
-  const plProfitHintEl = document.getElementById("pl-profit-hint");
-  await refreshMissingBuyingPriceUi({ renderList: true });
-
-  const expenseTotal = pl.totalExpenses;
-
-  if (plNetSaleEl) {
-    plNetSaleEl.textContent = hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
-  }
-  if (plExpenseEl) {
-    plExpenseEl.textContent = hasExpense ? formatCurrency(expenseTotal) : "—";
-  }
 
   if (plValueEl && plLabelEl) {
-    if (plLabelEl) plLabelEl.textContent = "Profit / Loss";
-    if (plProfitHintEl) {
-      plProfitHintEl.classList.add("hidden");
-      plProfitHintEl.textContent = "";
-    }
+    plLabelEl.textContent = "Nett Profit";
     if (!hasDsr || !hasExpense) {
       plValueEl.textContent = "—";
       plValueEl.classList.remove("stat-negative", "stat-positive");
-    } else if (!allBuyingPricesEntered) {
+    } else if (!pl.canCalculate) {
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
-        plProfitHintEl.textContent =
-          "Enter pre-VAT ₹/KL for receipt days above. No prior receipt rate is available yet, so net profit cannot be calculated.";
+        plProfitHintEl.innerHTML =
+          'Enter pre-VAT ₹/KL on <a href="meter-reading.html#purchase-cost">Meter Reading → Purchase cost</a>. No prior receipt rate is available yet, so net profit cannot be calculated.';
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");
@@ -1702,35 +2083,17 @@ async function loadProfitLossSummary(range) {
       plValueEl.classList.toggle("stat-positive", profitLoss >= 0);
       plValueEl.classList.toggle("stat-negative", profitLoss < 0);
       if (pl.usingProvisionalBuying && plProfitHintEl) {
-        plProfitHintEl.textContent =
-          "Some receipt days still need ₹/KL — net profit uses the previous receipt rate until you save the correct price above.";
+        plProfitHintEl.innerHTML =
+          'Some receipt days still need ₹/KL — net profit uses the previous receipt rate until you save the correct price on <a href="meter-reading.html#purchase-cost">Purchase cost</a>.';
         plProfitHintEl.classList.remove("hidden");
       }
     }
   }
 
-  if (incomeEl) {
-    incomeEl.textContent =
-      hasDsr && dsrRows.length ? formatCurrency(income.total) : "—";
-  }
-  if (incomeNoteEl) {
-    const parts = [];
-    if (income.missingRates > 0) {
-      parts.push("Some DSR entries are missing rates, so income totals may be partial.");
-    }
-    if (pl.lubeSales > 0) {
-      const lubeNet =
-        pl.lubeCogs > 0
-          ? `Lube/billing sales ${formatCurrency(pl.lubeSales)} − vault purchases ${formatCurrency(pl.lubeCogs)}.`
-          : `Lube/billing sales (${formatCurrency(pl.lubeSales)}) included in net profit.`;
-      parts.push(lubeNet);
-    }
-    incomeNoteEl.textContent = parts.join(" ");
-  }
   const plMethodologyEl = document.getElementById("pl-methodology-note");
   if (plMethodologyEl) {
     plMethodologyEl.textContent =
-      "Your real profit is the Profit / Loss figure above (Nett Profit). Formula: fuel gross + (lube sales − vault purchases) − operating expenses. Gross Profit is before expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit. Same Nett Profit on Analysis and Reports → P&L.";
+      "Nett Profit = fuel gross + (lube sales − vault purchases) − operating expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit.";
   }
   scheduleAutoFitStats();
 }
@@ -1747,21 +2110,23 @@ window.addEventListener("storage", (e) => {
   loadCreditSummary(date);
 });
 
-// Refetch open credit when user returns to dashboard tab or page (e.g. from Credit page)
-function refreshCreditSummaryOnVisible() {
+// Refetch open credit + notification sources when user returns to the dashboard
+function refreshDashboardOnVisible() {
   const dateInput = document.getElementById("snapshot-date");
   if (!dateInput) return;
   const date = dateInput.value || getLocalDateString();
   loadCreditSummary(date);
+  void loadDayClosingBanners();
+  if (dashboardRole === "admin") void refreshMissingBuyingPriceUi();
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && document.getElementById("snapshot-card")) {
-    refreshCreditSummaryOnVisible();
+    refreshDashboardOnVisible();
   }
 });
 window.addEventListener("pageshow", (e) => {
   if (e.persisted && document.getElementById("snapshot-card")) {
-    refreshCreditSummaryOnVisible();
+    refreshDashboardOnVisible();
   }
 });
 

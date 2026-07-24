@@ -59,12 +59,42 @@
     lowStockPetrol: 5000,
     lowStockDiesel: 5000,
     highCredit: 0,
+    /** Per-customer outstanding above this amount (₹). 0 = disabled. */
+    individualHighCredit: 0,
     highVariation: 0,
     dayClosingReminder: true,
     /** Treat day closing short above this amount (₹) as a shortage. 0 = any positive short. */
     dayClosingShortage: 0,
     /** Show dashboard alert when today's saved short exceeds dayClosingShortage. */
     shortageAlert: true,
+    /** Show dashboard alert when today's saved short is a surplus beyond the threshold. */
+    surplusAlert: true,
+    /** Remind when uncollected night cash is at or above nightCashMinAmount. */
+    nightCashAlert: true,
+    /** Minimum uncollected night cash (₹) before alerting. 0 = any positive total. */
+    nightCashMinAmount: 0,
+    /** Remind when today's MS/HSD meter reading is missing. */
+    missingMeterAlert: true,
+    /** Remind when there is no usable selling rate (matches hero “Enter rate”). */
+    missingRateAlert: true,
+    /** Remind when meter exists for today but dip stock was not entered. */
+    missingDipAlert: true,
+    /** Customers with balance unpaid for staleCreditDays or more. */
+    staleCreditAlert: true,
+    /** Days since last payment (or last sale if never paid) before credit is stale. */
+    staleCreditDays: 30,
+    /** Admin: unpaid / partial salary for the current calendar month. */
+    unpaidSalaryAlert: true,
+    /** After afternoon shift end, remind if no attendance rows for today. */
+    attendanceAlert: true,
+    /** Flag when MTD expenses / fuel sales exceed expenseRatioPct. */
+    expenseRatioAlert: false,
+    /** Expense-to-sales ratio threshold (percent). */
+    expenseRatioPct: 15,
+    /** Receipt days with volume but no linked vault invoice (only if Drive enabled). */
+    missingInvoiceAlert: true,
+    /** How many past days to scan for receipts missing an invoice upload. */
+    missingInvoiceLookbackDays: 30,
   };
 
   const DEFAULT_SHIFTS = {
