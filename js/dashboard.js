@@ -1730,7 +1730,7 @@ async function loadProfitLossSummary(range) {
   const plMethodologyEl = document.getElementById("pl-methodology-note");
   if (plMethodologyEl) {
     plMethodologyEl.textContent =
-      "Net profit = fuel gross profit + (lube sales − vault purchase amounts) − operating expenses. Net sale (above) is fuel only. Fuel uses net litres and landed buying cost. MS/HS and density testing expenses excluded. Same formula as Analysis and Reports.";
+      "Your real profit is the Profit / Loss figure above (Nett Profit). Formula: fuel gross + (lube sales − vault purchases) − operating expenses. Gross Profit is before expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit. Same Nett Profit on Analysis and Reports → P&L.";
   }
   scheduleAutoFitStats();
 }

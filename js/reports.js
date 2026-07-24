@@ -56,13 +56,13 @@ const REPORT_CATALOG = [
         id: "trading",
         title: "Trading account",
         description:
-          "MS/HSD stock, sales, purchases; optional vault lube purchases. Gross income c/d balances debit and credit.",
+          "Stock-based books (opening/closing stock). Gross income c/d is a balancing figure — not take-home profit.",
       },
       {
         id: "pl",
         title: "Profit & Loss",
         description:
-          "Margin-based books layout: Gross Profit on credit; expense heads and Nett Profit on debit (same as Dashboard).",
+          "Your real profit is Nett Profit here. Gross Profit = margin before expenses; same as Dashboard P&L.",
       },
     ],
   },
@@ -1814,6 +1814,29 @@ function computeTradingAndPl(data, range) {
   };
 }
 
+function renderProfitGuide(kind) {
+  if (kind === "trading") {
+    return `
+      <aside class="report-profit-guide no-print" aria-label="How to read Gross income">
+        <p class="report-profit-guide-title">Quick reference</p>
+        <ul class="report-profit-guide-list">
+          <li><strong>Gross income c/d</strong> — balances the trading account using stock. Useful for books, <em>not</em> your take-home profit.</li>
+          <li><strong>Do not compare</strong> this to Gross profit / Nett profit on P&amp;L — different formula (stock vs per-litre margin).</li>
+          <li><strong>Your real profit</strong> — open <strong>Profit &amp; Loss</strong> and use <strong>Nett Profit</strong> (or Dashboard → P&amp;L).</li>
+        </ul>
+      </aside>`;
+  }
+  return `
+    <aside class="report-profit-guide no-print" aria-label="How to read profit figures">
+      <p class="report-profit-guide-title">Quick reference</p>
+      <ul class="report-profit-guide-list">
+        <li><strong>Nett Profit</strong> — your <em>real profit</em> after expenses for this period. Use this number.</li>
+        <li><strong>Gross Profit</strong> — margin before rent, salary, electricity, etc. (not take-home yet).</li>
+        <li><strong>Gross income c/d</strong> (Trading account) — different figure; stock-based, not the same as Gross / Nett profit.</li>
+      </ul>
+    </aside>`;
+}
+
 function renderTradingAccount(data, range) {
   const t = getTradingAndPl(data, range);
 
@@ -1874,15 +1897,16 @@ function renderTradingAccount(data, range) {
 
   return `
     ${reportHeader("Trading account", range.start, range.end)}
+    ${renderProfitGuide("trading")}
     <div class="report-pl-grid report-trading-grid">
       ${renderSide("Debit", debitRows)}
       ${renderSide("Credit", creditRows)}
     </div>
-    <p class="report-note muted">Debit and credit totals match via Gross income c/d (stock-based: Sales + Closing − Opening − Purchases).</p>
+    <p class="report-note muted">Debit and credit totals match via Gross income c/d (stock-based: Sales + Closing − Opening − Purchases). This is not Nett Profit.</p>
     ${provisionalNote}
     ${marginNote}
     ${vaultNote}
-    <p class="report-summary-line">Gross income c/d: <strong>${formatCurrency(t.grossIncome)}</strong></p>`;
+    <p class="report-summary-line">Gross income c/d: <strong>${formatCurrency(t.grossIncome)}</strong> <span class="muted">(trading balance — see P&amp;L for real profit)</span></p>`;
 }
 
 function formatUnresolvedBuyingWarning(t) {
@@ -1986,12 +2010,13 @@ function renderProfitLoss(data, range) {
 
   return `
     ${reportHeader("Profit & loss account", range.start, range.end)}
+    ${renderProfitGuide("pl")}
     ${buyingWarning}
     <div class="report-pl-grid report-trading-grid">
       ${renderBooksSide("Debit (indirect expenses)", debitRows, { boldLast: true })}
       ${renderBooksSide("Credit", creditRows, { boldLast: true })}
     </div>
-    <p class="report-summary-line">Gross profit: <strong>${formatCurrency(grossProfit)}</strong> · Expenses: <strong>${formatCurrency(expensesTotal)}</strong> · Nett profit: <strong>${formatCurrency(nettProfit)}</strong></p>
+    <p class="report-summary-line">Gross profit: <strong>${formatCurrency(grossProfit)}</strong> · Expenses: <strong>${formatCurrency(expensesTotal)}</strong> · Nett profit (real profit): <strong>${formatCurrency(nettProfit)}</strong></p>
     ${testingNote}
     ${breakdownNote}`;
 }
