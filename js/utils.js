@@ -790,17 +790,8 @@ function createBuyingRateContext(receiptRows) {
 }
 
 /**
- * Effective pre-VAT buying price (₹/L) from latest receipt on or before the sale date.
- * Prefer createBuyingRateContext when resolving rates for many rows.
- * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
- */
-function buildEffectiveBuyingMap(receiptRows) {
-  return createBuyingRateContext(receiptRows).getStored;
-}
-
-/**
  * Stored pre-VAT buying rate for a sale day.
- * Uses the latest receipt on or before that date (see buildEffectiveBuyingMap).
+ * Uses the latest receipt on or before that date (see createBuyingRateContext).
  * Row value is only a fallback on receipt days — sale-only rows may carry stale
  * buying_price_per_litre from imports and must not override receipt history.
  */
@@ -1053,7 +1044,6 @@ window.resolveDayFuelStock = resolveDayFuelStock;
 window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;
-window.buildEffectiveBuyingMap = buildEffectiveBuyingMap;
 window.createBuyingRateContext = createBuyingRateContext;
 window.resolveStoredBuyingRate = resolveStoredBuyingRate;
 window.toLandedBuyingRatePerLitre = toLandedBuyingRatePerLitre;

@@ -391,32 +391,129 @@
             <h3 class="settings-subheading">Day closing short</h3>
             <div class="form-grid">
               <div class="form-field">
-                <label for="alert-day-closing-shortage">Shortage threshold (₹)</label>
+                <label for="alert-day-closing-shortage">Shortage / surplus threshold (₹)</label>
                 <input id="alert-day-closing-shortage" type="number" min="0" step="1" />
-                <small class="muted">Amounts above this are treated as a short (red card). Use 0 to flag any positive short.</small>
+                <small class="muted">Short or surplus beyond this amount is flagged. Use 0 to flag any imbalance.</small>
               </div>
             </div>
             <div class="form-field form-field-checkbox">
               <label class="checkbox-label">
-                <input id="alert-shortage" type="checkbox" checked />
+                <input id="alert-shortage" type="checkbox" />
                 Alert when today&apos;s short exceeds the threshold
               </label>
             </div>
-            <h3 class="settings-subheading">Other alerts</h3>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-surplus" type="checkbox" />
+                Alert when today&apos;s closing is a surplus beyond the threshold
+              </label>
+            </div>
+            <h3 class="settings-subheading">Night cash</h3>
             <div class="form-grid">
               <div class="form-field">
-                <label for="alert-high-credit">High credit (₹)</label>
+                <label for="alert-night-cash-min">Minimum uncollected (₹)</label>
+                <input id="alert-night-cash-min" type="number" min="0" step="100" />
+                <small class="muted">Alert when uncollected night cash is at or above this amount. Use 0 for any positive total.</small>
+              </div>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-night-cash" type="checkbox" />
+                Alert when night cash is still at the pump
+              </label>
+            </div>
+            <h3 class="settings-subheading">Today&apos;s readings</h3>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-missing-meter" type="checkbox" />
+                Alert when today&apos;s meter reading is missing (MS / HSD)
+              </label>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-missing-rate" type="checkbox" />
+                Alert when there is no usable selling rate
+              </label>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-missing-dip" type="checkbox" />
+                Alert when dip stock is missing for today (after meter is entered)
+              </label>
+            </div>
+            <h3 class="settings-subheading">Credit alerts</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-high-credit">Total high credit limit (₹)</label>
                 <input id="alert-high-credit" type="number" min="0" step="1000" />
+                <small class="muted">Alert when portfolio outstanding exceeds this. Use 0 to disable.</small>
+              </div>
+              <div class="form-field">
+                <label for="alert-individual-high-credit">Individual high credit limit (₹)</label>
+                <input id="alert-individual-high-credit" type="number" min="0" step="1000" />
+                <small class="muted">List customers whose balance exceeds this. Use 0 to disable.</small>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-stale-credit-days">Stale credit (days)</label>
+                <input id="alert-stale-credit-days" type="number" min="1" step="1" />
+                <small class="muted">Customers with unpaid balance and no payment for this many days.</small>
               </div>
               <div class="form-field">
                 <label for="alert-high-variation">High variation (L)</label>
                 <input id="alert-high-variation" type="number" min="0" step="10" />
+                <small class="muted">Alert when |stock variation| exceeds this. Use 0 to disable.</small>
               </div>
             </div>
             <div class="form-field form-field-checkbox">
               <label class="checkbox-label">
-                <input id="alert-day-closing" type="checkbox" checked />
-                Remind if yesterday&apos;s day closing is not done
+                <input id="alert-stale-credit" type="checkbox" />
+                Alert for stale / aging credit customers
+              </label>
+            </div>
+            <h3 class="settings-subheading">Other alerts</h3>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-unpaid-salary" type="checkbox" />
+                Alert when current-month salary is unpaid (admin)
+              </label>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-attendance" type="checkbox" />
+                Alert after shift end if today&apos;s attendance is not marked
+              </label>
+            </div>
+            <h3 class="settings-subheading">Expenses &amp; invoices</h3>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-expense-ratio-pct">Expense ratio threshold (%)</label>
+                <input id="alert-expense-ratio-pct" type="number" min="1" max="100" step="1" />
+                <small class="muted">Month-to-date expenses ÷ fuel sales. Off by default.</small>
+              </div>
+              <div class="form-field">
+                <label for="alert-missing-invoice-days">Missing invoice lookback (days)</label>
+                <input id="alert-missing-invoice-days" type="number" min="1" step="1" />
+                <small class="muted">Only when Google Drive is enabled.</small>
+              </div>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-expense-ratio" type="checkbox" />
+                Alert when MTD expense ratio exceeds the threshold
+              </label>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-missing-invoice" type="checkbox" />
+                Alert when a fuel receipt has no linked invoice upload
+              </label>
+            </div>
+            <div class="form-field form-field-checkbox">
+              <label class="checkbox-label">
+                <input id="alert-day-closing" type="checkbox" />
+                Remind if day closing is not done (today and last 7 days)
               </label>
             </div>
             <button type="submit">Save alerts</button>

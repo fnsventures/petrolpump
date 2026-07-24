@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v119";
+const CACHE_VERSION = "v124";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -56,7 +56,6 @@ const STATIC_ASSET_PATHS = [
   "css/app-staff.css",
   "css/invoice-print.css",
   "css/reports-print.css",
-  "css/day-closing-print.css",
   "css/salary-slip-print.css",
   "css/credit-summary-print.css",
   "css/staff-id-print.css",
@@ -105,6 +104,7 @@ const STATIC_ASSET_PATHS = [
   "js/pageSections.js",
   "js/dateRangeFilter.js",
   "js/dsrQueries.js",
+  "js/buyingPriceEntry.js",
   "js/purchaseTaxUtils.js",
   "js/staffEmployees.js",
   "js/creditCustomerDetail.js",

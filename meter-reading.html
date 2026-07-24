@@ -9,17 +9,20 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-core.css?v=14" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
-    <link rel="stylesheet" href="css/app-meter-reading.css?v=12" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=13" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=9"></script>
-    <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=3"></script>
+    <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/dsrQueries.js"></script>
+    <script defer src="js/buyingPriceEntry.js?v=1"></script>
     <script defer src="js/dsrFuelNav.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
@@ -47,6 +50,10 @@
           <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
           <span class="settings-nav-item-label">HSD</span>
           <span class="settings-nav-item-meta">Diesel · 20 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="purchase-cost" data-role="admin-only">
+          <span class="settings-nav-item-label">Purchase cost</span>
+          <span class="settings-nav-item-meta">Buying price ₹/KL</span>
         </button>
       </nav>
       <div class="settings-panels">
@@ -864,6 +871,36 @@
           </div>
         </div>
       </section>
+
+        <section
+          class="settings-panel card dashboard-card"
+          data-panel="purchase-cost"
+          data-role="admin-only"
+          id="purchase-cost"
+          hidden
+        >
+          <div class="panel-head">
+            <h2 class="dashboard-section-title">Purchase cost</h2>
+            <p class="muted panel-lead">
+              Enter pre-VAT ₹/KL for receipt days so Analysis and Reports can calculate Nett Profit.
+              Optional invoice no and supplier GSTIN feed the purchase GST register.
+            </p>
+          </div>
+          <p id="purchase-cost-error" class="error hidden" role="alert"></p>
+          <p id="purchase-cost-hint" class="muted"></p>
+          <div id="purchase-cost-alert" class="pl-buying-price-alert hidden">
+            <p class="pl-alert-message">
+              Receipt days need a purchase rate to calculate profit. Enter pre-VAT ₹/KL below (per 1000 L, as on the BPCL invoice).
+              VAT/LST and delivery are applied in P&amp;L. Each rate applies until the next receipt day. Selling rates come from the meter forms.
+            </p>
+            <ul id="purchase-cost-missing-list" class="pl-missing-buying-list"></ul>
+          </div>
+          <p id="purchase-cost-empty" class="muted hidden" role="status">
+            All receipt days in the lookback window have a buying price. Full P&amp;L is on
+            <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a>
+            and <a href="analysis.html">Analysis</a>.
+          </p>
+        </section>
       </div>
     </main>
     <footer class="app-footer">

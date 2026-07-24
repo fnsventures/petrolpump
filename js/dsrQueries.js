@@ -1,4 +1,4 @@
-/* global supabaseClient, PumpSettings */
+/* global supabaseClient, PumpSettings, getLocalDateString, AppCache */
 
 /**
  * Shared DSR and expense query helpers for dashboard, reports, and analysis.
@@ -118,32 +118,59 @@
   }
 
   let missingBuyingPriceInflight = null;
+  let missingBuyingPriceSeq = 0;
+  const MISSING_BUYING_CACHE_KEY = "missing_buying_price";
 
   /**
    * Receipt days with fuel received but no usable buying price (receipt history window).
-   * Matches the P&L todo banner count and buying-price entry list on the dashboard.
+   * Matches the P&L todo banner count and buying-price entry list on Meter Reading → Purchase cost.
+   * @param {{ force?: boolean }} [options] - force=true starts a fresh request (use after saves).
    */
-  async function fetchMissingBuyingPriceRows() {
-    if (!missingBuyingPriceInflight) {
-      missingBuyingPriceInflight = (async () => {
-        const endStr = new Date().toISOString().slice(0, 10);
-        const startStr = PumpSettings.getReceiptHistoryStart();
-
-        const { data, error } = await supabaseClient
-          .from("dsr")
-          .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id")
-          .gte("date", startStr)
-          .lte("date", endStr)
-          .gt("receipts", 0)
-          .or("buying_price_per_litre.is.null,buying_price_per_litre.lte.0")
-          .order("date", { ascending: false });
-
-        return { data: data ?? [], error };
-      })().finally(() => {
-        missingBuyingPriceInflight = null;
-      });
+  async function fetchMissingBuyingPriceRows(options = {}) {
+    const force = Boolean(options.force);
+    if (!force && missingBuyingPriceInflight) {
+      return missingBuyingPriceInflight;
     }
-    return missingBuyingPriceInflight;
+
+    if (force && typeof AppCache !== "undefined" && AppCache) {
+      AppCache.remove(MISSING_BUYING_CACHE_KEY);
+    }
+
+    if (!force && typeof AppCache !== "undefined" && AppCache) {
+      const cached = AppCache.get(MISSING_BUYING_CACHE_KEY);
+      if (!cached.isMiss && !cached.isExpired && Array.isArray(cached.data)) {
+        return { data: cached.data, error: null };
+      }
+    }
+
+    const seq = ++missingBuyingPriceSeq;
+    const endStr =
+      typeof getLocalDateString === "function"
+        ? getLocalDateString()
+        : new Date().toISOString().slice(0, 10);
+    const startStr = PumpSettings.getReceiptHistoryStart();
+
+    const req = (async () => {
+      const { data, error } = await supabaseClient
+        .from("dsr")
+        .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id")
+        .gte("date", startStr)
+        .lte("date", endStr)
+        .gt("receipts", 0)
+        .or("buying_price_per_litre.is.null,buying_price_per_litre.lte.0")
+        .order("date", { ascending: false });
+
+      const rows = data ?? [];
+      if (!error && typeof AppCache !== "undefined" && AppCache) {
+        AppCache.set(MISSING_BUYING_CACHE_KEY, rows, "missing_buying_price");
+      }
+      return { data: rows, error };
+    })().finally(() => {
+      if (seq === missingBuyingPriceSeq) missingBuyingPriceInflight = null;
+    });
+
+    missingBuyingPriceInflight = req;
+    return req;
   }
 
   /** Lube/billing invoice totals for P&L (matches Reports trading account). */

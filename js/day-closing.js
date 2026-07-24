@@ -494,6 +494,18 @@ function syncDayClosingAlreadySavedNotice(breakdown) {
   }
 }
 
+function computeDayClosingShort({
+  totalSale = 0,
+  collection = 0,
+  shortPrevious = 0,
+  nightCash = 0,
+  phonePay = 0,
+  creditToday = 0,
+  expensesToday = 0,
+} = {}) {
+  return totalSale + collection + shortPrevious - (nightCash + phonePay + creditToday + expensesToday);
+}
+
 function updateDayClosingShortLive() {
   if (!dayClosingBreakdown || !dcDom) return;
 
@@ -505,27 +517,35 @@ function updateDayClosingShortLive() {
   const nightCash = Number(dcDom.nightCashInput?.value ?? 0) || 0;
   const phonePay = Number(dcDom.phonePayInput?.value ?? 0) || 0;
 
-  const shortToday = (totalSale + collection + shortPrevious) - (nightCash + phonePay + creditToday + expensesToday);
-  updateShortDisplay(shortToday);
+  updateShortDisplay(
+    computeDayClosingShort({
+      totalSale,
+      collection,
+      shortPrevious,
+      nightCash,
+      phonePay,
+      creditToday,
+      expensesToday,
+    })
+  );
 }
 
-function dcPrintStationHeader(title, subtitle) {
-  const station = PumpSettings.getCachedSync()?.station || {};
-  const legal = PumpSettings.getStationLegalName?.() || station.legalName || station.displayName || "Petrol Pump";
-  const gstin = PumpSettings.getStationGstin?.() || station.gstin || "";
-  const tagline = station.tagline || "";
-  return `
-    <header class="dc-print-header">
-      <img class="dc-print-logo station-logo-print" src="assets/logo-print.webp" alt="" />
-      <h1>${escapeHtml(legal)}</h1>
-      ${tagline ? `<p>${escapeHtml(tagline)}</p>` : ""}
-      ${gstin ? `<p>GSTIN: ${escapeHtml(gstin)}</p>` : ""}
-      <p class="dc-print-title"><strong>${escapeHtml(title)}</strong></p>
-      ${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ""}
-    </header>`;
+const DC_REGISTER_MONEY_KEYS = [
+  "collection",
+  "credit_today",
+  "expenses_today",
+  "night_cash",
+  "phone_pay",
+  "total_sale",
+  "short_previous",
+  "short_today",
+];
+
+function dcPrintNum(value) {
+  return `<td class="num">${escapeHtml(formatCurrency(value))}</td>`;
 }
 
-function buildDayClosingStatementHtml() {
+function getDayClosingStatementAmounts() {
   const dateStr = dcDom?.dateInput?.value?.trim();
   if (!dateStr || !dayClosingBreakdown) {
     throw new Error("Load a day closing first.");
@@ -538,40 +558,64 @@ function buildDayClosingStatementHtml() {
   const shortPrevious = Number(b.short_previous ?? 0);
   const creditToday = Number(b.credit_today ?? 0);
   const expensesToday = Number(b.expenses_today ?? 0);
-  const shortToday =
-    totalSale + collection + shortPrevious - (nightCash + phonePay + creditToday + expensesToday);
-  const remarks = dcDom.remarksInput?.value?.trim() || b.remarks || "";
-  const ref = b.closing_reference || "";
+  return {
+    dateStr,
+    dateLabel: formatDisplayDate(dateStr),
+    ref: b.closing_reference || "",
+    remarks: dcDom.remarksInput?.value?.trim() || b.remarks || "",
+    rows: [
+      ["Total sale", totalSale],
+      ["Collection", collection],
+      ["Short previous", shortPrevious],
+      ["Night cash", nightCash],
+      ["Phone pay", phonePay],
+      ["Credit today", creditToday],
+      ["Expenses today", expensesToday],
+      [
+        "Today's short",
+        computeDayClosingShort({
+          totalSale,
+          collection,
+          shortPrevious,
+          nightCash,
+          phonePay,
+          creditToday,
+          expensesToday,
+        }),
+        true,
+      ],
+    ],
+  };
+}
 
-  const rows = [
-    ["Total sale", totalSale],
-    ["Collection", collection],
-    ["Short previous", shortPrevious],
-    ["Night cash", nightCash],
-    ["Phone pay", phonePay],
-    ["Credit today", creditToday],
-    ["Expenses today", expensesToday],
-    ["Today's short", shortToday],
-  ];
+function formatRegisterStatusText(row) {
+  const collected = !!row.night_cash_collection_id;
+  const collRef = row.night_cash_collections?.collection_reference;
+  return collected ? `Collected${collRef ? ` (${collRef})` : ""}` : "At pump";
+}
 
-  return `
-    <div class="dc-print-sheet">
-      ${dcPrintStationHeader("Day closing statement", formatDisplayDate(dateStr))}
-      ${ref ? `<p><strong>Reference:</strong> ${escapeHtml(ref)}</p>` : ""}
-      <table class="dc-print-table">
+function buildDayClosingStatementHtml() {
+  const { dateLabel, ref, remarks, rows } = getDayClosingStatementAmounts();
+  const body = `
+      <table class="report-table">
         <thead><tr><th>Particulars</th><th class="num">Amount (₹)</th></tr></thead>
         <tbody>
           ${rows
             .map(
-              ([label, amt]) =>
-                `<tr><td>${escapeHtml(label)}</td><td class="num">${escapeHtml(formatCurrency(amt))}</td></tr>`
+              ([label, amt, isTotal]) =>
+                `<tr${isTotal ? ' class="report-total-row"' : ""}><td>${escapeHtml(label)}</td>${dcPrintNum(amt)}</tr>`
             )
             .join("")}
         </tbody>
       </table>
-      ${remarks ? `<p><strong>Remarks:</strong> ${escapeHtml(remarks)}</p>` : ""}
-      <p class="dc-print-note">Formula: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short.</p>
-    </div>`;
+      ${remarks ? `<p class="report-summary-line"><strong>Remarks:</strong> ${escapeHtml(remarks)}</p>` : ""}
+      <p class="report-note muted">Formula: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short.</p>`;
+  return PrintUtils.wrapReportPrintSheet(
+    "Day closing statement",
+    [`Date: ${escapeHtml(dateLabel)}`, ref ? `Reference: <strong>${escapeHtml(ref)}</strong>` : ""],
+    body,
+    dateLabel
+  );
 }
 
 function buildDayClosingRegisterHtml() {
@@ -581,36 +625,9 @@ function buildDayClosingRegisterHtml() {
   const { start, end, status } = dcRegisterPrintRange;
   const statusLabel =
     status === "pending" ? "at pump only" : status === "collected" ? "collected only" : "all";
-  const body = dcRegisterPrintRows
-    .map((row) => {
-      const collected = !!row.night_cash_collection_id;
-      const statusText = collected
-        ? `Collected${row.night_cash_collections?.collection_reference ? ` (${row.night_cash_collections.collection_reference})` : ""}`
-        : "At pump";
-      return `<tr>
-        <td>${escapeHtml(formatDisplayDate(row.date))}</td>
-        <td>${escapeHtml(row.closing_reference ?? "—")}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.collection))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.credit_today))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.expenses_today))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.night_cash))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.phone_pay))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.total_sale))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.short_previous))}</td>
-        <td class="num">${escapeHtml(formatCurrency(row.short_today))}</td>
-        <td>${escapeHtml(statusText)}</td>
-        <td>${escapeHtml(row.remarks ?? "—")}</td>
-      </tr>`;
-    })
-    .join("");
-
-  return `
-    <div class="dc-print-sheet">
-      ${dcPrintStationHeader(
-        "Day closing register",
-        `${formatDisplayDate(start)} – ${formatDisplayDate(end)} (${statusLabel})`
-      )}
-      <table class="dc-print-table">
+  const periodLabel = `${formatDisplayDate(start)} – ${formatDisplayDate(end)} (${statusLabel})`;
+  const body = `
+      <table class="report-table report-table-compact">
         <thead>
           <tr>
             <th>Date</th><th>Ref</th>
@@ -620,38 +637,47 @@ function buildDayClosingRegisterHtml() {
             <th>Status</th><th>Remarks</th>
           </tr>
         </thead>
-        <tbody>${body}</tbody>
+        <tbody>
+          ${dcRegisterPrintRows
+            .map(
+              (row) => `<tr>
+                <td>${escapeHtml(formatDisplayDate(row.date))}</td>
+                <td>${escapeHtml(row.closing_reference ?? "—")}</td>
+                ${DC_REGISTER_MONEY_KEYS.map((key) => dcPrintNum(row[key])).join("")}
+                <td>${escapeHtml(formatRegisterStatusText(row))}</td>
+                <td>${escapeHtml(row.remarks ?? "—")}</td>
+              </tr>`
+            )
+            .join("")}
+        </tbody>
       </table>
-      <p class="dc-print-note">${dcRegisterPrintRows.length} closing statement(s).</p>
-    </div>`;
+      <p class="report-note muted">${dcRegisterPrintRows.length} closing statement(s).</p>`;
+  return PrintUtils.wrapReportPrintSheet(
+    "Day closing register",
+    [escapeHtml(periodLabel)],
+    body,
+    periodLabel
+  );
 }
 
-async function runDayClosingPrint(bodyHtml, filenamePart) {
+async function runDayClosingPrint(bodyHtml, filenameParts) {
   await loadPumpSettings();
-  let cssText = "";
-  try {
-    const res = await fetch(new URL("css/day-closing-print.css", window.location.href).href);
-    if (res.ok) cssText = await res.text();
-  } catch (_) {
-    /* print still works with minimal styling */
-  }
-  const html = typeof PrintUtils.applyPrintLogos === "function"
-    ? PrintUtils.applyPrintLogos(bodyHtml)
-    : bodyHtml;
+  const cssText = await PrintUtils.getReportPrintCssText();
   await PrintUtils.printInIframe({
-    title: filenamePart,
-    bodyHtml: html,
+    title: PrintUtils.buildPrintFilename(...filenameParts),
+    bodyHtml,
     cssText,
-    bodyClass: "dc-print-body",
-    iframeTitle: filenamePart,
+    bodyClass: "report-print-body",
+    containerClass: "report-print-container",
+    iframeTitle: "Day closing print",
+    imageSelectors: PrintUtils.PRINT_LOGO_IMAGE_SELECTORS,
   });
 }
 
 async function printDayClosingStatement() {
   try {
     const bodyHtml = buildDayClosingStatementHtml();
-    const dateStr = dcDom?.dateInput?.value?.trim() || "statement";
-    await runDayClosingPrint(bodyHtml, `Day closing ${dateStr}`);
+    await runDayClosingPrint(bodyHtml, ["day-closing", dcDom?.dateInput?.value?.trim() || "statement"]);
   } catch (err) {
     AppError.handle(err, { target: dcDom?.errorEl });
   }
@@ -662,7 +688,7 @@ async function printDayClosingRegister() {
     const bodyHtml = buildDayClosingRegisterHtml();
     const start = dcRegisterPrintRange?.start || "";
     const end = dcRegisterPrintRange?.end || "";
-    await runDayClosingPrint(bodyHtml, `Day closing register ${start}_${end}`);
+    await runDayClosingPrint(bodyHtml, ["day-closing-register", start, start !== end ? end : null]);
   } catch (err) {
     AppError.report(err, { context: "printDayClosingRegister" });
     const summaryEl = document.getElementById("dc-register-summary");
@@ -1498,6 +1524,7 @@ function initRegisterSection() {
   registerPrintBtn?.addEventListener("click", () => printDayClosingRegister());
 
   initNightCashCollection();
+  PrintUtils.preloadReportPrintCss?.();
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
