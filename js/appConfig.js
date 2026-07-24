@@ -19,10 +19,10 @@
     diesel: { pumps: 2, nozzlesPerPump: 2, tankLabel: "HSD", tankCapacity: "20KL" },
   };
 
+  /** One physical tank per product (this station: 1× HSD + 1× MS). */
   const DEFAULT_REPORT_TANKS = [
-    { key: "hsd1", label: "HSD 1", product: "diesel", capacity: "20 Kl" },
-    { key: "hsd2", label: "HSD 2", product: "diesel", capacity: "20 Kl" },
-    { key: "ms", label: "MS", product: "petrol", capacity: "15 Kl" },
+    { key: "hsd", label: "HSD", product: "diesel", capacity: "20KL" },
+    { key: "ms", label: "MS", product: "petrol", capacity: "15KL" },
   ];
 
   const DEFAULT_STATION = {
@@ -83,6 +83,8 @@
     /** false = rate is pre-tax (BPCL invoice); true = rate includes tax. */
     purchaseTaxInclusive: false,
     fuelSupplierLabel: "BPCL / Fuel supplier",
+    /** Default supplier GSTIN shown on purchase GST detail when receipt row has none. */
+    fuelSupplierGstin: "",
     /** @deprecated use billing.includeInGstReports */
     includeBillingInGst: true,
   };

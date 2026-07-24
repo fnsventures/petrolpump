@@ -48,24 +48,68 @@ comment on function public.is_admin() is 'Returns true if the current authentica
 
 -- RPC to update DSR buying price (used from P&L dashboard); bypasses RLS so admin update always succeeds.
 -- Checks both dsr_petrol and dsr_diesel since caller only has the row UUID.
-create or replace function public.update_dsr_buying_price(p_dsr_id uuid, p_value numeric)
+create or replace function public.update_dsr_buying_price(
+  p_dsr_id uuid,
+  p_value numeric,
+  p_supplier_invoice_no text default null,
+  p_supplier_gstin text default null,
+  p_invoice_document_id uuid default null
+)
 returns void
 language plpgsql
 security definer
+set search_path = public
 as $$
+declare
+  v_meta boolean := p_supplier_invoice_no is not null
+    or p_supplier_gstin is not null
+    or p_invoice_document_id is not null;
 begin
   if not public.is_admin() then
     raise exception 'Admin access required to set buying price';
   end if;
-  update public.dsr_petrol set buying_price_per_litre = p_value where id = p_dsr_id;
+
+  update public.dsr_petrol
+  set
+    buying_price_per_litre = p_value,
+    supplier_invoice_no = case
+      when not v_meta then supplier_invoice_no
+      else nullif(trim(p_supplier_invoice_no), '')
+    end,
+    supplier_gstin = case
+      when not v_meta then supplier_gstin
+      else nullif(upper(trim(p_supplier_gstin)), '')
+    end,
+    invoice_document_id = case
+      when not v_meta then invoice_document_id
+      else p_invoice_document_id
+    end
+  where id = p_dsr_id;
   if found then return; end if;
-  update public.dsr_diesel set buying_price_per_litre = p_value where id = p_dsr_id;
+
+  update public.dsr_diesel
+  set
+    buying_price_per_litre = p_value,
+    supplier_invoice_no = case
+      when not v_meta then supplier_invoice_no
+      else nullif(trim(p_supplier_invoice_no), '')
+    end,
+    supplier_gstin = case
+      when not v_meta then supplier_gstin
+      else nullif(upper(trim(p_supplier_gstin)), '')
+    end,
+    invoice_document_id = case
+      when not v_meta then invoice_document_id
+      else p_invoice_document_id
+    end
+  where id = p_dsr_id;
   if not found then
     raise exception 'DSR record not found';
   end if;
 end;
 $$;
-comment on function public.update_dsr_buying_price(uuid, numeric) is 'Admin-only: set buying_price_per_litre for a DSR row (used from P&L dashboard).';
+comment on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid) is
+  'Admin-only: set buying price and optional supplier invoice / GSTIN / vault document link.';
 
 
 -- Helper function to check if current user is supervisor or admin
@@ -293,6 +337,9 @@ create table if not exists public.dsr_petrol (
   petrol_rate numeric(10,2),
   diesel_rate numeric(10,2),
   buying_price_per_litre numeric(12, 5),
+  supplier_invoice_no text,
+  supplier_gstin text,
+  invoice_document_id uuid,
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
@@ -303,6 +350,12 @@ create index if not exists dsr_petrol_date_idx on public.dsr_petrol (date desc);
 comment on table public.dsr_petrol is 'Petrol (MS) meter readings. One row per day per tank from Meter Reading form.';
 comment on column public.dsr_petrol.buying_price_per_litre is
   'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
+comment on column public.dsr_petrol.supplier_invoice_no is
+  'BPCL / supplier invoice number for this receipt day (GST purchase register).';
+comment on column public.dsr_petrol.supplier_gstin is
+  'Supplier GSTIN for this receipt (defaults from Settings when blank).';
+comment on column public.dsr_petrol.invoice_document_id is
+  'Optional link to vault purchase PDF (invoice_documents) for this receipt day.';
 
 alter table public.dsr_petrol enable row level security;
 
@@ -348,6 +401,9 @@ create table if not exists public.dsr_diesel (
   petrol_rate numeric(10,2),
   diesel_rate numeric(10,2),
   buying_price_per_litre numeric(12, 5),
+  supplier_invoice_no text,
+  supplier_gstin text,
+  invoice_document_id uuid,
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
@@ -363,9 +419,23 @@ create index if not exists dsr_diesel_receipts_buying_idx
   on public.dsr_diesel (date desc)
   where receipts > 0 and buying_price_per_litre is not null;
 
+create index if not exists dsr_petrol_invoice_document_idx
+  on public.dsr_petrol (invoice_document_id)
+  where invoice_document_id is not null;
+
+create index if not exists dsr_diesel_invoice_document_idx
+  on public.dsr_diesel (invoice_document_id)
+  where invoice_document_id is not null;
+
 comment on table public.dsr_diesel is 'Diesel (HSD) meter readings. One row per day per tank from Meter Reading form.';
 comment on column public.dsr_diesel.buying_price_per_litre is
   'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
+comment on column public.dsr_diesel.supplier_invoice_no is
+  'BPCL / supplier invoice number for this receipt day (GST purchase register).';
+comment on column public.dsr_diesel.supplier_gstin is
+  'Supplier GSTIN for this receipt (defaults from Settings when blank).';
+comment on column public.dsr_diesel.invoice_document_id is
+  'Optional link to vault purchase PDF (invoice_documents) for this receipt day.';
 
 alter table public.dsr_diesel enable row level security;
 
@@ -399,6 +469,7 @@ with (security_invoker = true) as
     sales_pump1, sales_pump2, total_sales, testing,
     dip_reading, stock, receipts,
     petrol_rate, diesel_rate, buying_price_per_litre,
+    supplier_invoice_no, supplier_gstin, invoice_document_id,
     remarks, created_by, created_at
   from public.dsr_petrol
   union all
@@ -410,6 +481,7 @@ with (security_invoker = true) as
     sales_pump1, sales_pump2, total_sales, testing,
     dip_reading, stock, receipts,
     petrol_rate, diesel_rate, buying_price_per_litre,
+    supplier_invoice_no, supplier_gstin, invoice_document_id,
     remarks, created_by, created_at
   from public.dsr_diesel;
 
@@ -863,6 +935,9 @@ create table if not exists public.invoice_documents (
 create index if not exists invoice_documents_date_idx on public.invoice_documents (invoice_date desc);
 create index if not exists invoice_documents_year_month_idx on public.invoice_documents (year desc, month desc);
 create index if not exists invoice_documents_category_idx on public.invoice_documents (category);
+create index if not exists invoice_documents_purchase_date_idx
+  on public.invoice_documents (invoice_date desc)
+  where category = 'purchase';
 
 comment on table public.invoice_documents is
   'Pump vault documents (purchase invoices and other important files) stored in Google Drive under year/month folders.';
@@ -870,6 +945,18 @@ comment on column public.invoice_documents.category is
   'Document type slug; display label comes from document_categories.';
 comment on column public.invoice_documents.invoice_date is
   'Document date used for year/month Drive folders and library filters.';
+
+alter table public.dsr_petrol
+  drop constraint if exists dsr_petrol_invoice_document_id_fkey;
+alter table public.dsr_petrol
+  add constraint dsr_petrol_invoice_document_id_fkey
+  foreign key (invoice_document_id) references public.invoice_documents (id) on delete set null;
+
+alter table public.dsr_diesel
+  drop constraint if exists dsr_diesel_invoice_document_id_fkey;
+alter table public.dsr_diesel
+  add constraint dsr_diesel_invoice_document_id_fkey
+  foreign key (invoice_document_id) references public.invoice_documents (id) on delete set null;
 
 alter table public.invoice_documents enable row level security;
 
@@ -3467,7 +3554,7 @@ grant insert, update on public.pump_settings to authenticated;
 -- RPC execute grants for authenticated clients
 grant execute on function public.require_staff_access() to authenticated;
 grant execute on function public.check_page_access(text) to authenticated;
-grant execute on function public.update_dsr_buying_price(uuid, numeric) to authenticated;
+grant execute on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid) to authenticated;
 grant execute on function public.get_day_closing_breakdown(date) to authenticated;
 grant execute on function public.get_night_cash_available() to authenticated;
 grant execute on function public.preview_night_cash_collection(date, date) to authenticated;

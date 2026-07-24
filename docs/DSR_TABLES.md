@@ -52,7 +52,9 @@ Stock fields are **derived on read** from meter data:
 
 There is **no** separate Stock form or `sync_dsr_receipts_from_stock` step. Entering dip/stock on the meter row is enough; reconciliation stays consistent.
 
-**Dashboard / sales-daily:** Read from `dsr_stock` (or `get_dsr_stock_range(start, end)` for filtered periods). Tank fill % on the dashboard uses **physical** tank capacity from `pump_settings.config.pumps` (`petrol.tankCapacity` / `diesel.tankCapacity`), not the sum of `reports.tanks` rows (HSD 1 + HSD 2 are two pumps on one HSD tank).
+**Dashboard / sales-daily:** Read from `dsr_stock` (or `get_dsr_stock_range(start, end)` for filtered periods). Tank fill % uses physical capacity from `pump_settings.config.pumps` (`petrol.tankCapacity` / `diesel.tankCapacity`). `reports.tanks` is one section per product (HSD + MS) for the tank-wise DSR printout.
+
+**Tank-wise DSR report columns:** Open, Buy, **Short** (`max(0, variation)` = book − dip when books are higher), **Total** (open + buy − short), Test, Meter, Actual, Cum, Dip sale, Close, Var, CumV, Rate, **TVA** (configured capacity − closing dip).
 
 ---
 

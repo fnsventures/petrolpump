@@ -174,6 +174,8 @@ function bindBillingDefaultsForm(auth) {
           : AppConfig.DEFAULT_BILLING.includeInGstReports !== false;
   }
   set("bill-receipt-start", b.receiptHistoryStart);
+  set("bill-fuel-supplier-label", r.fuelSupplierLabel ?? AppConfig.DEFAULT_REPORTS.fuelSupplierLabel);
+  set("bill-fuel-supplier-gstin", r.fuelSupplierGstin ?? AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ?? "");
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -217,6 +219,11 @@ function bindBillingDefaultsForm(auth) {
             document.getElementById("bill-purchase-tax-inclusive")?.checked
           ),
           includeBillingInGst: includeInGstReports,
+          fuelSupplierLabel:
+            document.getElementById("bill-fuel-supplier-label")?.value?.trim() ||
+            AppConfig.DEFAULT_REPORTS.fuelSupplierLabel,
+          fuelSupplierGstin:
+            document.getElementById("bill-fuel-supplier-gstin")?.value?.trim().toUpperCase() || "",
         },
       }, auth.session?.user?.id);
       successEl?.classList.remove("hidden");

@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, DsrQueries */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, getPlBuyingPriceHint, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, DsrQueries */
 
 /**
  * Generate cache key for dashboard data queries
@@ -61,8 +61,8 @@ function getTankCapacities() {
   let petrol = parseTankCapacityLiters(pumps.petrol?.tankCapacity);
   let diesel = parseTankCapacityLiters(pumps.diesel?.tankCapacity);
 
-  // reports.tanks lists per-pump report sections (e.g. HSD 1 + HSD 2); do not sum those
-  // for dip — both pumps share one physical HSD tank (see Settings → Pump configuration).
+  // reports.tanks is one section per product (HSD + MS). Prefer pumps.*.tankCapacity
+  // for physical dip % (see Settings → Pump configuration).
   if (!petrol || !diesel) {
     const tanks = settings.reports?.tanks || [];
     tanks.forEach((t) => {
@@ -876,51 +876,76 @@ async function ensurePlSectionLoaded() {
 async function fetchProfitLossData(range) {
   await loadPumpSettings();
   const receiptStart = PumpSettings.getReceiptHistoryStart();
+  const cacheKey = `pl_${range.start}_${range.end}_${receiptStart}`;
 
-  try {
-    const { data, error } = await AppError.withRetry(
-      () =>
-        supabaseClient.functions.invoke("get-pl-data", {
-          body: {
-            startDate: range.start,
-            endDate: range.end,
-            receiptHistoryStart: receiptStart,
-          },
+  const loadFresh = async () => {
+    try {
+      const { data, error } = await AppError.withRetry(
+        () =>
+          supabaseClient.functions.invoke("get-pl-data", {
+            body: {
+              startDate: range.start,
+              endDate: range.end,
+              receiptHistoryStart: receiptStart,
+            },
+          }),
+        { maxAttempts: 3 }
+      );
+
+      if (error) throw error;
+
+      return {
+        dsrRows: data?.dsrRows ?? [],
+        receiptRows: data?.receiptRows ?? [],
+        expenseRows: data?.expenseRows ?? [],
+        lubeSales: Number(data?.lubeSales ?? 0),
+        lubeCogs: Number(data?.lubeCogs ?? 0),
+        categoryMap: buildExpenseCategoryMap(data?.expenseCategories),
+        dsrError: data?.errors?.dsr ? new Error(data.errors.dsr) : null,
+        expenseError: data?.errors?.expense ? new Error(data.errors.expense) : null,
+        lubeError: data?.errors?.lube ? new Error(data.errors.lube) : null,
+      };
+    } catch {
+      const [dsrResult, expenseResult, lubeResult, vaultResult, categoryResult] = await Promise.all([
+        DsrQueries.fetchDsrRows(range.start, range.end, {
+          select:
+            "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id",
         }),
-      { maxAttempts: 3 }
-    );
+        DsrQueries.fetchExpenses(range.start, range.end),
+        DsrQueries.fetchLubeSales(range.start, range.end),
+        supabaseClient
+          .from("invoice_documents")
+          .select("amount")
+          .eq("category", "purchase")
+          .gte("invoice_date", range.start)
+          .lte("invoice_date", range.end)
+          .gt("amount", 0),
+        supabaseClient.from("expense_categories").select("name, label"),
+      ]);
 
-    if (error) throw error;
+      const lubeCogs = (vaultResult.data ?? []).reduce(
+        (s, row) => s + Number(row.amount ?? 0),
+        0
+      );
 
-    return {
-      dsrRows: data?.dsrRows ?? [],
-      receiptRows: data?.receiptRows ?? [],
-      expenseRows: data?.expenseRows ?? [],
-      lubeSales: Number(data?.lubeSales ?? 0),
-      dsrError: data?.errors?.dsr ? new Error(data.errors.dsr) : null,
-      expenseError: data?.errors?.expense ? new Error(data.errors.expense) : null,
-      lubeError: data?.errors?.lube ? new Error(data.errors.lube) : null,
-    };
-  } catch {
-    const [dsrResult, expenseResult, lubeResult] = await Promise.all([
-      DsrQueries.fetchDsrRows(range.start, range.end, {
-        select:
-          "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre",
-      }),
-      DsrQueries.fetchExpenses(range.start, range.end),
-      DsrQueries.fetchLubeSales(range.start, range.end),
-    ]);
+      return {
+        dsrRows: dsrResult.data ?? [],
+        receiptRows: dsrResult.receiptRows ?? [],
+        expenseRows: expenseResult.data ?? [],
+        lubeSales: lubeResult.total ?? 0,
+        lubeCogs,
+        categoryMap: buildExpenseCategoryMap(categoryResult.data),
+        dsrError: dsrResult.error,
+        expenseError: expenseResult.error,
+        lubeError: lubeResult.error || vaultResult.error,
+      };
+    }
+  };
 
-    return {
-      dsrRows: dsrResult.data ?? [],
-      receiptRows: dsrResult.receiptRows ?? [],
-      expenseRows: expenseResult.data ?? [],
-      lubeSales: lubeResult.total ?? 0,
-      dsrError: dsrResult.error,
-      expenseError: expenseResult.error,
-      lubeError: lubeResult.error,
-    };
+  if (typeof AppCache !== "undefined" && AppCache?.getWithSWR) {
+    return AppCache.getWithSWR(cacheKey, loadFresh, "profit_loss");
   }
+  return loadFresh();
 }
 
 async function loadTodaySales(dateStr) {
@@ -1404,14 +1429,66 @@ function getCurrentPlRange() {
 }
 
 /**
+ * Match a vault purchase PDF by invoice title (and optional receipt date).
+ * Exact title first, then case-insensitive partial — avoids scanning unrelated docs.
+ * @returns {Promise<string|null>} invoice_documents.id
+ */
+async function findVaultDocumentIdForInvoice(invoiceNo, receiptDate) {
+  const title = String(invoiceNo || "").trim();
+  if (!title) return null;
+
+  const exactQuery = (withDate) => {
+    let q = supabaseClient
+      .from("invoice_documents")
+      .select("id")
+      .eq("category", "purchase")
+      .eq("title", title)
+      .order("invoice_date", { ascending: false })
+      .limit(1);
+    if (withDate && receiptDate) q = q.eq("invoice_date", receiptDate);
+    return q;
+  };
+
+  let { data, error } = await exactQuery(true);
+  if (!error && data?.[0]?.id) return data[0].id;
+  if (receiptDate) {
+    ({ data, error } = await exactQuery(false));
+    if (!error && data?.[0]?.id) return data[0].id;
+  }
+
+  const safePattern = `%${title.replace(/[%_\\]/g, "\\$&")}%`;
+  let fuzzy = supabaseClient
+    .from("invoice_documents")
+    .select("id, title")
+    .eq("category", "purchase")
+    .ilike("title", safePattern)
+    .order("invoice_date", { ascending: false })
+    .limit(10);
+  if (receiptDate) fuzzy = fuzzy.eq("invoice_date", receiptDate);
+  const fuzzyResult = await fuzzy;
+  if (fuzzyResult.error || !fuzzyResult.data?.length) {
+    if (receiptDate) return findVaultDocumentIdForInvoice(title, null);
+    return null;
+  }
+  const needle = title.toLowerCase();
+  const exact = fuzzyResult.data.find((d) => String(d.title || "").trim().toLowerCase() === needle);
+  if (exact) return exact.id;
+  const partial = fuzzyResult.data.find((d) => String(d.title || "").toLowerCase().includes(needle));
+  return partial?.id ?? null;
+}
+
+/**
  * Save buying price for a DSR row (receipt day) and reload P&L summary.
  */
 async function handleSaveBuyingPrice(dsrId) {
   const input = document.getElementById(`pl-buying-${dsrId}`);
+  const invInput = document.getElementById(`pl-inv-${dsrId}`);
+  const gstinInput = document.getElementById(`pl-gstin-${dsrId}`);
   const saveBtn = document.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+  const itemEl = document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`);
   const product =
-    saveBtn?.dataset?.product ||
-    document.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`)?.dataset?.product;
+    saveBtn?.dataset?.product || itemEl?.dataset?.product;
+  const receiptDate = itemEl?.dataset?.date || null;
   const valueKl = Number.parseFloat((input?.value ?? "").trim());
   const parsed = validateBuyingRateKlInput(valueKl);
   if (!parsed.ok) {
@@ -1423,6 +1500,22 @@ async function handleSaveBuyingPrice(dsrId) {
   const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
   if (value == null) {
     showPlBuyingPriceError(`Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
+    return;
+  }
+  const supplierInvoiceNo = (invInput?.value ?? "").trim();
+  let supplierGstin = (gstinInput?.value ?? "").trim().toUpperCase();
+  if (!supplierGstin) {
+    supplierGstin = (
+      PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
+      AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ||
+      ""
+    )
+      .toString()
+      .trim()
+      .toUpperCase();
+  }
+  if (supplierGstin && !/^[0-9A-Z]{15}$/.test(supplierGstin)) {
+    showPlBuyingPriceError("Supplier GSTIN must be 15 characters (or leave blank).");
     return;
   }
   document.getElementById("pl-buying-price-error")?.classList.add("hidden");
@@ -1438,7 +1531,23 @@ async function handleSaveBuyingPrice(dsrId) {
     btn.disabled = true;
     btn.textContent = "Saving…";
   }
-  const rpc = await supabaseClient.rpc("update_dsr_buying_price", { p_dsr_id: dsrId, p_value: value });
+
+  let vaultDocId = null;
+  try {
+    if (supplierInvoiceNo) {
+      vaultDocId = await findVaultDocumentIdForInvoice(supplierInvoiceNo, receiptDate || null);
+    }
+  } catch (_) {
+    vaultDocId = null;
+  }
+
+  const rpc = await supabaseClient.rpc("update_dsr_buying_price", {
+    p_dsr_id: dsrId,
+    p_value: value,
+    p_supplier_invoice_no: supplierInvoiceNo || null,
+    p_supplier_gstin: supplierGstin || null,
+    p_invoice_document_id: vaultDocId,
+  });
   if (rpc.error) {
     AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
     showPlBuyingPriceError(rpc.error.message || "Could not save. Ensure you are logged in as admin.");
@@ -1488,15 +1597,25 @@ function renderPlMissingBuyingList(rows) {
   }
 
   plAlertEl.classList.remove("hidden");
+  const defaultGstin =
+    PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
+    AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ||
+    "";
   plMissingListEl.innerHTML = rows
     .map((row) => {
       const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
       const rowId = row.id;
+      const invVal = escapeHtml(row.supplier_invoice_no || "");
+      const gstinVal = escapeHtml(row.supplier_gstin || defaultGstin || "");
       return `
-        <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">
+        <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}" data-date="${escapeHtml(row.date)}">
           <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
           <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
           <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
+          <label for="pl-inv-${rowId}" class="sr-only">Supplier invoice no</label>
+          <input id="pl-inv-${rowId}" type="text" maxlength="40" placeholder="BPCL invoice no" class="pl-inv-input" value="${invVal}" data-dsr-id="${escapeHtml(rowId)}" />
+          <label for="pl-gstin-${rowId}" class="sr-only">Supplier GSTIN</label>
+          <input id="pl-gstin-${rowId}" type="text" maxlength="15" placeholder="Supplier GSTIN" class="pl-gstin-input" value="${gstinVal}" data-dsr-id="${escapeHtml(rowId)}" />
           <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
         </li>`;
     })
@@ -1542,6 +1661,8 @@ async function loadProfitLossSummary(range) {
     receiptRows,
     expenseRows: expenseData,
     lubeSales: plData.lubeSales,
+    lubeCogs: plData.lubeCogs ?? 0,
+    categoryMap: plData.categoryMap ?? null,
   });
   const income = { total: pl.revenue, missingRates: pl.missingRates };
   const allBuyingPricesEntered = pl.canCalculate;
@@ -1571,7 +1692,7 @@ async function loadProfitLossSummary(range) {
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
         plProfitHintEl.textContent =
-          "Enter pre-VAT ₹/KL for receipt days above. P&L cost includes VAT and delivery on each litre sold.";
+          "Enter pre-VAT ₹/KL for receipt days above. No prior receipt rate is available yet, so net profit cannot be calculated.";
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");
@@ -1580,6 +1701,11 @@ async function loadProfitLossSummary(range) {
       plValueEl.textContent = formatCurrency(profitLoss);
       plValueEl.classList.toggle("stat-positive", profitLoss >= 0);
       plValueEl.classList.toggle("stat-negative", profitLoss < 0);
+      if (pl.usingProvisionalBuying && plProfitHintEl) {
+        plProfitHintEl.textContent =
+          "Some receipt days still need ₹/KL — net profit uses the previous receipt rate until you save the correct price above.";
+        plProfitHintEl.classList.remove("hidden");
+      }
     }
   }
 
@@ -1593,14 +1719,18 @@ async function loadProfitLossSummary(range) {
       parts.push("Some DSR entries are missing rates, so income totals may be partial.");
     }
     if (pl.lubeSales > 0) {
-      parts.push(`Lube/billing sales (${formatCurrency(pl.lubeSales)}) included in net profit.`);
+      const lubeNet =
+        pl.lubeCogs > 0
+          ? `Lube/billing sales ${formatCurrency(pl.lubeSales)} − vault purchases ${formatCurrency(pl.lubeCogs)}.`
+          : `Lube/billing sales (${formatCurrency(pl.lubeSales)}) included in net profit.`;
+      parts.push(lubeNet);
     }
     incomeNoteEl.textContent = parts.join(" ");
   }
   const plMethodologyEl = document.getElementById("pl-methodology-note");
   if (plMethodologyEl) {
     plMethodologyEl.textContent =
-      "Net profit = fuel gross profit + lube/billing − operating expenses. Net sale (above) is fuel only; lube/billing adds to net profit when present. Fuel uses net litres (meter minus testing) and landed buying cost (pre-VAT ₹/KL + delivery + VAT/LST per litre). MS/HS and density testing expenses excluded. Same formula as Analysis and Reports P&L.";
+      "Your real profit is the Profit / Loss figure above (Nett Profit). Formula: fuel gross + (lube sales − vault purchases) − operating expenses. Gross Profit is before expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit. Same Nett Profit on Analysis and Reports → P&L.";
   }
   scheduleAutoFitStats();
 }

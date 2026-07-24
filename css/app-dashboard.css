@@ -1254,6 +1254,18 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   font-size: 0.9rem;
 }
 
+.pl-inv-input {
+  width: 9rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+.pl-gstin-input {
+  width: 10rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+}
+
 .pl-buying-save {
   padding: 0.35rem 0.75rem;
   font-size: 0.9rem;

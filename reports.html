@@ -18,13 +18,13 @@
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=1"></script>
-    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/utils.js?v=10"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/printUtils.js?v=7"></script>
-    <script defer src="js/reports.js?v=11"></script>
+    <script defer src="js/reports.js?v=14"></script>
   </head>
   <body class="reports-page">
     <header class="topbar no-print" data-build-topbar>
@@ -82,7 +82,11 @@
                     <h3 id="reports-active-title" class="reports-active-title">Tank-wise DSR</h3>
                     <p id="reports-active-desc" class="reports-active-desc muted"></p>
                   </div>
-                  <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
+                  <div class="reports-output-actions">
+                    <button type="button" id="reports-csv-btn" class="button-secondary hidden">Download CSV</button>
+                    <button type="button" id="reports-json-btn" class="button-secondary hidden">Download JSON</button>
+                    <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
+                  </div>
                 </div>
                 <p id="reports-error" class="error hidden"></p>
                 <div id="reports-preview" class="reports-preview muted">Select dates, click Load data, then choose a report type.</div>
@@ -120,7 +124,18 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Daily pump sales, stock dips, receipts, testing litres, and rates split by tank and nozzle. Used for stock reconciliation and audit trail.</p>
+                      <p>Daily sales, stock dips, receipts, testing litres, and rates for the physical <strong>HSD</strong> and <strong>MS</strong> tanks (one section each). Includes shortage (book vs dip), book total, variance, and TVA (capacity − closing dip). Used for stock reconciliation and audit trail.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Fuel Income</span>
+                        <span class="reports-about-summary-desc muted">Operations · dealer margin register</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Daily MS and HSD margin: net litres × (selling rate − landed buying rate). Same fuel-margin basis as Dashboard P&amp;L. Requires buying prices on receipt days.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -131,7 +146,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Month-wise nil-rated petrol and diesel (quantity × daily selling price). Billing/lube invoices included when enabled in Settings.</p>
+                      <p>Outward supply with <strong>inside state</strong> (CGST+SGST) and <strong>outside state</strong> (IGST) blocks. Fuel is NIL-rated (SFC daily vouchers in Detail). Billing/lube invoices included when enabled in Settings.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -142,7 +157,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Receipt-wise inward fuel register. VAT/LST estimated from stored pre-VAT buying rates (₹/KL on Dashboard P&amp;L) plus delivery.</p>
+                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Dashboard P&amp;L). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -153,18 +168,40 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Period trading view with opening/closing stock at cost. Produces <strong>gross income</strong> as the balancing figure — see the dedicated section below.</p>
+                      <p>Period trading view with opening/closing stock at cost, fuel purchases, and lube sales. Optional vault purchase amounts appear as Lube / other purchases. Produces <strong>gross income c/d</strong> as the balancing figure (Sales + Closing − Opening − Purchases).</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
                     <summary>
                       <span class="reports-about-summary-text">
                         <span class="reports-about-summary-title">Profit &amp; Loss</span>
-                        <span class="reports-about-summary-desc muted">Accounts · margin-based</span>
+                        <span class="reports-about-summary-desc muted">Accounts · margin-based books layout</span>
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Margin-based net profit for the period. Uses the same formula as Dashboard P&amp;L and Analysis.</p>
+                      <p>Books-style debit/credit layout: expense heads and Nett Profit on debit; Gross profit on credit. Same margin formula as Dashboard P&amp;L and Analysis.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GSTR-1 style register</span>
+                        <span class="reports-about-summary-desc muted">Filing aid · B2B / B2CS / NIL</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Outward supply sections similar to GSTR-1. Includes Download CSV and portal-style JSON. Fuel NIL uses daily SFC vouchers from DSR. Verify before any portal upload.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GSTR-3B style summary</span>
+                        <span class="reports-about-summary-desc muted">Filing aid · Tables 3.1 / 4</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Monthly summary layout: 3.1 outward (taxable billing + NIL fuel), Table 4 ITC from fuel receipt VAT, and Download GSTR-3B JSON. Table 3.2 POS and exempt inward are not auto-filled — complete those on the portal if needed.</p>
                     </div>
                   </details>
                 </div>
@@ -198,8 +235,9 @@
                 </div>
                 <ul class="reports-about-list muted">
                   <li>Fuel sales: <strong>net litres</strong> (meter minus testing) × selling rate.</li>
-                  <li>Stock valued at landed buying rate from receipt days (pre-VAT ₹/KL + VAT + delivery).</li>
+                  <li>Stock valued at landed buying rate from receipt days (pre-VAT ₹/KL + VAT + delivery). Missing receipt-day rates use the previous receipt rate until entered.</li>
                   <li>Lube/billing: invoice totals in the period.</li>
+                  <li>Dealer Margin is an ops check only (same as P&amp;L fuel gross) — not a trading credit line.</li>
                 </ul>
               </div>
             </details>
@@ -223,6 +261,7 @@
                 <p class="muted">
                   Trading result from stock movement and sales, <em>before</em> operating expenses (rent, salary, electricity, etc.).
                   Answers “how did trading perform?” — not “what is cash profit after all bills?”
+                  For real profit, use <strong>Nett Profit</strong> on Profit &amp; Loss.
                 </p>
               </div>
             </details>
@@ -242,7 +281,7 @@
                 <div class="reports-about-formula" role="note">
                   <span class="reports-about-formula-label">Formula</span>
                   Fuel gross profit = net litres × (selling rate − landed buying rate)<br />
-                  Gross profit = fuel gross profit + lube/billing sales<br />
+                  Gross profit = fuel gross profit + (lube/billing sales − vault purchases)<br />
                   Net profit = gross profit − operating expenses
                 </div>
                 <dl class="reports-about-rules">
@@ -256,49 +295,57 @@
                   </div>
                   <div>
                     <dt>Requires</dt>
-                    <dd>Pre-VAT ₹/KL on every receipt day in range — otherwise net profit shows “—”.</dd>
+                    <dd>Pre-VAT ₹/KL on receipt days — until entered, margin/trading use the previous receipt rate and show a warning. Net profit is “—” only when no prior rate exists.</dd>
                   </div>
                 </dl>
               </div>
             </details>
 
-            <details class="reports-about-item">
+            <details class="reports-about-item" open>
               <summary>
                 <span class="reports-about-summary-text">
-                  <span class="reports-about-summary-title">Comparing figures</span>
-                  <span class="reports-about-summary-desc muted">Gross income vs gross profit vs net profit</span>
+                  <span class="reports-about-summary-title">Which number is my profit?</span>
+                  <span class="reports-about-summary-desc muted">Simple guide · Gross income vs Gross profit vs Nett profit</span>
                 </span>
               </summary>
               <div class="reports-about-item-body">
+                <div class="reports-about-callout">
+                  <p class="reports-about-callout-label">Remember this</p>
+                  <p style="margin:0"><strong>Nett Profit</strong> (Profit &amp; Loss / Dashboard P&amp;L) is your <strong>real profit</strong> for the period.</p>
+                </div>
                 <table class="report-table reports-about-table">
                   <thead>
                     <tr>
                       <th scope="col">Term</th>
-                      <th scope="col">Source</th>
-                      <th scope="col">Meaning</th>
+                      <th scope="col">Where</th>
+                      <th scope="col">In plain words</th>
+                      <th scope="col">Use it for?</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td><strong>Gross income</strong></td>
-                      <td>Trading account</td>
-                      <td>Stock-based trading result; opening/closing dip stock at cost.</td>
+                      <td><strong>Nett Profit</strong></td>
+                      <td>P&amp;L · Dashboard · Analysis</td>
+                      <td>Money left after fuel margin, lube, and operating expenses.</td>
+                      <td><strong>Yes — your real profit</strong></td>
                     </tr>
                     <tr>
-                      <td><strong>Gross profit</strong></td>
+                      <td><strong>Gross Profit</strong></td>
                       <td>P&amp;L · Dashboard · Analysis</td>
-                      <td>Per-litre fuel margin plus lube/billing; no stock adjustment.</td>
+                      <td>Margin before rent, salary, electricity, etc.</td>
+                      <td>Partial — before expenses</td>
                     </tr>
                     <tr>
-                      <td><strong>Net profit</strong></td>
-                      <td>P&amp;L · Dashboard · Analysis</td>
-                      <td>Gross profit minus operating expenses (testing excluded).</td>
+                      <td><strong>Gross income c/d</strong></td>
+                      <td>Trading account only</td>
+                      <td>Stock-based trading balance (opening/closing tank stock). Different formula from Gross Profit.</td>
+                      <td>No — books / trading only</td>
                     </tr>
                   </tbody>
                 </table>
                 <p class="muted reports-about-note">
-                  <strong>Gross income ≠ net profit</strong> for the same period — expected. Gross income ignores operating expenses; net profit subtracts them.
-                  P&amp;L net profit should match across Dashboard, Analysis, and Reports when dates and buying prices align.
+                  If Gross income c/d and Gross Profit look different for the same dates, that is expected — one uses stock, the other uses per-litre margin.
+                  Always use <strong>Nett Profit</strong> when someone asks “how much did we make?”
                 </p>
               </div>
             </details>

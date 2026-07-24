@@ -11,8 +11,10 @@ const corsHeaders = {
 };
 
 const DSR_SELECT_FULL =
-  "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre";
+  "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
+/** History-only rows for buying-rate context — keep payload small. */
 const DSR_SELECT_RECEIPT = "date, product, receipts, buying_price_per_litre";
+const RECEIPT_LOOKBACK_PRODUCTS = ["petrol", "diesel"];
 const DEFAULT_RECEIPT_HISTORY_START = "2000-01-01";
 
 interface ReportsRequest {
@@ -42,6 +44,7 @@ interface ReportsResponse {
   expenseRows: unknown[] | null;
   invoices: unknown[] | null;
   invoiceItems: unknown[] | null;
+  vaultPurchases: unknown[] | null;
   expenseCategories: unknown[] | null;
   errors: {
     dsr: string | null;
@@ -50,6 +53,7 @@ interface ReportsResponse {
     invoice: string | null;
     invoiceItems: string | null;
     categories: string | null;
+    vault?: string | null;
   };
 }
 
@@ -67,6 +71,33 @@ function extractReceiptRows(rows: DsrRow[]) {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** Latest priced receipt before startDate per product (≤2 rows). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchLatestReceiptsBefore(supabase: any, startDate: string, receiptStart: string) {
+  const results = await Promise.all(
+    RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
+      supabase
+        .from("dsr")
+        .select(DSR_SELECT_RECEIPT)
+        .eq("product", product)
+        .gte("date", receiptStart)
+        .lt("date", startDate)
+        .gt("receipts", 0)
+        .gt("buying_price_per_litre", 0)
+        .order("date", { ascending: false })
+        .limit(1)
+    )
+  );
+  const error = results.find((r: { error?: { message?: string } }) => r.error)?.error;
+  if (error) {
+    return { data: [] as DsrRow[], error: error.message as string };
+  }
+  return {
+    data: results.flatMap((r: { data?: DsrRow[] | null }) => r.data ?? []) as DsrRow[],
+    error: null as string | null,
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchDsrBundle(supabase: any, startDate: string, endDate: string, receiptStart: string) {
   if (receiptStart < startDate) {
@@ -77,23 +108,16 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: true }),
-      supabase
-        .from("dsr")
-        .select(DSR_SELECT_RECEIPT)
-        .gte("date", receiptStart)
-        .lt("date", startDate)
-        .gt("receipts", 0)
-        .gt("buying_price_per_litre", 0)
-        .order("date", { ascending: true }),
+      fetchLatestReceiptsBefore(supabase, startDate, receiptStart),
     ]);
 
-    const error = rangeResult.error ?? receiptResult.error;
+    const error = rangeResult.error?.message ?? receiptResult.error;
     if (error) {
-      return { dsrRows: null, receiptRows: null, error: error.message as string };
+      return { dsrRows: null, receiptRows: null, error: error as string };
     }
 
     const rangeRows = (rangeResult.data ?? []) as DsrRow[];
-    const allDsr = [...((receiptResult.data ?? []) as DsrRow[]), ...rangeRows];
+    const allDsr = [...(receiptResult.data ?? []), ...rangeRows];
     return {
       dsrRows: rangeRows,
       receiptRows: extractReceiptRows(allDsr),
@@ -159,7 +183,7 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    const [dsrBundle, stockResult, expenseResult, invoiceResult, categoryResult] =
+    const [dsrBundle, stockResult, expenseResult, invoiceResult, categoryResult, vaultResult] =
       await Promise.all([
         fetchDsrBundle(supabase, startDate, endDate, receiptStart),
         supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
@@ -177,6 +201,12 @@ Deno.serve(async (req: Request) => {
           .lte("invoice_date", endDate)
           .order("invoice_date", { ascending: true }),
         supabase.from("expense_categories").select("name, label").order("sort_order"),
+        supabase
+          .from("invoice_documents")
+          .select("id, invoice_date, vendor, amount, category, title, drive_web_view_link")
+          .eq("category", "purchase")
+          .gte("invoice_date", startDate)
+          .lte("invoice_date", endDate),
       ]);
 
     let invoiceItems: unknown[] | null = [];
@@ -185,12 +215,28 @@ Deno.serve(async (req: Request) => {
 
     if (invoices.length) {
       const ids = invoices.map((inv: { id: string }) => inv.id);
-      const itemsResult = await supabase
-        .from("invoice_items")
-        .select("invoice_id, gst_percent, amount")
-        .in("invoice_id", ids);
-      invoiceItems = itemsResult.data;
-      invoiceItemsError = itemsResult.error?.message ?? null;
+      const chunkSize = 80;
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        chunks.push(ids.slice(i, i + chunkSize));
+      }
+      const chunkResults = await Promise.all(
+        chunks.map((chunk) =>
+          supabase
+            .from("invoice_items")
+            .select("invoice_id, gst_percent, amount")
+            .in("invoice_id", chunk)
+        )
+      );
+      const merged: unknown[] = [];
+      for (const result of chunkResults) {
+        if (result.error) {
+          invoiceItemsError = result.error.message;
+          break;
+        }
+        if (result.data?.length) merged.push(...result.data);
+      }
+      invoiceItems = invoiceItemsError ? [] : merged;
     }
 
     const response: ReportsResponse = {
@@ -200,6 +246,7 @@ Deno.serve(async (req: Request) => {
       expenseRows: expenseResult.data,
       invoices: invoiceResult.data,
       invoiceItems,
+      vaultPurchases: vaultResult.error ? [] : vaultResult.data,
       expenseCategories: categoryResult.data,
       errors: {
         dsr: dsrBundle.error,
@@ -208,6 +255,7 @@ Deno.serve(async (req: Request) => {
         invoice: invoiceResult.error?.message ?? null,
         invoiceItems: invoiceItemsError,
         categories: categoryResult.error?.message ?? null,
+        vault: vaultResult.error?.message ?? null,
       },
     };
 
