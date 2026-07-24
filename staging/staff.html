@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Staff · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-staff.css?v=12" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/staffEmployees.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/staff.js?v=13"></script>
+  </head>
+  <body class="staff-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Staff</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout staff-page-layout">
+      <nav class="settings-nav card staff-roster-nav" aria-label="Staff roster">
+        <p class="settings-nav-title">Sections</p>
+        <div class="staff-roster-toolbar">
+          <p class="muted staff-roster-count" id="staff-roster-count">—</p>
+          <button type="button" id="staff-add-btn" class="button-secondary button-small">+ Add</button>
+        </div>
+        <label class="staff-roster-search-wrap">
+          <input type="search" id="staff-roster-search" class="staff-roster-search" placeholder="Search by name or role…" autocomplete="off" aria-label="Search staff" />
+        </label>
+        <p class="muted staff-roster-hint" data-role="admin-only">Salary &amp; PF rates: <a href="settings.html#salaries">Settings → Staff salaries</a></p>
+        <ul id="staff-roster-list" class="staff-roster-list" role="listbox" aria-label="Select staff member">
+          <li class="staff-roster-loading muted">Loading…</li>
+        </ul>
+      </nav>
+
+      <div class="settings-panels staff-main">
+        <section id="staff-empty-state" class="settings-panel card staff-empty-state is-visible">
+          <div class="card-head snapshot-head">
+            <div>
+              <h2>Staff profiles</h2>
+              <p class="muted">Select a team member from the roster to view their profile, manage details, and print an ID card.</p>
+            </div>
+          </div>
+          <div class="staff-empty-body">
+            <button type="button" id="staff-empty-add-btn">Add staff member</button>
+          </div>
+        </section>
+
+        <section id="staff-form-panel" class="settings-panel card staff-form-panel hidden" hidden>
+          <div class="card-head snapshot-head staff-panel-head">
+            <div>
+              <h2 id="staff-form-title">Add staff</h2>
+              <p class="muted">Personal details used on the staff ID card and HR records.</p>
+            </div>
+            <button type="button" id="staff-form-close" class="link">Cancel</button>
+          </div>
+          <form id="emp-member-form" class="form" autocomplete="off">
+            <input type="hidden" id="emp-member-id" value="" />
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="emp-name">Name</label>
+                <input id="emp-name" type="text" maxlength="120" required />
+              </div>
+              <div class="form-field">
+                <label for="emp-job-role">Job title / role</label>
+                <input id="emp-job-role" type="text" maxlength="60" placeholder="e.g. Pump attendant" />
+              </div>
+              <div class="form-field">
+                <label for="emp-dob">Date of birth</label>
+                <input id="emp-dob" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="emp-valid-from">ID valid from</label>
+                <input id="emp-valid-from" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="emp-valid-to">ID valid to</label>
+                <input id="emp-valid-to" type="date" />
+              </div>
+              <div class="form-field form-field-full">
+                <label>Photo <span class="optional-label">(ID card)</span></label>
+                <div class="emp-photo-field">
+                  <div id="emp-photo-preview" class="emp-photo-preview is-placeholder" role="img" aria-label="Photo preview">
+                    <span id="emp-photo-initial">?</span>
+                    <img id="emp-photo-img" class="hidden" alt="" />
+                  </div>
+                  <div class="emp-photo-actions">
+                    <input id="emp-photo-file" type="file" accept="image/jpeg,image/png,image/webp" />
+                    <button type="button" id="emp-photo-clear" class="button-secondary hidden">Remove photo</button>
+                    <small class="muted">Passport-style, JPG/PNG/WebP, max 2 MB.</small>
+                  </div>
+                </div>
+              </div>
+              <div class="form-field">
+                <label for="emp-blood-group">Blood group</label>
+                <select id="emp-blood-group">
+                  <option value="">— Not set —</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A−</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B−</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB−</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O−</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="emp-phone">Phone</label>
+                <input id="emp-phone" type="tel" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" placeholder="10 digits" />
+              </div>
+              <div class="form-field">
+                <label for="emp-aadhar">Aadhaar</label>
+                <input id="emp-aadhar" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{12}" placeholder="12 digits" />
+              </div>
+              <div class="form-field">
+                <label for="emp-pan">PAN</label>
+                <input id="emp-pan" type="text" maxlength="10" placeholder="ABCDE1234F" autocapitalize="characters" />
+              </div>
+              <div class="form-field">
+                <label for="emp-pf">PF / UAN number</label>
+                <input id="emp-pf" type="text" maxlength="30" />
+              </div>
+              <div class="form-field form-field-full">
+                <label for="emp-address">Address</label>
+                <textarea id="emp-address" rows="2" maxlength="500"></textarea>
+              </div>
+            </div>
+            <button type="submit" id="emp-submit-btn">Save staff</button>
+            <p id="emp-form-success" class="success hidden">Saved.</p>
+            <p id="emp-form-error" class="error hidden"></p>
+          </form>
+        </section>
+
+        <section id="staff-profile-panel" class="settings-panel staff-profile-panel hidden" hidden>
+          <div class="staff-profile-grid">
+            <div class="staff-profile-card card">
+              <div class="card-head snapshot-head staff-profile-head">
+                <div id="staff-profile-photo" class="staff-profile-photo is-placeholder" role="img">
+                  <span id="staff-profile-initial">?</span>
+                  <img id="staff-profile-img" class="hidden" alt="" />
+                </div>
+                <div class="staff-profile-title">
+                  <h2 id="staff-profile-name">—</h2>
+                  <p id="staff-profile-role" class="muted">—</p>
+                  <div class="staff-profile-actions">
+                    <button type="button" id="staff-profile-edit-btn" class="button-secondary">Edit profile</button>
+                    <button type="button" id="staff-profile-delete-btn" class="button-delete" data-role="admin-only">Remove</button>
+                  </div>
+                </div>
+              </div>
+              <dl class="staff-profile-details">
+                <div><dt>Date of birth</dt><dd id="staff-profile-dob">—</dd></div>
+                <div><dt>Blood group</dt><dd id="staff-profile-blood">—</dd></div>
+                <div><dt>ID validity</dt><dd id="staff-profile-validity">—</dd></div>
+                <div><dt>Phone</dt><dd id="staff-profile-phone">—</dd></div>
+                <div><dt>Aadhaar</dt><dd id="staff-profile-aadhar">—</dd></div>
+                <div><dt>PAN</dt><dd id="staff-profile-pan">—</dd></div>
+                <div><dt>PF / UAN</dt><dd id="staff-profile-pf">—</dd></div>
+                <div><dt>PF contribution</dt><dd id="staff-profile-pf-contribution">—</dd></div>
+                <div class="staff-profile-address"><dt>Address</dt><dd id="staff-profile-address">—</dd></div>
+              </dl>
+            </div>
+
+            <div class="staff-id-panel card">
+              <div class="card-head snapshot-head">
+                <div>
+                  <h2>ID card</h2>
+                  <p class="muted">Portrait PVC badge · front and back</p>
+                </div>
+              </div>
+              <p id="id-card-hint" class="staff-id-status-banner hidden" role="status"></p>
+              <button type="button" id="id-card-view-btn" class="staff-id-teaser clickable-card" aria-haspopup="dialog" aria-expanded="false" aria-controls="staff-id-modal">
+                <span class="staff-id-teaser-logo-wrap" aria-hidden="true">
+                  <picture>
+                    <source srcset="assets/logo-80.webp" type="image/webp" />
+                    <img src="assets/logo-80.png" width="80" height="80" alt="Bishnupriya Fuels" class="station-logo staff-id-teaser-logo station-logo--lg" />
+                  </picture>
+                </span>
+                <span class="staff-id-teaser-body">
+                  <span class="staff-id-teaser-title">Preview ID card</span>
+                  <span class="staff-id-teaser-meta muted">Tap to view front &amp; back before printing</span>
+                </span>
+                <span class="staff-id-teaser-chevron" aria-hidden="true">›</span>
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <div id="staff-id-modal" class="staff-id-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="staff-id-modal-title">
+      <div class="staff-id-modal-backdrop" data-staff-id-close tabindex="-1" aria-hidden="true"></div>
+      <div class="staff-id-modal-panel card">
+        <div class="card-head snapshot-head staff-id-modal-head">
+          <div>
+            <h2 id="staff-id-modal-title">ID card preview</h2>
+            <p class="muted staff-id-modal-subtitle">Front · back · portrait PVC size</p>
+          </div>
+          <button type="button" id="staff-id-modal-close" class="staff-id-modal-close" aria-label="Close preview">×</button>
+        </div>
+        <div id="id-card-preview-wrap" class="staff-id-preview-wrap">
+          <div id="id-card-preview" class="staff-id-preview-mount" role="group" aria-label="Staff ID card preview"></div>
+        </div>
+        <div class="staff-id-modal-actions">
+          <button type="button" id="id-card-print-btn" disabled>Print ID card</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="staff-id-print-root" class="staff-id-print-root" hidden aria-hidden="true"></div>
+
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

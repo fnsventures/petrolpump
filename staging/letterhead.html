@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Letterhead · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-letterhead.css?v=4" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/letterhead.js?v=9"></script>
+  </head>
+  <body class="letterhead-page">
+    <header class="topbar no-print">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Letterhead</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout page-layout-wide no-print">
+      <nav class="settings-nav card" aria-label="Letterhead sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="compose">Compose</button>
+        <button type="button" class="settings-nav-item" data-section="history">Letter history</button>
+        <button type="button" class="settings-nav-item" data-section="guide">How to use</button>
+      </nav>
+
+      <div class="settings-panels letterhead-panels">
+        <section class="settings-panel card dashboard-card letterhead-compose-panel is-visible" data-panel="compose" aria-label="Compose letterhead">
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Compose letterhead</h2>
+              <p class="muted panel-lead">
+                Print blank stationery or type a letter on the station letterhead.
+                Branding is taken from
+                <a href="settings.html#station">Settings → Station &amp; branding</a>.
+              </p>
+            </div>
+          </header>
+
+          <div class="letterhead-compose-layout">
+            <div class="letterhead-compose-main">
+              <form id="letterhead-form" class="form letterhead-form" autocomplete="off">
+                <div class="form-grid letterhead-meta-grid">
+                  <div class="form-field">
+                    <label for="letterhead-date">Date <span class="optional-label">(optional)</span></label>
+                    <input id="letterhead-date" name="date" type="date" />
+                  </div>
+                  <div class="form-field letterhead-subject-field">
+                    <label for="letterhead-subject">Subject <span class="optional-label">(optional)</span></label>
+                    <input
+                      id="letterhead-subject"
+                      name="subject"
+                      type="text"
+                      maxlength="200"
+                      placeholder="e.g. Request for documents"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="letterhead-body">Letter body <span class="optional-label">(optional — leave blank for empty stationery)</span></label>
+                  <textarea
+                    id="letterhead-body"
+                    name="body"
+                    rows="14"
+                    maxlength="20000"
+                    placeholder="Type your letter here…"
+                  ></textarea>
+                </div>
+
+                <div class="letterhead-export" aria-label="Export options">
+                  <div class="letterhead-export-group">
+                    <p class="letterhead-export-label">Print / PDF</p>
+                    <p class="muted letterhead-export-hint">Opens the print dialog. Choose “Save as PDF” for a PDF file.</p>
+                    <div class="letterhead-export-actions">
+                      <button type="button" id="letterhead-print-blank" class="button-secondary">Print blank</button>
+                      <button type="submit" id="letterhead-print-content">Print letter</button>
+                    </div>
+                  </div>
+                  <div class="letterhead-export-group">
+                    <p class="letterhead-export-label">Word</p>
+                    <p class="muted letterhead-export-hint">Downloads a <code>.doc</code> file for Word or Google Docs.</p>
+                    <div class="letterhead-export-actions">
+                      <button type="button" id="letterhead-word-blank" class="button-secondary">Download blank</button>
+                      <button type="button" id="letterhead-word-content" class="button-secondary">Download letter</button>
+                    </div>
+                  </div>
+                </div>
+
+                <p id="letterhead-success" class="success hidden" role="status"></p>
+                <p id="letterhead-error" class="error hidden" role="alert"></p>
+              </form>
+            </div>
+
+            <aside class="letterhead-preview-aside" aria-label="Letterhead preview">
+              <div class="letterhead-preview-head">
+                <h3 class="letterhead-preview-title">Preview</h3>
+                <p class="muted letterhead-preview-desc">Live view of the printed page</p>
+              </div>
+              <div class="letterhead-preview-wrap">
+                <div id="letterhead-preview" class="letterhead-preview-sheet" aria-live="polite"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card letterhead-history-panel" data-panel="history" aria-label="Letter history" hidden>
+          <header class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Letter history</h2>
+              <p class="muted panel-lead">
+                Typed letters you printed or downloaded. Blank stationery is not saved.
+              </p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field form-field-inline">
+                <label for="letterhead-range">Period</label>
+                <select id="letterhead-range">
+                  <option value="this-year" selected>This year</option>
+                  <option value="last-year">Last year</option>
+                  <option value="all-time">All time</option>
+                </select>
+              </div>
+              <div id="letterhead-custom-range" class="custom-range hidden" aria-hidden="true">
+                <div class="form-field form-field-inline">
+                  <label for="letterhead-start">From</label>
+                  <input type="date" id="letterhead-start" />
+                </div>
+                <div class="form-field form-field-inline">
+                  <label for="letterhead-end">To</label>
+                  <input type="date" id="letterhead-end" />
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="letterhead-apply-filter">Apply</button>
+              </div>
+            </div>
+          </header>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Subject</th>
+                  <th>Preview</th>
+                  <th>Via</th>
+                  <th id="letterhead-actions-head">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="letterhead-history-body">
+                <tr><td colspan="5" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination-controls">
+            <span id="letterhead-pagination-info" class="muted"></span>
+            <button type="button" id="letterhead-load-more" class="button-secondary hidden">Load more</button>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card letterhead-guide-panel" data-panel="guide" id="letterhead-guide" aria-label="How to use" hidden>
+          <header class="panel-head">
+            <div>
+              <p class="letterhead-guide-eyebrow">Documentation</p>
+              <h2 class="dashboard-section-title">How to use</h2>
+              <p class="muted panel-lead">
+                Letterhead uses the same station branding as invoices and reports.
+              </p>
+            </div>
+          </header>
+
+          <div class="letterhead-guide-list">
+            <article class="letterhead-guide-item">
+              <h3>Blank stationery</h3>
+              <p class="muted">Leave subject and body empty, then use <strong>Print blank</strong> or <strong>Download blank</strong>. Useful for handwritten notes or filling later in Word. Blank sheets are not added to history.</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Typed letter</h3>
+              <p class="muted">Enter an optional date and subject, type the body, then <strong>Print letter</strong> or <strong>Download letter</strong>. A signature block is added automatically. Each typed print or Word download is saved under <strong>Letter history</strong>.</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Letter history</h3>
+              <p class="muted">Open a past letter to edit and reprint, or print it again as saved. Only admins can delete history rows.</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>PDF files</h3>
+              <p class="muted">There is no separate PDF download. Use Print → <strong>Save as PDF</strong> in the browser print dialog (same pattern as invoices and reports).</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Update branding</h3>
+              <p class="muted">Change name, address, GSTIN, or contact details in <a href="settings.html#station">Settings → Station &amp; branding</a>. The letterhead updates on the next load.</p>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

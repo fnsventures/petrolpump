@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DSR · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/dsrLegacyRedirect.js"></script>
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <script src="js/dsrSections.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=12" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/dsrFuelNav.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/dsrSummary.js"></script>
+    <script defer src="js/dsr.js"></script>
+  </head>
+  <body class="dsr-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">DSR</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout page-layout-wide" id="dsr-page-main">
+      <nav class="settings-nav card dsr-fuel-nav" id="dsr-sidebar-nav" aria-label="DSR sections">
+        <p class="settings-nav-title" id="dsr-sidebar-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="filters">Total</button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="dsr-petrol">
+          <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-meta">Petrol · 15 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="dsr-diesel">
+          <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-meta">Diesel · 20 KL</span>
+        </button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible" data-panel="filters">
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Total</h2>
+              <p class="muted panel-lead">Combined MS and HSD readings, sales, stock, and variation for the selected period.</p>
+              <p class="muted"><a href="meter-reading.html">Enter meter readings →</a></p>
+              <p class="muted"><a href="reports.html?tab=dsr" data-role="admin-only">Tank-wise DSR report (print) →</a></p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="dsr-daily-start-date">From</label>
+                <input id="dsr-daily-start-date" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="dsr-daily-end-date">To</label>
+                <input id="dsr-daily-end-date" type="date" />
+              </div>
+            </div>
+          </div>
+
+          <div id="dsr-period-stats" class="dc-register-period-stats dsr-period-stats hidden" aria-label="Period totals">
+            <div class="dc-stat-card dc-stat-card--petrol" data-dsr-stat="petrol">
+              <span class="dc-stat-label">Petrol net sale</span>
+              <strong id="dsr-period-petrol-net" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Litres · MS</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--diesel" data-dsr-stat="diesel">
+              <span class="dc-stat-label">Diesel net sale</span>
+              <strong id="dsr-period-diesel-net" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Litres · HSD</span>
+            </div>
+            <div class="dc-stat-card" data-dsr-stat="shared">
+              <span class="dc-stat-label">Receipts</span>
+              <strong id="dsr-period-receipts" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">Tank deliveries</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--highlight" data-dsr-stat="shared">
+              <span class="dc-stat-label">Variation</span>
+              <strong id="dsr-period-variation" class="dc-stat-value">—</strong>
+              <span id="dsr-period-days-meta" class="dc-stat-meta muted">Stock gain / loss</span>
+            </div>
+          </div>
+
+          <div class="dsr-daily-block dsr-card dsr-card--petrol dsr-daily-block--petrol">
+            <div class="panel-head dsr-card-head">
+              <div class="dsr-fuel-head">
+                <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+                <div>
+                  <h3 class="dashboard-section-title">Petrol — daily entries</h3>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="dsr-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sales P1 (L)</th>
+                    <th>Sales P2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Closing stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody id="dsr-daily-petrol-body">
+                  <tr>
+                    <td colspan="11" class="muted">Select a date range to load readings.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="dsr-daily-block dsr-card dsr-card--diesel dsr-daily-block--diesel">
+            <div class="panel-head dsr-card-head">
+              <div class="dsr-fuel-head">
+                <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+                <div>
+                  <h3 class="dashboard-section-title">Diesel — daily entries</h3>
+                </div>
+              </div>
+            </div>
+            <div class="table-scroll">
+              <table class="dsr-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Sales P1 (L)</th>
+                    <th>Sales P2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Closing stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody id="dsr-daily-diesel-body">
+                  <tr>
+                    <td colspan="11" class="muted">Select a date range to load readings.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

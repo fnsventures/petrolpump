@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Expenses · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/expenses.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Expenses</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Expense sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="record">Record expense</button>
+        <button type="button" class="settings-nav-item" data-section="history">Recent expenses</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible" data-panel="record">
+        <div class="panel-head">
+          <div>
+            <h2 class="dashboard-section-title">Record expense</h2>
+            <p class="muted panel-lead">For staff salary installments, use <a href="salary.html#record">Salary → Record payment</a> instead.</p>
+          </div>
+        </div>
+        <form id="expense-form" class="form" autocomplete="off">
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="expense-date">Date</label>
+              <input id="expense-date" name="date" type="date" required />
+            </div>
+
+            <div class="form-field">
+              <label for="expense-category">Category</label>
+              <select id="expense-category" name="category">
+                <option value="">Select category</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="expense-amount">Amount (₹)</label>
+              <input
+                id="expense-amount"
+                name="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                required
+              />
+            </div>
+
+            <div class="form-field">
+              <label for="expense-description">Description</label>
+              <textarea
+                id="expense-description"
+                name="description"
+                rows="2"
+                placeholder="Optional note"
+              ></textarea>
+            </div>
+          </div>
+
+          <button type="submit">Save expense</button>
+          <p id="expense-success" class="success hidden">Expense saved.</p>
+          <p id="expense-error" class="error hidden"></p>
+        </form>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="history" hidden>
+        <div class="panel-head card-head snapshot-head">
+          <div>
+            <h2 class="dashboard-section-title">Recent expenses</h2>
+            <p class="muted panel-lead">Filter by date range. Total shown for selected period. Salary payments are recorded on <a href="salary.html#recent">Salary → Payment history</a> and still count toward day closing expenses.</p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field">
+              <label for="expense-range">Period</label>
+              <select id="expense-range">
+                <option value="this-month" selected>This month</option>
+                <option value="this-week">This week</option>
+                <option value="custom">Custom dates</option>
+              </select>
+            </div>
+            <div id="expense-custom-range" class="custom-range hidden" aria-hidden="true">
+              <div class="form-field">
+                <label for="expense-start">From</label>
+                <input id="expense-start" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="expense-end">To</label>
+                <input id="expense-end" type="date" />
+              </div>
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="expense-apply-filter">Apply</button>
+            </div>
+          </div>
+        </div>
+        <p id="expense-total-row" class="muted margin-top hidden">Total for selected period: <strong id="expense-total-value">—</strong></p>
+        <div class="table-wrap margin-top">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Amount (₹)</th>
+                <th id="expense-actions-head" class="table-actions" hidden>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expense-table-body">
+              <tr>
+                <td colspan="4" class="muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="expense-empty-cta" class="empty-state hidden">
+          <p>No expenses recorded for this period.</p>
+          <p class="empty-cta">Add an expense using the form above.</p>
+        </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

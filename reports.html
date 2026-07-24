@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reports · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-reports.css?v=13" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=1"></script>
+    <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/dsrQueries.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/reports.js?v=14"></script>
+  </head>
+  <body class="reports-page">
+    <header class="topbar no-print">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Reports</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout page-layout-wide no-print">
+      <nav class="settings-nav card reports-nav" aria-label="Reports sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="generate">Generate report</button>
+        <button type="button" class="settings-nav-item" data-section="about">Report guide</button>
+      </nav>
+
+      <div class="settings-panels reports-panels">
+        <section class="settings-panel card dashboard-card reports-generate-panel is-visible" data-panel="generate" aria-label="Generate report">
+          <header class="panel-head reports-generate-intro">
+            <div>
+              <h2 class="dashboard-section-title">Generate report</h2>
+              <p class="muted panel-lead">Pick a report, set the period, then preview and print. All reports use the station letterhead.</p>
+            </div>
+          </header>
+
+          <div class="reports-generate-layout">
+            <aside class="reports-catalog-aside" aria-label="Report types">
+              <p class="reports-sidebar-title">Report type</p>
+              <nav id="reports-catalog" class="reports-catalog-nav"></nav>
+            </aside>
+
+            <div class="reports-generate-main">
+              <form id="reports-filter-form" class="filter-card" autocomplete="off">
+                <div class="filter-form">
+                  <div class="form-field">
+                    <label for="reports-start">From</label>
+                    <input id="reports-start" type="date" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="reports-end">To</label>
+                    <input id="reports-end" type="date" required />
+                  </div>
+                  <div class="filter-actions">
+                    <button type="submit">Load data</button>
+                  </div>
+                </div>
+                <p id="reports-date-label" class="filter-summary">—</p>
+              </form>
+
+              <div class="reports-output">
+                <div class="reports-output-head">
+                  <div class="reports-output-titles">
+                    <h3 id="reports-active-title" class="reports-active-title">Tank-wise DSR</h3>
+                    <p id="reports-active-desc" class="reports-active-desc muted"></p>
+                  </div>
+                  <div class="reports-output-actions">
+                    <button type="button" id="reports-csv-btn" class="button-secondary hidden">Download CSV</button>
+                    <button type="button" id="reports-json-btn" class="button-secondary hidden">Download JSON</button>
+                    <button type="button" id="reports-print-btn" class="button-secondary">Print this report</button>
+                  </div>
+                </div>
+                <p id="reports-error" class="error hidden"></p>
+                <div id="reports-preview" class="reports-preview muted">Select dates, click Load data, then choose a report type.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card reports-guide-panel" data-panel="about" id="reports-about" aria-label="Report guide" hidden>
+          <header class="panel-head reports-about-head">
+            <div>
+              <p class="reports-about-eyebrow">Documentation</p>
+              <h2 class="dashboard-section-title">Report guide</h2>
+              <p class="muted panel-lead reports-about-lead">
+                Reference for printable registers, GST returns, and accounts. Expand a section for formulas, definitions, and how figures reconcile across Dashboard, Analysis, and Reports.
+              </p>
+            </div>
+          </header>
+
+          <div class="reports-about-accordion" role="region" aria-label="Reports documentation sections">
+            <details class="reports-about-item" open>
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Report catalogue</span>
+                  <span class="reports-about-summary-desc muted">Available report types and their purpose</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <div class="reports-about-nested">
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Tank-wise DSR</span>
+                        <span class="reports-about-summary-desc muted">Operations · daily pump register</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Daily sales, stock dips, receipts, testing litres, and rates for the physical <strong>HSD</strong> and <strong>MS</strong> tanks (one section each). Includes shortage (book vs dip), book total, variance, and TVA (capacity − closing dip). Used for stock reconciliation and audit trail.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Fuel Income</span>
+                        <span class="reports-about-summary-desc muted">Operations · dealer margin register</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Daily MS and HSD margin: net litres × (selling rate − landed buying rate). Same fuel-margin basis as Analysis and Reports P&amp;L. Requires buying prices on receipt days.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GST — Sales</span>
+                        <span class="reports-about-summary-desc muted">Compliance · outward supply</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Outward supply with <strong>inside state</strong> (CGST+SGST) and <strong>outside state</strong> (IGST) blocks. Fuel is NIL-rated (SFC daily vouchers in Detail). Billing/lube invoices included when enabled in Settings.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GST — Purchases</span>
+                        <span class="reports-about-summary-desc muted">Compliance · fuel inward</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Meter Reading → Purchase cost). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Trading account</span>
+                        <span class="reports-about-summary-desc muted">Accounts · stock-based</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Period trading view with opening/closing stock at cost, fuel purchases, and lube sales. Optional vault purchase amounts appear as Lube / other purchases. Produces <strong>gross income c/d</strong> as the balancing figure (Sales + Closing − Opening − Purchases).</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">Profit &amp; Loss</span>
+                        <span class="reports-about-summary-desc muted">Accounts · margin-based books layout</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Books-style debit/credit layout: expense heads and Nett Profit on debit; Gross profit on credit. Same margin formula as Analysis and the Dashboard Net profit glance.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GSTR-1 style register</span>
+                        <span class="reports-about-summary-desc muted">Filing aid · B2B / B2CS / NIL</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Outward supply sections similar to GSTR-1. Includes Download CSV and portal-style JSON. Fuel NIL uses daily SFC vouchers from DSR. Verify before any portal upload.</p>
+                    </div>
+                  </details>
+                  <details class="reports-about-item reports-about-item--nested">
+                    <summary>
+                      <span class="reports-about-summary-text">
+                        <span class="reports-about-summary-title">GSTR-3B style summary</span>
+                        <span class="reports-about-summary-desc muted">Filing aid · Tables 3.1 / 4</span>
+                      </span>
+                    </summary>
+                    <div class="reports-about-item-body">
+                      <p>Monthly summary layout: 3.1 outward (taxable billing + NIL fuel), Table 4 ITC from fuel receipt VAT, and Download GSTR-3B JSON. Table 3.2 POS and exempt inward are not auto-filled — complete those on the portal if needed.</p>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Trading account</span>
+                  <span class="reports-about-summary-desc muted">Stock-based debit and credit layout</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  A traditional trading account listing what came in against what went out for the selected period.
+                  Debit and credit totals must match.
+                </p>
+                <div class="reports-about-callout">
+                  <p class="reports-about-callout-label">Layout</p>
+                  <dl class="reports-about-split-dl">
+                    <div>
+                      <dt>Credit</dt>
+                      <dd>Sales (petrol + diesel + lube/billing) + Closing stock at cost</dd>
+                    </div>
+                    <div>
+                      <dt>Debit</dt>
+                      <dd>Opening stock at cost + Purchases (fuel receipts) + Gross income c/d</dd>
+                    </div>
+                  </dl>
+                </div>
+                <ul class="reports-about-list muted">
+                  <li>Fuel sales: <strong>net litres</strong> (meter minus testing) × selling rate.</li>
+                  <li>Stock valued at landed buying rate from receipt days (pre-VAT ₹/KL + VAT + delivery). Missing receipt-day rates use the previous receipt rate until entered.</li>
+                  <li>Lube/billing: invoice totals in the period.</li>
+                  <li>Dealer Margin is an ops check only (same as P&amp;L fuel gross) — not a trading credit line.</li>
+                </ul>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Gross income</span>
+                  <span class="reports-about-summary-desc muted">Balancing figure · trading account only</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  <strong>Gross income</strong> appears only on the trading account as “Gross income c/d” on the debit side.
+                  It is the amount that balances debit and credit — not the same as net profit.
+                </p>
+                <div class="reports-about-formula" role="note">
+                  <span class="reports-about-formula-label">Formula</span>
+                  Gross income = Sales + Closing stock (at cost) − Opening stock (at cost) − Purchases
+                </div>
+                <p class="muted">
+                  Trading result from stock movement and sales, <em>before</em> operating expenses (rent, salary, electricity, etc.).
+                  Answers “how did trading perform?” — not “what is cash profit after all bills?”
+                  For real profit, use <strong>Nett Profit</strong> on Profit &amp; Loss.
+                </p>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Profit &amp; loss (net profit)</span>
+                  <span class="reports-about-summary-desc muted">Margin-based · Analysis &amp; Dashboard glance</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p>
+                  Margin-based P&amp;L for the period. Identical calculation on <strong>Analysis</strong>,
+                  <strong>Dashboard → Net profit</strong> (glance), and this report when the date range and buying prices match.
+                  Enter buying prices on <strong>Meter Reading → Purchase cost</strong>.
+                </p>
+                <div class="reports-about-formula" role="note">
+                  <span class="reports-about-formula-label">Formula</span>
+                  Fuel gross profit = net litres × (selling rate − landed buying rate)<br />
+                  Gross profit = fuel gross profit + (lube/billing sales − vault purchases)<br />
+                  Net profit = gross profit − operating expenses
+                </div>
+                <dl class="reports-about-rules">
+                  <div>
+                    <dt>Included</dt>
+                    <dd>Fuel margin, lube/billing invoices, logged operating expenses.</dd>
+                  </div>
+                  <div>
+                    <dt>Excluded</dt>
+                    <dd>MS/HS testing and density test expenses (handled in day closing).</dd>
+                  </div>
+                  <div>
+                    <dt>Requires</dt>
+                    <dd>Pre-VAT ₹/KL on receipt days — until entered, margin/trading use the previous receipt rate and show a warning. Net profit is “—” only when no prior rate exists.</dd>
+                  </div>
+                </dl>
+              </div>
+            </details>
+
+            <details class="reports-about-item" open>
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Which number is my profit?</span>
+                  <span class="reports-about-summary-desc muted">Simple guide · Gross income vs Gross profit vs Nett profit</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <div class="reports-about-callout">
+                  <p class="reports-about-callout-label">Remember this</p>
+                  <p style="margin:0"><strong>Nett Profit</strong> (Profit &amp; Loss / Analysis / Dashboard Net profit) is your <strong>real profit</strong> for the period.</p>
+                </div>
+                <table class="report-table reports-about-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Term</th>
+                      <th scope="col">Where</th>
+                      <th scope="col">In plain words</th>
+                      <th scope="col">Use it for?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Nett Profit</strong></td>
+                      <td>P&amp;L · Dashboard · Analysis</td>
+                      <td>Money left after fuel margin, lube, and operating expenses.</td>
+                      <td><strong>Yes — your real profit</strong></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Gross Profit</strong></td>
+                      <td>P&amp;L · Dashboard · Analysis</td>
+                      <td>Margin before rent, salary, electricity, etc.</td>
+                      <td>Partial — before expenses</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Gross income c/d</strong></td>
+                      <td>Trading account only</td>
+                      <td>Stock-based trading balance (opening/closing tank stock). Different formula from Gross Profit.</td>
+                      <td>No — books / trading only</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p class="muted reports-about-note">
+                  If Gross income c/d and Gross Profit look different for the same dates, that is expected — one uses stock, the other uses per-litre margin.
+                  Always use <strong>Nett Profit</strong> when someone asks “how much did we make?”
+                </p>
+              </div>
+            </details>
+
+            <details class="reports-about-item">
+              <summary>
+                <span class="reports-about-summary-text">
+                  <span class="reports-about-summary-title">Dashboard day summary</span>
+                  <span class="reports-about-summary-desc muted">Day-closing cash view · not P&amp;L</span>
+                </span>
+              </summary>
+              <div class="reports-about-item-body">
+                <p class="muted">
+                  The Dashboard <strong>Day summary</strong> is a single-date cash reconciliation: total sale ₹ includes testing litres;
+                  expenses include all categories. It supports day closing and in-hand cash — not margin-based net profit.
+                  Enter buying prices on Meter Reading → Purchase cost. Use Analysis or Reports P&amp;L for profit calculations; Dashboard shows a Net profit glance only.
+                </p>
+              </div>
+            </details>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Print-only output -->
+    <div id="reports-print-root" class="reports-print-root" aria-hidden="true"></div>
+
+    <footer class="app-footer no-print">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content="0;url=credit.html" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var hash = (window.location.hash || "").replace(/^#/, "");
+        if (hash === "overdue-list") hash = "outstanding";
+        if (hash === "overdue-summary") hash = "overview";
+        var url = "credit.html";
+        var qs = params.toString();
+        if (qs) url += "?" + qs;
+        if (hash) url += "#" + hash;
+        window.location.replace(url);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="credit.html">Credit</a>…</p>
+  </body>
+</html>

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Billing · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-billing.css?v=10" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/dateRangeFilter.js?v=1"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/billing.js"></script>
+  </head>
+  <body class="billing-page">
+    <header class="topbar no-print">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Billing</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card no-print" aria-label="Billing sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="create">Create invoice</button>
+        <button type="button" class="settings-nav-item" data-section="history">Invoice history</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible no-print" data-panel="create">
+        <div class="panel-head">
+          <div>
+            <h2 class="dashboard-section-title">Create invoice</h2>
+            <p class="muted panel-lead">Issue cash or credit memos with station letterhead. Saved invoices appear in Invoice history.</p>
+          </div>
+        </div>
+        <form id="invoice-form" class="form">
+          <div class="form-grid billing-header-grid">
+            <div class="form-field">
+              <label for="invoice-date">Date</label>
+              <input id="invoice-date" name="invoice_date" type="date" required />
+            </div>
+            <div class="form-field">
+              <label for="invoice-type">Type</label>
+              <select id="invoice-type" name="invoice_type">
+                <option value="CASH">Cash Memo</option>
+                <option value="CREDIT">Credit</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="party-name">Party Name</label>
+              <input id="party-name" name="party_name" type="text" list="party-list" placeholder="Cash A/c" maxlength="200" required />
+              <datalist id="party-list"></datalist>
+            </div>
+            <div class="form-field">
+              <label for="party-address">Address <span class="optional-label">(optional)</span></label>
+              <input id="party-address" name="party_address" type="text" placeholder="Address" maxlength="300" />
+            </div>
+            <div class="form-field">
+              <label for="party-gstin">GSTIN <span class="optional-label">(optional)</span></label>
+              <input id="party-gstin" name="party_gstin" type="text" placeholder="22AAAAA0000A1Z5" maxlength="15" />
+            </div>
+            <div class="form-field">
+              <label for="vehicle-no">Vehicle No. <span class="optional-label">(optional)</span></label>
+              <input id="vehicle-no" name="vehicle_no" type="text" placeholder="OD00AB0000" maxlength="20" />
+            </div>
+            <div class="form-field">
+              <label for="mobile">Mobile <span class="optional-label">(optional)</span></label>
+              <input id="mobile" name="mobile" type="tel" placeholder="9XXXXXXXXX" maxlength="15" />
+            </div>
+            <div class="form-field">
+              <label for="km-reading">KM <span class="optional-label">(optional)</span></label>
+              <input id="km-reading" name="km_reading" type="text" placeholder="KM reading" maxlength="20" />
+              <small class="muted">Printed on the cash memo with vehicle no. Round-off is applied automatically.</small>
+            </div>
+          </div>
+
+          <!-- Line Items -->
+          <div class="billing-items-section">
+            <div class="billing-items-header">
+              <h3>Items</h3>
+              <button type="button" id="add-item-btn" class="button-secondary button-sm">+ Add Item</button>
+            </div>
+            <div class="table-wrap billing-items-wrap">
+              <table class="billing-items-table" id="items-table">
+                <colgroup>
+                  <col class="col-sl" />
+                  <col class="col-item" />
+                  <col class="col-qty" />
+                  <col class="col-unit" />
+                  <col class="col-rate" />
+                  <col class="col-gst" />
+                  <col class="col-amount" />
+                  <col class="col-action" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="col-sl">#</th>
+                    <th class="col-item">Item Name</th>
+                    <th class="col-qty">Qty</th>
+                    <th class="col-unit">Unit</th>
+                    <th class="col-rate">Rate</th>
+                    <th class="col-gst">GST %</th>
+                    <th class="col-amount">Amount</th>
+                    <th class="col-action" aria-hidden="true"></th>
+                  </tr>
+                </thead>
+                <tbody id="items-body">
+                </tbody>
+                <tfoot>
+                  <tr class="billing-items-subtotal-row">
+                    <td colspan="6" class="billing-subtotal-label"><strong>Subtotal</strong></td>
+                    <td class="col-amount billing-subtotal-value" id="subtotal-display">₹0.00</td>
+                    <td class="col-action" aria-hidden="true"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Totals -->
+          <div class="billing-totals-grid">
+            <div class="form-field">
+              <label for="discount">Discount (₹)</label>
+              <input id="discount" name="discount" type="number" step="0.01" min="0" value="0" />
+            </div>
+            <div class="billing-summary">
+              <div class="billing-summary-row">
+                <span>Subtotal:</span><span id="summary-subtotal">₹0.00</span>
+              </div>
+              <div class="billing-summary-row">
+                <span>Discount:</span><span id="summary-discount">₹0.00</span>
+              </div>
+              <div class="billing-summary-row">
+                <span>Round Off:</span><span id="summary-roundoff">₹0.00</span>
+              </div>
+              <div class="billing-summary-row billing-summary-total">
+                <span>GROSS AMOUNT:</span><span id="summary-total">₹0.00</span>
+              </div>
+              <div class="billing-tax-breakdown">
+                <div class="billing-summary-row muted">
+                  <span>CGST:</span><span id="summary-cgst">₹0.00</span>
+                </div>
+                <div class="billing-summary-row muted">
+                  <span>SGST:</span><span id="summary-sgst">₹0.00</span>
+                </div>
+                <div class="billing-summary-row muted" id="row-non-gst" style="display:none">
+                  <span>Non-GST:</span><span id="summary-nongst">₹0.00</span>
+                </div>
+                <div class="billing-summary-row muted" id="row-nil-rate" style="display:none">
+                  <span>NIL Rate:</span><span id="summary-nilrate">₹0.00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="notes">Notes <span class="optional-label">(optional)</span></label>
+            <textarea id="notes" name="notes" rows="2" placeholder="Additional notes"></textarea>
+          </div>
+
+          <div class="billing-actions">
+            <button type="submit" id="save-invoice-btn">Save &amp; Print Invoice</button>
+            <button type="button" id="save-only-btn" class="button-secondary">Save Only</button>
+          </div>
+          <p id="invoice-success" class="success hidden"></p>
+          <p id="invoice-error" class="error hidden"></p>
+          <p class="muted no-print" data-role="admin-only">Manage billing products and defaults in <a href="settings.html#billing">Settings → Billing</a>.</p>
+        </form>
+        </section>
+
+        <section class="settings-panel card dashboard-card no-print" data-panel="history" hidden>
+        <div class="panel-head card-head snapshot-head">
+          <div>
+            <h2 class="dashboard-section-title">Invoice history</h2>
+            <p class="muted panel-lead">Browse and reprint saved invoices for the selected period.</p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field form-field-inline">
+              <label for="invoice-range">Period</label>
+              <select id="invoice-range">
+                <option value="today">Today</option>
+                <option value="this-week">This week</option>
+                <option value="this-month" selected>This month</option>
+                <option value="custom">Custom dates</option>
+              </select>
+            </div>
+            <div id="invoice-custom-range" class="custom-range hidden" aria-hidden="true">
+              <div class="form-field form-field-inline">
+                <label for="invoice-start">From</label>
+                <input type="date" id="invoice-start" />
+              </div>
+              <div class="form-field form-field-inline">
+                <label for="invoice-end">To</label>
+                <input type="date" id="invoice-end" />
+              </div>
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="invoice-apply-filter">Apply</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Inv #</th>
+                <th>Date</th>
+                <th>Party</th>
+                <th>Vehicle</th>
+                <th>Items</th>
+                <th>Amount</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="invoices-table-body">
+              <tr><td colspan="7" class="muted">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-controls">
+          <span id="invoices-pagination-info" class="muted"></span>
+          <button id="invoices-load-more" class="button-secondary hidden">Load more</button>
+        </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Print Invoice Template (hidden, shown only when printing) -->
+    <div id="print-invoice" class="print-invoice-container">
+      <div class="invoice-page">
+        <div class="invoice-sheet">
+          <header class="invoice-letterhead">
+            <div class="invoice-logo-wrap">
+              <img src="assets/logo-print.webp" alt="Bishnupriya Fuels" class="station-logo invoice-bpcl-logo" width="128" height="128" />
+            </div>
+            <div class="invoice-letterhead-body">
+              <h1 class="invoice-brand" id="print-station-brand">Bishnu Priya <span>Fuels</span></h1>
+              <p class="invoice-tagline" id="print-station-tagline">Authorized Dealer — Bharat Petroleum Corporation Ltd.</p>
+              <p class="invoice-address" id="print-station-address">Plot No. 1541, Khata No. 445/94, Mouza Padmanavpur, Taluka Balichandrapur</p>
+              <div class="invoice-contact-grid">
+                <span><em>Email</em> <span id="print-station-email">cmbfillingstation@gmail.com</span></span>
+                <span><em>Mobile</em> <span id="print-station-mobile">+91 96689 13299</span></span>
+                <span><em>GSTIN</em> <span id="print-station-gstin">21BBNPR7397L3ZR</span></span>
+                <span><em>License</em> <span id="print-station-license">P/EC/OR/14/2557 (P459205)</span></span>
+              </div>
+            </div>
+          </header>
+
+          <div class="invoice-title-bar">
+            <div class="invoice-title-left">
+              <span class="invoice-doc-type">Tax Invoice</span>
+              <span class="invoice-memo-type" id="print-invoice-type">Cash Memo</span>
+            </div>
+            <div class="invoice-title-right">
+              <div class="invoice-ref-block">
+                <span class="invoice-ref-label">Invoice No.</span>
+                <span class="invoice-ref-value" id="print-invoice-number"></span>
+              </div>
+              <div class="invoice-ref-block">
+                <span class="invoice-ref-label">Date</span>
+                <span class="invoice-ref-value" id="print-invoice-date"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="invoice-parties">
+            <section class="invoice-party-card">
+              <h2 class="invoice-section-title">Customer Details</h2>
+              <dl class="invoice-dl">
+                <div class="invoice-dl-row">
+                  <dt>Party Name</dt>
+                  <dd id="print-party-name"></dd>
+                </div>
+                <div class="invoice-dl-row">
+                  <dt>Address</dt>
+                  <dd id="print-party-address"></dd>
+                </div>
+                <div class="invoice-dl-row">
+                  <dt>GSTIN</dt>
+                  <dd id="print-party-gstin"></dd>
+                </div>
+              </dl>
+            </section>
+            <section class="invoice-party-card invoice-party-card--narrow">
+              <h2 class="invoice-section-title">Other Details</h2>
+              <dl class="invoice-dl">
+                <div class="invoice-dl-row">
+                  <dt>Vehicle No.</dt>
+                  <dd id="print-vehicle-no"></dd>
+                </div>
+                <div class="invoice-dl-row">
+                  <dt>Mobile</dt>
+                  <dd id="print-mobile"></dd>
+                </div>
+                <div class="invoice-dl-row">
+                  <dt>KM Reading</dt>
+                  <dd id="print-km"></dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+
+          <section class="invoice-items-section">
+            <h2 class="invoice-section-title invoice-section-title--inline">Line Items</h2>
+            <table class="invoice-items-print">
+              <colgroup>
+                <col class="col-sl" />
+                <col class="col-desc" />
+                <col class="col-qty" />
+                <col class="col-unit" />
+                <col class="col-rate" />
+                <col class="col-gst" />
+                <col class="col-amt" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Rate (₹)</th>
+                  <th>GST</th>
+                  <th>Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody id="print-items-body"></tbody>
+              <tfoot>
+                <tr class="invoice-items-tfoot">
+                  <td colspan="2" class="invoice-tfoot-label">Total Quantity</td>
+                  <td id="print-total-qty" class="invoice-tfoot-qty"></td>
+                  <td colspan="4"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </section>
+
+          <div class="invoice-settlement">
+            <section class="invoice-tax-panel">
+              <h2 class="invoice-section-title">Tax Summary</h2>
+              <table class="invoice-tax-table">
+                <thead>
+                  <tr>
+                    <th>Category</th>
+                    <th>Taxable / Goods (₹)</th>
+                    <th>Tax (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr id="print-nongst-row">
+                    <td>Non-GST</td>
+                    <td id="print-nongst-goods">—</td>
+                    <td>—</td>
+                  </tr>
+                  <tr id="print-nil-row">
+                    <td>Nil Rated</td>
+                    <td id="print-nil-goods">—</td>
+                    <td>—</td>
+                  </tr>
+                  <tr id="print-gst5-row" class="invoice-gst-row invoice-tax-hidden">
+                    <td>GST @ 5%</td>
+                    <td id="print-gst5-goods"></td>
+                    <td id="print-gst5-tax"></td>
+                  </tr>
+                  <tr id="print-gst12-row" class="invoice-gst-row invoice-tax-hidden">
+                    <td>GST @ 12%</td>
+                    <td id="print-gst12-goods"></td>
+                    <td id="print-gst12-tax"></td>
+                  </tr>
+                  <tr id="print-gst18-row" class="invoice-gst-row invoice-tax-hidden">
+                    <td>GST @ 18%</td>
+                    <td id="print-gst18-goods"></td>
+                    <td id="print-gst18-tax"></td>
+                  </tr>
+                  <tr id="print-gst24-row" class="invoice-gst-row invoice-tax-hidden">
+                    <td>GST @ 24%</td>
+                    <td id="print-gst24-goods"></td>
+                    <td id="print-gst24-tax"></td>
+                  </tr>
+                  <tr id="print-gst28-row" class="invoice-gst-row invoice-tax-hidden">
+                    <td>GST @ 28%</td>
+                    <td id="print-gst28-goods"></td>
+                    <td id="print-gst28-tax"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+
+            <section class="invoice-totals-panel">
+              <h2 class="invoice-section-title">Payment Summary</h2>
+              <table class="invoice-amount-table">
+                <tbody>
+                  <tr>
+                    <td>Subtotal</td>
+                    <td>₹ <span id="print-subtotal"></span></td>
+                  </tr>
+                  <tr id="print-discount-row">
+                    <td>Less Discount</td>
+                    <td>₹ <span id="print-discount"></span></td>
+                  </tr>
+                  <tr id="print-roundoff-row">
+                    <td>Round Off</td>
+                    <td>₹ <span id="print-roundoff"></span></td>
+                  </tr>
+                  <tr class="invoice-gross-row">
+                    <td>Total Payable</td>
+                    <td>₹ <span id="print-gross"></span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+
+          <footer class="invoice-footer">
+            <div class="invoice-footer-notes">
+              <p class="invoice-instructions-label"><strong>Instructions :</strong></p>
+              <p class="invoice-instructions-item">1. All disputes are subject to Jajpur jurisdiction.</p>
+              <p class="invoice-eoe">E. &amp; O.E.</p>
+              <p class="invoice-wish">Wish you a happy journey.</p>
+              <p class="invoice-thanks">Thank you. Visit again.</p>
+            </div>
+            <div class="invoice-footer-sign">
+              <p class="invoice-sign-for" id="print-sign-for">FOR BISHNU PRIYA FUELS</p>
+              <div class="invoice-sign-space" aria-hidden="true"></div>
+              <p class="invoice-sign-role">MANAGER</p>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer no-print">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

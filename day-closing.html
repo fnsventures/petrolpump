@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Day closing &amp; short · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=13" />
+    <link rel="stylesheet" href="css/app-day-closing.css?v=9" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=12" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/day-closing.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Day closing &amp; short</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Day closing sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="close">Close day</button>
+        <button type="button" class="settings-nav-item" data-section="register">Register</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card is-visible dashboard-card day-closing-card" data-panel="close">
+        <div class="panel-head dc-close-head">
+          <div>
+            <h2 class="dashboard-section-title">Day closing &amp; short</h2>
+              <p class="muted panel-lead dc-close-lead">Enter night cash and PhonePe/UPI totals, then save. The short shows how much is still unaccounted for.</p>
+          </div>
+          <div class="form-field dc-date-field">
+            <label for="day-closing-date">Date</label>
+            <input id="day-closing-date" name="date" type="date" form="day-closing-form" required />
+          </div>
+        </div>
+        <details class="dc-formula-guide">
+          <summary>How is today's short calculated?</summary>
+          <div class="dc-formula-visual" aria-hidden="true">
+            <span class="dc-formula-chip dc-formula-chip--in">Total sale</span>
+            <span class="dc-formula-op">+</span>
+            <span class="dc-formula-chip dc-formula-chip--in">Collection</span>
+            <span class="dc-formula-op">+</span>
+            <span class="dc-formula-chip dc-formula-chip--in">Short previous</span>
+            <span class="dc-formula-op dc-formula-op--minus">−</span>
+            <span class="dc-formula-chip dc-formula-chip--out">Night cash</span>
+            <span class="dc-formula-op">+</span>
+            <span class="dc-formula-chip dc-formula-chip--out">Phone pay</span>
+            <span class="dc-formula-op">+</span>
+            <span class="dc-formula-chip dc-formula-chip--out">Credit</span>
+            <span class="dc-formula-op">+</span>
+            <span class="dc-formula-chip dc-formula-chip--out">Expenses</span>
+            <span class="dc-formula-op">=</span>
+            <span class="dc-formula-chip dc-formula-chip--result">Today's short</span>
+          </div>
+        </details>
+        <p id="dc-no-activity-hint" class="dc-notice dc-notice--info hidden">No meter readings, collections, credit, or expenses recorded for this date.</p>
+        <div id="dc-shortage-alert" class="smart-alert smart-alert--warning hidden" role="alert">
+          <p id="dc-shortage-alert-message" class="smart-alert-message"></p>
+        </div>
+        <form id="day-closing-form" class="form day-closing-form" autocomplete="off">
+          <div class="day-closing-breakdown">
+            <dl class="dsr-summary-list dc-breakdown-list">
+              <div class="dc-formula-section dc-section-card dc-section-card--in">
+                <div class="dc-section-head">
+                  <p class="dc-formula-section-label">Money in</p>
+                  <span class="dc-amount-header muted">Amount (₹)</span>
+                </div>
+                <div class="dsr-summary-row dc-row--computed">
+                  <dt>Total sale</dt>
+                  <dd id="dc-total-sale">—</dd>
+                </div>
+                <div class="dc-breakdown-group" data-breakdown="collection">
+                  <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
+                    <dt>
+                      <span class="dc-breakdown-label">
+                        <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
+                          <span>Collection</span>
+                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                        </button>
+                        <span class="dc-breakdown-inline muted">Settlements · <a href="credit.html#settle">Record payment</a></span>
+                      </span>
+                    </dt>
+                    <dd id="dc-collection">—</dd>
+                  </div>
+                  <div id="dc-collection-details" class="dc-breakdown-details" hidden></div>
+                </div>
+                <div class="dsr-summary-row dc-row--computed">
+                  <dt>Short previous</dt>
+                  <dd id="dc-short-previous">—</dd>
+                </div>
+                <div class="dsr-summary-row dc-subtotal">
+                  <dt>Subtotal</dt>
+                  <dd id="dc-subtotal">—</dd>
+                </div>
+              </div>
+              <div class="dc-formula-section dc-section-card dc-section-card--out">
+                <div class="dc-section-head">
+                  <p class="dc-formula-section-label">Money out &amp; collections</p>
+                  <span class="dc-amount-header muted">Amount (₹)</span>
+                </div>
+                <div class="dsr-summary-row dc-manual-input-row dc-row--input">
+                  <dt>
+                    <span class="dc-row-label">Night cash <span class="dc-input-badge">Enter</span></span>
+                    <span class="dc-field-hint muted">Hard cash counted at close</span>
+                  </dt>
+                  <dd><input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" /></dd>
+                </div>
+                <div class="dsr-summary-row dc-manual-input-row dc-row--input">
+                  <dt>
+                    <span class="dc-row-label">Phone pay <span class="dc-input-badge">Enter</span></span>
+                    <span class="dc-field-hint muted">PhonePe / UPI received today</span>
+                  </dt>
+                  <dd><input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" /></dd>
+                </div>
+                <div class="dc-breakdown-group" data-breakdown="credit">
+                  <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
+                    <dt>
+                      <span class="dc-breakdown-label">
+                        <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
+                          <span>Credit today</span>
+                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                        </button>
+                        <span class="dc-breakdown-inline muted">Fuel on credit · <a href="credit.html#record">Record sale</a></span>
+                      </span>
+                    </dt>
+                    <dd id="dc-credit-today">—</dd>
+                  </div>
+                  <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
+                </div>
+                <div class="dc-breakdown-group" data-breakdown="expenses">
+                  <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
+                    <dt>
+                      <span class="dc-breakdown-label">
+                        <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
+                          <span>Expenses today</span>
+                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                        </button>
+                        <span class="dc-breakdown-inline muted">For this date · <a href="expenses.html">Add or edit</a></span>
+                      </span>
+                    </dt>
+                    <dd id="dc-expenses-today">—</dd>
+                  </div>
+                  <div id="dc-expenses-details" class="dc-breakdown-details" hidden></div>
+                </div>
+              </div>
+              <div class="dc-formula-section dc-formula-section--result">
+                <div class="dc-result-card" id="dc-result-card">
+                  <div class="dsr-summary-row dsr-summary-inhand dc-result-row">
+                    <dt>
+                      <span class="dc-result-title">Today's short</span>
+                      <span id="dc-short-status" class="dc-short-status muted" aria-live="polite"></span>
+                    </dt>
+                    <dd id="dc-short-today">—</dd>
+                  </div>
+                </div>
+              </div>
+            </dl>
+          </div>
+          <div class="form-field">
+            <label for="dc-remarks">Remarks (optional)</label>
+            <input id="dc-remarks" name="remarks" type="text" placeholder="e.g. Cash verified, bank deposit pending" maxlength="300" />
+          </div>
+          <p id="dc-reference-line" class="muted hidden"></p>
+          <div class="form-actions">
+            <button type="button" id="day-closing-refresh">Refresh</button>
+            <button type="button" id="day-closing-print" class="button-secondary">Print statement</button>
+            <button type="submit" id="day-closing-save">Save day closing</button>
+          </div>
+          <p id="day-closing-already-saved" class="muted hidden">Day closing already saved for this date.</p>
+          <p id="day-closing-success" class="success hidden">Day closing saved. Short computed and stored for next day.</p>
+          <p id="day-closing-error" class="error hidden" role="alert"></p>
+        </form>
+        </section>
+
+        <section class="settings-panel card dc-register-panel" data-panel="register" hidden>
+          <div class="card-head snapshot-head panel-head dc-register-intro">
+            <div>
+              <h2 class="dashboard-section-title">Register</h2>
+              <p class="muted panel-lead dc-register-lead">Review collections, expenses, and PhonePe/UPI totals by period. Record night cash pickups when cash is physically collected from the pump.</p>
+            </div>
+          </div>
+
+          <div class="dc-register-block dc-register-statements-block">
+            <div class="card-head snapshot-head dc-register-block-head">
+              <div>
+                <h3 class="dashboard-section-title">Day closing statements</h3>
+                <p id="dc-register-summary" class="muted">Select a date range and load.</p>
+              </div>
+              <div class="snapshot-controls">
+                <div class="form-field">
+                  <label for="dc-register-start">From</label>
+                  <input id="dc-register-start" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="dc-register-end">To</label>
+                  <input id="dc-register-end" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="dc-register-status">Night cash</label>
+                  <select id="dc-register-status" aria-label="Filter by night cash status">
+                    <option value="all">All</option>
+                    <option value="pending">At pump only</option>
+                    <option value="collected">Collected only</option>
+                  </select>
+                </div>
+                <div class="filter-actions">
+                  <button type="button" id="dc-register-load">Load</button>
+                  <button type="button" id="dc-register-print" class="button-secondary">Print register</button>
+                </div>
+              </div>
+            </div>
+            <div id="dc-register-period-stats" class="dc-register-period-stats hidden" aria-label="Period totals">
+              <div class="dc-stat-card dc-stat-card--phone">
+                <span class="dc-stat-label">Phone pay (UPI)</span>
+                <strong id="dc-period-phone-pay" class="dc-stat-value">—</strong>
+                <span class="dc-stat-meta muted">Digital collections</span>
+              </div>
+              <div class="dc-stat-card dc-stat-card--expenses">
+                <span class="dc-stat-label">Expenses</span>
+                <strong id="dc-period-expenses" class="dc-stat-value">—</strong>
+                <span class="dc-stat-meta muted">Operating costs</span>
+              </div>
+              <div class="dc-stat-card">
+                <span class="dc-stat-label">Credit collection</span>
+                <strong id="dc-period-collection" class="dc-stat-value">—</strong>
+                <span class="dc-stat-meta muted">Customer settlements</span>
+              </div>
+              <div class="dc-stat-card dc-stat-card--highlight">
+                <span class="dc-stat-label">Night cash</span>
+                <strong id="dc-period-night-cash" class="dc-stat-value">—</strong>
+                <span id="dc-period-night-cash-meta" class="dc-stat-meta muted">At pump &amp; collected</span>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="day-closing-register-table dc-register-closings-table">
+                <thead>
+                  <tr>
+                    <th class="col-sticky">Date</th>
+                    <th class="col-ref">Reference</th>
+                    <th class="col-amount col-key">Collection</th>
+                    <th class="col-amount col-key">Credit</th>
+                    <th class="col-amount col-key">Expenses</th>
+                    <th class="col-amount col-key">Night cash</th>
+                    <th class="col-amount col-key">Phone pay (UPI)</th>
+                    <th class="col-split-start col-amount col-secondary">Total sale</th>
+                    <th class="col-amount col-secondary">Short prev</th>
+                    <th class="col-amount col-secondary">Short</th>
+                    <th class="col-secondary">Status</th>
+                    <th class="col-secondary">Remarks</th>
+                    <th id="dc-register-actions-head" class="table-actions" hidden>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dc-register-body">
+                  <tr><td colspan="12" class="muted">Select date range and click Load.</td></tr>
+                </tbody>
+                <tfoot id="dc-register-foot" hidden></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div class="dc-register-block dc-register-night-cash">
+            <div class="dc-register-block-head dc-register-summary-head">
+              <div>
+                <h3 class="dashboard-section-title">Night cash collection</h3>
+                <p class="muted">Uncollected cash at the pump and recording pickups.</p>
+              </div>
+              <button type="button" id="dc-register-refresh-all" class="button-secondary dc-register-refresh">Refresh</button>
+            </div>
+
+          <div class="dc-register-stats" aria-label="Night cash summary">
+              <div class="dc-stat-card dc-stat-card--highlight">
+                <span class="dc-stat-label">Total uncollected</span>
+                <strong id="ncc-available-total" class="dc-stat-value">—</strong>
+              </div>
+              <div class="dc-stat-card">
+                <span class="dc-stat-label">Days waiting</span>
+                <strong id="ncc-available-days" class="dc-stat-value">—</strong>
+              </div>
+              <div class="dc-stat-card">
+                <span class="dc-stat-label">Earliest → latest</span>
+                <strong id="ncc-available-range" class="dc-stat-value dc-stat-value--text">—</strong>
+              </div>
+            </div>
+
+          <p class="muted dc-register-admin-note" data-role="supervisor-only">Night cash collection is recorded by an admin when cash is physically picked up from the pump. You can view totals and history below.</p>
+
+          <details class="dc-register-subblock dc-register-collect" id="dc-collect-details" open data-role="admin-only">
+            <summary class="dc-register-block-title">Collect night cash</summary>
+            <p class="muted dc-register-block-desc">Choose the dates you are physically collecting, preview the days and total, then record the pickup. Only saved closings with uncollected night cash in that range are included. After recording, supervisors cannot edit those days; admins still can.</p>
+            <form id="ncc-collect-form" class="form dc-collect-form" autocomplete="off">
+              <div class="dc-collect-step">
+                <p class="dc-collect-step-label">1. Select date range</p>
+                <div class="snapshot-controls dc-collect-controls">
+                  <div class="form-field form-field-inline">
+                    <label for="ncc-from-date">From</label>
+                    <input id="ncc-from-date" type="date" required />
+                  </div>
+                  <div class="form-field form-field-inline">
+                    <label for="ncc-to-date">To</label>
+                    <input id="ncc-to-date" type="date" required />
+                  </div>
+                  <div class="filter-actions dc-collect-actions">
+                    <button type="button" id="ncc-preview-btn" class="primary">Preview collection</button>
+                    <button type="button" id="ncc-fill-range-btn" class="button-secondary" title="Set dates to the earliest and latest uncollected day closings">Fill pending period</button>
+                  </div>
+                </div>
+                <p class="muted dc-collect-actions-hint">Use <strong>Fill pending period</strong> to auto-select all uncollected days, then preview before recording.</p>
+              </div>
+              <div id="ncc-preview-panel" class="dc-register-preview hidden" aria-live="polite">
+                <div class="dc-collect-step">
+                  <p class="dc-collect-step-label">2. Review collection</p>
+                  <div class="dc-register-preview-head">
+                    <div>
+                      <h4 class="dc-register-preview-title">Collection preview</h4>
+                      <p id="ncc-preview-range" class="muted dc-register-preview-range"></p>
+                    </div>
+                    <dl class="dc-register-preview-totals">
+                      <div>
+                        <dt>Days</dt>
+                        <dd id="ncc-preview-days">—</dd>
+                      </div>
+                      <div class="dc-register-preview-total">
+                        <dt>Total</dt>
+                        <dd id="ncc-preview-total">—</dd>
+                      </div>
+                    </dl>
+                  </div>
+                  <p id="ncc-preview-warnings" class="dc-register-notice hidden" role="status"></p>
+                  <div class="table-wrap dc-register-preview-table">
+                    <table class="day-closing-register-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Closing ref</th>
+                          <th class="col-amount">Night cash</th>
+                        </tr>
+                      </thead>
+                      <tbody id="ncc-preview-body"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div class="dc-collect-commit">
+                  <p class="dc-collect-step-label">3. Record pickup</p>
+                  <div class="dc-register-preview-actions form-actions">
+                    <button type="submit" id="ncc-collect-btn" class="primary" disabled data-role="admin-only">Record collection</button>
+                    <p class="muted dc-register-preview-hint">Confirm the days and total match the cash you have on hand.</p>
+                  </div>
+                  <div class="form-field dc-collect-remarks">
+                    <label for="ncc-remarks">Remarks <span class="dc-optional">(optional)</span></label>
+                    <input id="ncc-remarks" type="text" placeholder="e.g. Collected at pump, entered in cash register" maxlength="500" />
+                  </div>
+                </div>
+              </div>
+              <p id="ncc-collect-success" class="success hidden"></p>
+              <p id="ncc-collect-error" class="error hidden" role="alert"></p>
+            </form>
+          </details>
+
+          <div class="dc-register-subblock">
+            <div class="dc-register-block-head">
+              <h4 class="dc-register-subtitle">Collection history</h4>
+              <p class="muted">Past pickups. Cannot be edited or deleted from the app.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="day-closing-register-table ncc-register-table">
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th class="col-num">Days</th>
+                    <th class="col-amount">Amount</th>
+                    <th>Collected on</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody id="ncc-register-body">
+                  <tr><td colspan="7" class="muted">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>
