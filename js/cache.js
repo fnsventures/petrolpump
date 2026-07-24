@@ -21,6 +21,7 @@ const AppCache = (function () {
     credit_overview: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
     today_sales: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
     recent_activity: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
+    missing_buying_price: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
 
     // DSR summary data - moderate TTL
     dsr_summary: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 }, // 3 min, 15min stale
@@ -354,7 +355,7 @@ window.AppCache = AppCache;
 const CacheInvalidation = (function () {
   const SCOPES = {
     operational: ["dashboard_data", "recent_activity"],
-    dsr: ["dashboard_data", "today_sales", "dsr_summary", "profit_loss", "reports_data"],
+    dsr: ["dashboard_data", "today_sales", "dsr_summary", "profit_loss", "reports_data", "missing_buying_price"],
     credit: ["credit_summary", "credit_overview", "dashboard_data", "recent_activity"],
     reports: ["reports_data", "profit_loss", "dashboard_data"],
     staff: ["staff_list"],
@@ -368,6 +369,7 @@ const CacheInvalidation = (function () {
       "dsr_summary",
       "profit_loss",
       "reports_data",
+      "missing_buying_price",
     ],
   };
 

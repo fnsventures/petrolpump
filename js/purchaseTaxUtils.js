@@ -25,11 +25,6 @@ function isPurchaseTaxInclusive() {
   return AppConfig.DEFAULT_REPORTS.purchaseTaxInclusive === true;
 }
 
-/** True after one-time migration completed (skip re-running bulk conversion). */
-function isBuyingPriceStoredAsPreVat() {
-  return PumpSettings.getCachedSync().reports?.buyingPriceStoredAsPreVat === true;
-}
-
 /** Pre-VAT invoice entry + VAT/delivery applied in reports/P&L (default for BPCL). */
 function usesPreVatBuyingPriceModel() {
   return !isPurchaseTaxInclusive();
@@ -159,9 +154,9 @@ function getPurchaseGstSummaryNote() {
   const vatLabel = getPurchaseTaxPctLabel();
   if (usesPreVatBuyingPriceModel()) {
     const delivery = getPurchaseDeliveryPerKl().toLocaleString("en-IN");
-    return `Based on stock receipts (L) and pre-VAT buying price (${unit} on dashboard). VAT/LST: ${vatLabel}. ₹${delivery}/KL delivery included in gross. VAT is calculated on taxable value plus delivery.`;
+    return `Based on stock receipts (L) and pre-VAT buying price (${unit} on Meter Reading → Purchase cost). VAT/LST: ${vatLabel}. ₹${delivery}/KL delivery included in gross. VAT is calculated on taxable value plus delivery.`;
   }
-  return `Based on stock receipts (L) and tax-inclusive buying price (${unit} on dashboard). VAT/LST: ${vatLabel}.`;
+  return `Based on stock receipts (L) and tax-inclusive buying price (${unit} on Meter Reading → Purchase cost). VAT/LST: ${vatLabel}.`;
 }
 
 function getPurchaseGstDetailNote() {
@@ -216,7 +211,6 @@ Object.assign(window, {
   getPurchaseDeliveryPerKl,
   getPurchaseDeliveryPerLitre,
   isPurchaseTaxInclusive,
-  isBuyingPriceStoredAsPreVat,
   usesPreVatBuyingPriceModel,
   getPurchaseTaxPct,
   getPurchaseTaxPctLabel,

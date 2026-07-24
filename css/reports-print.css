@@ -156,6 +156,16 @@ body.report-print-body {
   white-space: nowrap;
 }
 
+.report-table-compact {
+  font-size: 7pt;
+}
+
+.report-table-compact th,
+.report-table-compact td {
+  font-size: 7pt;
+  padding: 2pt 2pt;
+}
+
 .report-total-row td {
   background: #f8fafc;
   font-weight: 600;

@@ -9,16 +9,16 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-dashboard.css?v=12" />
+    <link rel="stylesheet" href="css/app-core.css?v=14" />
+    <link rel="stylesheet" href="css/app-dashboard.css?v=16" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/purchaseTaxUtils.js?v=1"></script>
-    <script defer src="js/utils.js?v=10"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=3"></script>
+    <script defer src="js/utils.js?v=11"></script>
     <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
@@ -41,8 +41,11 @@
         <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="snapshot">Daily snapshot</button>
         <button type="button" class="settings-nav-item" data-section="dsr">DSR summary</button>
-        <button type="button" class="settings-nav-item" data-section="pl" data-role="admin-only">Profit &amp; loss</button>
-        <button type="button" class="settings-nav-item" data-section="notifications">Notifications</button>
+        <button type="button" class="settings-nav-item" data-section="pl" data-role="admin-only">Net profit</button>
+        <button type="button" class="settings-nav-item" data-section="notifications">
+          Notifications
+          <span id="notifications-nav-badge" class="notifications-nav-badge hidden" aria-hidden="true">0</span>
+        </button>
       </nav>
       <div class="settings-panels dashboard-primary">
         <header class="dashboard-primary-head no-print" aria-label="Welcome">
@@ -208,13 +211,13 @@
               <dd id="dsr-in-hand">—</dd>
             </div>
           </dl>
-          <p class="dashboard-muted-caption muted">Day closing view for a single day: sale ₹ includes testing litres; expenses include all categories; credit is the full amount given that day (not unsettled balance). Net cash is shown only for one-day ranges. For margin-based net profit, use the P&amp;L section.</p>
+          <p class="dashboard-muted-caption muted">Day closing view for a single day: sale ₹ includes testing litres; expenses include all categories; credit is the full amount given that day (not unsettled balance). Net cash is shown only for one-day ranges. For margin-based net profit, use Net profit (quick view) or Reports → P&amp;L.</p>
         </article>
       </section>
 
       <section id="pl" class="settings-panel card dashboard-card" data-panel="pl" data-role="admin-only" hidden>
         <div class="card-head dsr-card-head-inline">
-          <h2 class="dashboard-section-title">Profit &amp; Loss</h2>
+          <h2 class="dashboard-section-title">Net profit</h2>
           <form id="pl-filter-form" class="dsr-filter-inline" autocomplete="off">
             <div class="form-field form-field-inline">
               <label for="pl-range">Range</label>
@@ -242,65 +245,66 @@
         </div>
         <p id="pl-date-label" class="dashboard-muted-caption">Loading range…</p>
 
-        <p id="pl-buying-price-error" class="error hidden" role="alert"></p>
-        <p id="pl-buying-hint" class="dashboard-muted-caption muted"></p>
-        <div id="pl-buying-price-alert" class="pl-buying-price-alert hidden">
-          <p class="pl-alert-message">
-            Receipt days need a purchase rate to calculate profit. Enter pre-VAT ₹/KL below (per 1000 L, as on the BPCL invoice); optional invoice no and supplier GSTIN feed the purchase GST register. VAT/LST and delivery are applied in P&amp;L. Profit uses each rate until the next receipt day. Selling price uses rates from Meter Reading.
-          </p>
-          <ul id="pl-missing-buying-list" class="pl-missing-buying-list"></ul>
-        </div>
-
-        <div class="stat-grid">
+        <div class="stat-grid pl-net-profit-grid">
           <article class="stat-tile">
-            <h3>Fuel net sale (₹)</h3>
-            <p class="stat" id="pl-net-sale">&#8212;</p>
-          </article>
-          <article class="stat-tile">
-            <h3>Total expense (₹)</h3>
-            <p class="stat" id="pl-expense">&#8212;</p>
-          </article>
-          <article class="stat-tile">
-            <h3 id="pl-label">Profit / Loss</h3>
+            <h3 id="pl-label">Nett Profit</h3>
             <p class="stat" id="pl-value">&#8212;</p>
             <p id="pl-profit-hint" class="pl-profit-hint muted hidden"></p>
-            <small class="muted">Your real profit for the selected range (Nett Profit)</small>
+            <small class="muted">Quick glance for the selected range</small>
           </article>
         </div>
 
-        <div class="pl-income">
-          <span class="tab-box">Income</span>
-          <div class="stat-grid pl-income-grid">
-            <article class="stat-tile">
-              <h3>Income (₹)</h3>
-              <p class="stat" id="income-total">&#8212;</p>
-            </article>
-          </div>
-          <p id="income-note" class="muted"></p>
-        </div>
+        <p class="dashboard-muted-caption muted">
+          Buying prices are entered on
+          <a href="meter-reading.html#purchase-cost">Meter Reading → Purchase cost</a>.
+          Full breakdown:
+          <a href="analysis.html">Analysis</a>
+          ·
+          <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a>.
+        </p>
         <p id="pl-methodology-note" class="dashboard-muted-caption muted"></p>
       </section>
 
-        <section class="settings-panel card no-print" data-panel="notifications" hidden aria-label="Notifications and alerts">
-          <h2 class="dashboard-sidebar-title">Notifications</h2>
-          <div class="dashboard-sidebar-inner">
-            <p class="dashboard-notifications-hint muted">Fuel rates and dip stock for the snapshot date are in the At a glance panel.</p>
-            <div id="day-closing-block" class="day-closing-block hidden" aria-live="polite">
-              <div id="day-closing-banners"></div>
+        <section class="settings-panel card no-print notifications-panel" data-panel="notifications" hidden aria-label="Notifications and alerts">
+          <div class="notifications-panel-head">
+            <h2 class="dashboard-section-title">Notifications</h2>
+            <span id="notifications-count-badge" class="notifications-count-badge hidden" aria-live="polite">0 open</span>
+          </div>
+          <p class="notifications-panel-lead muted">Day closing, night cash, readings, credit aging, payroll, attendance, expenses, and invoice reminders.</p>
+
+          <div id="notifications-empty" class="notifications-empty">
+            <p class="notifications-empty-title">All clear</p>
+            <p class="notifications-empty-copy muted">No pending day closings, night cash, or alerts right now.</p>
+          </div>
+
+          <div id="notifications-feed" class="notifications-feed hidden" aria-live="polite">
+            <div id="day-closing-block" class="notif-group hidden">
+              <h3 class="notif-group-title">Day closing</h3>
+              <div id="day-closing-banners" class="notif-group-list"></div>
             </div>
-            <div class="dashboard-alerts dashboard-alerts-empty no-print" id="dashboard-alerts">
-              <div id="low-stock-alert" class="low-stock-alert hidden" role="alert">
-                <p class="low-stock-message" id="low-stock-message"></p>
-                <a href="meter-reading.html" id="low-stock-cta" class="low-stock-cta button-secondary">View Meter Reading</a>
+
+            <div class="dashboard-alerts dashboard-alerts-empty notif-group no-print" id="dashboard-alerts">
+              <h3 class="notif-group-title">Alerts</h3>
+              <div class="notif-group-list">
+                <article id="low-stock-alert" class="notif-item notif-item--danger hidden" role="alert">
+                  <div class="notif-item-body">
+                    <span class="notif-item-label">Low stock</span>
+                    <p class="notif-item-message" id="low-stock-message"></p>
+                  </div>
+                  <a href="meter-reading.html" id="low-stock-cta" class="button-secondary notif-item-cta">Meter reading</a>
+                </article>
+                <div id="smart-alerts-panel" class="smart-alerts-panel hidden" role="region" aria-label="Alerts and reminders"></div>
               </div>
-              <div id="smart-alerts-panel" class="smart-alerts-panel hidden" role="region" aria-label="Alerts and reminders"></div>
             </div>
-            <div id="pl-todo-banner" class="pl-todo-banner hidden" data-role="admin-only" aria-live="polite">
-              <p class="pl-todo-message">
-                <strong id="pl-todo-text">You have <span id="pl-todo-count">0</span> receipt day(s) without buying price.</strong>
-                Enter pre-VAT ₹/KL in P&amp;L below to calculate profit from each receipt day until the next receipt day.
-              </p>
-              <a href="#pl" id="pl-todo-goto" class="button-secondary pl-todo-goto">Go to P&L</a>
+
+            <div id="pl-todo-banner" class="notif-item notif-item--info pl-todo-banner hidden" data-role="admin-only" aria-live="polite">
+              <div class="notif-item-body">
+                <span class="notif-item-label">Purchase cost</span>
+                <p class="notif-item-message" id="pl-todo-text">
+                  <span id="pl-todo-count">0</span> receipt day(s) still need a buying price. Enter pre-VAT ₹/KL to unlock accurate profit.
+                </p>
+              </div>
+              <a href="meter-reading.html#purchase-cost" id="pl-todo-goto" class="button-secondary notif-item-cta pl-todo-goto">Enter cost</a>
             </div>
           </div>
         </section>

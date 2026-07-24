@@ -434,24 +434,55 @@ function bindShiftsForm(auth) {
   });
 }
 
-function bindAlertsForm(auth) {
-  const form = document.getElementById("alerts-form");
-  if (!form) return;
+function setCheckboxState(el, on) {
+  if (!el) return;
+  const checked = Boolean(on);
+  el.checked = checked;
+  el.defaultChecked = checked;
+}
+
+function applyAlertsFormValues() {
   const a = PumpSettings.getAlertThresholds();
   const petrolInput = document.getElementById("low-stock-petrol");
   const dieselInput = document.getElementById("low-stock-diesel");
   const highCreditInput = document.getElementById("alert-high-credit");
   const highVariationInput = document.getElementById("alert-high-variation");
   const dayClosingShortageInput = document.getElementById("alert-day-closing-shortage");
-  const shortageAlertCheck = document.getElementById("alert-shortage");
-  const dayClosingCheck = document.getElementById("alert-day-closing");
+  const nightCashMinInput = document.getElementById("alert-night-cash-min");
+  const staleCreditDaysInput = document.getElementById("alert-stale-credit-days");
+  const expenseRatioPctInput = document.getElementById("alert-expense-ratio-pct");
+  const missingInvoiceDaysInput = document.getElementById("alert-missing-invoice-days");
+
   if (petrolInput) petrolInput.value = a.petrol;
   if (dieselInput) dieselInput.value = a.diesel;
   if (highCreditInput) highCreditInput.value = a.highCredit || "";
+  const individualHighCreditInput = document.getElementById("alert-individual-high-credit");
+  if (individualHighCreditInput) individualHighCreditInput.value = a.individualHighCredit || "";
   if (highVariationInput) highVariationInput.value = a.highVariation || "";
   if (dayClosingShortageInput) dayClosingShortageInput.value = a.dayClosingShortage ?? 0;
-  if (shortageAlertCheck) shortageAlertCheck.checked = a.shortageAlert !== false;
-  if (dayClosingCheck) dayClosingCheck.checked = a.dayClosingReminder;
+  if (nightCashMinInput) nightCashMinInput.value = a.nightCashMinAmount ?? 0;
+  if (staleCreditDaysInput) staleCreditDaysInput.value = a.staleCreditDays ?? 30;
+  if (expenseRatioPctInput) expenseRatioPctInput.value = a.expenseRatioPct ?? 15;
+  if (missingInvoiceDaysInput) missingInvoiceDaysInput.value = a.missingInvoiceLookbackDays ?? 30;
+
+  setCheckboxState(document.getElementById("alert-shortage"), a.shortageAlert);
+  setCheckboxState(document.getElementById("alert-surplus"), a.surplusAlert);
+  setCheckboxState(document.getElementById("alert-night-cash"), a.nightCashAlert);
+  setCheckboxState(document.getElementById("alert-missing-meter"), a.missingMeterAlert);
+  setCheckboxState(document.getElementById("alert-missing-rate"), a.missingRateAlert);
+  setCheckboxState(document.getElementById("alert-missing-dip"), a.missingDipAlert);
+  setCheckboxState(document.getElementById("alert-stale-credit"), a.staleCreditAlert);
+  setCheckboxState(document.getElementById("alert-unpaid-salary"), a.unpaidSalaryAlert);
+  setCheckboxState(document.getElementById("alert-attendance"), a.attendanceAlert);
+  setCheckboxState(document.getElementById("alert-expense-ratio"), a.expenseRatioAlert);
+  setCheckboxState(document.getElementById("alert-missing-invoice"), a.missingInvoiceAlert);
+  setCheckboxState(document.getElementById("alert-day-closing"), a.dayClosingReminder);
+}
+
+function bindAlertsForm(auth) {
+  const form = document.getElementById("alerts-form");
+  if (!form) return;
+  applyAlertsFormValues();
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -463,26 +494,60 @@ function bindAlertsForm(auth) {
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       const curAlerts = PumpSettings.getCachedSync().alerts || {};
+      const d = AppConfig.DEFAULT_ALERTS;
+      const isOn = (id) => document.getElementById(id)?.checked === true;
       await PumpSettings.savePumpSettings({
         alerts: {
           lowStockPetrol: parseOptionalNumber(
-            petrolInput?.value,
-            curAlerts.lowStockPetrol ?? AppConfig.DEFAULT_ALERTS.lowStockPetrol
+            document.getElementById("low-stock-petrol")?.value,
+            curAlerts.lowStockPetrol ?? d.lowStockPetrol
           ),
           lowStockDiesel: parseOptionalNumber(
-            dieselInput?.value,
-            curAlerts.lowStockDiesel ?? AppConfig.DEFAULT_ALERTS.lowStockDiesel
+            document.getElementById("low-stock-diesel")?.value,
+            curAlerts.lowStockDiesel ?? d.lowStockDiesel
           ),
-          highCredit: parseOptionalNumber(highCreditInput?.value, curAlerts.highCredit ?? 0),
-          highVariation: parseOptionalNumber(highVariationInput?.value, curAlerts.highVariation ?? 0),
+          // Empty number fields mean "disabled / zero" for these thresholds (see form help text).
+          highCredit: parseOptionalNumber(document.getElementById("alert-high-credit")?.value, 0),
+          individualHighCredit: parseOptionalNumber(
+            document.getElementById("alert-individual-high-credit")?.value,
+            0
+          ),
+          highVariation: parseOptionalNumber(document.getElementById("alert-high-variation")?.value, 0),
           dayClosingShortage: parseOptionalNumber(
-            dayClosingShortageInput?.value,
-            curAlerts.dayClosingShortage ?? AppConfig.DEFAULT_ALERTS.dayClosingShortage
+            document.getElementById("alert-day-closing-shortage")?.value,
+            0
           ),
-          shortageAlert: shortageAlertCheck?.checked !== false,
-          dayClosingReminder: dayClosingCheck?.checked !== false,
+          shortageAlert: isOn("alert-shortage"),
+          surplusAlert: isOn("alert-surplus"),
+          nightCashAlert: isOn("alert-night-cash"),
+          nightCashMinAmount: parseOptionalNumber(
+            document.getElementById("alert-night-cash-min")?.value,
+            0
+          ),
+          missingMeterAlert: isOn("alert-missing-meter"),
+          missingRateAlert: isOn("alert-missing-rate"),
+          missingDipAlert: isOn("alert-missing-dip"),
+          staleCreditAlert: isOn("alert-stale-credit"),
+          staleCreditDays: parseOptionalNumber(
+            document.getElementById("alert-stale-credit-days")?.value,
+            curAlerts.staleCreditDays ?? d.staleCreditDays
+          ),
+          unpaidSalaryAlert: isOn("alert-unpaid-salary"),
+          attendanceAlert: isOn("alert-attendance"),
+          expenseRatioAlert: isOn("alert-expense-ratio"),
+          expenseRatioPct: parseOptionalNumber(
+            document.getElementById("alert-expense-ratio-pct")?.value,
+            curAlerts.expenseRatioPct ?? d.expenseRatioPct
+          ),
+          missingInvoiceAlert: isOn("alert-missing-invoice"),
+          missingInvoiceLookbackDays: parseOptionalNumber(
+            document.getElementById("alert-missing-invoice-days")?.value,
+            curAlerts.missingInvoiceLookbackDays ?? d.missingInvoiceLookbackDays
+          ),
+          dayClosingReminder: isOn("alert-day-closing"),
         },
       }, auth.session?.user?.id);
+      applyAlertsFormValues();
       successEl?.classList.remove("hidden");
     } catch (err) {
       AppError.handle(err, { target: errorEl });

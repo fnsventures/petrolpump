@@ -167,7 +167,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   if (attendanceDateInput) {
-    initPersistedDateInput(attendanceDateInput, RECORD_DATE_KEYS.attendance);
+    initPersistedDateInput(attendanceDateInput, RECORD_DATE_KEYS.attendance, { urlParam: "date" });
   }
   const now = new Date();
   if (historyMonthInput) {

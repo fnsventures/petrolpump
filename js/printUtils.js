@@ -132,6 +132,141 @@
     return joined || "document";
   }
 
+  function escPrint(text) {
+    return typeof escapeHtml === "function" ? escapeHtml(text) : String(text ?? "");
+  }
+
+  /**
+   * Shared BPCL report letterhead used by reports, credit, and day closing prints.
+   * @param {string} title
+   * @param {string[]} [subtitleLines] HTML-safe lines (already escaped where needed)
+   * @returns {string}
+   */
+  function buildReportLetterhead(title, subtitleLines) {
+    const gstin =
+      typeof PumpSettings !== "undefined" ? PumpSettings.getStationGstin?.() || "" : "";
+    const legal =
+      typeof PumpSettings !== "undefined" ? PumpSettings.getStationLegalName?.() || "" : "";
+    const tagline =
+      typeof PumpSettings !== "undefined" ? PumpSettings.getStationTagline?.() || "" : "";
+    const subtitles = (subtitleLines || [])
+      .filter(Boolean)
+      .map((line) => `<p class="report-subtitle">${line}</p>`)
+      .join("");
+    return `
+    <header class="report-print-head">
+      <div class="report-letterhead">
+        <img src="${getStationLogoPrintUrl()}" alt="Bishnupriya Fuels" class="station-logo report-bpcl-logo" width="128" height="128" />
+        <div class="report-letterhead-text">
+          <h1 class="report-station">${escPrint(legal)}</h1>
+          <p class="report-dealer">${escPrint(tagline)}</p>
+          ${gstin ? `<p class="report-gstin">GSTIN: ${escPrint(gstin)}</p>` : ""}
+          <p class="report-title">${escPrint(title)}</p>
+          ${subtitles}
+        </div>
+      </div>
+    </header>`;
+  }
+
+  /**
+   * Shared report print footer.
+   * @param {string} docTitle
+   * @param {string} [periodLabel]
+   * @returns {string}
+   */
+  function buildReportPrintFooter(docTitle, periodLabel) {
+    const legal =
+      typeof PumpSettings !== "undefined" ? PumpSettings.getStationLegalName?.() || "" : "";
+    return `
+    <footer class="report-print-foot">
+      <span>${escPrint(legal)}</span>
+      <span>${escPrint(docTitle)}${periodLabel ? ` · ${escPrint(periodLabel)}` : ""}</span>
+    </footer>`;
+  }
+
+  /**
+   * Wrap report body in the standard A4 print sheet.
+   * @param {string} title
+   * @param {string[]} subtitleLines
+   * @param {string} bodyHtml
+   * @param {string} [periodLabel]
+   * @returns {string}
+   */
+  function wrapReportPrintSheet(title, subtitleLines, bodyHtml, periodLabel) {
+    return `
+    <div class="report-print-sheet">
+      ${buildReportLetterhead(title, subtitleLines)}
+      ${bodyHtml}
+      ${buildReportPrintFooter(title, periodLabel)}
+    </div>`;
+  }
+
+  /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=7";
+
+  let reportPrintCssCache = null;
+  let reportPrintCssInflight = null;
+
+  /** Fallback when fetch() is blocked or fails (e.g. offline file quirks). */
+  function fetchReportPrintCssViaLink(url) {
+    return new Promise((resolve, reject) => {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = url;
+      const timeout = window.setTimeout(() => {
+        link.remove();
+        reject(new Error("Timed out loading print styles."));
+      }, 8000);
+      link.onload = () => {
+        window.clearTimeout(timeout);
+        let cssText = "";
+        try {
+          cssText = [...link.sheet.cssRules].map((r) => r.cssText).join("\n");
+        } catch {
+          link.remove();
+          reject(new Error("Could not read print styles."));
+          return;
+        }
+        link.remove();
+        reportPrintCssCache = cssText;
+        resolve(cssText);
+      };
+      link.onerror = () => {
+        window.clearTimeout(timeout);
+        link.remove();
+        reject(new Error("Could not load report print styles."));
+      };
+      document.head.appendChild(link);
+    });
+  }
+
+  /**
+   * Cached report print CSS text (shared by reports + day closing).
+   * @returns {Promise<string>}
+   */
+  async function getReportPrintCssText() {
+    if (reportPrintCssCache) return reportPrintCssCache;
+    if (reportPrintCssInflight) return reportPrintCssInflight;
+
+    const url = resolveAssetUrl(REPORT_PRINT_CSS_HREF);
+    reportPrintCssInflight = (async () => {
+      try {
+        const res = await fetch(url, { cache: "default" });
+        if (!res.ok) return fetchReportPrintCssViaLink(url);
+        reportPrintCssCache = await res.text();
+        return reportPrintCssCache;
+      } finally {
+        reportPrintCssInflight = null;
+      }
+    })();
+    return reportPrintCssInflight;
+  }
+
+  /** Warm the print CSS cache (fire-and-forget). */
+  function preloadReportPrintCss() {
+    getReportPrintCssText().catch(() => {});
+  }
+
   /**
    * Mobile browsers (esp. Chrome Android) ignore iframe print and print the top page.
    * Cached after first check — UA does not change mid-session.
@@ -477,12 +612,17 @@
     COMPACT_IFRAME_STYLE,
     DEFAULT_IFRAME_STYLE,
     PRINT_LOGO_IMAGE_SELECTORS,
+    REPORT_PRINT_CSS_HREF,
     applyPrintLogos,
     buildPrintDocumentHtml,
     buildPrintFilename,
+    buildReportLetterhead,
+    buildReportPrintFooter,
     escapeInlineCss,
+    getReportPrintCssText,
     getStationLogoPrintUrl,
     iframePrintUnreliable,
+    preloadReportPrintCss,
     printInIframe,
     resolveAssetUrl,
     sanitizeFilenamePart,
@@ -490,5 +630,6 @@
     waitForImages,
     waitForPaint,
     waitForPrintReady,
+    wrapReportPrintSheet,
   };
 })(typeof window !== "undefined" ? window : globalThis);
