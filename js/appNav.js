@@ -8,6 +8,7 @@
       label: "Operations",
       links: [
         { href: "dashboard.html", label: "Dashboard" },
+        { href: "reminders.html", label: "Tasks" },
         { href: "meter-reading.html", label: "Meter Reading" },
         { href: "dsr.html", label: "DSR" },
       ],

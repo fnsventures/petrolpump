@@ -427,6 +427,7 @@ const RECORD_DATE_KEYS = {
   attendance: "record_attendance_date",
   dsrPetrol: "record_dsr_petrol_date",
   dsrDiesel: "record_dsr_diesel_date",
+  reminder: "record_reminder_due_date",
 };
 
 /**

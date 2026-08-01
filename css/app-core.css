@@ -1460,8 +1460,10 @@ tr.is-editing .expense-cat-drag-handle {
 }
 
 .button-small {
-  padding: 0.35rem 0.65rem;
+  min-height: 2rem;
+  padding: 0 0.65rem;
   font-size: var(--text-xs);
+  line-height: 1.2;
 }
 
 .chip-filter {

@@ -126,6 +126,7 @@ js/
 ├── creditCustomer.js   # Customer detail view (lazy)
 ├── creditCustomerDetail.js # Shared customer credit helpers
 ├── expenses.js         # Expenses
+├── reminders.js        # Station tasks (dated reminders + undated todos)
 ├── day-closing.js      # Day closing
 ├── billing.js          # Sales invoices → save_invoice RPC
 ├── invoices.js         # Supplier invoice documents → edge function
@@ -146,7 +147,7 @@ Top navigation is grouped and role-aware (`js/auth.js` → `applyRoleVisibility(
 
 | Group | Pages | Supervisor | Admin |
 |-------|-------|------------|-------|
-| **Operations** | Dashboard, Meter Reading (`meter-reading.html`), DSR (`dsr.html`) | ✓ | ✓ |
+| **Operations** | Dashboard, Tasks (`reminders.html`), Meter Reading (`meter-reading.html`), DSR (`dsr.html`) | ✓ | ✓ |
 | **Finance** | Credit, Expenses, Day closing, Billing, Invoices | ✓ | ✓ |
 | **HR** | Attendance, Salary, **Staff** | Attendance + Salary only | ✓ (incl. Staff) |
 | **Admin** | Analysis, Reports, Settings | ✗ | ✓ |

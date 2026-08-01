@@ -823,13 +823,23 @@ body.modal-open {
   letter-spacing: 0;
 }
 
+.customer-balance-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.65rem;
+}
+
 .customer-balance-cta {
   display: inline-block;
-  margin-top: 0.65rem;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-primary);
   text-decoration: none;
+}
+
+.customer-balance-cta--secondary {
+  color: var(--text-muted);
 }
 
 .customer-balance-cta:hover {
