@@ -10,7 +10,7 @@
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-credit.css?v=10" />
+    <link rel="stylesheet" href="css/app-credit.css?v=11" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -22,7 +22,7 @@
     <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/credit.js?v=4"></script>
+    <script defer src="js/credit.js?v=6"></script>
   </head>
   <body class="credit-list-view">
     <header class="topbar" data-build-topbar>
@@ -391,11 +391,18 @@
             <div class="customer-balance-hero-amount" aria-live="polite">
               <span class="customer-balance-label">Outstanding</span>
               <strong id="stat-outstanding" class="customer-balance-value">—</strong>
-              <a
-                href="#settle"
-                id="customer-record-payment-cta"
-                class="customer-balance-cta hidden"
-              >Record payment</a>
+              <div class="customer-balance-cta-row">
+                <a
+                  href="#settle"
+                  id="customer-record-payment-cta"
+                  class="customer-balance-cta hidden"
+                >Record payment</a>
+                <a
+                  href="reminders.html#add"
+                  id="customer-set-reminder-cta"
+                  class="customer-balance-cta customer-balance-cta--secondary hidden"
+                >Schedule call</a>
+              </div>
             </div>
           </div>
         </section>

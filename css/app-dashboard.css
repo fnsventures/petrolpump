@@ -688,6 +688,30 @@
   display: none;
 }
 
+.notif-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.notif-group-head .notif-group-title {
+  margin: 0;
+}
+
+.notif-group-link {
+  font-size: var(--text-xs);
+  font-weight: 650;
+  color: var(--color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.notif-group-link:hover {
+  text-decoration: underline;
+}
+
 .notif-group-title {
   margin: 0 0 var(--space-2);
   font-size: var(--text-xs);
@@ -695,6 +719,425 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.notif-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Snapshot strip — always visible when due reminders exist */
+.snapshot-reminders-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-left: 4px solid #d97706;
+  background: linear-gradient(105deg, rgba(254, 243, 199, 0.75), var(--surface, #fff) 55%);
+}
+
+.snapshot-reminders-strip.is-urgent {
+  border-color: rgba(220, 38, 38, 0.35);
+  border-left-color: #dc2626;
+  background: linear-gradient(105deg, rgba(254, 226, 226, 0.7), var(--surface, #fff) 55%);
+}
+
+.snapshot-reminders-strip.hidden,
+.snapshot-reminders-strip[hidden] {
+  display: none;
+}
+
+.snapshot-reminders-strip-body {
+  min-width: 0;
+  flex: 1 1 14rem;
+}
+
+.snapshot-reminders-strip-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b45309;
+  margin-bottom: 0.15rem;
+}
+
+.snapshot-reminders-strip.is-urgent .snapshot-reminders-strip-label {
+  color: #b91c1c;
+}
+
+.snapshot-reminders-strip-message {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.snapshot-reminders-strip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+/* Landing popup on dashboard login */
+.reminders-landing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--space-4);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+
+.reminders-landing-overlay[aria-hidden="false"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.reminders-landing-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.reminders-landing-card {
+  position: relative;
+  z-index: 1;
+  width: min(32rem, 100%);
+  max-height: min(85vh, 40rem);
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+  padding: var(--space-4);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);
+  border: 1px solid var(--border);
+  border-top: 4px solid #d97706;
+  animation: reminders-landing-in 0.28s ease-out;
+}
+
+.reminders-landing-card.is-urgent {
+  border-top-color: #dc2626;
+}
+
+@keyframes reminders-landing-in {
+  from {
+    opacity: 0;
+    transform: translateY(1.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reminders-landing-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-shrink: 0;
+}
+
+.reminders-landing-eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
+.reminders-landing-card.is-urgent .reminders-landing-eyebrow {
+  color: #b91c1c;
+}
+
+.reminders-landing-title {
+  margin: 0 0 0.35rem;
+  font-size: var(--heading-lg, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.reminders-landing-lead {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.reminders-landing-close {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.reminders-landing-close:hover {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--text);
+}
+
+.reminders-landing-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  padding-right: 0.15rem;
+  margin-bottom: var(--space-3);
+}
+
+.reminders-landing-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  border-left: 3px solid #d97706;
+  background: var(--surface, #fff);
+}
+
+.reminders-landing-item.is-overdue,
+.reminders-landing-item.is-high {
+  border-left-color: #dc2626;
+  background: linear-gradient(90deg, rgba(254, 226, 226, 0.45), var(--surface, #fff) 50%);
+}
+
+.reminders-landing-item-title {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.reminders-landing-item-amount {
+  margin: 0 0 0.2rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #b91c1c;
+  letter-spacing: 0.01em;
+}
+
+.reminders-landing-item-meta {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.reminders-landing-item-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.reminders-landing-item-actions .button-secondary,
+.reminders-landing-item-actions .button-small {
+  width: 100%;
+}
+
+.reminders-landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.reminders-landing-dismiss {
+  min-width: 6.5rem;
+}
+
+.tasks-dash-group + .tasks-dash-group {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.tasks-dash-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tasks-more-expand {
+  margin-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+  padding-top: var(--space-2);
+}
+
+.tasks-more-expand > summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--bpcl-blue-dark, #1e3a8a);
+  list-style: none;
+  user-select: none;
+}
+
+.tasks-more-expand > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tasks-more-expand > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.tasks-more-expand[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.tasks-more-expand-open {
+  display: none;
+}
+
+.tasks-more-expand[open] .tasks-more-expand-closed {
+  display: none;
+}
+
+.tasks-more-expand[open] .tasks-more-expand-open {
+  display: inline;
+}
+
+.tasks-more-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tasks-more-footer {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.tasks-more-footer a {
+  font-weight: 650;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tasks-more-footer a:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tasks-more-expand > summary::before {
+    transition: none;
+  }
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .reminders-landing-overlay {
+    align-items: center;
+  }
+
+  .reminders-landing-card {
+    animation-name: reminders-landing-in-center;
+  }
+
+  @keyframes reminders-landing-in-center {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .reminders-landing-item-actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .reminders-landing-item-actions .button-secondary,
+  .reminders-landing-item-actions .button-small {
+    width: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .snapshot-reminders-strip {
+    align-items: stretch;
+  }
+
+  .snapshot-reminders-strip-actions {
+    width: 100%;
+  }
+
+  .snapshot-reminders-strip-actions .button-secondary {
+    flex: 1 1 auto;
+  }
+
+  .reminders-landing-item {
+    grid-template-columns: 1fr;
+  }
+
+  .reminders-landing-item-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .reminders-landing-item-actions .button-secondary,
+  .reminders-landing-item-actions .button-small {
+    width: auto;
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminders-landing-overlay,
+  .reminders-landing-card {
+    transition: none;
+    animation: none;
+  }
 }
 
 .notif-group-list {
@@ -776,6 +1219,13 @@
 .notif-item-cta {
   flex-shrink: 0;
   align-self: center;
+  white-space: nowrap;
+}
+
+.snapshot-reminders-strip-actions .button-secondary,
+.reminders-landing-item-actions .button-secondary,
+.reminders-landing-actions .button-secondary {
+  white-space: nowrap;
 }
 
 .notif-item-meta {

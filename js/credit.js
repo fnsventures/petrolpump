@@ -99,6 +99,22 @@ function applyCustomerBalanceHero(netBalance, prepaidBalance) {
   const payCta = document.getElementById("customer-record-payment-cta");
   if (payCta) payCta.classList.remove("hidden");
 
+  const reminderCta = document.getElementById("customer-set-reminder-cta");
+  if (reminderCta) {
+    const customerName = creditState.customerName || "";
+    const customerId = creditState.customerId || "";
+    const params = new URLSearchParams({
+      kind: "credit",
+      type: "credit_followup",
+      priority: "high",
+    });
+    if (customerName) params.set("name", customerName);
+    if (customerId) params.set("customer", customerId);
+    reminderCta.href = `reminders.html?${params.toString()}#add`;
+    reminderCta.textContent = "Schedule call";
+    reminderCta.classList.remove("hidden");
+  }
+
   const settleNav = document.querySelector("#credit-customer-nav .settings-nav-item[data-section='settle']");
   if (settleNav) {
     settleNav.classList.remove("hidden");

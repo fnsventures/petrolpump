@@ -29,6 +29,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [credit_customers](#credit_customers) | Credit ledger: customer master, amount_due, prepaid_balance |
 | [credit_entries](#credit_entries) | One row per credit sale (transaction date = DSR date) |
 | [credit_payments](#credit_payments) | Payments received from credit customers |
+| [reminders](#reminders) | Station tasks: dated reminders + undated todos |
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 | [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
 
@@ -60,6 +61,7 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **invoice_items:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — lines created only inside `save_invoice` RPC.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
+- **reminders:** SELECT/INSERT as default; UPDATE allowed for any provisioned staff (shared ops board); DELETE admin only.
 
 Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`.
 
@@ -481,6 +483,33 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 **Note:** Payment allocation to entries (FIFO) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Overpayment increases `prepaid_balance`.
+---
+
+## reminders
+
+**Purpose:** Station tasks — dated reminders and undated todos (credit follow-ups, calls, general work). Shared across admin and supervisor. Due/overdue items and high-priority undated todos surface on Dashboard (login popup + Daily Snapshot strip + Notifications).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| title | text | What needs doing (1–200 chars) |
+| notes | text | Optional detail |
+| due_date | date | Optional. Set = reminder; null = backlog todo |
+| priority | text | `low` \| `normal` \| `high` (high undated todos also alert on dashboard) |
+| reminder_type | text | `general` \| `todo` \| `credit_followup` \| `call` \| `payment` \| `other` |
+| status | text | `open` \| `done` \| `cancelled` |
+| credit_customer_id | uuid | Optional FK → credit_customers.id |
+| completed_at | timestamptz | Set when status = done |
+| completed_by | uuid | auth.users.id who completed |
+| created_by | uuid | auth.users.id |
+| created_at, updated_at | timestamptz | Timestamps |
+
+**RLS:** SELECT provisioned staff; INSERT own; UPDATE any provisioned staff; DELETE admin only.
+
+**UI:** `reminders.html` (Tasks: Credit collection + Todo) · Dashboard landing popup · Credit customer “Schedule call” (auto title `Call <name>`).
+
+Migration: `supabase/migrations/20260801120000_reminders.sql`.
+
 ---
 
 ## day_closing
