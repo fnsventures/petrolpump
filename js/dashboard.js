@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils */
 
 /**
  * Generate cache key for dashboard data queries
@@ -25,6 +25,7 @@ let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
 let dashboardRole = null;
+let dashboardUserId = null;
 
 const DAY_CLOSING_LOOKBACK_DAYS = 7;
 
@@ -512,6 +513,10 @@ function updateLowStockAlert(petrolStock, dieselStock) {
 
 function countVisibleNotificationItems() {
   let count = 0;
+  const reminders = document.getElementById("reminders-banners");
+  if (reminders) {
+    count += reminders.querySelectorAll(".notif-item").length;
+  }
   const dayClosing = document.getElementById("day-closing-banners");
   if (dayClosing) {
     count += dayClosing.querySelectorAll(".notif-item:not(.notif-item--success)").length;
@@ -537,6 +542,8 @@ function updateNotificationsPanelState() {
   const countBadge = document.getElementById("notifications-count-badge");
   const navBadge = document.getElementById("notifications-nav-badge");
 
+  const remindersBlock = document.getElementById("reminders-block");
+  const remindersHasItems = remindersBlock && !remindersBlock.classList.contains("hidden");
   const dayBlock = document.getElementById("day-closing-block");
   const dayHasItems = dayBlock && !dayBlock.classList.contains("hidden");
   const alerts = document.getElementById("dashboard-alerts");
@@ -544,7 +551,7 @@ function updateNotificationsPanelState() {
   const plTodo = document.getElementById("pl-todo-banner");
   const plVisible = plTodo && !plTodo.classList.contains("hidden");
 
-  const hasAny = Boolean(dayHasItems || alertsVisible || plVisible);
+  const hasAny = Boolean(remindersHasItems || dayHasItems || alertsVisible || plVisible);
   feed?.classList.toggle("hidden", !hasAny);
   empty?.classList.toggle("hidden", hasAny);
 
@@ -656,6 +663,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const { session, role } = auth;
   dashboardRole = role;
+  dashboardUserId = session?.user?.id || null;
   applyRoleVisibility(role);
 
   if (typeof initPageSections === "function") {
@@ -753,6 +761,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await Promise.all([
       updateSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
       loadDayClosingBanners(closingWindow),
+      loadRemindersBanners(),
       role === "admin" ? refreshMissingBuyingPriceUi() : Promise.resolve(),
     ]);
     updateDashboardAlertsVisibility();
@@ -1347,11 +1356,337 @@ async function updateSmartAlerts(options = {}) {
   updateDashboardAlertsVisibility();
 }
 
-/**
- * Load day closing status for today and past days; render one card per day.
- * Respects dayClosingReminder setting.
- * @param {{ data?: Array, error?: unknown, todayStr?: string }|null} [prefetched]
- */
+const REMINDERS_POPUP_SESSION_KEY = "bpf_reminders_landing_dismissed";
+const TASKS_PREVIEW_COUNT = 3;
+const TASKS_FETCH_LIMIT = 24;
+
+let dueRemindersCache = [];
+let remindersLandingBound = false;
+let remindersLandingEscapeHandler = null;
+
+function wasRemindersLandingDismissed() {
+  try {
+    return sessionStorage.getItem(REMINDERS_POPUP_SESSION_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function markRemindersLandingDismissed() {
+  try {
+    sessionStorage.setItem(REMINDERS_POPUP_SESSION_KEY, "1");
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function taskOutstandingLabel(row) {
+  if (!TaskUtils.isCreditTask(row)) return "";
+  const amountDue = TaskUtils.amountDueOf(row);
+  if (amountDue == null || amountDue <= 0) return "";
+  return `Outstanding ${formatCurrency(amountDue)}`;
+}
+
+function buildDashboardNotifTaskHtml(row, todayStr) {
+  const undated = !row.due_date;
+  const overdue = !undated && row.due_date < todayStr;
+  const isHigh = row.priority === "high";
+  const isCredit = TaskUtils.isCreditTask(row);
+  const type = overdue || isHigh ? "danger" : "warning";
+  const label = overdue
+    ? isCredit
+      ? "Credit call overdue"
+      : "Overdue"
+    : undated
+      ? "Urgent todo"
+      : isCredit
+        ? "Credit collection"
+        : isHigh
+          ? "High priority"
+          : "Due today";
+  const customerName = TaskUtils.customerNameOf(row);
+  const outstanding = taskOutstandingLabel(row);
+  const metaParts = [
+    outstanding || null,
+    undated ? "No date" : overdue ? formatDisplayDate(row.due_date) : "Due today",
+    customerName || null,
+  ].filter(Boolean);
+  const href = TaskUtils.customerHref(customerName);
+  return `<article class="notif-item notif-item--${type}" role="alert" data-reminder-id="${escapeHtml(row.id)}">
+    <div class="notif-item-body">
+      <span class="notif-item-label">${escapeHtml(label)}</span>
+      <p class="notif-item-message">${escapeHtml(row.title)}</p>
+      <span class="notif-item-meta">${escapeHtml(metaParts.join(" · "))}</span>
+    </div>
+    <div class="notif-item-actions">
+      <button type="button" class="button-secondary notif-item-cta reminder-done-btn" data-reminder-id="${escapeHtml(row.id)}">Done</button>
+      <a href="${escapeHtml(href)}" class="button-secondary notif-item-cta">${customerName ? "Account" : "Open"}</a>
+    </div>
+  </article>`;
+}
+
+function buildLandingTaskHtml(row, todayStr) {
+  const undated = !row.due_date;
+  const overdue = !undated && row.due_date < todayStr;
+  const isHigh = row.priority === "high";
+  const customerName = TaskUtils.customerNameOf(row);
+  const when = undated
+    ? "No date"
+    : overdue
+      ? `Overdue · ${formatDisplayDate(row.due_date)}`
+      : "Due today";
+  const outstanding = taskOutstandingLabel(row);
+  const href = TaskUtils.customerHref(customerName);
+  const itemClass = [
+    "reminders-landing-item",
+    overdue || isHigh || undated ? "is-overdue" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const amountHtml = outstanding
+    ? `<p class="reminders-landing-item-amount">${escapeHtml(outstanding)}</p>`
+    : "";
+
+  return `<article class="${itemClass}" data-reminder-id="${escapeHtml(row.id)}">
+    <div>
+      <h3 class="reminders-landing-item-title">${escapeHtml(row.title)}</h3>
+      ${amountHtml}
+      <p class="reminders-landing-item-meta">${escapeHtml([when, customerName || null].filter(Boolean).join(" · "))}</p>
+    </div>
+    <div class="reminders-landing-item-actions">
+      <button type="button" class="button-secondary button-small reminder-done-btn" data-reminder-id="${escapeHtml(row.id)}">Done</button>
+      <a href="${escapeHtml(href)}" class="button-secondary button-small">${customerName ? "Account" : "Open"}</a>
+    </div>
+  </article>`;
+}
+
+function renderTaskGroupHtml(rows, todayStr, builder) {
+  if (!rows.length) return "";
+  const preview = rows.slice(0, TASKS_PREVIEW_COUNT);
+  const more = rows.slice(TASKS_PREVIEW_COUNT);
+  return TaskUtils.wrapMoreCollapse(
+    preview.map((r) => builder(r, todayStr)).join(""),
+    more.map((r) => builder(r, todayStr)).join(""),
+    more.length,
+    { escapeHtml }
+  );
+}
+
+async function loadRemindersBanners() {
+  const todayStr = getLocalDateString();
+  const { data, error } = await supabaseClient
+    .from("reminders")
+    .select(
+      "id, title, notes, due_date, priority, reminder_type, credit_customer_id, credit_customers(customer_name, mobile, amount_due)"
+    )
+    .eq("status", "open")
+    .or(`due_date.lte.${todayStr},and(due_date.is.null,priority.eq.high)`)
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(TASKS_FETCH_LIMIT);
+
+  if (error) {
+    if (error.code !== "42P01" && error.code !== "PGRST205") {
+      AppError.report(error, { context: "loadRemindersBanners" });
+    }
+    dueRemindersCache = [];
+    renderRemindersNotifications([]);
+    renderSnapshotRemindersStrip([]);
+    closeRemindersLanding({ dismissSession: false });
+    updateNotificationsPanelState();
+    return;
+  }
+
+  dueRemindersCache = TaskUtils.sortTasks(data || [], todayStr);
+  renderRemindersNotifications(dueRemindersCache, todayStr);
+  renderSnapshotRemindersStrip(dueRemindersCache, todayStr);
+  maybeShowRemindersLanding(dueRemindersCache, todayStr);
+  updateNotificationsPanelState();
+}
+
+function renderRemindersNotifications(rows, todayStr = getLocalDateString()) {
+  const block = document.getElementById("reminders-block");
+  const container = document.getElementById("reminders-banners");
+  if (!block || !container) return;
+
+  if (!rows.length) {
+    block.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+
+  const { credit, todo } = TaskUtils.splitCreditTodo(rows);
+  const parts = [];
+  if (credit.length) {
+    parts.push(
+      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Credit collection</h4>${renderTaskGroupHtml(credit, todayStr, buildDashboardNotifTaskHtml)}</div>`
+    );
+  }
+  if (todo.length) {
+    parts.push(
+      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Todo</h4>${renderTaskGroupHtml(todo, todayStr, buildDashboardNotifTaskHtml)}</div>`
+    );
+  }
+  container.innerHTML = parts.join("");
+  block.classList.remove("hidden");
+  bindReminderDoneButtons(container);
+}
+
+function renderSnapshotRemindersStrip(rows, todayStr = getLocalDateString()) {
+  const strip = document.getElementById("snapshot-reminders-strip");
+  const messageEl = document.getElementById("snapshot-reminders-strip-message");
+  if (!strip) return;
+
+  if (!rows.length) {
+    strip.classList.add("hidden");
+    strip.hidden = true;
+    strip.classList.remove("is-urgent");
+    return;
+  }
+
+  const { credit, todo } = TaskUtils.splitCreditTodo(rows);
+  const parts = [];
+  if (credit.length) parts.push(`${credit.length} credit call${credit.length === 1 ? "" : "s"}`);
+  if (todo.length) parts.push(`${todo.length} todo${todo.length === 1 ? "" : "s"}`);
+  if (messageEl) {
+    const first = rows[0]?.title || "";
+    messageEl.textContent =
+      rows.length === 1 && first
+        ? `${parts.join(" · ")} · ${first}`
+        : `${parts.join(" · ")}${first ? ` · ${first}` : ""}${rows.length > 1 ? ` · +${rows.length - 1} more` : ""}`;
+  }
+
+  const urgent = rows.some((r) => (r.due_date && r.due_date < todayStr) || r.priority === "high");
+  strip.classList.toggle("is-urgent", urgent);
+  strip.classList.remove("hidden");
+  strip.hidden = false;
+
+  const reviewBtn = document.getElementById("snapshot-reminders-review-btn");
+  if (reviewBtn && !reviewBtn.dataset.bound) {
+    reviewBtn.dataset.bound = "1";
+    reviewBtn.addEventListener("click", () => {
+      openRemindersLanding(dueRemindersCache, getLocalDateString(), { force: true });
+    });
+  }
+}
+
+function maybeShowRemindersLanding(rows, todayStr) {
+  if (!rows.length) {
+    closeRemindersLanding({ dismissSession: false });
+    return;
+  }
+  if (wasRemindersLandingDismissed()) return;
+  openRemindersLanding(rows, todayStr, { force: false });
+}
+
+function openRemindersLanding(rows, todayStr = getLocalDateString(), { force = false } = {}) {
+  const overlay = document.getElementById("reminders-landing-overlay");
+  const card = overlay?.querySelector(".reminders-landing-card");
+  if (!overlay || !rows?.length) return;
+
+  renderRemindersLandingList(rows, todayStr);
+  bindRemindersLandingOnce();
+
+  const hasOverdue = rows.some((r) => r.due_date && r.due_date < todayStr);
+  card?.classList.toggle("is-urgent", hasOverdue || rows.some((r) => r.priority === "high"));
+
+  const titleEl = document.getElementById("reminders-landing-title");
+  if (titleEl) titleEl.textContent = hasOverdue ? "Tasks need attention" : "Today’s tasks";
+
+  if (!force && wasRemindersLandingDismissed()) return;
+
+  overlay.hidden = false;
+  overlay.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+  requestAnimationFrame(() => document.getElementById("reminders-landing-dismiss")?.focus());
+}
+
+function closeRemindersLanding({ dismissSession = true } = {}) {
+  const overlay = document.getElementById("reminders-landing-overlay");
+  if (!overlay) return;
+  overlay.setAttribute("aria-hidden", "true");
+  overlay.hidden = true;
+  document.body.classList.remove("modal-open");
+  if (dismissSession) markRemindersLandingDismissed();
+  if (remindersLandingEscapeHandler) {
+    document.removeEventListener("keydown", remindersLandingEscapeHandler);
+    remindersLandingEscapeHandler = null;
+  }
+}
+
+function renderRemindersLandingList(rows, todayStr = getLocalDateString()) {
+  const list = document.getElementById("reminders-landing-list");
+  if (!list) return;
+
+  const { credit, todo } = TaskUtils.splitCreditTodo(rows);
+  const parts = [];
+  if (credit.length) {
+    parts.push(
+      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Credit collection</h4>${renderTaskGroupHtml(credit, todayStr, buildLandingTaskHtml)}</div>`
+    );
+  }
+  if (todo.length) {
+    parts.push(
+      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Todo</h4>${renderTaskGroupHtml(todo, todayStr, buildLandingTaskHtml)}</div>`
+    );
+  }
+  list.innerHTML = parts.join("");
+  bindReminderDoneButtons(list);
+}
+
+function bindRemindersLandingOnce() {
+  if (remindersLandingBound) {
+    if (!remindersLandingEscapeHandler) {
+      remindersLandingEscapeHandler = (e) => {
+        if (e.key === "Escape") closeRemindersLanding({ dismissSession: true });
+      };
+      document.addEventListener("keydown", remindersLandingEscapeHandler);
+    }
+    return;
+  }
+  remindersLandingBound = true;
+
+  const close = () => closeRemindersLanding({ dismissSession: true });
+  document.getElementById("reminders-landing-close")?.addEventListener("click", close);
+  document.getElementById("reminders-landing-dismiss")?.addEventListener("click", close);
+  document.querySelector("[data-reminders-landing-close]")?.addEventListener("click", close);
+
+  remindersLandingEscapeHandler = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", remindersLandingEscapeHandler);
+}
+
+function bindReminderDoneButtons(container) {
+  if (!container || container.dataset.reminderDoneBound) return;
+  container.dataset.reminderDoneBound = "1";
+  container.addEventListener("click", async (e) => {
+    const btn = e.target.closest?.(".reminder-done-btn");
+    if (!btn) return;
+    e.preventDefault();
+    const id = btn.getAttribute("data-reminder-id");
+    if (!id) return;
+    btn.disabled = true;
+    const { error } = await supabaseClient
+      .from("reminders")
+      .update({
+        status: "done",
+        completed_at: new Date().toISOString(),
+        completed_by: dashboardUserId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("status", "open");
+    if (error) {
+      btn.disabled = false;
+      AppError.handle(error, { context: { source: "dashboardCompleteReminder" } });
+      return;
+    }
+    TaskUtils.notifyTasksUpdated();
+    await loadRemindersBanners();
+  });
+}
+
 async function loadDayClosingBanners(prefetched = null) {
   const block = document.getElementById("day-closing-block");
   const container = document.getElementById("day-closing-banners");
@@ -2102,12 +2437,17 @@ window.addEventListener("resize", () => {
   scheduleAutoFitStats();
 });
 
-// Listen for credit updates from other pages/tabs and refresh credit summary
+// Listen for credit / reminder updates from other pages/tabs
 window.addEventListener("storage", (e) => {
-  if (e.key !== "credit-updated") return;
-  const dateInput = document.getElementById("snapshot-date");
-  const date = dateInput?.value || getLocalDateString();
-  loadCreditSummary(date);
+  if (e.key === "credit-updated") {
+    const dateInput = document.getElementById("snapshot-date");
+    const date = dateInput?.value || getLocalDateString();
+    loadCreditSummary(date);
+    return;
+  }
+  if (e.key === "reminders-updated") {
+    void loadRemindersBanners();
+  }
 });
 
 // Refetch open credit + notification sources when user returns to the dashboard
@@ -2117,6 +2457,7 @@ function refreshDashboardOnVisible() {
   const date = dateInput.value || getLocalDateString();
   loadCreditSummary(date);
   void loadDayClosingBanners();
+  void loadRemindersBanners();
   if (dashboardRole === "admin") void refreshMissingBuyingPriceUi();
 }
 document.addEventListener("visibilitychange", () => {

@@ -974,37 +974,50 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   align-items: flex-end;
 }
 
+.button-secondary,
+.button-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  box-sizing: border-box;
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .button-secondary {
   background: #f1f5f9;
   color: #1e293b;
   border: 1px solid var(--border);
-  min-height: var(--input-height);
-  padding: 0 var(--space-3);
-  font-size: var(--text-base);
-  font-weight: 600;
 }
 
 .button-secondary:hover {
   background: #e2e8f0;
   color: #1e293b;
   border-color: var(--border-strong);
+  text-decoration: none;
 }
 
 .button-delete {
   background: var(--color-danger);
   color: #fff;
   border: 1px solid var(--color-danger);
-  min-height: var(--input-height);
-  padding: 0 var(--space-3);
-  font-size: var(--text-base);
-  font-weight: 600;
-  cursor: pointer;
 }
 
 .button-delete:hover {
   background: var(--color-danger-hover);
   border-color: var(--color-danger-hover);
   color: #fff;
+  text-decoration: none;
 }
 
 .button-delete:disabled {
@@ -1301,8 +1314,10 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   color: #059669;
 }
 
-.hidden {
-  display: none;
+/* !important so display:flex/grid utilities cannot override hide */
+.hidden,
+[hidden] {
+  display: none !important;
 }
 
 /* Admin-only nav/sections: hidden until role is known (prevents flash on load) */

@@ -44,7 +44,7 @@ User opens app (index.html / login.html)
 | `pageName` | Allowed roles |
 |------------|---------------|
 | `settings`, `staff`, `analysis`, `reports` | admin |
-| `dashboard`, `dsr`, `day-closing`, `expenses`, `credit`, `credit-overdue`, `sales-daily`, `attendance`, `salary`, `billing`, `invoices` | admin or supervisor |
+| `dashboard`, `dsr`, `day-closing`, `expenses`, `credit`, `credit-overdue`, `sales-daily`, `attendance`, `salary`, `billing`, `invoices`, `letterhead`, `reminders` | admin or supervisor |
 
 `meter-reading.html` uses page name `dsr` for `check_page_access`. Legacy page name `credit-overdue` remains for bookmark compatibility; the UI lives on `credit.html#outstanding`.
 
@@ -72,6 +72,8 @@ Open dashboard.html
         → Links to Analysis / Reports P&L and Meter Reading → Purchase cost
 
     notifications (all roles)
+        → Tasks due today / overdue + high-priority undated todos (Done + Manage)
+        → On login: landing popup for actionable tasks (once per session) + strip on Daily Snapshot
         → Day-closing reminder (if enabled in alerts)
         → Low stock MS/HSD vs pump_settings thresholds
         → Smart alerts (each toggleable in Settings → Alerts): total high credit,

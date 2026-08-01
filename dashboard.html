@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=14" />
-    <link rel="stylesheet" href="css/app-dashboard.css?v=16" />
+    <link rel="stylesheet" href="css/app-core.css?v=15" />
+    <link rel="stylesheet" href="css/app-dashboard.css?v=23" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -19,12 +19,13 @@
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=3"></script>
     <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/taskUtils.js?v=2"></script>
     <script defer src="js/dateRangeFilter.js?v=1"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/dashboard.js"></script>
+    <script defer src="js/dashboard.js?v=3"></script>
   </head>
   <body class="dashboard-page">
     <header class="topbar" data-build-topbar>
@@ -72,6 +73,26 @@
             </div>
           </div>
         </div>
+
+        <aside
+          id="snapshot-reminders-strip"
+          class="snapshot-reminders-strip hidden"
+          aria-live="polite"
+          hidden
+        >
+          <div class="snapshot-reminders-strip-body">
+            <span class="snapshot-reminders-strip-label">Tasks</span>
+            <p class="snapshot-reminders-strip-message" id="snapshot-reminders-strip-message">
+              You have tasks that need attention.
+            </p>
+          </div>
+          <div class="snapshot-reminders-strip-actions">
+            <button type="button" id="snapshot-reminders-review-btn" class="button-secondary button-small">
+              Review
+            </button>
+            <a href="reminders.html#credit" class="button-secondary button-small">Open tasks</a>
+          </div>
+        </aside>
 
         <div class="dashboard-snapshot-grid grid">
           <article class="card highlight-card clickable-card dashboard-metric-card dashboard-metric-card--sales">
@@ -270,14 +291,22 @@
             <h2 class="dashboard-section-title">Notifications</h2>
             <span id="notifications-count-badge" class="notifications-count-badge hidden" aria-live="polite">0 open</span>
           </div>
-          <p class="notifications-panel-lead muted">Day closing, night cash, readings, credit aging, payroll, attendance, expenses, and invoice reminders.</p>
+          <p class="notifications-panel-lead muted">Your reminders, day closing, night cash, readings, credit aging, payroll, attendance, expenses, and invoice alerts.</p>
 
           <div id="notifications-empty" class="notifications-empty">
             <p class="notifications-empty-title">All clear</p>
-            <p class="notifications-empty-copy muted">No pending day closings, night cash, or alerts right now.</p>
+            <p class="notifications-empty-copy muted">No pending reminders, day closings, night cash, or alerts right now.</p>
           </div>
 
           <div id="notifications-feed" class="notifications-feed hidden" aria-live="polite">
+            <div id="reminders-block" class="notif-group hidden">
+              <div class="notif-group-head">
+                <h3 class="notif-group-title">Tasks</h3>
+                <a href="reminders.html" class="notif-group-link">Manage</a>
+              </div>
+              <div id="reminders-banners" class="notif-group-list"></div>
+            </div>
+
             <div id="day-closing-block" class="notif-group hidden">
               <h3 class="notif-group-title">Day closing</h3>
               <div id="day-closing-banners" class="notif-group-list"></div>
@@ -419,6 +448,40 @@
         </div>
       </aside>
     </main>
+
+    <div
+      id="reminders-landing-overlay"
+      class="reminders-landing-overlay"
+      aria-hidden="true"
+      hidden
+    >
+      <div class="reminders-landing-backdrop" data-reminders-landing-close tabindex="-1" aria-hidden="true"></div>
+      <div
+        class="reminders-landing-card card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reminders-landing-title"
+        aria-describedby="reminders-landing-lead"
+      >
+        <header class="reminders-landing-head">
+          <div>
+            <p class="reminders-landing-eyebrow">Needs attention</p>
+            <h2 id="reminders-landing-title" class="reminders-landing-title">Today&rsquo;s tasks</h2>
+            <p id="reminders-landing-lead" class="muted reminders-landing-lead">
+              Due reminders and urgent todos — credit calls, collections, and other work before it slips.
+            </p>
+          </div>
+          <button type="button" id="reminders-landing-close" class="reminders-landing-close" aria-label="Dismiss tasks">
+            ×
+          </button>
+        </header>
+        <div id="reminders-landing-list" class="reminders-landing-list" aria-live="polite"></div>
+        <footer class="reminders-landing-actions">
+          <a href="reminders.html" class="button-secondary">All tasks</a>
+          <button type="button" id="reminders-landing-dismiss" class="reminders-landing-dismiss">Got it</button>
+        </footer>
+      </div>
+    </div>
 
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
