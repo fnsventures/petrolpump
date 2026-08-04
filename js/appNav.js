@@ -10,6 +10,7 @@
         { href: "dashboard.html", label: "Dashboard" },
         { href: "reminders.html", label: "Tasks" },
         { href: "meter-reading.html", label: "Meter Reading" },
+        { href: "e20-register.html", label: "E-20 testing" },
         { href: "dsr.html", label: "DSR" },
       ],
     },

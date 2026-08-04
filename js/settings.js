@@ -90,6 +90,8 @@ function bindStationForm(auth) {
   };
   set("st-display-name", s.displayName);
   set("st-legal-name", s.legalName);
+  set("st-retail-outlet", s.retailOutletName);
+  set("st-cc-code", s.ccCode);
   set("st-brand-short", s.brandShort);
   set("st-brand-accent", s.brandAccent);
   set("st-tagline", s.tagline);
@@ -115,6 +117,8 @@ function bindStationForm(auth) {
         station: {
           displayName: document.getElementById("st-display-name")?.value?.trim(),
           legalName: document.getElementById("st-legal-name")?.value?.trim(),
+          retailOutletName: document.getElementById("st-retail-outlet")?.value?.trim(),
+          ccCode: document.getElementById("st-cc-code")?.value?.trim(),
           brandShort: document.getElementById("st-brand-short")?.value?.trim(),
           brandAccent: document.getElementById("st-brand-accent")?.value?.trim(),
           tagline: document.getElementById("st-tagline")?.value?.trim(),
