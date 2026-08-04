@@ -1,0 +1,273 @@
+/* Daily E-20 Testing Register — screen layout */
+
+body.e20-register-page .e20-card,
+body.e20-register-page .e20-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+body.e20-register-page .page-layout-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: var(--space-4);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+body.e20-register-page .e20-head {
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+body.e20-register-page .e20-head-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+body.e20-register-page .e20-date-field {
+  margin: 0;
+  min-width: 10rem;
+}
+
+body.e20-register-page .e20-status {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+body.e20-register-page .e20-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+body.e20-register-page .e20-part {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+body.e20-register-page .e20-part-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+body.e20-register-page .e20-part-title {
+  margin: 0;
+  font-size: var(--heading-sm, 1.05rem);
+  font-weight: 600;
+  color: var(--text);
+}
+
+body.e20-register-page .button-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: var(--text-sm);
+}
+
+body.e20-register-page .table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+body.e20-register-page .e20-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+  font-size: var(--text-sm);
+}
+
+body.e20-register-page .e20-table th,
+body.e20-register-page .e20-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.4rem;
+  vertical-align: middle;
+  background: var(--surface);
+}
+
+body.e20-register-page .e20-table thead th {
+  background: #f1f5f9;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+body.e20-register-page .e20-table input,
+body.e20-register-page .e20-table select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-sm);
+  min-height: 2.1rem;
+  font-size: var(--text-sm);
+}
+
+body.e20-register-page .e20-table input[type="number"],
+body.e20-register-page .e20-table input[type="time"] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+body.e20-register-page .e20-table .e20-cell-check {
+  text-align: center;
+  width: 3.5rem;
+}
+
+body.e20-register-page .e20-table .e20-cell-check input {
+  width: auto;
+  min-height: auto;
+  margin: 0 auto;
+}
+
+body.e20-register-page .e20-table .e20-slot-no {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  width: 2.5rem;
+  color: var(--muted, #64748b);
+}
+
+body.e20-register-page .e20-table .e20-slot-time {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  width: 4.5rem;
+}
+
+body.e20-register-page .e20-col-actions {
+  width: 2.5rem;
+}
+
+body.e20-register-page .e20-row-remove {
+  border: 0;
+  background: transparent;
+  color: var(--muted, #64748b);
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  font-size: 1.1rem;
+}
+
+body.e20-register-page .e20-row-remove:hover {
+  color: #b91c1c;
+}
+
+body.e20-register-page .e20-cert {
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+body.e20-register-page .e20-cert-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text);
+  max-width: 48rem;
+}
+
+body.e20-register-page .e20-cert-grid {
+  align-items: end;
+}
+
+body.e20-register-page .e20-cert-check {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+
+body.e20-register-page .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+body.e20-register-page .e20-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+body.e20-register-page .e20-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+body.e20-register-page .e20-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+}
+
+body.e20-register-page .e20-history-row:hover {
+  border-color: #94a3b8;
+}
+
+body.e20-register-page .e20-history-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: var(--text-sm);
+}
+
+body.e20-register-page .e20-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+}
+
+body.e20-register-page .e20-badge--ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+body.e20-register-page .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  body.e20-register-page .e20-head-actions {
+    width: 100%;
+  }
+
+  body.e20-register-page .e20-date-field {
+    flex: 1;
+  }
+}

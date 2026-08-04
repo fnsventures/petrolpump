@@ -760,11 +760,13 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
+  overflow: visible;
 }
 
 .snapshot-head {
   align-items: flex-end;
   flex-wrap: wrap;
+  overflow: visible;
 }
 
 @media (max-width: 640px) {
@@ -805,6 +807,8 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2) var(--space-3);
+  position: relative;
+  overflow: visible;
 }
 
 .dsr-filter {
@@ -819,15 +823,181 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   margin: 0;
 }
 
+/*
+ * Custom dates: select + calendar edit in a fixed-width control
+ * so Apply/Print never shift when Custom is selected.
+ */
+:root {
+  --date-range-field-width: 15.5rem;
+}
+
+.date-range-control {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.date-range-control > select,
+.form-field-inline .date-range-control > select {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.filter-bar > .form-field:has(> select),
+.filter-bar > .form-field:has(> .date-range-control),
+.snapshot-controls > .form-field:has(> select),
+.snapshot-controls > .form-field:has(> .date-range-control),
+.dsr-filter > .form-field:has(> select),
+.dsr-filter > .form-field:has(> .date-range-control),
+.dsr-filter-inline > .form-field:has(> select),
+.dsr-filter-inline > .form-field:has(> .date-range-control),
+.filter-form > .form-field:has(> select),
+.filter-form > .form-field:has(> .date-range-control) {
+  flex: 0 0 var(--date-range-field-width);
+  width: var(--date-range-field-width);
+  min-width: min(var(--date-range-field-width), 100%);
+  max-width: 100%;
+}
+
+.date-range-edit {
+  flex: 0 0 var(--input-height);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--input-height);
+  min-height: var(--input-height);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--bpcl-blue-dark);
+  cursor: pointer;
+}
+
+.date-range-edit:hover,
+.date-range-edit[aria-expanded="true"] {
+  border-color: var(--bpcl-blue);
+  background: var(--bpcl-blue-soft);
+}
+
+.date-range-edit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.date-range-edit.hidden {
+  display: none;
+}
+
+.date-range-edit-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
 .custom-range {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  z-index: 60;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
   align-items: flex-end;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(24rem, calc(100vw - 1.5rem));
+  padding: var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
 }
 
 .custom-range.hidden {
   display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .custom-range:not(.hidden) {
+    animation: date-range-pop 0.14s ease-out;
+  }
+}
+
+@keyframes date-range-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.custom-range-heading {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.custom-range .form-field {
+  min-width: 9.5rem;
+  flex: 1 1 9.5rem;
+}
+
+.custom-range .form-field input[type="date"] {
+  min-width: 0;
+  width: 100%;
+}
+
+.custom-range-actions {
+  margin-left: auto;
+}
+
+.custom-range-done {
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bpcl-blue);
+  background: var(--bpcl-blue);
+  color: #fff;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.custom-range-done:hover {
+  background: var(--bpcl-blue-dark);
+  border-color: var(--bpcl-blue-dark);
+}
+
+.custom-range-done:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (max-width: 640px) {
+  .custom-range {
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+
+  .custom-range-actions,
+  .custom-range-done {
+    width: 100%;
+    margin-left: 0;
+  }
 }
 
 /* Standalone filter panel (analysis hero, reports, nested toolbars) */
