@@ -1,4 +1,4 @@
-/* global supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, setCustomRangeVisibility */
+/* global supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
 
 (function () {
   const page = () => window.CreditPage;
@@ -33,10 +33,13 @@ function applyCustomerPeriodFromUrl(params) {
     if (toInput) toInput.value = "";
   }
 
-  if (typeof setCustomRangeVisibility === "function") {
-    setCustomRangeVisibility(customRange, fromInput, toInput, period === "custom");
+  // Values only — createDateRangeFilter owns popover/chip visibility.
+  if (customRange) {
+    customRange.classList.add("hidden");
+    customRange.setAttribute("aria-hidden", "true");
   }
-  if (customRange) customRange.setAttribute("aria-hidden", period === "custom" ? "false" : "true");
+  if (fromInput) fromInput.disabled = false;
+  if (toInput) toInput.disabled = false;
 
   if (typeof setFilterState === "function") {
     setFilterState("credit_customer_period", {
@@ -174,6 +177,8 @@ function resetCustomerPeriodFilter() {
   if (typeof setFilterState === "function") {
     setFilterState("credit_customer_period", { range: "today" });
   }
+  // Force change sync so popover/edit UI resets even if value was already "today".
+  rangeSelect?.dispatchEvent(new Event("change", { bubbles: true }));
   customerPeriodFilterApi?.refresh?.();
 }
 

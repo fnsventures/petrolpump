@@ -28,6 +28,10 @@
   const DEFAULT_STATION = {
     displayName: "Bishnupriya Fuels",
     legalName: "BISHNU PRIYA FUELS",
+    /** BPCL retail outlet name on statutory registers (E-20, etc.). */
+    retailOutletName: "CMB Filling Station",
+    /** BPCL CC / SAP code printed on outlet registers. */
+    ccCode: "212951",
     brandShort: "Bishnu Priya",
     brandAccent: "Fuels",
     tagline: "Authorized Dealer — Bharat Petroleum Corporation Ltd.",

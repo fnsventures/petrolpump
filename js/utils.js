@@ -318,9 +318,13 @@ function resolveDateRange(selection, opts = {}) {
   const todayStr = toLocalDateString(today);
   const currentYear = today.getFullYear();
 
-  if (selection === "today" || selection === "date") {
+  if (selection === "today") {
+    // Never reuse custom From/To leftovers — those inputs are only for "custom".
+    return { start: todayStr, end: todayStr, modeInfo: { mode: "today" } };
+  }
+  if (selection === "date") {
     const d = singleDate || startInput?.value || todayStr;
-    return { start: d, end: d, modeInfo: { mode: selection } };
+    return { start: d, end: d, modeInfo: { mode: "date" } };
   }
   if (selection === "yesterday") {
     const d = getYesterdayDateString();
@@ -364,8 +368,9 @@ function setCustomRangeVisibility(container, startInput, endInput, isVisible) {
   if (!container) return;
   if (isVisible) container.classList.remove("hidden");
   else container.classList.add("hidden");
-  if (startInput) startInput.disabled = !isVisible;
-  if (endInput) endInput.disabled = !isVisible;
+  // Keep inputs enabled so range reads always see current values.
+  if (startInput) startInput.disabled = false;
+  if (endInput) endInput.disabled = false;
 }
 
 /**
@@ -428,6 +433,7 @@ const RECORD_DATE_KEYS = {
   dsrPetrol: "record_dsr_petrol_date",
   dsrDiesel: "record_dsr_diesel_date",
   reminder: "record_reminder_due_date",
+  e20Register: "record_e20_register_date",
 };
 
 /**

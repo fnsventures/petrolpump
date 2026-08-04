@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E-20 testing register · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=15" />
+    <link rel="stylesheet" href="css/app-e20-register.css?v=1" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/e20Register.js?v=3"></script>
+  </head>
+  <body class="e20-register-page">
+    <header class="topbar no-print" data-build-topbar>
+      <div class="brand">
+        <a href="dashboard.html">Bishnupriya Fuels</a>
+        <span class="page-subtitle">E-20 testing</span>
+      </div>
+      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
+    </header>
+
+    <main class="page-layout-wide no-print">
+      <section class="card dashboard-card e20-card">
+        <header class="panel-head e20-head">
+          <div>
+            <h1 class="dashboard-section-title">Daily E-20 Testing Register</h1>
+            <p class="muted panel-lead">
+              Morning tank water dip (Part A) and 2-hourly E-20 quality checks (Part B). Save, then print the sheet for the RO file.
+            </p>
+          </div>
+          <div class="e20-head-actions">
+            <div class="form-field e20-date-field">
+              <label for="e20-date">Date</label>
+              <input id="e20-date" name="date" type="date" form="e20-form" required />
+            </div>
+            <button type="button" id="e20-print-btn" class="button-secondary">Print</button>
+          </div>
+        </header>
+
+        <p id="e20-status" class="e20-status muted" aria-live="polite"></p>
+        <p id="e20-success" class="success hidden" role="status"></p>
+        <p id="e20-error" class="error hidden" role="alert"></p>
+
+        <form id="e20-form" class="form e20-form" autocomplete="off">
+          <div class="e20-meta form-grid">
+            <div class="form-field">
+              <label for="e20-outlet">Retail outlet name</label>
+              <input id="e20-outlet" name="retail_outlet_name" type="text" maxlength="200" required />
+            </div>
+            <div class="form-field">
+              <label for="e20-cc">CC code</label>
+              <input id="e20-cc" name="cc_code" type="text" maxlength="32" required />
+            </div>
+          </div>
+
+          <section class="e20-part" aria-labelledby="e20-part-a-title">
+            <div class="e20-part-head">
+              <h2 id="e20-part-a-title" class="e20-part-title">Part A — Morning water check through tank dip</h2>
+              <button type="button" id="e20-add-tank" class="button-secondary button-sm">Add tank</button>
+            </div>
+            <div class="table-scroll">
+              <table class="e20-table" id="e20-water-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Time</th>
+                    <th scope="col">Product tank no.</th>
+                    <th scope="col">Opening dip (mm)</th>
+                    <th scope="col">Water finding (mm)</th>
+                    <th scope="col">Water present</th>
+                    <th scope="col">Corrective action</th>
+                    <th scope="col">Tested by</th>
+                    <th scope="col">Mgr sign</th>
+                    <th scope="col" class="e20-col-actions"><span class="sr-only">Row</span></th>
+                  </tr>
+                </thead>
+                <tbody id="e20-water-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="e20-part" aria-labelledby="e20-part-b-title">
+            <h2 id="e20-part-b-title" class="e20-part-title">Part B — E-20 petrol quality monitoring (every 2 hours)</h2>
+            <div class="table-scroll">
+              <table class="e20-table e20-table--quality" id="e20-quality-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Sl.</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Visual appearance</th>
+                    <th scope="col">Water separation</th>
+                    <th scope="col">Action if abnormal</th>
+                    <th scope="col">Tested by</th>
+                    <th scope="col">Sign</th>
+                  </tr>
+                </thead>
+                <tbody id="e20-quality-body"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="e20-cert" aria-labelledby="e20-cert-title">
+            <h2 id="e20-cert-title" class="e20-part-title">Daily certification</h2>
+            <p class="e20-cert-text">
+              I certify that all mandatory E-20 quality checks were carried out as per prescribed guidelines
+              and no abnormality was observed, except those recorded above.
+            </p>
+            <div class="form-grid e20-cert-grid">
+              <div class="form-field e20-cert-check">
+                <label class="checkbox-label">
+                  <input id="e20-certified" name="certified" type="checkbox" />
+                  <span>Certified by RO dealer</span>
+                </label>
+              </div>
+              <div class="form-field">
+                <label for="e20-certified-at">Date &amp; time</label>
+                <input id="e20-certified-at" name="certified_at" type="datetime-local" />
+              </div>
+              <div class="form-field">
+                <label for="e20-dealer">RO dealer name / signature</label>
+                <input id="e20-dealer" name="dealer_sign_name" type="text" maxlength="120" list="e20-staff-list" />
+              </div>
+              <div class="form-field form-field-full">
+                <label for="e20-remarks">Remarks</label>
+                <textarea id="e20-remarks" name="remarks" rows="2" maxlength="2000" placeholder="Optional notes"></textarea>
+              </div>
+            </div>
+          </section>
+
+          <datalist id="e20-staff-list"></datalist>
+
+          <div class="form-actions e20-actions">
+            <button type="submit" id="e20-save-btn" class="button-primary">Save register</button>
+            <button type="button" id="e20-delete-btn" class="button-delete hidden" data-role="admin-only">Delete day</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card dashboard-card e20-history-card">
+        <header class="panel-head">
+          <div>
+            <h2 class="dashboard-section-title">Recent registers</h2>
+            <p class="muted panel-lead">Open a past day to edit or print.</p>
+          </div>
+        </header>
+        <div id="e20-history" class="e20-history" aria-live="polite">
+          <p class="muted">Loading…</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer no-print">
+      <p>Bishnupriya Fuels · E-20 testing register</p>
+    </footer>
+  </body>
+</html>
