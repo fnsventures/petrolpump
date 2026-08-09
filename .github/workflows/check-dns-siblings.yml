@@ -1,12 +1,13 @@
 name: Check DNS siblings
 
-# Detects broken sibling fnsventures.in Pages CNAMEs / env.js, and restores
-# missing CNAMEs via the GoDaddy API when GODADDY_* secrets are configured.
+# Sole scheduled DNS safety net for sibling *.fnsventures.in Pages hosts.
+# Canonical script + reusable job live in this repo; fns-cashline calls the
+# reusable workflow on demand only (no second cron).
 
 on:
   schedule:
-    # Daily 03:30 UTC (~09:00 IST)
-    - cron: "30 3 * * *"
+    # Hourly — catch registrar mistakes before the next shift, not next day
+    - cron: "20 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -15,19 +16,12 @@ concurrency:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   check:
     name: DNS + env.js (auto-fix)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install dig
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils
-
-      - name: Verify and restore sibling CNAMEs
-        env:
-          GODADDY_API_KEY: ${{ secrets.GODADDY_API_KEY }}
-          GODADDY_API_SECRET: ${{ secrets.GODADDY_API_SECRET }}
-        run: ./scripts/check-dns-siblings.sh --fix
+    uses: ./.github/workflows/reusable-check-dns-siblings.yml
+    secrets:
+      GODADDY_API_KEY: ${{ secrets.GODADDY_API_KEY }}
+      GODADDY_API_SECRET: ${{ secrets.GODADDY_API_SECRET }}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Verify (and optionally restore) sibling F&S Ventures GitHub Pages hostnames.
+# Canonical DNS sibling check for F&S Ventures GitHub Pages hosts.
+# (fns-cashline/scripts/check-dns-siblings.sh wraps this file from main.)
 #
 # Usage:
 #   ./scripts/check-dns-siblings.sh           # check only
@@ -9,12 +10,18 @@
 #   GODADDY_API_KEY
 #   GODADDY_API_SECRET
 # Create at https://developer.godaddy.com/keys (Production, for domain fnsventures.in).
+#
+# GitHub Actions: writes fixed_count / check_failed to GITHUB_OUTPUT and a job summary.
 set -euo pipefail
 
 DNS_ZONE="fnsventures.in"
 EXPECTED_TARGET="fnsventures.github.io"
 EXPECTED_CNAME="${EXPECTED_TARGET}."
 TTL=600
+
+# Negative-cache / registrar publish can take several minutes after a restore.
+DNS_WAIT_ATTEMPTS="${DNS_WAIT_ATTEMPTS:-24}"
+DNS_WAIT_SECONDS="${DNS_WAIT_SECONDS:-30}"
 
 # Fully-qualified host → must CNAME to EXPECTED_CNAME
 SITES=(
@@ -27,7 +34,7 @@ for arg in "$@"; do
   case "$arg" in
     --fix) DO_FIX=1 ;;
     -h|--help)
-      sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -201,7 +208,7 @@ fix_dns() {
 
   if ! have_godaddy_creds; then
     echo "FAIL  fix  GODADDY_API_KEY / GODADDY_API_SECRET not set."
-    echo "      Add them as GitHub Actions secrets (both sibling repos), or export locally."
+    echo "      Add them as GitHub Actions secrets on petrolpump (scheduled job), or export locally."
     echo "      Keys: https://developer.godaddy.com/keys"
     return 1
   fi
@@ -219,11 +226,12 @@ fix_dns() {
     return 0
   fi
 
+  local max_wait=$((DNS_WAIT_ATTEMPTS * DNS_WAIT_SECONDS))
   echo
-  echo "Waiting for DNS to publish (up to ~3 minutes)…"
+  echo "Waiting for DNS to publish (up to ~$((max_wait / 60)) minutes; negative cache can linger)…"
   local attempt
   local pending
-  for attempt in $(seq 1 12); do
+  for attempt in $(seq 1 "$DNS_WAIT_ATTEMPTS"); do
     pending=0
     for host in "${SITES[@]}"; do
       if ! dns_ok "$host"; then
@@ -231,14 +239,53 @@ fix_dns() {
       fi
     done
     if [[ "$pending" -eq 0 ]]; then
-      echo "OK    DNS  all sibling CNAMEs visible (attempt ${attempt})"
+      echo "OK    DNS  all sibling CNAMEs visible (attempt ${attempt}/${DNS_WAIT_ATTEMPTS})"
       return 0
     fi
-    sleep 15
+    sleep "$DNS_WAIT_SECONDS"
   done
 
-  echo "WARN  DNS  still not fully visible after wait — recheck may fail until TTL/negative cache expires"
+  echo "WARN  DNS  still not fully visible after ~${max_wait}s — recheck may fail until TTL/negative cache expires"
   return 0
+}
+
+write_ci_outputs() {
+  local check_failed="$1"
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    {
+      echo "fixed_count=${fixed}"
+      echo "check_failed=${check_failed}"
+    } >> "$GITHUB_OUTPUT"
+  fi
+
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    local mode="check-only"
+    [[ "$DO_FIX" -eq 1 ]] && mode="fix"
+    {
+      echo "## DNS sibling check"
+      echo
+      echo "| Metric | Value |"
+      echo "|--------|-------|"
+      echo "| Fixed CNAMEs | ${fixed} |"
+      echo "| Check failed | ${check_failed} |"
+      echo "| Mode | ${mode} |"
+      echo
+      if [[ "$fixed" -gt 0 ]]; then
+        echo "### Auto-fix applied"
+        echo
+        echo "Restored **${fixed}** sibling CNAME record(s) to \`${EXPECTED_TARGET}\`."
+        echo
+        echo "Hosts:"
+        for host in "${SITES[@]}"; do
+          echo "- \`${host}\`"
+        done
+      fi
+    } >> "$GITHUB_STEP_SUMMARY"
+  fi
+
+  if [[ "$fixed" -gt 0 ]]; then
+    echo "::notice title=DNS auto-fix::Restored ${fixed} sibling CNAME record(s) to ${EXPECTED_TARGET}"
+  fi
 }
 
 echo "Rule: add new CNAMEs; never edit/remove sibling rows for other apps."
@@ -249,6 +296,7 @@ run_checks
 
 if [[ "$fail" -eq 0 ]]; then
   echo "All sibling sites OK."
+  write_ci_outputs 0
   exit 0
 fi
 
@@ -256,6 +304,7 @@ if [[ "$DO_FIX" -ne 1 ]]; then
   echo "DNS sibling check failed."
   echo "Re-run with --fix to restore CNAMEs via GoDaddy (needs API secrets),"
   echo "or fix manually at the registrar. See docs/OPERATIONS.md § DNS safety net."
+  write_ci_outputs 1
   exit 1
 fi
 
@@ -271,6 +320,7 @@ if [[ "$fail" -ne 0 ]]; then
   echo "If DNS is OK but env.js fails: redeploy that app (Actions → Deploy → prod)."
   echo "If DNS still fails: confirm GoDaddy API key can edit ${DNS_ZONE}, nameservers are GoDaddy,"
   echo "and wait for negative-cache TTL, then re-run."
+  write_ci_outputs 1
   exit 1
 fi
 
@@ -279,3 +329,4 @@ if [[ "$fixed" -gt 0 ]]; then
 else
   echo "All sibling sites OK."
 fi
+write_ci_outputs 0
