@@ -53,7 +53,7 @@ That is enough for sync + deploy + release. Backup needs extra secrets (see [§4
 
 ### DNS safety net (`fnsventures.in`)
 
-Several apps share the same DNS zone. **Adding a new subdomain must never remove another app’s CNAME.** A missing host looks like “Application configuration is missing” because cached HTML can still load while `/js/env.js` (never cached) fails.
+Several apps share the same DNS zone. **Adding a new subdomain must never remove another app’s CNAME.** A missing host can look like a config error because cached HTML may still load while `/js/env.js` (never cached) fails. The UI now distinguishes **unreachable config (DNS/network)** from a truly missing/invalid `env.js`.
 
 | Host (CNAME) | Target | App / repo |
 |--------------|--------|------------|
@@ -66,7 +66,7 @@ Several apps share the same DNS zone. **Adding a new subdomain must never remove
 - [ ] Domain change / security **alerts** enabled for the account email
 - [ ] Before editing DNS: screenshot or export the DNS table
 - [ ] After editing: **add** a new row only — do not overwrite sibling hosts
-- [ ] **API auto-fix secrets** (once): create a Production key at [developer.godaddy.com/keys](https://developer.godaddy.com/keys), then add repo secrets on **both** `petrolpump` and `fns-cashline`:
+- [ ] **API auto-fix secrets** (once): create a Production key at [developer.godaddy.com/keys](https://developer.godaddy.com/keys), then add **repository secrets** on `petrolpump` (required for the hourly job). Optional on `fns-cashline` for manual runs:
   - `GODADDY_API_KEY`
   - `GODADDY_API_SECRET`
 
@@ -82,11 +82,13 @@ Or open each URL and confirm a real config (not placeholders):
 - `https://bishnupriyafuels.fnsventures.in/js/env.js`
 - `https://fnscashline.fnsventures.in/js/env.js`
 
-**Automated:** GitHub Action **Check DNS siblings** runs daily (and on demand) with `--fix`. If a sibling CNAME is missing or points elsewhere, it **rewrites that host** to `fnsventures.github.io` via the GoDaddy API, waits for publish, and rechecks. Without the `GODADDY_*` secrets, it still checks and fails (no silent skip of a broken zone).
+**Automated (single schedule):** This repo’s **Check DNS siblings** Action runs **hourly** (+ manual) and calls the shared reusable workflow / canonical `scripts/check-dns-siblings.sh`. `fns-cashline` has **manual only** (no second cron) and reuses the same workflow from this repo.
+
+If a CNAME is missing or wrong, the job **rewrites** it to `fnsventures.github.io` via GoDaddy, waits up to ~12 minutes for publish/negative cache, rechecks, writes a job summary, and **opens a GitHub issue** when it actually restored records. Without `GODADDY_*` secrets it still checks and fails.
 
 Auto-fix covers **DNS only**. If `/js/env.js` is wrong after DNS is healthy, redeploy that app (Actions → **Deploy** → `prod`) so CI regenerates `env.js`.
 
-When you add a new `*.fnsventures.in` Pages app, append its host to `scripts/check-dns-siblings.sh` in **both** sibling repos (and document it in that app’s OPERATIONS.md).
+When you add a new `*.fnsventures.in` Pages app, append its host to **this** repo’s `scripts/check-dns-siblings.sh` only (cashline wraps that file) and document it in OPERATIONS.md.
 
 ---
 
@@ -282,7 +284,8 @@ export GOOGLE_DRIVE_BACKUP_FOLDER_ID="..."
 | Live site unchanged after merge | Wait for Actions **Deploy**; hard-refresh (service worker) |
 | Drive backup: `unauthorized_client` | Regenerate matching OAuth trio; update GitHub **prod** secrets |
 | Login works but empty pages | User missing from `public.users` |
-| Banner: config missing / copy `env.example.js` | Often DNS. Run `./scripts/check-dns-siblings.sh --fix` (or wait for the daily Action). Hard-refresh after DNS recovers (SW caches HTML but not `env.js`). If DNS OK but env still bad → Redeploy prod |
+| Banner: cannot reach `js/env.js` / DNS | Restore CNAME → `fnsventures.github.io` (`./scripts/check-dns-siblings.sh --fix` or wait for hourly Action). Hard-refresh after DNS recovers |
+| Banner: config missing / copy `env.example.js` | Real missing/invalid env. Local: copy `env.example.js`. Prod: Redeploy so CI regenerates `env.js` |
 
 ---
 
