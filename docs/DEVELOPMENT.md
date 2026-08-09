@@ -12,8 +12,9 @@ For project structure, see [Architecture](ARCHITECTURE.md).
 
 ### 1.1 Prerequisites
 
+- **Node.js 22** (see repo `.nvmrc`; matches CI).
 - A Supabase project (create one at [supabase.com](https://supabase.com)).
-- A local HTTP server (e.g. Python 3 or Node) to serve static files and avoid CORS issues.
+- A local HTTP server (e.g. `npm run dev`) to serve static files and avoid CORS issues.
 
 ### 1.2 Configure Supabase credentials
 
@@ -242,7 +243,11 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 
 | Document | Description |
 |----------|-------------|
+| [Onboarding](ONBOARDING.md) | Day-1 checklist — maintain without Cursor |
 | [Operations playbook](OPERATIONS.md) | Sync, deploy, release, backup — start here |
+| [Secrets](SECRETS.md) | Credential inventory and rotation |
+| [Troubleshooting](TROUBLESHOOTING.md) | Common failures |
+| [Migrations](MIGRATIONS.md) | Author and apply schema changes |
 | [Documentation hub](README.md) | Index of all guides |
 | [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security |
 | [Data Tables](DATA_TABLES.md) | Database tables and RLS |
