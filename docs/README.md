@@ -8,8 +8,12 @@ Guides for **Bishnupriya Fuels**.
 
 | Your goal | Open this |
 |-----------|-----------|
+| **New laptop / no Cursor — day-1 checklist** | **[ONBOARDING.md](ONBOARDING.md)** |
 | **Sync / deploy / release / backup** | **[OPERATIONS.md](OPERATIONS.md)** |
-| See animated flows (architecture, sync, backup) | [../README.md](../README.md#visual-tour) |
+| Where secrets live / how to rotate | [SECRETS.md](SECRETS.md) |
+| Something is broken | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| Add or apply DB migrations | [MIGRATIONS.md](MIGRATIONS.md) |
+| See diagrams (architecture, sync, backup) | [../README.md](../README.md#1-architecture) |
 | Run on your laptop | [DEVELOPMENT.md](DEVELOPMENT.md) |
 | Understand the system | [ARCHITECTURE.md](ARCHITECTURE.md) · [FLOWS.md](FLOWS.md) |
 | Change database tables | [DATA_TABLES.md](DATA_TABLES.md) · [DSR_TABLES.md](DSR_TABLES.md) |
@@ -52,8 +56,12 @@ Full steps: **[OPERATIONS.md](OPERATIONS.md)**
 
 | Guide | When you need it |
 |-------|------------------|
+| [ONBOARDING.md](ONBOARDING.md) | Maintain the app without Cursor / AI |
 | [OPERATIONS.md](OPERATIONS.md) | Day-to-day release and backup |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, secrets, edge functions |
+| [SECRETS.md](SECRETS.md) | Credential inventory and rotation |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures |
+| [MIGRATIONS.md](MIGRATIONS.md) | Author and apply schema changes |
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, GitHub envs, edge functions |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Folders, security |
 | [FLOWS.md](FLOWS.md) | How pages write data |
 | [DATA_TABLES.md](DATA_TABLES.md) | Tables, RLS, RPCs |
@@ -63,4 +71,4 @@ Full steps: **[OPERATIONS.md](OPERATIONS.md)**
 | [../scripts/README.md](../scripts/README.md) | Script internals |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Pull requests |
 
-Schema source of truth: `supabase/schema.sql`
+Migrations: `supabase/migrations/` · Full snapshot: `supabase/schema.sql` — see [MIGRATIONS.md](MIGRATIONS.md).

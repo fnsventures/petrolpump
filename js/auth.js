@@ -712,6 +712,9 @@ if (loginForm) {
     if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
       if (loginError) {
         loginError.textContent =
+          (typeof window.getAppConfigErrorMessage === "function"
+            ? await window.getAppConfigErrorMessage()
+            : null) ||
           "Server configuration is missing. Set up js/env.js (see js/env.example.js) before signing in.";
         loginError.classList.remove("hidden");
       }

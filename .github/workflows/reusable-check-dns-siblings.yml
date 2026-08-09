@@ -1,0 +1,83 @@
+name: Reusable · Check DNS siblings
+
+# Canonical job for sibling fnsventures.in Pages CNAMEs + /js/env.js.
+# Callers: petrolpump (scheduled) and fns-cashline (manual only).
+
+on:
+  workflow_call:
+    secrets:
+      GODADDY_API_KEY:
+        required: false
+      GODADDY_API_SECRET:
+        required: false
+    outputs:
+      fixed_count:
+        description: Number of CNAME records restored via GoDaddy
+        value: ${{ jobs.check.outputs.fixed_count }}
+      check_failed:
+        description: "1 if final check failed, else 0"
+        value: ${{ jobs.check.outputs.check_failed }}
+
+jobs:
+  check:
+    name: DNS + env.js (auto-fix)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      fixed_count: ${{ steps.dns.outputs.fixed_count }}
+      check_failed: ${{ steps.dns.outputs.check_failed }}
+    steps:
+      - name: Checkout canonical DNS check (petrolpump)
+        uses: actions/checkout@v5
+        with:
+          repository: fnsventures/petrolpump
+          # Same-repo runs use the caller's commit; other repos use main.
+          ref: ${{ github.repository == 'fnsventures/petrolpump' && github.sha || 'main' }}
+          path: _dns_check
+
+      - name: Install dig
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils
+
+      - name: Verify and restore sibling CNAMEs
+        id: dns
+        working-directory: _dns_check
+        env:
+          GODADDY_API_KEY: ${{ secrets.GODADDY_API_KEY }}
+          GODADDY_API_SECRET: ${{ secrets.GODADDY_API_SECRET }}
+        run: ./scripts/check-dns-siblings.sh --fix
+
+      - name: Open issue when auto-fix restored DNS
+        if: always() && steps.dns.outputs.fixed_count != '' && steps.dns.outputs.fixed_count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fixed = '${{ steps.dns.outputs.fixed_count }}';
+            const failed = '${{ steps.dns.outputs.check_failed }}';
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `DNS auto-fix restored ${fixed} sibling CNAME(s)`;
+            const body = [
+              `The DNS sibling check restored **${fixed}** CNAME record(s) to \`fnsventures.github.io\`.`,
+              '',
+              `| | |`,
+              `|---|---|`,
+              `| Restored | ${fixed} |`,
+              `| Final check failed | ${failed === '1' ? 'yes' : 'no'} |`,
+              `| Workflow run | [link](${runUrl}) |`,
+              `| Triggered from | \`${context.repo.owner}/${context.repo.repo}\` |`,
+              '',
+              'If this was unexpected, review recent GoDaddy DNS edits and confirm both hosts still resolve.',
+              '',
+              '- `bishnupriyafuels.fnsventures.in`',
+              '- `fnscashline.fnsventures.in`',
+            ].join('\n');
+
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: [],
+            });
+            core.notice(`Opened issue #${issue.data.number} for DNS auto-fix`);

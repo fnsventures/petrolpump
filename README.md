@@ -59,6 +59,8 @@
 [Release](docs/OPERATIONS.md#3-release-to-production) ·
 [Backup](docs/OPERATIONS.md#4-backup-production-database))
 
+**No Cursor?** Start at [ONBOARDING.md](docs/ONBOARDING.md) → [SECRETS.md](docs/SECRETS.md) → [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
 ---
 
 <a id="1-architecture"></a>
@@ -140,12 +142,14 @@ Sync ≠ deploy · [full steps →](docs/OPERATIONS.md#1-sync-staging-with-produ
 ## 5 · Run locally
 
 ```bash
+# Node 22 (see .nvmrc)
 cp js/env.example.js js/env.js   # Supabase URL + anon key
+npm ci
 npm run dev                      # http://localhost:3000
 ```
 
 Create the user in **Auth**, then add them to `public.users` as `admin`.  
-→ [DEVELOPMENT.md](docs/DEVELOPMENT.md)
+→ [DEVELOPMENT.md](docs/DEVELOPMENT.md) · full day-1: [ONBOARDING.md](docs/ONBOARDING.md)
 
 ---
 
@@ -171,7 +175,11 @@ Create the user in **Auth**, then add them to `public.users` as `admin`.
 
 | Document | Purpose |
 |----------|---------|
+| [**Onboarding**](docs/ONBOARDING.md) | Maintain without Cursor · day-1 |
 | [**Operations**](docs/OPERATIONS.md) | Sync · deploy · release · backup |
+| [Secrets](docs/SECRETS.md) | Where credentials live |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common failures |
+| [Migrations](docs/MIGRATIONS.md) | Schema changes |
 | [Architecture](docs/ARCHITECTURE.md) | Structure & security |
 | [Development](docs/DEVELOPMENT.md) | Local setup |
 | [Flows](docs/FLOWS.md) | Page → data |
