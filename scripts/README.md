@@ -18,6 +18,8 @@ Prod data sync is always **read-only** on production.
 | Backup prod to local files | `./scripts/db.sh backup` | no change | — |
 | Backup prod → Google Drive | `./scripts/backup-prod-to-drive.sh` | no change | — |
 | Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | **schema** | — |
+| Verify sibling Pages DNS + `/js/env.js` | `./scripts/check-dns-siblings.sh` | — | — |
+| Auto-restore missing sibling CNAMEs (GoDaddy) | `./scripts/check-dns-siblings.sh --fix` | — | — |
 
 **Entry point:** `./scripts/db.sh help`
 
