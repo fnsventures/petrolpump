@@ -51,6 +51,43 @@ Encode special characters in the password (`@` → `%40`).
 
 That is enough for sync + deploy + release. Backup needs extra secrets (see [§4](#4-backup-production-database)).
 
+### DNS safety net (`fnsventures.in`)
+
+Several apps share the same DNS zone. **Adding a new subdomain must never remove another app’s CNAME.** A missing host looks like “Application configuration is missing” because cached HTML can still load while `/js/env.js` (never cached) fails.
+
+| Host (CNAME) | Target | App / repo |
+|--------------|--------|------------|
+| `bishnupriyafuels` | `fnsventures.github.io` | This app (`petrolpump`) |
+| `fnscashline` | `fnsventures.github.io` | FiNDi ATM (`fns-cashline`) |
+
+**Registrar (GoDaddy):**
+
+- [ ] Account has **2FA** enabled
+- [ ] Domain change / security **alerts** enabled for the account email
+- [ ] Before editing DNS: screenshot or export the DNS table
+- [ ] After editing: **add** a new row only — do not overwrite sibling hosts
+- [ ] **API auto-fix secrets** (once): create a Production key at [developer.godaddy.com/keys](https://developer.godaddy.com/keys), then add repo secrets on **both** `petrolpump` and `fns-cashline`:
+  - `GODADDY_API_KEY`
+  - `GODADDY_API_SECRET`
+
+**After any DNS change**, verify every sibling (not only the app you just touched):
+
+```bash
+./scripts/check-dns-siblings.sh           # check only
+./scripts/check-dns-siblings.sh --fix     # restore missing/wrong CNAMEs via GoDaddy, then recheck
+```
+
+Or open each URL and confirm a real config (not placeholders):
+
+- `https://bishnupriyafuels.fnsventures.in/js/env.js`
+- `https://fnscashline.fnsventures.in/js/env.js`
+
+**Automated:** GitHub Action **Check DNS siblings** runs daily (and on demand) with `--fix`. If a sibling CNAME is missing or points elsewhere, it **rewrites that host** to `fnsventures.github.io` via the GoDaddy API, waits for publish, and rechecks. Without the `GODADDY_*` secrets, it still checks and fails (no silent skip of a broken zone).
+
+Auto-fix covers **DNS only**. If `/js/env.js` is wrong after DNS is healthy, redeploy that app (Actions → **Deploy** → `prod`) so CI regenerates `env.js`.
+
+When you add a new `*.fnsventures.in` Pages app, append its host to `scripts/check-dns-siblings.sh` in **both** sibling repos (and document it in that app’s OPERATIONS.md).
+
 ---
 
 ## 1. Sync staging with production data
@@ -231,6 +268,8 @@ export GOOGLE_DRIVE_BACKUP_FOLDER_ID="..."
 | Publish live website | Merge `staging` → `main` |
 | Save DB to my laptop | `./scripts/db.sh backup` |
 | Save DB to Google Drive | Actions → **Backup production database** |
+| After DNS edits / check sibling sites | `./scripts/check-dns-siblings.sh` |
+| Restore missing sibling CNAMEs | `./scripts/check-dns-siblings.sh --fix` (needs `GODADDY_*`) |
 
 ---
 
@@ -243,6 +282,7 @@ export GOOGLE_DRIVE_BACKUP_FOLDER_ID="..."
 | Live site unchanged after merge | Wait for Actions **Deploy**; hard-refresh (service worker) |
 | Drive backup: `unauthorized_client` | Regenerate matching OAuth trio; update GitHub **prod** secrets |
 | Login works but empty pages | User missing from `public.users` |
+| Banner: config missing / copy `env.example.js` | Often DNS. Run `./scripts/check-dns-siblings.sh --fix` (or wait for the daily Action). Hard-refresh after DNS recovers (SW caches HTML but not `env.js`). If DNS OK but env still bad → Redeploy prod |
 
 ---
 

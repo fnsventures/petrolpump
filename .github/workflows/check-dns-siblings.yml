@@ -1,0 +1,33 @@
+name: Check DNS siblings
+
+# Detects broken sibling fnsventures.in Pages CNAMEs / env.js, and restores
+# missing CNAMEs via the GoDaddy API when GODADDY_* secrets are configured.
+
+on:
+  schedule:
+    # Daily 03:30 UTC (~09:00 IST)
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: check-dns-siblings
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: DNS + env.js (auto-fix)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dig
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsutils
+
+      - name: Verify and restore sibling CNAMEs
+        env:
+          GODADDY_API_KEY: ${{ secrets.GODADDY_API_KEY }}
+          GODADDY_API_SECRET: ${{ secrets.GODADDY_API_SECRET }}
+        run: ./scripts/check-dns-siblings.sh --fix
