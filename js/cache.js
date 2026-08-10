@@ -35,18 +35,23 @@ const AppCache = (function () {
     reports_data: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 },
   };
 
+  /** Memoized — probing localStorage on every get/set was a hot-path cost. */
+  let storageAvailable = null;
+
   /**
    * Check if localStorage is available
    */
   function isStorageAvailable() {
+    if (storageAvailable !== null) return storageAvailable;
     try {
       const test = "__storage_test__";
       localStorage.setItem(test, test);
       localStorage.removeItem(test);
-      return true;
+      storageAvailable = true;
     } catch (e) {
-      return false;
+      storageAvailable = false;
     }
+    return storageAvailable;
   }
 
   /**
@@ -193,10 +198,15 @@ const AppCache = (function () {
   }
 
   /**
-   * Invalidate cache entries by type
+   * Invalidate cache entries by type (single type or many in one localStorage pass)
    */
   function invalidateByType(cacheType) {
-    if (!isStorageAvailable()) return;
+    invalidateByTypes([cacheType]);
+  }
+
+  function invalidateByTypes(cacheTypes) {
+    if (!isStorageAvailable() || !cacheTypes || !cacheTypes.length) return;
+    const typeSet = new Set(cacheTypes);
     try {
       const keys = Object.keys(localStorage);
       keys.forEach((key) => {
@@ -205,7 +215,7 @@ const AppCache = (function () {
           const raw = localStorage.getItem(key);
           if (!raw) return;
           const entry = JSON.parse(raw);
-          if (entry.cacheType === cacheType) {
+          if (typeSet.has(entry.cacheType)) {
             localStorage.removeItem(key);
           }
         } catch {
@@ -337,6 +347,7 @@ const AppCache = (function () {
     clearAll,
     clearOldEntries,
     invalidateByType,
+    invalidateByTypes,
     invalidateByPattern,
     getWithSWR,
     getStats,
@@ -400,12 +411,12 @@ const CacheInvalidation = (function () {
   function invalidate(scope) {
     if (typeof AppCache === "undefined" || !AppCache) return;
     const types = SCOPES[scope] || (Array.isArray(scope) ? scope : [scope]);
-    const seen = new Set();
-    types.forEach((t) => {
-      if (seen.has(t)) return;
-      seen.add(t);
-      AppCache.invalidateByType(t);
-    });
+    const unique = [...new Set(types)];
+    if (AppCache.invalidateByTypes) {
+      AppCache.invalidateByTypes(unique);
+    } else {
+      unique.forEach((t) => AppCache.invalidateByType(t));
+    }
     if (shouldSyncSw(scope)) notifySwApiCacheClear();
   }
 
@@ -414,7 +425,12 @@ const CacheInvalidation = (function () {
     scopes.forEach((scope) => {
       (SCOPES[scope] || (Array.isArray(scope) ? scope : [scope])).forEach((t) => seen.add(t));
     });
-    seen.forEach((t) => AppCache.invalidateByType(t));
+    const unique = [...seen];
+    if (AppCache.invalidateByTypes) {
+      AppCache.invalidateByTypes(unique);
+    } else {
+      unique.forEach((t) => AppCache.invalidateByType(t));
+    }
     if (scopes.some((s) => shouldSyncSw(s))) notifySwApiCacheClear();
   }
 

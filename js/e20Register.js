@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig */
+/* global requireAuth, applyRoleVisibility, supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange */
 
 (function () {
   const QUALITY_SLOTS = [
@@ -17,7 +17,9 @@
   ];
 
   const DEFAULT_TANKS = ["MS Tank-1", "MS Tank-2"];
-  const PRINT_CSS = "css/e20-register-print.css?v=1";
+  const PRINT_CSS = "css/e20-register-print.css?v=2";
+  const HISTORY_PAGE_SIZE = 25;
+
   const REGISTER_SELECT = `
     id, register_date, retail_outlet_name, cc_code, certified, certified_at, dealer_sign_name, remarks,
     e20_water_checks (
@@ -29,15 +31,34 @@
     )
   `.replace(/\s+/g, " ").trim();
 
+  /** Lightweight select for new-day autofill only. */
+  const TEMPLATE_SELECT = `
+    register_date, retail_outlet_name, cc_code, certified, dealer_sign_name,
+    e20_water_checks (check_time, tank_no, tested_by, sort_order)
+  `.replace(/\s+/g, " ").trim();
+
   const EMPTY_WATER_ROW =
     "<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>";
 
   let currentAuth = null;
   let currentRegisterId = null;
+  /** @type {ReturnType<typeof snapshotFromHeader> | null} */
+  let currentSnapshot = null;
+  let formLocked = false;
+  let adminUnlocked = false;
+  /** Certified sheet opened from History → View (stays on history panel). */
+  let historyReportSnap = null;
   let printCssCache = null;
   let printCssInflight = null;
   let loadSeq = 0;
+  let templateRegister = null;
   let historyRows = [];
+  let historyOffset = 0;
+  let historyHasMore = false;
+  let historyLoading = false;
+  let historyFilterKey = "";
+  let historySeq = 0;
+  let reportSeq = 0;
 
   const dom = {};
 
@@ -53,6 +74,15 @@
 
     cacheDom();
     bindEvents();
+    initPageSections({
+      defaultSection: "record",
+      validSections: ["record", "history"],
+      onSectionChange: (section) => {
+        if (section !== "history") closeHistoryReport();
+        if (section === "history") void loadHistory(true);
+      },
+    });
+    initHistoryFilter();
 
     const today = getLocalDateString();
     const dateStr = initPersistedDateInput(dom.dateInput, RECORD_DATE_KEYS.e20Register, {
@@ -61,19 +91,19 @@
       onChange: (value) => void loadRegister(value),
     });
 
-    renderBlankForm();
     await loadPumpSettings();
-    prefillStationMeta(true);
     await Promise.all([
       loadStaffNames(),
-      loadRegister(dateStr),
-      loadHistory(),
+      loadTemplateRegister(),
       getPrintCssText().catch(() => null),
     ]);
+    await loadRegister(dateStr);
+    if (location.hash === "#history") void loadHistory(true);
   });
 
   function cacheDom() {
     dom.form = document.getElementById("e20-form");
+    dom.fieldset = document.getElementById("e20-fields");
     dom.dateInput = document.getElementById("e20-date");
     dom.outlet = document.getElementById("e20-outlet");
     dom.cc = document.getElementById("e20-cc");
@@ -86,12 +116,29 @@
     dom.status = document.getElementById("e20-status");
     dom.success = document.getElementById("e20-success");
     dom.error = document.getElementById("e20-error");
+    dom.modeBanner = document.getElementById("e20-mode-banner");
+    dom.reportView = document.getElementById("e20-report-view");
+    dom.sheetPreview = document.getElementById("e20-sheet-preview");
+    dom.reportSubtitle = document.getElementById("e20-report-subtitle");
+    dom.reportError = document.getElementById("e20-report-error");
+    dom.reportPrintBtn = document.getElementById("e20-report-print-btn");
+    dom.reportUnlockBtn = document.getElementById("e20-report-unlock-btn");
+    dom.reportHistoryBtn = document.getElementById("e20-report-history-btn");
     dom.saveBtn = document.getElementById("e20-save-btn");
     dom.deleteBtn = document.getElementById("e20-delete-btn");
+    dom.unlockBtn = document.getElementById("e20-unlock-btn");
     dom.printBtn = document.getElementById("e20-print-btn");
     dom.addTankBtn = document.getElementById("e20-add-tank");
+    dom.fillSlotsBtn = document.getElementById("e20-fill-slots");
     dom.staffList = document.getElementById("e20-staff-list");
-    dom.history = document.getElementById("e20-history");
+    dom.historyHead = document.getElementById("e20-history-head");
+    dom.historyList = document.getElementById("e20-history-list");
+    dom.historyBody = document.getElementById("e20-history-body");
+    dom.historyEmpty = document.getElementById("e20-history-empty");
+    dom.historySummary = document.getElementById("e20-history-summary");
+    dom.historyError = document.getElementById("e20-history-error");
+    dom.historyMore = document.getElementById("e20-history-more");
+    dom.statusFilter = document.getElementById("e20-status-filter");
   }
 
   function stationDefaults() {
@@ -108,42 +155,261 @@
     };
   }
 
-  function prefillStationMeta(force = false) {
-    const { outlet, cc } = stationDefaults();
-    if (dom.outlet && (force || !dom.outlet.value)) dom.outlet.value = outlet;
-    if (dom.cc && (force || !dom.cc.value)) dom.cc.value = cc;
-  }
-
   function bindEvents() {
     dom.form?.addEventListener("submit", onSave);
     dom.addTankBtn?.addEventListener("click", () => {
+      if (formLocked) return;
       appendWaterRow({ tank_no: "", check_time: "06:10" });
     });
+    dom.fillSlotsBtn?.addEventListener("click", () => {
+      if (formLocked) return;
+      fillEmptyQualitySlots();
+    });
     dom.waterBody?.addEventListener("click", (e) => {
+      if (formLocked) return;
       const btn = e.target.closest("[data-remove-water]");
       if (!btn) return;
       btn.closest("tr")?.remove();
     });
     dom.printBtn?.addEventListener("click", () => void printRegister());
+    dom.reportPrintBtn?.addEventListener("click", () => void printHistoryReport());
     dom.deleteBtn?.addEventListener("click", () => void deleteRegister());
+    dom.unlockBtn?.addEventListener("click", () => unlockCertifiedForEdit());
+    dom.reportUnlockBtn?.addEventListener("click", () => void unlockHistoryReportForEdit());
+    dom.reportHistoryBtn?.addEventListener("click", () => closeHistoryReport());
     dom.certified?.addEventListener("change", () => {
+      if (formLocked) return;
       if (dom.certified.checked && dom.certifiedAt && !dom.certifiedAt.value) {
         dom.certifiedAt.value = toDatetimeLocalValue(new Date());
       }
+      if (dom.certified.checked && dom.dealer && !dom.dealer.value.trim()) {
+        const fromTemplate = templateRegister?.dealer_sign_name || "";
+        if (fromTemplate) dom.dealer.value = fromTemplate;
+      }
     });
-    dom.history?.addEventListener("click", (e) => {
-      const link = e.target.closest("a[data-date]");
-      if (!link) return;
-      e.preventDefault();
-      const date = link.getAttribute("data-date");
-      if (!date || !dom.dateInput) return;
-      dom.dateInput.value = date;
-      savePersistedDate(RECORD_DATE_KEYS.e20Register, date);
-      const url = new URL(window.location.href);
-      url.searchParams.set("date", date);
-      window.history.replaceState({}, "", url);
-      void loadRegister(date);
+    dom.historyBody?.addEventListener("click", (e) => {
+      const openBtn = e.target.closest("[data-open-date]");
+      if (openBtn) {
+        e.preventDefault();
+        const date = openBtn.getAttribute("data-open-date");
+        if (openBtn.getAttribute("data-open-report") === "1") {
+          void openHistoryReport(date);
+        } else {
+          goToDate(date);
+        }
+        return;
+      }
+      const printBtn = e.target.closest("[data-print-date]");
+      if (printBtn) {
+        e.preventDefault();
+        void printDate(printBtn.getAttribute("data-print-date"));
+      }
     });
+    dom.historyMore?.addEventListener("click", () => void loadHistory(false));
+    dom.statusFilter?.addEventListener("change", () => {
+      closeHistoryReport();
+      void loadHistory(true);
+    });
+  }
+
+  function initHistoryFilter() {
+    createDateRangeFilter({
+      storageKey: "e20-register-history",
+      ranges: ["this-week", "this-month", "custom"],
+      defaultRange: "this-month",
+      rangeSelect: "e20-range",
+      startInput: "e20-start",
+      endInput: "e20-end",
+      customRange: "e20-custom-range",
+      applyBtn: "e20-apply-filter",
+      trigger: "apply",
+      runOnInit: false,
+      onApply: () => {
+        closeHistoryReport();
+        return loadHistory(true);
+      },
+    });
+  }
+
+  /** Persist date, switch to Daily register, then load the form. */
+  function goToDate(date, { unlock = false } = {}) {
+    if (!date || !dom.dateInput) return Promise.resolve();
+    closeHistoryReport();
+    dom.dateInput.value = date;
+    savePersistedDate(RECORD_DATE_KEYS.e20Register, date);
+    const url = new URL(window.location.href);
+    url.searchParams.set("date", date);
+    url.hash = "record";
+    window.history.replaceState({}, "", url);
+    document.querySelector('.settings-nav-item[data-section="record"]')?.click();
+    return loadRegister(date).then(() => {
+      // Ignore if a newer date load superseded this one.
+      if (dom.dateInput?.value !== date) return;
+      if (unlock && currentSnapshot?.certified && currentAuth?.role === "admin") {
+        adminUnlocked = true;
+        refreshLockUi();
+        setFeedback(true, "Unlocked. Make corrections, then save.");
+      }
+    });
+  }
+
+  function setHistoryListError(msg) {
+    if (!dom.historyError) return;
+    if (!msg) {
+      dom.historyError.textContent = "";
+      dom.historyError.classList.add("hidden");
+      return;
+    }
+    dom.historyError.textContent = msg;
+    dom.historyError.classList.remove("hidden");
+  }
+
+  /** Print without leaving history when the day is not already loaded. */
+  async function printDate(date) {
+    if (!date) return;
+    setHistoryListError("");
+    if (historyReportSnap?.register_date === date) {
+      await printHistoryReport();
+      return;
+    }
+    if (dom.dateInput?.value === date && currentSnapshot) {
+      await printRegister();
+      return;
+    }
+    try {
+      const header = await fetchRegister(date);
+      if (!header) {
+        if (historyReportSnap) setHistoryReportError("No register for that date.");
+        else setHistoryListError("No register for that date.");
+        return;
+      }
+      await printSheetHtml(buildSheetHtml(snapshotFromHeader(header)), date);
+    } catch (err) {
+      AppError.handle(err, {
+        target: historyReportSnap ? dom.reportError || dom.historyError : dom.historyError || dom.error,
+      });
+    }
+  }
+
+  function setHistoryReportError(msg) {
+    if (!dom.reportError) return;
+    if (!msg) {
+      dom.reportError.textContent = "";
+      dom.reportError.classList.add("hidden");
+      return;
+    }
+    dom.reportError.textContent = msg;
+    dom.reportError.classList.remove("hidden");
+  }
+
+  function closeHistoryReport() {
+    reportSeq += 1;
+    historyReportSnap = null;
+    setHistoryReportError("");
+    if (dom.reportView) {
+      dom.reportView.classList.add("hidden");
+      dom.reportView.setAttribute("aria-hidden", "true");
+    }
+    if (dom.sheetPreview) dom.sheetPreview.innerHTML = "";
+    if (dom.reportSubtitle) dom.reportSubtitle.textContent = "";
+    if (dom.historyList) dom.historyList.classList.remove("hidden");
+    if (dom.historyHead) dom.historyHead.classList.remove("hidden");
+  }
+
+  function showHistoryReport(snap) {
+    historyReportSnap = snap;
+    setHistoryReportError("");
+    if (dom.historyList) dom.historyList.classList.add("hidden");
+    if (dom.historyHead) dom.historyHead.classList.add("hidden");
+    if (dom.reportView) {
+      dom.reportView.classList.remove("hidden");
+      dom.reportView.setAttribute("aria-hidden", "false");
+    }
+    if (dom.sheetPreview) {
+      dom.sheetPreview.innerHTML = `<div class="e20-preview-inner">${buildSheetHtml(snap)}</div>`;
+    }
+    if (dom.reportSubtitle) {
+      dom.reportSubtitle.textContent = [
+        formatDisplayDate(snap.register_date) || snap.register_date,
+        "Certified",
+        certifiedLabel(snap),
+        snap.dealer_sign_name || "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+    const isAdmin = currentAuth?.role === "admin";
+    if (dom.reportUnlockBtn) {
+      dom.reportUnlockBtn.classList.toggle("hidden", !isAdmin);
+    }
+  }
+
+  async function openHistoryReport(date) {
+    if (!date) return;
+    const seq = ++reportSeq;
+    setHistoryReportError("");
+    setHistoryListError("");
+    if (dom.sheetPreview) {
+      dom.sheetPreview.innerHTML = `<p class="muted">Loading report…</p>`;
+    }
+    if (dom.historyList) dom.historyList.classList.add("hidden");
+    if (dom.historyHead) dom.historyHead.classList.add("hidden");
+    if (dom.reportView) {
+      dom.reportView.classList.remove("hidden");
+      dom.reportView.setAttribute("aria-hidden", "false");
+    }
+    if (dom.reportSubtitle) dom.reportSubtitle.textContent = formatDisplayDate(date) || date;
+    if (dom.reportUnlockBtn) dom.reportUnlockBtn.classList.add("hidden");
+
+    try {
+      const header = await fetchRegister(date);
+      if (seq !== reportSeq) return;
+      if (!header) {
+        setHistoryReportError("No register for that date.");
+        if (dom.sheetPreview) dom.sheetPreview.innerHTML = "";
+        return;
+      }
+      if (!header.certified) {
+        closeHistoryReport();
+        await goToDate(date);
+        return;
+      }
+      showHistoryReport(snapshotFromHeader(header));
+    } catch (err) {
+      if (seq !== reportSeq) return;
+      AppError.report(err, { context: "e20HistoryReport" });
+      setHistoryReportError("Could not load this report.");
+      if (dom.sheetPreview) dom.sheetPreview.innerHTML = "";
+    }
+  }
+
+  async function unlockHistoryReportForEdit() {
+    if (currentAuth?.role !== "admin" || !historyReportSnap?.certified) return;
+    const ok = window.confirm(
+      "Unlock this certified register for editing? You will open Daily register for that date."
+    );
+    if (!ok) return;
+    const date = historyReportSnap.register_date;
+    await goToDate(date, { unlock: true });
+  }
+
+  async function printHistoryReport() {
+    if (!historyReportSnap) return;
+    try {
+      await printSheetHtml(buildSheetHtml(historyReportSnap), historyReportSnap.register_date);
+    } catch (err) {
+      AppError.handle(err, { target: dom.reportError || dom.error });
+    }
+  }
+
+  async function fetchRegister(dateStr) {
+    const { data, error } = await supabaseClient
+      .from("e20_testing_registers")
+      .select(REGISTER_SELECT)
+      .eq("register_date", dateStr)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
   }
 
   async function loadStaffNames() {
@@ -158,6 +424,28 @@
         .join("");
     } catch (err) {
       AppError.report(err, { context: "e20LoadStaff" });
+    }
+  }
+
+  async function loadTemplateRegister() {
+    try {
+      const { data, error } = await supabaseClient
+        .from("e20_testing_registers")
+        .select(TEMPLATE_SELECT)
+        .order("register_date", { ascending: false })
+        .limit(12);
+      if (error) throw error;
+      const rows = data || [];
+      templateRegister = rows[0] || null;
+      if (templateRegister && !templateRegister.dealer_sign_name) {
+        const withDealer = rows.find((r) => r.dealer_sign_name);
+        if (withDealer) {
+          templateRegister = { ...templateRegister, dealer_sign_name: withDealer.dealer_sign_name };
+        }
+      }
+    } catch (err) {
+      AppError.report(err, { context: "e20LoadTemplate" });
+      templateRegister = null;
     }
   }
 
@@ -206,18 +494,26 @@
       <td>${yesNoSelect("water_present", row.water_present)}</td>
       <td><input type="text" name="corrective_action" maxlength="500" value="${escapeHtml(row.corrective_action || "")}" /></td>
       <td><input type="text" name="tested_by" maxlength="120" list="e20-staff-list" value="${escapeHtml(row.tested_by || "")}" /></td>
-      <td class="e20-cell-check"><input type="checkbox" name="manager_signed" ${row.manager_signed ? "checked" : ""} aria-label="Manager signed" /></td>
+      <td class="e20-cell-check"><input type="checkbox" name="manager_signed" ${isSignedFlag(row.manager_signed) ? "checked" : ""} aria-label="Manager signed" /></td>
       <td class="e20-col-actions"><button type="button" class="e20-row-remove" data-remove-water title="Remove row" aria-label="Remove row">×</button></td>
     </tr>`;
   }
 
-  function defaultWaterRows() {
+  function defaultWaterRowsFromTemplate() {
+    const prior = sortWater(templateRegister?.e20_water_checks || []);
+    if (prior.length) {
+      return prior.map((r) => ({
+        tank_no: r.tank_no || "",
+        check_time: timeInputValue(r.check_time) || "06:10",
+        tested_by: r.tested_by || "",
+      }));
+    }
     return DEFAULT_TANKS.map((tank) => ({ tank_no: tank, check_time: "06:10" }));
   }
 
   function renderWaterRows(rows) {
     if (!dom.waterBody) return;
-    const list = rows?.length ? rows : defaultWaterRows();
+    const list = rows?.length ? rows : defaultWaterRowsFromTemplate();
     dom.waterBody.innerHTML = list.map(waterRowHtml).join("");
   }
 
@@ -238,18 +534,25 @@
         <td>${yesNoSelect("water_separation", row.water_separation)}</td>
         <td><input type="text" name="action_taken" maxlength="500" value="${escapeHtml(row.action_taken || "")}" /></td>
         <td><input type="text" name="tested_by" maxlength="120" list="e20-staff-list" value="${escapeHtml(row.tested_by || "")}" /></td>
-        <td class="e20-cell-check"><input type="checkbox" name="tester_signed" ${row.tester_signed ? "checked" : ""} aria-label="Signed" /></td>
+        <td class="e20-cell-check"><input type="checkbox" name="tester_signed" ${isSignedFlag(row.tester_signed) ? "checked" : ""} aria-label="Signed" /></td>
       </tr>`;
     }).join("");
   }
 
-  function renderBlankForm() {
-    renderWaterRows(defaultWaterRows());
-    renderQualityRows([]);
+  function applyNewDayDefaults() {
+    const defaults = stationDefaults();
+    if (dom.outlet) {
+      dom.outlet.value = templateRegister?.retail_outlet_name || defaults.outlet;
+    }
+    if (dom.cc) {
+      dom.cc.value = templateRegister?.cc_code || defaults.cc;
+    }
     if (dom.certified) dom.certified.checked = false;
     if (dom.certifiedAt) dom.certifiedAt.value = "";
-    if (dom.dealer) dom.dealer.value = "";
+    if (dom.dealer) dom.dealer.value = templateRegister?.dealer_sign_name || "";
     if (dom.remarks) dom.remarks.value = "";
+    renderWaterRows(defaultWaterRowsFromTemplate());
+    renderQualityRows([]);
   }
 
   function setFeedback(ok, message) {
@@ -267,6 +570,110 @@
     if (dom.status) dom.status.textContent = text || "";
   }
 
+  function setModeBanner(html, kind) {
+    if (!dom.modeBanner) return;
+    if (!html) {
+      dom.modeBanner.className = "e20-mode-banner hidden";
+      dom.modeBanner.innerHTML = "";
+      return;
+    }
+    dom.modeBanner.className = `e20-mode-banner e20-mode-banner--${kind || "info"}`;
+    dom.modeBanner.innerHTML = html;
+  }
+
+  function certifiedLabel(snap) {
+    if (!snap?.certified) return "";
+    const when = snap.certified_at ? formatDisplayDateTimeLocal(snap.certified_at) : "";
+    return when ? `Signed ${when}` : "Certified";
+  }
+
+  function isCertifiedLocked() {
+    if (!currentSnapshot?.certified) return false;
+    if (currentAuth?.role === "admin" && adminUnlocked) return false;
+    return true;
+  }
+
+  function setFormLocked(locked) {
+    formLocked = !!locked;
+    if (dom.form) dom.form.classList.toggle("e20-form-locked", formLocked);
+    if (dom.fieldset) dom.fieldset.disabled = formLocked;
+
+    if (dom.saveBtn) {
+      dom.saveBtn.classList.toggle("hidden", formLocked);
+      dom.saveBtn.disabled = formLocked;
+    }
+    if (dom.addTankBtn) {
+      dom.addTankBtn.classList.toggle("hidden", formLocked);
+      dom.addTankBtn.disabled = formLocked;
+    }
+    if (dom.fillSlotsBtn) {
+      dom.fillSlotsBtn.classList.toggle("hidden", formLocked);
+      dom.fillSlotsBtn.disabled = formLocked;
+    }
+  }
+
+  function refreshLockUi() {
+    const locked = isCertifiedLocked();
+    setFormLocked(locked);
+
+    const isAdmin = currentAuth?.role === "admin";
+    const isCertified = !!currentSnapshot?.certified;
+    const hasRegister = !!currentRegisterId;
+
+    if (dom.deleteBtn) {
+      const showDelete = isAdmin && hasRegister;
+      dom.deleteBtn.classList.toggle("hidden", !showDelete);
+      dom.deleteBtn.disabled = !showDelete;
+    }
+
+    if (dom.unlockBtn) {
+      dom.unlockBtn.classList.toggle("hidden", !(isAdmin && locked));
+    }
+
+    const when = currentSnapshot?.certified_at
+      ? formatDisplayDateTimeLocal(currentSnapshot.certified_at)
+      : "";
+
+    if (locked) {
+      setModeBanner(
+        `<strong>Certified &amp; locked</strong>
+         <span>This day is certified${when ? ` (${escapeHtml(when)})` : ""}. Fields are read-only. Use <em>History → View</em> for the RO sheet.${
+           isAdmin ? " Unlock only if a correction is required." : ""
+         }</span>`,
+        "locked"
+      );
+    } else if (isCertified && adminUnlocked) {
+      setModeBanner(
+        `<strong>Unlocked for edit</strong>
+         <span>Save again to keep certification, or uncheck Certified to reopen as a draft.</span>`,
+        "warn"
+      );
+    } else if (!hasRegister) {
+      setModeBanner(
+        `<strong>New day</strong>
+         <span>Outlet, CC, tanks, and dealer are prefilled from your last register / settings. Certify once at close.</span>`,
+        "info"
+      );
+    } else {
+      setModeBanner(
+        `<strong>Draft</strong>
+         <span>Update Part A/B through the day. Certify once when checks are complete.</span>`,
+        "draft"
+      );
+    }
+  }
+
+  function unlockCertifiedForEdit() {
+    if (currentAuth?.role !== "admin" || !currentSnapshot?.certified) return;
+    const ok = window.confirm(
+      "Unlock this certified register for editing? Changes should be rare — prefer printing a corrected sheet only when needed."
+    );
+    if (!ok) return;
+    adminUnlocked = true;
+    refreshLockUi();
+    setFeedback(true, "Unlocked. Make corrections, then save.");
+  }
+
   function fieldValue(tr, name) {
     return tr.querySelector(`[name="${name}"]`);
   }
@@ -282,10 +689,14 @@
         water_present: yesNoValue(g("water_present")?.value),
         corrective_action: g("corrective_action")?.value?.trim() || "",
         tested_by: g("tested_by")?.value?.trim() || "",
-        manager_signed: !!g("manager_signed")?.checked,
+        manager_signed: g("manager_signed")?.checked ? "yes" : "no",
         sort_order: idx,
       };
     });
+  }
+
+  function isSignedFlag(value) {
+    return value === true || value === "yes" || value === "true" || value === "y" || value === 1 || value === "1";
   }
 
   function isQualityFilled(row) {
@@ -294,7 +705,7 @@
       row.water_separation ||
       row.tested_by ||
       row.action_taken ||
-      row.tester_signed
+      isSignedFlag(row.tester_signed)
     );
   }
 
@@ -308,10 +719,50 @@
         water_separation: yesNoValue(g("water_separation")?.value),
         action_taken: g("action_taken")?.value?.trim() || "",
         tested_by: g("tested_by")?.value?.trim() || "",
-        tester_signed: !!g("tester_signed")?.checked,
+        tester_signed: g("tester_signed")?.checked ? "yes" : "no",
       };
     });
     return filledOnly ? rows.filter(isQualityFilled) : rows;
+  }
+
+  function fillEmptyQualitySlots() {
+    const rows = collectQualityChecks();
+    const filled = rows.filter(isQualityFilled);
+    if (!filled.length) {
+      setFeedback(false, "Fill at least one Part B slot first (tester / appearance), then use Fill empty slots.");
+      return;
+    }
+    const template = filled[filled.length - 1];
+    const defaults = {
+      visual_appearance: template.visual_appearance || "clear_bright",
+      water_separation: template.water_separation || "no",
+      tested_by: template.tested_by || "",
+    };
+
+    let filledCount = 0;
+    Array.from(dom.qualityBody?.querySelectorAll("tr") || []).forEach((tr) => {
+      const g = (name) => fieldValue(tr, name);
+      const current = {
+        visual_appearance: g("visual_appearance")?.value || "",
+        water_separation: yesNoValue(g("water_separation")?.value),
+        tested_by: g("tested_by")?.value?.trim() || "",
+        action_taken: g("action_taken")?.value?.trim() || "",
+        tester_signed: !!g("tester_signed")?.checked,
+      };
+      if (isQualityFilled(current)) return;
+
+      if (g("visual_appearance")) g("visual_appearance").value = defaults.visual_appearance;
+      if (g("water_separation")) g("water_separation").value = defaults.water_separation;
+      if (g("tested_by") && defaults.tested_by) g("tested_by").value = defaults.tested_by;
+      filledCount += 1;
+    });
+
+    setFeedback(
+      true,
+      filledCount
+        ? `Filled ${filledCount} empty slot(s) with Clear & Bright / No water${defaults.tested_by ? ` · ${defaults.tested_by}` : ""}. Review, then save.`
+        : "All slots already have data."
+    );
   }
 
   function toDatetimeLocalValue(date) {
@@ -338,6 +789,36 @@
     return [...(rows || [])].sort((a, b) => (Number(a.slot_no) || 0) - (Number(b.slot_no) || 0));
   }
 
+  function snapshotFromHeader(header) {
+    return {
+      id: header.id || null,
+      register_date: header.register_date || "",
+      retail_outlet_name: header.retail_outlet_name || "",
+      cc_code: header.cc_code || "",
+      certified: !!header.certified,
+      certified_at: header.certified_at || null,
+      dealer_sign_name: header.dealer_sign_name || "",
+      remarks: header.remarks || "",
+      water: sortWater(header.e20_water_checks),
+      quality: sortQuality(header.e20_quality_checks),
+    };
+  }
+
+  function snapshotFromForm() {
+    return {
+      id: currentRegisterId,
+      register_date: dom.dateInput?.value?.trim() || "",
+      retail_outlet_name: dom.outlet?.value?.trim() || "",
+      cc_code: dom.cc?.value?.trim() || "",
+      certified: !!dom.certified?.checked,
+      certified_at: certifiedAtIso(),
+      dealer_sign_name: dom.dealer?.value?.trim() || "",
+      remarks: dom.remarks?.value?.trim() || "",
+      water: collectWaterChecks().filter((r) => r.tank_no),
+      quality: collectQualityChecks(),
+    };
+  }
+
   function applyHeader(header) {
     const defaults = stationDefaults();
     if (dom.outlet) dom.outlet.value = header.retail_outlet_name || defaults.outlet;
@@ -355,49 +836,47 @@
     setFeedback(true, "");
     setStatus("Loading…");
     currentRegisterId = null;
-    if (dom.deleteBtn) dom.deleteBtn.classList.add("hidden");
+    currentSnapshot = null;
+    adminUnlocked = false;
 
     try {
-      const { data: header, error } = await supabaseClient
-        .from("e20_testing_registers")
-        .select(REGISTER_SELECT)
-        .eq("register_date", dateStr)
-        .maybeSingle();
-      if (error) throw error;
+      const header = await fetchRegister(dateStr);
       if (seq !== loadSeq) return;
 
       if (!header) {
-        renderBlankForm();
-        prefillStationMeta(true);
-        setStatus("No register for this date yet — fill and save.");
+        applyNewDayDefaults();
+        setStatus(`New register · ${formatDisplayDate(dateStr)} · fields auto-filled`);
+        refreshLockUi();
         return;
       }
 
       currentRegisterId = header.id;
+      currentSnapshot = snapshotFromHeader(header);
       applyHeader(header);
-      const water = sortWater(header.e20_water_checks);
-      renderWaterRows(water.length ? water : defaultWaterRows());
-      renderQualityRows(sortQuality(header.e20_quality_checks));
-
-      if (dom.deleteBtn && currentAuth?.role === "admin") {
-        dom.deleteBtn.classList.remove("hidden");
-        dom.deleteBtn.disabled = false;
-      }
+      const water = currentSnapshot.water;
+      renderWaterRows(water.length ? water : defaultWaterRowsFromTemplate());
+      renderQualityRows(currentSnapshot.quality);
       setStatus(
-        `Saved register · ${formatDisplayDate(header.register_date)}${
-          header.certified ? " · Certified" : ""
-        }`
+        `${header.certified ? "Certified" : "Draft"} · ${formatDisplayDate(header.register_date)}`
       );
+      refreshLockUi();
     } catch (err) {
       if (seq !== loadSeq) return;
       AppError.handle(err, { target: dom.error });
       setStatus("Could not load register.");
+      refreshLockUi();
     }
   }
 
   async function onSave(e) {
     e.preventDefault();
     setFeedback(true, "");
+
+    if (formLocked) {
+      setFeedback(false, "This register is certified and locked. Ask an admin to unlock if a correction is needed.");
+      return;
+    }
+
     const dateStr = dom.dateInput?.value?.trim();
     if (!dateStr) {
       setFeedback(false, "Pick a date.");
@@ -411,9 +890,15 @@
     }
 
     const certified = !!dom.certified?.checked;
+    if (certified && !(dom.dealer?.value?.trim())) {
+      setFeedback(false, "Enter the RO dealer name before certifying.");
+      dom.dealer?.focus();
+      return;
+    }
+
     if (dom.saveBtn) {
       dom.saveBtn.disabled = true;
-      dom.saveBtn.textContent = "Saving…";
+      dom.saveBtn.textContent = certified ? "Certifying…" : "Saving…";
     }
 
     try {
@@ -429,23 +914,35 @@
         p_remarks: dom.remarks?.value?.trim() || null,
       });
       if (error) throw error;
+
       currentRegisterId = data;
-      setFeedback(true, "Register saved.");
-      setStatus(`Saved · ${formatDisplayDate(dateStr)}${certified ? " · Certified" : ""}`);
-      if (dom.deleteBtn && currentAuth?.role === "admin") {
-        dom.deleteBtn.classList.remove("hidden");
+      currentSnapshot = snapshotFromForm();
+      currentSnapshot.id = data;
+      currentSnapshot.certified = certified;
+      currentSnapshot.certified_at = certified
+        ? certifiedAtIso() || new Date().toISOString()
+        : null;
+      adminUnlocked = false;
+      historyFilterKey = "";
+
+      setFeedback(
+        true,
+        certified
+          ? "Register certified and locked."
+          : "Draft saved. You can keep updating Part B through the day."
+      );
+      setStatus(`${certified ? "Certified" : "Draft"} · ${formatDisplayDate(dateStr)}`);
+      refreshLockUi();
+
+      void loadTemplateRegister();
+      if (document.querySelector('.settings-nav-item[data-section="history"].is-active')) {
+        void loadHistory(true);
       }
-      upsertHistoryLocal({
-        register_date: dateStr,
-        certified,
-        cc_code: dom.cc?.value?.trim() || "",
-      });
-      renderHistory();
     } catch (err) {
       AppError.handle(err, { target: dom.error });
     } finally {
       if (dom.saveBtn) {
-        dom.saveBtn.disabled = false;
+        dom.saveBtn.disabled = formLocked;
         dom.saveBtn.textContent = "Save register";
       }
     }
@@ -468,59 +965,135 @@
         .eq("id", deleteId);
       if (error) throw error;
       if (currentRegisterId === deleteId) currentRegisterId = null;
+      currentSnapshot = null;
+      adminUnlocked = false;
+      historyFilterKey = "";
       setFeedback(true, "Register deleted.");
-      historyRows = historyRows.filter((r) => r.register_date !== dateStr);
-      renderHistory();
+      await loadTemplateRegister();
       await loadRegister(dateStr);
+      void loadHistory(true);
     } catch (err) {
       AppError.handle(err, { target: dom.error });
       if (dom.deleteBtn && currentRegisterId) dom.deleteBtn.disabled = false;
     }
   }
 
-  function upsertHistoryLocal(row) {
-    const next = historyRows.filter((r) => r.register_date !== row.register_date);
-    next.unshift(row);
-    next.sort((a, b) => (a.register_date < b.register_date ? 1 : -1));
-    historyRows = next.slice(0, 30);
+  function getHistoryDateRange() {
+    const range = readDateRangeFromControls(
+      document.getElementById("e20-range"),
+      document.getElementById("e20-start"),
+      document.getElementById("e20-end")
+    );
+    if (range) return { start: range.start, end: range.end };
+    const today = new Date();
+    return getMonthRange(today.getFullYear(), today.getMonth());
+  }
+
+  async function loadHistory(reset) {
+    if (!dom.historyBody) return;
+    // Allow filter resets to supersede an in-flight "load more".
+    if (!reset && historyLoading) return;
+
+    const { start, end } = getHistoryDateRange();
+    const status = dom.statusFilter?.value || "all";
+    const filterKey = `${status}|${start}|${end}`;
+
+    if (reset && filterKey === historyFilterKey && historyRows.length) {
+      renderHistory();
+      return;
+    }
+
+    const seq = ++historySeq;
+    historyLoading = true;
+    if (reset) {
+      historyOffset = 0;
+      historyRows = [];
+      historyHasMore = false;
+      setHistoryListError("");
+      dom.historyBody.innerHTML = `<tr><td colspan="5" class="muted">Loading…</td></tr>`;
+      dom.historyEmpty?.classList.add("hidden");
+    }
+
+    try {
+      let query = supabaseClient
+        .from("e20_testing_registers")
+        .select("register_date, certified, certified_at, cc_code, dealer_sign_name")
+        .gte("register_date", start)
+        .lte("register_date", end)
+        .order("register_date", { ascending: false })
+        .range(historyOffset, historyOffset + HISTORY_PAGE_SIZE - 1);
+
+      if (status === "certified") query = query.eq("certified", true);
+      if (status === "draft") query = query.eq("certified", false);
+
+      const { data, error } = await query;
+      if (error) throw error;
+      if (seq !== historySeq) return;
+
+      const page = data || [];
+      historyRows = reset ? page : historyRows.concat(page);
+      historyHasMore = page.length === HISTORY_PAGE_SIZE;
+      historyOffset = historyRows.length;
+      historyFilterKey = filterKey;
+      renderHistory();
+    } catch (err) {
+      if (seq !== historySeq) return;
+      AppError.report(err, { context: "e20History" });
+      if (reset) {
+        dom.historyBody.innerHTML = `<tr><td colspan="5" class="muted">Could not load history.</td></tr>`;
+        setHistoryListError("Could not load history.");
+      }
+    } finally {
+      if (seq === historySeq) historyLoading = false;
+    }
   }
 
   function renderHistory() {
-    if (!dom.history) return;
+    if (!dom.historyBody) return;
+    const certifiedCount = historyRows.filter((r) => r.certified).length;
+    const draftCount = historyRows.length - certifiedCount;
+
+    if (dom.historySummary) {
+      dom.historySummary.textContent = historyRows.length
+        ? `${historyRows.length} register${historyRows.length === 1 ? "" : "s"} · ${certifiedCount} certified · ${draftCount} draft`
+        : "";
+    }
+
     if (!historyRows.length) {
-      dom.history.innerHTML = `<p class="muted">No registers saved yet.</p>`;
+      dom.historyBody.innerHTML = "";
+      dom.historyEmpty?.classList.remove("hidden");
+      dom.historyMore?.classList.add("hidden");
       return;
     }
-    dom.history.innerHTML = historyRows
+
+    dom.historyEmpty?.classList.add("hidden");
+    dom.historyBody.innerHTML = historyRows
       .map((row) => {
         const badge = row.certified
           ? `<span class="e20-badge e20-badge--ok">Certified</span>`
           : `<span class="e20-badge">Draft</span>`;
-        return `<a class="e20-history-row" href="e20-register.html?date=${encodeURIComponent(row.register_date)}" data-date="${escapeHtml(row.register_date)}">
-          <div class="e20-history-meta">
+        const when =
+          row.certified && row.certified_at
+            ? `<div class="muted e20-hist-sub">${escapeHtml(formatDisplayDateTimeLocal(row.certified_at))}</div>`
+            : "";
+        return `<tr>
+          <td>
             <strong>${escapeHtml(formatDisplayDate(row.register_date))}</strong>
-            <span class="muted">${escapeHtml(row.cc_code || "")}</span>
-          </div>
-          ${badge}
-        </a>`;
+            ${when}
+          </td>
+          <td>${badge}</td>
+          <td>${escapeHtml(row.cc_code || "—")}</td>
+          <td>${escapeHtml(row.dealer_sign_name || "—")}</td>
+          <td class="table-actions e20-hist-actions">
+            <button type="button" class="button-secondary button-sm" data-open-date="${escapeHtml(row.register_date)}"${row.certified ? ' data-open-report="1"' : ""}>${row.certified ? "View" : "Open"}</button>
+            <button type="button" class="button-secondary button-sm" data-print-date="${escapeHtml(row.register_date)}">Print</button>
+          </td>
+        </tr>`;
       })
       .join("");
-  }
 
-  async function loadHistory() {
-    if (!dom.history) return;
-    try {
-      const { data, error } = await supabaseClient
-        .from("e20_testing_registers")
-        .select("register_date, certified, cc_code")
-        .order("register_date", { ascending: false })
-        .limit(30);
-      if (error) throw error;
-      historyRows = data || [];
-      renderHistory();
-    } catch (err) {
-      AppError.report(err, { context: "e20History" });
-      dom.history.innerHTML = `<p class="muted">Could not load history.</p>`;
+    if (dom.historyMore) {
+      dom.historyMore.classList.toggle("hidden", !historyHasMore);
     }
   }
 
@@ -546,7 +1119,7 @@
   function formatDisplayDateTimeLocal(value) {
     if (!value) return "";
     const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
+    if (Number.isNaN(d.getTime())) return String(value);
     try {
       return d.toLocaleString(undefined, {
         day: "2-digit",
@@ -556,23 +1129,20 @@
         minute: "2-digit",
       });
     } catch {
-      return value;
+      return String(value);
     }
   }
 
-  function buildPrintHtml() {
-    const dateStr = dom.dateInput?.value?.trim() || "";
-    const outlet = dom.outlet?.value?.trim() || "";
-    const cc = dom.cc?.value?.trim() || "";
-    const water = collectWaterChecks().filter((r) => r.tank_no);
-    const qualityBySlot = new Map(
-      collectQualityChecks().map((q) => [q.slot_no, q])
-    );
-    const certified = !!dom.certified?.checked;
-    const dealer = dom.dealer?.value?.trim() || "";
-    const certifiedAt = dom.certifiedAt?.value
-      ? formatDisplayDateTimeLocal(dom.certifiedAt.value)
-      : "";
+  /** Single sheet builder for screen preview + print. */
+  function buildSheetHtml(snap) {
+    const dateStr = snap.register_date || "";
+    const outlet = snap.retail_outlet_name || "";
+    const cc = snap.cc_code || "";
+    const water = (snap.water || []).filter((r) => r.tank_no);
+    const qualityBySlot = new Map((snap.quality || []).map((q) => [Number(q.slot_no), q]));
+    const certified = !!snap.certified;
+    const dealer = snap.dealer_sign_name || "";
+    const certifiedAt = snap.certified_at ? formatDisplayDateTimeLocal(snap.certified_at) : "";
 
     const waterRows = (water.length ? water : [{ tank_no: "" }]).map(
       (r) => `<tr>
@@ -583,7 +1153,7 @@
         <td class="ctr">${escapeHtml(formatYesNo(r.water_present))}</td>
         <td>${escapeHtml(r.corrective_action || "")}</td>
         <td>${escapeHtml(r.tested_by || "")}</td>
-        <td class="ctr">${r.manager_signed ? "✓" : ""}</td>
+        <td class="ctr">${isSignedFlag(r.manager_signed) ? "✓" : ""}</td>
       </tr>`
     );
     while (waterRows.length < 2) waterRows.push(EMPTY_WATER_ROW);
@@ -597,7 +1167,7 @@
         <td class="ctr">${escapeHtml(formatYesNo(r.water_separation))}</td>
         <td>${escapeHtml(r.action_taken || "")}</td>
         <td>${escapeHtml(r.tested_by || "")}</td>
-        <td class="ctr">${r.tester_signed ? "✓" : ""}</td>
+        <td class="ctr">${isSignedFlag(r.tester_signed) ? "✓" : ""}</td>
       </tr>`;
     });
 
@@ -623,14 +1193,14 @@
         <table class="e20-print-table">
           <thead>
             <tr>
-              <th style="width:9%">Time</th>
-              <th style="width:14%">Product Tank No.</th>
-              <th style="width:12%">Opening Dip (mm)</th>
-              <th style="width:12%">Water Finding (mm)</th>
-              <th style="width:10%">Water Present</th>
-              <th style="width:18%">Corrective Action</th>
+              <th style="width:8%">Time</th>
+              <th style="width:14%">Product<br>Tank No.</th>
+              <th style="width:12%">Opening<br>Dip (mm)</th>
+              <th style="width:12%">Water<br>Finding (mm)</th>
+              <th style="width:11%">Water<br>Present</th>
+              <th style="width:18%">Corrective<br>Action</th>
               <th style="width:13%">Tested By</th>
-              <th style="width:12%">Manager Signature</th>
+              <th style="width:12%">Manager<br>Signature</th>
             </tr>
           </thead>
           <tbody>${waterRows.join("")}</tbody>
@@ -640,12 +1210,12 @@
         <table class="e20-print-table">
           <thead>
             <tr>
-              <th style="width:6%">Sl. No.</th>
+              <th style="width:7%">Sl.<br>No.</th>
               <th style="width:8%">Time</th>
-              <th style="width:20%">Visual Appearance</th>
-              <th style="width:14%">Water Separation</th>
-              <th style="width:22%">Action Taken if Abnormal</th>
-              <th style="width:16%">Tested By</th>
+              <th style="width:20%">Visual<br>Appearance</th>
+              <th style="width:14%">Water<br>Separation</th>
+              <th style="width:22%">Action Taken<br>if Abnormal</th>
+              <th style="width:15%">Tested By</th>
               <th style="width:14%">Signature</th>
             </tr>
           </thead>
@@ -690,18 +1260,26 @@
     }
   }
 
+  async function printSheetHtml(bodyHtml, dateStr) {
+    const cssText = await getPrintCssText();
+    await PrintUtils.printInIframe({
+      title: PrintUtils.buildPrintFilename("e20-testing-register", dateStr || "register"),
+      bodyHtml,
+      cssText,
+      bodyClass: "e20-print-body",
+      containerClass: "e20-print-container",
+      iframeTitle: "E-20 testing register print",
+    });
+  }
+
   async function printRegister() {
     try {
-      const cssText = await getPrintCssText();
-      const dateStr = dom.dateInput?.value?.trim() || "register";
-      await PrintUtils.printInIframe({
-        title: PrintUtils.buildPrintFilename("e20-testing-register", dateStr),
-        bodyHtml: buildPrintHtml(),
-        cssText,
-        bodyClass: "e20-print-body",
-        containerClass: "e20-print-container",
-        iframeTitle: "E-20 testing register print",
-      });
+      const snap = formLocked ? currentSnapshot || snapshotFromForm() : snapshotFromForm();
+      if (!snap?.register_date) {
+        setFeedback(false, "Pick a date before printing.");
+        return;
+      }
+      await printSheetHtml(buildSheetHtml(snap), snap.register_date);
     } catch (err) {
       AppError.handle(err, { target: dom.error });
     }

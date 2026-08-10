@@ -169,28 +169,42 @@
     if (cached && !force) return cached;
     if (loadPromise && !force) return loadPromise;
 
-    loadPromise = (async () => {
-      if (typeof supabaseClient !== "undefined" && supabaseClient) {
-        const { data, error } = await supabaseClient
-          .from("pump_settings")
-          .select("config")
-          .eq("id", SETTINGS_ROW_ID)
-          .maybeSingle();
-
-        if (!error && data?.config) {
-          // defaults ← legacy ← DB (DB wins, including explicit false toggles)
-          const merged = normalize(deepMerge(readLegacyLocalStorage(), data.config));
-          return cacheInMemory(merged);
+    // Prefer AppCache before network — almost every page awaits this on init.
+    if (!force && typeof AppCache !== "undefined" && AppCache) {
+      const hit = AppCache.get(CACHE_KEY);
+      if (!hit.isMiss && hit.data) {
+        cached = normalize(hit.data);
+        if (hit.isStale || hit.isExpired) {
+          void refreshPumpSettingsFromNetwork();
         }
+        return cached;
       }
-      return cacheInMemory(readLegacyLocalStorage());
-    })();
+    }
+
+    loadPromise = refreshPumpSettingsFromNetwork();
 
     try {
       return await loadPromise;
     } finally {
       loadPromise = null;
     }
+  }
+
+  async function refreshPumpSettingsFromNetwork() {
+    if (typeof supabaseClient !== "undefined" && supabaseClient) {
+      const { data, error } = await supabaseClient
+        .from("pump_settings")
+        .select("config")
+        .eq("id", SETTINGS_ROW_ID)
+        .maybeSingle();
+
+      if (!error && data?.config) {
+        // defaults ← legacy ← DB (DB wins, including explicit false toggles)
+        const merged = normalize(deepMerge(readLegacyLocalStorage(), data.config));
+        return cacheInMemory(merged);
+      }
+    }
+    return cacheInMemory(readLegacyLocalStorage());
   }
 
   async function savePumpSettings(partial, userId) {

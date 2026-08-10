@@ -328,10 +328,20 @@ if (typeof document !== "undefined") {
 registerServiceWorker();
 
 if (window.AppCache) {
-  window.AppCache.clearOldEntries();
-  setInterval(() => {
-    window.AppCache.clearOldEntries();
-  }, 10 * 60 * 1000);
+  const runCacheCleanup = () => {
+    try {
+      window.AppCache.clearOldEntries();
+    } catch {
+      // Ignore cleanup errors
+    }
+  };
+  // Defer full localStorage scan off the critical path of every page load
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(runCacheCleanup, { timeout: 5000 });
+  } else {
+    setTimeout(runCacheCleanup, 3000);
+  }
+  setInterval(runCacheCleanup, 30 * 60 * 1000);
 }
 
 window.supabaseClient = supabaseClient;
