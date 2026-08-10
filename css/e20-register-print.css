@@ -94,18 +94,25 @@ body.e20-print-body {
 .e20-print-table th,
 .e20-print-table td {
   border: 1px solid var(--e20-line);
-  padding: 3pt 4pt;
+  padding: 3pt 3.5pt;
   vertical-align: middle;
+  overflow-wrap: anywhere;
   word-wrap: break-word;
+  color: var(--e20-text);
 }
 
 .e20-print-table thead th {
   background: #f3f4f6;
+  color: var(--e20-text);
   font-size: 7.5pt;
   font-weight: 700;
+  line-height: 1.25;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  white-space: normal;
+  overflow: hidden;
+  hyphens: auto;
 }
 
 .e20-print-table tbody td {

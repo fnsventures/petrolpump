@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v139";
+const CACHE_VERSION = "v147";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -269,9 +269,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Handle HTML pages with stale-while-revalidate
+  // HTML is versioned with CACHE_VERSION (precached on install) — cache-first
+  // avoids a background re-fetch on every navigation while online.
   if (isHtmlPage(url)) {
-    event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE));
+    event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
     return;
   }
 
@@ -403,8 +404,9 @@ async function cacheFirstStrategy(request, cacheName) {
   const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
 
   if (cachedResponse) {
-    // Optionally refresh cache in background
-    refreshCacheInBackground(request, cacheName);
+    // Serve from cache only — assets/pages are versioned via CACHE_VERSION and
+    // refreshed on SW activate. Background re-fetch on every hit doubled network
+    // work for ~20 scripts/CSS per page while online.
     return cachedResponse;
   }
 
@@ -421,41 +423,6 @@ async function cacheFirstStrategy(request, cacheName) {
     console.error("[SW] Cache-first failed:", request.url, error);
     return new Response("Resource not available offline", { status: 503 });
   }
-}
-
-/**
- * Stale-while-revalidate strategy
- * Returns cached version immediately, updates cache in background
- */
-async function staleWhileRevalidate(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  const cachedResponse = await cache.match(request, CACHE_MATCH_OPTS);
-
-  // Fetch from network in background
-  const fetchPromise = fetch(request)
-    .then((networkResponse) => {
-      if (networkResponse.ok) {
-        cache.put(request, networkResponse.clone());
-      }
-      return networkResponse;
-    })
-    .catch((error) => {
-      console.warn("[SW] Background fetch failed:", request.url, error);
-      return null;
-    });
-
-  // Return cached response immediately, or wait for network
-  if (cachedResponse) {
-    return cachedResponse;
-  }
-
-  const networkResponse = await fetchPromise;
-  if (networkResponse) {
-    return networkResponse;
-  }
-
-  // Return offline page as last resort
-  return getOfflineFallback();
 }
 
 /**
@@ -480,22 +447,6 @@ async function networkWithCacheFallback(request, cacheName) {
 
     return getOfflineFallback();
   }
-}
-
-/**
- * Refresh cache in background without blocking
- */
-function refreshCacheInBackground(request, cacheName) {
-  fetch(request)
-    .then(async (response) => {
-      if (response.ok) {
-        const cache = await caches.open(cacheName);
-        cache.put(request, response);
-      }
-    })
-    .catch(() => {
-      // Silent fail for background refresh
-    });
 }
 
 /**
