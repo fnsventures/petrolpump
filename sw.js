@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v147";
+const CACHE_VERSION = "v150";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -304,7 +304,6 @@ function isNoCacheApiRequest(url) {
     "users",
     "employee_attendance",
     "salary_payments",
-    "salary_month_exclusions",
     // DSR, expenses, day closing — AppCache or live pages own freshness
     "dsr",
     "dsr_petrol",

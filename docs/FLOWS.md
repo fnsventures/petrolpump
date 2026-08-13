@@ -278,23 +278,25 @@ Analysis (analysis.html)
 
 ## 7. HR flow (staff, attendance, salary)
 
-### 7.1 Employee master (admin — staff.html)
+### 7.1 Employee master (staff.html)
 
 ```
-Staff (staff.html) — admin only
-   → requireAuth({ pageName: 'staff', allowedRoles: ['admin'] })
+Staff (staff.html) — admin + supervisor (inactive toggle: admin only)
+   → requireAuth({ pageName: 'staff', allowedRoles: ['admin', 'supervisor'] })
    → Roster sidebar + profile panel
-   → CRUD on employees table (direct Supabase client — admin RLS)
+   → CRUD on employees table (direct Supabase client)
    → Fields: name, job title, DOB, ID validity dates, photo, blood group,
              phone, Aadhaar, PAN, PF/UAN, address
    → Photo upload → staff-photos bucket → set_employee_photo RPC
    → BPCL-style ID card preview + print (requires photo, blood group, DOB)
    → PF contribution amount edited in Settings → Staff salaries (not on staff form)
    → Deep link: staff.html#{employee_uuid}
-   → Soft-delete: is_active=false when salary/attendance FK blocks hard delete
+   → Soft-deactivate (Mark inactive): `set_employee_active(id, false)` — staff disappear from
+     salary, attendance, E-20, settings, and dashboard alerts. Past payments/attendance remain.
+   → Reactivate: `set_employee_active(id, true)`. Admin Active/Inactive roster filter on Staff page.
 ```
 
-Supervisors **cannot** open `staff.html` (nav hidden + `check_page_access('staff')`). They load employee names via `list_employees_roster()` or `list_employees_salary()` RPCs on attendance/salary pages.
+Supervisors can open `staff.html` (view/edit profiles). Only admins may mark inactive / reactivate. Operational pages load active staff via `StaffEmployees` / `list_employees_roster()` / `list_employees_salary()`.
 
 ### 7.2 Attendance
 

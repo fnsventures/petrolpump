@@ -10,7 +10,7 @@
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-salary.css?v=12" />
+    <link rel="stylesheet" href="css/app-salary.css?v=13" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -21,9 +21,9 @@
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/staffEmployees.js"></script>
+    <script defer src="js/staffEmployees.js?v=3"></script>
     <script defer src="js/printUtils.js?v=10"></script>
-    <script defer src="js/salary.js?v=17"></script>
+    <script defer src="js/salary.js?v=19"></script>
   </head>
   <body class="salary-page">
     <header class="topbar" data-build-topbar>
@@ -104,7 +104,7 @@
           <div class="panel-head card-head snapshot-head">
             <div>
               <h2 class="dashboard-section-title">Monthly salary summary</h2>
-              <p class="muted panel-lead">Pay period summary — tracks salary owed and paid for each calendar month, regardless of when cash was disbursed. Admins can mark a staff month as <strong>not applicable</strong> (e.g. full-month leave or before joining) from salary details. Salary slips use details from <a href="staff.html">HR → Staff</a>. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
+              <p class="muted panel-lead">Pay period summary — tracks salary owed and paid for each calendar month, regardless of when cash was disbursed. Inactive staff are hidden here (manage status in <a href="staff.html">HR → Staff</a>). Salary slips use details from Staff. Set each employee&apos;s fixed PF contribution in <a href="settings.html#salaries">Settings → Staff salaries</a>.</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field month-year-filter">
@@ -216,22 +216,6 @@
         <div class="salary-detail-payments">
           <div class="salary-detail-payments-head">
             <h3 class="salary-detail-section-title">Payments this month</h3>
-            <div class="salary-detail-payments-tools">
-              <div id="salary-detail-na-banner" class="salary-detail-na-tools hidden" role="status" aria-live="polite">
-                <span id="salary-detail-na-banner-text" class="salary-detail-na-text"></span>
-                <button type="button" id="salary-detail-restore-na" class="button-secondary button-small hidden">Restore</button>
-              </div>
-              <div id="salary-detail-admin-na" class="salary-detail-na-tools hidden" aria-label="Mark month not applicable">
-                <input
-                  id="salary-na-note"
-                  type="text"
-                  maxlength="200"
-                  aria-label="Reason for marking month not applicable (optional)"
-                  placeholder="Reason (optional)"
-                />
-                <button type="button" id="salary-detail-mark-na" class="button-secondary button-small">Mark N/A</button>
-              </div>
-            </div>
           </div>
           <div class="table-wrap">
             <table>

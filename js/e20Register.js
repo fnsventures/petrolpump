@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange */
+/* global requireAuth, applyRoleVisibility, supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
 
 (function () {
   const QUALITY_SLOTS = [
@@ -414,8 +414,7 @@
 
   async function loadStaffNames() {
     try {
-      const { data, error } = await supabaseClient.rpc("list_employees_roster");
-      if (error) throw error;
+      const data = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: true });
       if (!dom.staffList) return;
       dom.staffList.innerHTML = (data || [])
         .map((r) => r.name)

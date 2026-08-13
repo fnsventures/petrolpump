@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees */
 
 let currentAuth = null;
 
@@ -1064,7 +1064,11 @@ function initDocumentTypeCategories() {
 // ─── Staff salaries ──────────────────────────────────────────────────────────
 
 function invalidateEmployeeListCache() {
-  if (typeof AppCache !== "undefined" && AppCache) AppCache.invalidateByType("staff_list");
+  if (typeof StaffEmployees !== "undefined" && StaffEmployees?.invalidateActiveEmployeesCache) {
+    StaffEmployees.invalidateActiveEmployeesCache();
+  } else if (typeof AppCache !== "undefined" && AppCache) {
+    AppCache.invalidateByType("staff_list");
+  }
 }
 
 function initStaffSalaries() {
@@ -1076,18 +1080,15 @@ function initStaffSalaries() {
   let staffList = [];
 
   async function loadSalaries() {
-    const { data, error } = await supabaseClient
-      .from("employees")
-      .select("id, name, role_display, monthly_salary, pf_contribution, display_order")
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
-    if (error) {
+    try {
+      staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
+        isAdmin: true,
+        useCache: false,
+      });
+      renderSalariesTable();
+    } catch (error) {
       tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
-      return;
     }
-    staffList = data ?? [];
-    renderSalariesTable();
   }
 
   function formatPfContributionValue(value) {
