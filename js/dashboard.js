@@ -937,7 +937,6 @@ async function updateSmartAlerts(options = {}) {
     attendanceRes,
     salaryEmpRes,
     salaryPayRes,
-    salaryExclRes,
     mtdDsrRes,
     mtdExpenseRes,
     missingInvoiceRes,
@@ -976,12 +975,6 @@ async function updateSmartAlerts(options = {}) {
       ? supabaseClient
           .from("salary_payments")
           .select("employee_id, amount")
-          .eq("salary_month", salaryMonth)
-      : Promise.resolve({ data: [], error: null }),
-    th.unpaidSalaryAlert && isAdmin
-      ? supabaseClient
-          .from("salary_month_exclusions")
-          .select("employee_id")
           .eq("salary_month", salaryMonth)
       : Promise.resolve({ data: [], error: null }),
     th.expenseRatioAlert
@@ -1249,10 +1242,6 @@ async function updateSmartAlerts(options = {}) {
     } else if (salaryPayRes.error) {
       AppError.report(salaryPayRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_payments" });
     } else {
-      const excluded = new Set((salaryExclRes.data ?? []).map((r) => r.employee_id));
-      if (salaryExclRes.error) {
-        AppError.report(salaryExclRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_exclusions" });
-      }
       const paidMap = new Map();
       for (const p of salaryPayRes.data ?? []) {
         paidMap.set(p.employee_id, (paidMap.get(p.employee_id) || 0) + Number(p.amount ?? 0));
@@ -1260,7 +1249,6 @@ async function updateSmartAlerts(options = {}) {
       let unpaidCount = 0;
       let pendingTotal = 0;
       for (const emp of salaryEmpRes.data ?? []) {
-        if (excluded.has(emp.id)) continue;
         const payable = approxNetMonthlySalary(emp);
         if (payable <= 0) continue;
         const pending = Math.max(0, payable - (paidMap.get(emp.id) || 0));

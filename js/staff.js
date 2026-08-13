@@ -344,6 +344,7 @@ function initStaffPage(auth) {
   const rosterList = document.getElementById("staff-roster-list");
   const rosterCount = document.getElementById("staff-roster-count");
   const rosterSearch = document.getElementById("staff-roster-search");
+  const staffAddBtn = document.getElementById("staff-add-btn");
   const emptyState = document.getElementById("staff-empty-state");
   const formPanel = document.getElementById("staff-form-panel");
   const profilePanel = document.getElementById("staff-profile-panel");
@@ -388,12 +389,17 @@ function initStaffPage(auth) {
   const idCardModal = document.getElementById("staff-id-modal");
   const idCardModalClose = document.getElementById("staff-id-modal-close");
   const printBtn = document.getElementById("id-card-print-btn");
+  const profileStatus = document.getElementById("staff-profile-status");
+  const deactivateBtn = document.getElementById("staff-profile-deactivate-btn");
+  const reactivateBtn = document.getElementById("staff-profile-reactivate-btn");
+  const statusFilterEl = document.querySelector(".staff-roster-status-filter");
 
   if (!rosterList || !staffMemberForm) return;
 
   let staffList = [];
   let staffListLoadError = null;
   let rosterFilter = "";
+  let rosterStatus = "active";
   let selectedId = null;
   let pendingPhotoFile = null;
   let removePhotoOnSave = false;
@@ -489,7 +495,14 @@ function initStaffPage(auth) {
     staffFormError?.classList.add("hidden");
   }
 
-  function openAddForm() {
+  async function openAddForm() {
+    if (rosterStatus === "inactive") {
+      rosterStatus = "active";
+      syncStatusFilterUi();
+      selectedId = null;
+      await loadStaffMembers();
+      renderRosterList();
+    }
     resetFormForAdd();
     showPanel("form");
     nameInput?.focus();
@@ -518,7 +531,7 @@ function initStaffPage(auth) {
     if (idCardHint) {
       if (missing.length) {
         idCardHint.innerHTML = `Add <strong>${missing.map((m) => escapeHtml(m)).join("</strong>, <strong>")}</strong> in the profile to enable printing.`;
-        idCardHint.className = "staff-id-status-banner salary-na-banner";
+        idCardHint.className = "staff-id-status-banner staff-id-status-banner--warn";
       } else {
         idCardHint.textContent = "ID card complete — ready to print.";
         idCardHint.className = "staff-id-status-banner staff-id-status-banner--ready";
@@ -592,8 +605,31 @@ function initStaffPage(auth) {
 
   function renderProfile(emp) {
     selectedId = emp.id;
+    const inactive = emp.is_active === false;
     if (profileName) profileName.textContent = emp.name || "—";
     if (profileRole) profileRole.textContent = emp.role_display || "Staff member";
+    if (profileStatus) {
+      if (inactive) {
+        profileStatus.textContent =
+          "Inactive — hidden from salary, attendance, E-20, and settings until reactivated.";
+        profileStatus.classList.remove("hidden");
+        profileStatus.classList.add("is-inactive");
+        profileStatus.hidden = false;
+      } else {
+        profileStatus.textContent = "";
+        profileStatus.classList.add("hidden");
+        profileStatus.classList.remove("is-inactive");
+        profileStatus.hidden = true;
+      }
+    }
+    if (deactivateBtn) {
+      deactivateBtn.classList.toggle("hidden", inactive);
+      deactivateBtn.hidden = inactive;
+    }
+    if (reactivateBtn) {
+      reactivateBtn.classList.toggle("hidden", !inactive);
+      reactivateBtn.hidden = !inactive;
+    }
     if (profileBlood) profileBlood.textContent = formatDetail(emp.blood_group);
     if (profileDob) profileDob.textContent = emp.date_of_birth ? formatDobDisplay(emp.date_of_birth) : "—";
     if (profileValidity) {
@@ -644,17 +680,22 @@ function initStaffPage(auth) {
       return;
     }
     const visible = filteredStaffList();
+    const statusLabel = rosterStatus === "inactive" ? "inactive" : "active";
     if (rosterCount) {
       if (!staffList.length) {
-        rosterCount.textContent = "No staff yet";
+        rosterCount.textContent =
+          rosterStatus === "inactive" ? "No inactive staff" : "No staff yet";
       } else if (rosterFilter.trim()) {
-        rosterCount.textContent = `${visible.length} of ${staffList.length} shown`;
+        rosterCount.textContent = `${visible.length} of ${staffList.length} ${statusLabel}`;
       } else {
-        rosterCount.textContent = `${staffList.length} member${staffList.length === 1 ? "" : "s"}`;
+        rosterCount.textContent = `${staffList.length} ${statusLabel}`;
       }
     }
     if (!staffList.length) {
-      rosterList.innerHTML = '<li class="staff-roster-empty muted">Add your first staff member.</li>';
+      rosterList.innerHTML =
+        rosterStatus === "inactive"
+          ? '<li class="staff-roster-empty muted">No inactive staff.</li>'
+          : '<li class="staff-roster-empty muted">Add your first staff member.</li>';
       return;
     }
     if (!visible.length) {
@@ -664,16 +705,22 @@ function initStaffPage(auth) {
     rosterList.innerHTML = visible
       .map((s) => {
         const active = s.id === selectedId ? " is-active" : "";
+        const inactiveCls = s.is_active === false ? " is-inactive-member" : "";
         const thumb = s.photo_url
           ? `<img class="staff-roster-thumb" src="${escapeHtml(s.photo_url)}" alt="" />`
           : `<span class="staff-roster-thumb staff-roster-thumb-placeholder">${escapeHtml(staffInitial(s.name))}</span>`;
-        const ready = idCardReadiness(s).length === 0;
-        const badge = ready
-          ? `<span class="staff-id-badge staff-id-badge--ready">ID ready</span>`
-          : `<span class="staff-id-badge staff-id-badge--draft">Draft</span>`;
+        let badge;
+        if (s.is_active === false) {
+          badge = `<span class="staff-id-badge staff-id-badge--inactive">Inactive</span>`;
+        } else {
+          const ready = idCardReadiness(s).length === 0;
+          badge = ready
+            ? `<span class="staff-id-badge staff-id-badge--ready">ID ready</span>`
+            : `<span class="staff-id-badge staff-id-badge--draft">Draft</span>`;
+        }
         return `
         <li>
-          <button type="button" class="staff-roster-item settings-nav-item${active}" data-id="${escapeHtml(s.id)}" role="option" aria-selected="${s.id === selectedId}">
+          <button type="button" class="staff-roster-item settings-nav-item${active}${inactiveCls}" data-id="${escapeHtml(s.id)}" role="option" aria-selected="${s.id === selectedId}">
             ${thumb}
             <span class="staff-roster-item-text">
               <span class="staff-roster-item-name">${escapeHtml(s.name)}</span>
@@ -688,9 +735,10 @@ function initStaffPage(auth) {
 
   async function loadStaffMembers() {
     try {
-      staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
+      staffList = await StaffEmployees.loadEmployees(supabaseClient, {
         isAdmin,
         useCache: true,
+        status: rosterStatus,
       });
       staffListLoadError = null;
     } catch (error) {
@@ -701,38 +749,70 @@ function initStaffPage(auth) {
     return staffList;
   }
 
+  async function resolveHashEmployee(hashId) {
+    if (!hashId) return null;
+    if (staffList.some((s) => s.id === hashId)) return { id: hashId, status: rosterStatus };
+    if (!isAdmin) return null;
+    try {
+      const map = await StaffEmployees.resolveEmployeesByIds(supabaseClient, [hashId]);
+      const emp = map.get(hashId);
+      if (!emp) return null;
+      return { id: hashId, status: emp.is_active === false ? "inactive" : "active" };
+    } catch (err) {
+      AppError.report(err, { context: "resolveHashEmployee" });
+      return null;
+    }
+  }
+
   async function refreshAndSelect(id) {
     await loadStaffMembers();
     renderRosterList();
-    if (id) selectEmployee(id);
+    if (id && staffList.some((s) => s.id === id)) selectEmployee(id);
     else if (staffList.length) selectEmployee(staffList[0].id);
     else {
       selectedId = null;
       showPanel("empty");
       history.replaceState(null, "", "staff.html");
+      const emptyAdd = document.getElementById("staff-empty-add-btn");
+      if (emptyAdd) emptyAdd.classList.toggle("hidden", rosterStatus === "inactive");
+      const emptyCopy = emptyState?.querySelector(".card-head .muted");
+      if (emptyCopy) {
+        emptyCopy.textContent =
+          rosterStatus === "inactive"
+            ? "No inactive staff. Active team members appear under the Active filter."
+            : "Select a team member from the roster to view their profile, manage details, and print an ID card.";
+      }
     }
   }
 
-  async function handleDeleteEmployee(id, name) {
-    if (!window.confirm(`Remove ${name} from the active staff list?`)) return;
-    const { error: delErr } = await supabaseClient.from("employees").delete().eq("id", id);
-    if (!delErr) {
-      invalidateEmployeeListCache();
+  async function handleSetEmployeeActive(id, name, makeActive) {
+    const action = makeActive ? "reactivate" : "mark inactive";
+    const confirmMsg = makeActive
+      ? `Reactivate ${name}?\n\nThey will appear again in salary, attendance, E-20, and settings.`
+      : `Mark ${name} inactive?\n\nThey will be hidden from salary, attendance, E-20, and settings. Past payments and attendance stay in history.`;
+    if (!window.confirm(confirmMsg)) return;
+    const busyBtn = makeActive ? reactivateBtn : deactivateBtn;
+    if (busyBtn) busyBtn.disabled = true;
+    try {
+      await StaffEmployees.setEmployeeActive(supabaseClient, id, makeActive);
+      rosterStatus = makeActive ? "active" : "inactive";
+      syncStatusFilterUi();
       selectedId = null;
-      await refreshAndSelect(null);
-      return;
+      await refreshAndSelect(id);
+    } catch (err) {
+      alert(AppError.getUserMessage(err) || `Could not ${action}.`);
+    } finally {
+      if (busyBtn) busyBtn.disabled = false;
     }
-    const msg = (delErr.message || "").toLowerCase();
-    if (delErr.code === "23503" || msg.includes("foreign key")) {
-      const { error: upErr } = await supabaseClient.from("employees").update({ is_active: false }).eq("id", id);
-      if (!upErr) {
-        invalidateEmployeeListCache();
-        selectedId = null;
-        await refreshAndSelect(null);
-      } else alert(AppError.getUserMessage(upErr));
-      return;
-    }
-    alert(AppError.getUserMessage(delErr));
+  }
+
+  function syncStatusFilterUi() {
+    statusFilterEl?.querySelectorAll(".staff-status-chip").forEach((btn) => {
+      const selected = btn.getAttribute("data-status") === rosterStatus;
+      btn.classList.toggle("is-selected", selected);
+      btn.setAttribute("aria-pressed", selected ? "true" : "false");
+    });
+    if (staffAddBtn) staffAddBtn.classList.toggle("hidden", rosterStatus === "inactive");
   }
 
   rosterList.addEventListener("click", (e) => {
@@ -748,14 +828,30 @@ function initStaffPage(auth) {
 
   window.addEventListener("hashchange", () => {
     const hashId = (location.hash || "").replace(/^#/, "");
-    if (hashId && staffList.some((s) => s.id === hashId)) selectEmployee(hashId);
+    if (!hashId) return;
+    void (async () => {
+      const resolved = await resolveHashEmployee(hashId);
+      if (!resolved) return;
+      if (resolved.status !== rosterStatus) {
+        rosterStatus = resolved.status;
+        syncStatusFilterUi();
+        await refreshAndSelect(resolved.id);
+        return;
+      }
+      selectEmployee(resolved.id);
+    })();
   });
 
-  document.getElementById("staff-add-btn")?.addEventListener("click", openAddForm);
-  document.getElementById("staff-empty-add-btn")?.addEventListener("click", openAddForm);
+  document.getElementById("staff-add-btn")?.addEventListener("click", () => {
+    void openAddForm();
+  });
+  document.getElementById("staff-empty-add-btn")?.addEventListener("click", () => {
+    void openAddForm();
+  });
   document.getElementById("staff-form-close")?.addEventListener("click", () => {
-    if (selectedId) selectEmployee(selectedId);
-    else showPanel(staffList.length ? "empty" : "empty");
+    if (selectedId && staffList.some((s) => s.id === selectedId)) selectEmployee(selectedId);
+    else if (staffList.length) selectEmployee(staffList[0].id);
+    else showPanel("empty");
   });
 
   document.getElementById("staff-profile-edit-btn")?.addEventListener("click", () => {
@@ -763,10 +859,28 @@ function initStaffPage(auth) {
     if (emp) openEditForm(emp);
   });
 
-  document.getElementById("staff-profile-delete-btn")?.addEventListener("click", () => {
+  deactivateBtn?.addEventListener("click", () => {
     const emp = staffList.find((s) => s.id === selectedId);
-    if (emp) void handleDeleteEmployee(emp.id, emp.name);
+    if (emp) void handleSetEmployeeActive(emp.id, emp.name, false);
   });
+
+  reactivateBtn?.addEventListener("click", () => {
+    const emp = staffList.find((s) => s.id === selectedId);
+    if (emp) void handleSetEmployeeActive(emp.id, emp.name, true);
+  });
+
+  statusFilterEl?.addEventListener("click", (e) => {
+    const btn = e.target instanceof Element ? e.target.closest(".staff-status-chip") : null;
+    if (!btn || !isAdmin) return;
+    const next = btn.getAttribute("data-status");
+    if (!next || next === rosterStatus) return;
+    rosterStatus = next;
+    syncStatusFilterUi();
+    selectedId = null;
+    void refreshAndSelect(null);
+  });
+
+  syncStatusFilterUi();
 
   photoFileInput?.addEventListener("change", () => {
     const file = photoFileInput.files?.[0];
@@ -931,8 +1045,15 @@ function initStaffPage(auth) {
     await loadStaffMembers();
     renderRosterList();
     const hashId = (location.hash || "").replace(/^#/, "");
-    if (hashId && staffList.some((s) => s.id === hashId)) {
-      selectEmployee(hashId);
+    const resolved = await resolveHashEmployee(hashId);
+    if (resolved) {
+      if (resolved.status !== rosterStatus) {
+        rosterStatus = resolved.status;
+        syncStatusFilterUi();
+        await refreshAndSelect(resolved.id);
+        return;
+      }
+      selectEmployee(resolved.id);
     } else if (staffList.length) {
       selectEmployee(staffList[0].id);
     } else {
