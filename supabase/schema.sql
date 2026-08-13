@@ -1278,12 +1278,50 @@ create table if not exists public.employees (
 );
 
 create index if not exists employees_display_order_idx on public.employees (display_order, name);
+create index if not exists employees_active_roster_idx
+  on public.employees (display_order, name)
+  where is_active = true;
 
 comment on table public.employees is 'Pump employees who receive salary. Mutations: admin or supervisor (delete: admin only). Used for salary and attendance.';
+comment on column public.employees.is_active is
+  'Employment status. false = inactive everywhere (salary, attendance, E-20, settings).';
 comment on column public.employees.photo_url is 'Public URL of staff photo for ID card (staff-photos bucket).';
 comment on column public.employees.date_of_birth is 'Date of birth (shown on staff ID card).';
 comment on column public.employees.id_valid_from is 'ID card valid from (back of card).';
 comment on column public.employees.id_valid_to is 'ID card valid until (back of card).';
+
+create or replace function public.set_employee_active(
+  p_employee_id uuid,
+  p_is_active boolean
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Admin access required';
+  end if;
+
+  if p_employee_id is null then
+    raise exception 'Employee id is required';
+  end if;
+
+  update public.employees
+  set is_active = coalesce(p_is_active, false)
+  where id = p_employee_id;
+
+  if not found then
+    raise exception 'Employee not found';
+  end if;
+end;
+$$;
+
+comment on function public.set_employee_active(uuid, boolean) is
+  'Admin-only: mark employee active or inactive. Inactive staff are excluded from all operational rosters.';
+
+grant execute on function public.set_employee_active(uuid, boolean) to authenticated;
 
 create or replace function public.set_employee_photo(p_employee_id uuid, p_photo_url text)
 returns void
@@ -1297,7 +1335,7 @@ begin
   end if;
   update public.employees
   set photo_url = nullif(trim(p_photo_url), '')
-  where id = p_employee_id and is_active = true;
+  where id = p_employee_id;
   if not found then
     raise exception 'Employee not found';
   end if;
@@ -1389,6 +1427,65 @@ comment on function public.list_employees_salary() is
 
 grant execute on function public.list_employees_salary() to authenticated;
 
+create or replace function public.get_employees_by_ids(p_ids uuid[])
+returns table (
+  id uuid,
+  name text,
+  role_display text,
+  monthly_salary numeric,
+  display_order smallint,
+  phone_number text,
+  aadhar_number text,
+  address text,
+  pan_number text,
+  pf_number text,
+  pf_contribution numeric,
+  blood_group text,
+  photo_url text,
+  date_of_birth date,
+  id_valid_from date,
+  id_valid_to date,
+  is_active boolean
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  perform public.require_staff_access();
+  if p_ids is null or cardinality(p_ids) = 0 then
+    return;
+  end if;
+  return query
+  select
+    e.id,
+    e.name,
+    e.role_display,
+    e.monthly_salary,
+    e.display_order,
+    e.phone_number,
+    e.aadhar_number,
+    e.address,
+    e.pan_number,
+    e.pf_number,
+    e.pf_contribution,
+    e.blood_group,
+    e.photo_url,
+    e.date_of_birth,
+    e.id_valid_from,
+    e.id_valid_to,
+    e.is_active
+  from public.employees e
+  where e.id = any (p_ids);
+end;
+$$;
+
+comment on function public.get_employees_by_ids(uuid[]) is
+  'Lookup employees by id including inactive — for historical salary/attendance display.';
+
+grant execute on function public.get_employees_by_ids(uuid[]) to authenticated;
+
 alter table public.employees enable row level security;
 
 drop policy if exists "employees_select_admin" on public.employees;
@@ -1452,45 +1549,6 @@ drop policy if exists "salary_payments_delete_admin" on public.salary_payments;
 create policy "salary_payments_delete_admin" on public.salary_payments
   for delete to authenticated using (public.is_admin());
 
--- Salary month exclusions (admin marks employee + month as not applicable)
-create table if not exists public.salary_month_exclusions (
-  id uuid primary key default gen_random_uuid(),
-  employee_id uuid not null references public.employees (id) on delete cascade,
-  salary_month date not null,
-  note text check (char_length(note) <= 200),
-  created_by uuid references auth.users (id) on delete set null,
-  created_at timestamptz not null default timezone('utc'::text, now()),
-  unique (employee_id, salary_month),
-  constraint salary_month_exclusions_month_start check (salary_month = date_trunc('month', salary_month)::date)
-);
-
-create index if not exists salary_month_exclusions_month_idx
-  on public.salary_month_exclusions (salary_month desc, employee_id);
-
-comment on table public.salary_month_exclusions is
-  'Marks a calendar month as not applicable for an employee salary (admin). Excluded from payroll totals.';
-
-alter table public.salary_month_exclusions enable row level security;
-
-drop policy if exists "salary_month_exclusions_select" on public.salary_month_exclusions;
-create policy "salary_month_exclusions_select" on public.salary_month_exclusions
-  for select to authenticated using (public.is_supervisor_or_admin());
-
-drop policy if exists "salary_month_exclusions_insert_admin" on public.salary_month_exclusions;
-create policy "salary_month_exclusions_insert_admin" on public.salary_month_exclusions
-  for insert to authenticated
-  with check (public.is_admin() and created_by = auth.uid());
-
-drop policy if exists "salary_month_exclusions_update_admin" on public.salary_month_exclusions;
-create policy "salary_month_exclusions_update_admin" on public.salary_month_exclusions
-  for update to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
-
-drop policy if exists "salary_month_exclusions_delete_admin" on public.salary_month_exclusions;
-create policy "salary_month_exclusions_delete_admin" on public.salary_month_exclusions
-  for delete to authenticated using (public.is_admin());
-
 -- Employee attendance (one row per employee per date: present/absent/half_day/leave, optional check-in/out)
 create table if not exists public.employee_attendance (
   id uuid primary key default uuid_generate_v4(),
@@ -1537,11 +1595,15 @@ create or replace function public.save_employee_attendance_batch(
   p_rows jsonb
 )
 returns jsonb
-language plpgsql security definer
+language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_row jsonb;
   v_count int := 0;
+  v_emp_id uuid;
+  v_bad_count int;
 begin
   if not public.is_supervisor_or_admin() then
     raise exception 'Supervisor or admin access required';
@@ -1551,16 +1613,32 @@ begin
     return jsonb_build_object('saved', 0);
   end if;
 
+  select count(*)::int into v_bad_count
+  from (
+    select distinct (t.value->>'employee_id')::uuid as emp_id
+    from jsonb_array_elements(p_rows) as t(value)
+    where nullif(trim(t.value->>'employee_id'), '') is not null
+  ) ids
+  left join public.employees e on e.id = ids.emp_id
+  where e.id is null or e.is_active is not true;
+
+  if v_bad_count > 0 then
+    raise exception 'Cannot mark attendance for missing or inactive staff';
+  end if;
+
   for v_row in select value from jsonb_array_elements(p_rows) as t(value)
   loop
-    if v_row->>'employee_id' is null then
+    if nullif(trim(v_row->>'employee_id'), '') is null then
       continue;
     end if;
+
+    v_emp_id := (v_row->>'employee_id')::uuid;
+
     insert into public.employee_attendance (
       employee_id, date, status, shift, note, created_by, updated_at
     )
     values (
-      (v_row->>'employee_id')::uuid,
+      v_emp_id,
       p_date,
       coalesce(nullif(trim(v_row->>'status'), ''), 'present'),
       nullif(trim(v_row->>'shift'), ''),
@@ -1581,7 +1659,7 @@ end;
 $$;
 
 comment on function public.save_employee_attendance_batch(date, jsonb) is
-  'Upsert attendance rows for one date. Supervisor or admin only.';
+  'Upsert attendance rows for one date. Supervisor or admin only. Rejects inactive employees.';
 
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 
@@ -3867,11 +3945,6 @@ create trigger audit_employees_trigger
 drop trigger if exists audit_salary_payments_trigger on public.salary_payments;
 create trigger audit_salary_payments_trigger
   after insert or update or delete on public.salary_payments
-  for each row execute function public.audit_trigger_fn();
-
-drop trigger if exists audit_salary_month_exclusions_trigger on public.salary_month_exclusions;
-create trigger audit_salary_month_exclusions_trigger
-  after insert or update or delete on public.salary_month_exclusions
   for each row execute function public.audit_trigger_fn();
 
 -- Staff attendance: full audit

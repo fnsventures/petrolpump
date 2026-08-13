@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -178,14 +178,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   let attendanceByDate = new Map();
 
   async function loadStaffMembers() {
-    const { data, error } = await supabaseClient.rpc("list_employees_roster");
-
-    if (error) {
+    try {
+      staffList = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: true });
+      return staffList;
+    } catch (error) {
       AppError.report(error, { context: "loadStaffMembers" });
+      staffList = [];
       return [];
     }
-    staffList = data ?? [];
-    return staffList;
   }
 
   async function loadAttendanceForDate(date) {
@@ -537,51 +537,60 @@ document.addEventListener("DOMContentLoaded", async () => {
     historyMatrixWrap.innerHTML = `<table class="attendance-matrix"><thead><tr><th scope="col" class="att-matrix-staff-col">Staff</th>${headerDays}</tr></thead><tbody>${bodyRows}</tbody></table>`;
   }
 
-  function downloadHistoryCsv(monthValue) {
+  async function downloadHistoryCsv(monthValue) {
     if (!monthValue) return;
     const [year, month] = monthValue.split("-").map(Number);
     const { start, end } = getMonthStartEnd(year, month);
 
-    supabaseClient
-      .from("employee_attendance")
-      .select("employee_id, date, status, shift, note")
-      .gte("date", start)
-      .lte("date", end)
-      .order("date", { ascending: false })
-      .then(({ data, error }) => {
-        if (error) {
-          showMessage(AppError.getUserMessage(error), true);
-          return;
-        }
-        const list = data ?? [];
-        const staffById = new Map(staffList.map((s) => [s.id, s]));
-        const cfg = getShiftConfig();
-        const shiftLabelCsv = (shift) => {
-          if (!shift) return "—";
-          if (shift === "morning") return cfg.morningName;
-          if (shift === "afternoon") return cfg.afternoonName;
-          return shift;
-        };
-        const headers = ["Date", "Staff", "Status", "Shift", "Note"];
-        const rows = list.map((r) => {
-          const staff = staffById.get(r.employee_id);
-          const name = staff ? staff.name : "—";
-          return [
-            r.date,
-            name,
-            STATUS_LABELS[r.status] ?? r.status,
-            shiftLabelCsv(r.shift),
-            (r.note ?? "").toString().replace(/"/g, '""'),
-          ];
-        });
-        const csv = [headers.join(","), ...rows.map((row) => row.map((c) => `"${c}"`).join(","))].join("\n");
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `attendance_${year}-${String(month).padStart(2, "0")}.csv`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+    try {
+      const { data, error } = await supabaseClient
+        .from("employee_attendance")
+        .select("employee_id, date, status, shift, note")
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: false });
+      if (error) {
+        showMessage(AppError.getUserMessage(error), true);
+        return;
+      }
+      const list = data ?? [];
+      const staffById = new Map(staffList.map((s) => [s.id, s]));
+      const missingIds = [
+        ...new Set(list.map((r) => r.employee_id).filter((id) => id && !staffById.has(id))),
+      ];
+      if (missingIds.length) {
+        const resolved = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missingIds);
+        resolved.forEach((emp, id) => staffById.set(id, emp));
+      }
+      const cfg = getShiftConfig();
+      const shiftLabelCsv = (shift) => {
+        if (!shift) return "—";
+        if (shift === "morning") return cfg.morningName;
+        if (shift === "afternoon") return cfg.afternoonName;
+        return shift;
+      };
+      const headers = ["Date", "Staff", "Status", "Shift", "Note"];
+      const rows = list.map((r) => {
+        const staff = staffById.get(r.employee_id);
+        const name = StaffEmployees.displayName(staff);
+        return [
+          r.date,
+          name,
+          STATUS_LABELS[r.status] ?? r.status,
+          shiftLabelCsv(r.shift),
+          (r.note ?? "").toString().replace(/"/g, '""'),
+        ];
       });
+      const csv = [headers.join(","), ...rows.map((row) => row.map((c) => `"${c}"`).join(","))].join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `attendance_${year}-${String(month).padStart(2, "0")}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      showMessage(AppError.getUserMessage(err), true);
+    }
   }
 
   await loadStaffMembers();

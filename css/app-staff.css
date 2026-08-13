@@ -18,6 +18,33 @@
   padding: 0 0.15rem;
 }
 
+.staff-roster-status-filter {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+  padding: 0 0.15rem;
+}
+
+.staff-status-chip {
+  flex: 1;
+  min-height: 2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border, #d0d7e2);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface, #fff);
+  color: var(--text-muted, #64748b);
+  font: inherit;
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.staff-status-chip.is-selected {
+  border-color: var(--bpcl-blue, #0033a0);
+  background: color-mix(in srgb, var(--bpcl-blue, #0033a0) 8%, white);
+  color: var(--bpcl-blue, #0033a0);
+}
+
 .staff-roster-count {
   margin: 0;
   font-size: var(--text-sm, 0.875rem);
@@ -142,6 +169,24 @@
   color: var(--text-muted, #64748b);
 }
 
+.staff-id-badge--inactive {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.staff-roster-item.is-inactive-member {
+  opacity: 0.72;
+}
+
+.staff-profile-status {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.staff-profile-status.is-inactive {
+  color: #b45309;
+}
+
 .staff-main {
   min-width: 0;
 }
@@ -260,6 +305,19 @@
   border: 1px solid #a7f3d0;
   background: #ecfdf5;
   color: #047857;
+  font-size: var(--text-xs, 0.75rem);
+}
+
+.staff-id-status-banner--warn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
   font-size: var(--text-xs, 0.75rem);
 }
 

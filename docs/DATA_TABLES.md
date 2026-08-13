@@ -359,15 +359,19 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | id_valid_from | date | ID card validity start (back of card) |
 | id_valid_to | date | ID card validity end (back of card) |
 | display_order | smallint | Order in lists |
-| is_active | boolean | Active flag (soft-delete sets false when FK blocks hard delete) |
+| is_active | boolean | Employment status — inactive staff excluded app-wide |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT/INSERT/UPDATE/DELETE **admin only**. Supervisors never query this table directly — they use RPCs `list_employees_roster()` (name, role, salary, order only) or `list_employees_salary()` (includes PII for slips).
+**RLS:** SELECT/INSERT/UPDATE for supervisor or admin; DELETE admin only.
 
-**RPCs:** `set_employee_photo(employee_id, photo_url)` — admin updates `photo_url` after Storage upload.
+**RPCs:**
+- `list_employees_roster()` / `list_employees_salary()` — active staff only
+- `set_employee_active(id, is_active)` — admin soft-deactivate / reactivate
+- `get_employees_by_ids(ids)` — lookup including inactive (history display)
+- `set_employee_photo(employee_id, photo_url)` — active employees only
 
-**Page:** `staff.html` (admin) — roster, profile, photo upload, BPCL-style ID card preview/print (`css/staff-id-print.css`). Deep link: `staff.html#{employee_uuid}`.
+**Page:** `staff.html` (admin + supervisor) — roster with Active/Inactive filter (admin), profile, photo upload, ID card. Deep link: `staff.html#{employee_uuid}`.
 
 ---
 

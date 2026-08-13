@@ -10,7 +10,7 @@
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-staff.css?v=12" />
+    <link rel="stylesheet" href="css/app-staff.css?v=14" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -20,9 +20,9 @@
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/staffEmployees.js"></script>
+    <script defer src="js/staffEmployees.js?v=3"></script>
     <script defer src="js/printUtils.js?v=10"></script>
-    <script defer src="js/staff.js?v=13"></script>
+    <script defer src="js/staff.js?v=16"></script>
   </head>
   <body class="staff-page">
     <header class="topbar" data-build-topbar>
@@ -40,6 +40,10 @@
         <div class="staff-roster-toolbar">
           <p class="muted staff-roster-count" id="staff-roster-count">—</p>
           <button type="button" id="staff-add-btn" class="button-secondary button-small">+ Add</button>
+        </div>
+        <div class="staff-roster-status-filter" data-role="admin-only" role="group" aria-label="Staff status">
+          <button type="button" class="staff-status-chip is-selected" data-status="active" aria-pressed="true">Active</button>
+          <button type="button" class="staff-status-chip" data-status="inactive" aria-pressed="false">Inactive</button>
         </div>
         <label class="staff-roster-search-wrap">
           <input type="search" id="staff-roster-search" class="staff-roster-search" placeholder="Search by name or role…" autocomplete="off" aria-label="Search staff" />
@@ -160,9 +164,11 @@
                 <div class="staff-profile-title">
                   <h2 id="staff-profile-name">—</h2>
                   <p id="staff-profile-role" class="muted">—</p>
+                  <p id="staff-profile-status" class="staff-profile-status muted hidden" hidden></p>
                   <div class="staff-profile-actions">
                     <button type="button" id="staff-profile-edit-btn" class="button-secondary">Edit profile</button>
-                    <button type="button" id="staff-profile-delete-btn" class="button-delete" data-role="admin-only">Remove</button>
+                    <button type="button" id="staff-profile-deactivate-btn" class="button-delete" data-role="admin-only">Mark inactive</button>
+                    <button type="button" id="staff-profile-reactivate-btn" class="button-secondary hidden" data-role="admin-only" hidden>Reactivate</button>
                   </div>
                 </div>
               </div>

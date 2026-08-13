@@ -37,44 +37,16 @@ function isMissingSalaryPaymentIdColumn(error) {
   return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
 }
 
-function isMissingSalaryMonthExclusionsTable(error) {
-  const msg = String(error?.message || "");
-  return (
-    /salary_month_exclusions/i.test(msg) ||
-    error?.code === "PGRST204" ||
-    error?.code === "42P01"
-  );
-}
-
-const SALARY_NA_STATUS = {
-  label: "Not applicable",
-  className: "salary-status--na",
-};
-
-function getStaffSalaryMonthContext(staff, paid, exclusion) {
-  if (exclusion) {
-    return {
-      isNa: true,
-      label: SALARY_NA_STATUS.label,
-      className: SALARY_NA_STATUS.className,
-      payable: null,
-      pending: null,
-      advance: 0,
-      paid: Number(paid ?? 0),
-      exclusion,
-    };
-  }
+function getStaffSalaryMonthContext(staff, paid) {
   const status = salaryStatusInfo(staff.monthly_salary, paid, staff);
   const { salary: payable, pending } = computeSalaryBalance(staff.monthly_salary, paid, staff);
   return {
-    isNa: false,
     label: status.label,
     className: status.className,
     payable,
     pending: status.pending,
     advance: status.advance,
     paid: Number(paid ?? 0),
-    exclusion: null,
   };
 }
 
@@ -557,12 +529,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const detailDismiss = document.getElementById("salary-detail-dismiss");
   const detailPrintBtn = document.getElementById("salary-detail-print-slip");
   const detailAddPaymentBtn = document.getElementById("salary-detail-add-payment");
-  const detailNaBanner = document.getElementById("salary-detail-na-banner");
-  const detailNaBannerText = document.getElementById("salary-detail-na-banner-text");
-  const detailAdminNa = document.getElementById("salary-detail-admin-na");
-  const detailNaNoteInput = document.getElementById("salary-na-note");
-  const detailMarkNaBtn = document.getElementById("salary-detail-mark-na");
-  const detailRestoreNaBtn = document.getElementById("salary-detail-restore-na");
 
   if (paymentDateInput) {
     initPersistedDateInput(paymentDateInput, RECORD_DATE_KEYS.salaryPayment);
@@ -579,8 +545,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let staffList = [];
   let monthPayments = [];
-  let monthExclusions = new Map();
-  let monthExclusionsSupported = true;
   let detailStaffId = null;
 
   const historyActionsHead = document.getElementById("salary-history-actions-head");
@@ -734,8 +698,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const paidMap = paidByStaffInRange(monthPayments);
     const paid = paidMap.get(staffId) || 0;
-    const exclusion = monthExclusions.get(staffId) || null;
-    const ctx = getStaffSalaryMonthContext(staff, paid, exclusion);
+    const ctx = getStaffSalaryMonthContext(staff, paid);
     const list = paymentsForEmployee(monthPayments, staffId);
     const monthLabel = formatMonthLabel(monthValue);
 
@@ -749,57 +712,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       subtitleEl.textContent = `${staff.role_display || "Staff"} · ${monthLabel}`;
     }
 
-    if (detailNaBanner) {
-      if (ctx.isNa) {
-        const reason = exclusion?.note?.trim();
-        if (detailNaBannerText) {
-          detailNaBannerText.textContent = reason
-            ? `Not applicable for ${monthLabel} — ${reason}`
-            : `Not applicable for ${monthLabel}. Excluded from payroll totals.`;
-        }
-        detailNaBanner.classList.remove("hidden");
-      } else {
-        detailNaBanner.classList.add("hidden");
-        if (detailNaBannerText) detailNaBannerText.textContent = "";
-      }
-    }
-
-    if (detailAdminNa) {
-      detailAdminNa.classList.toggle(
-        "hidden",
-        !isAdmin || !monthExclusionsSupported || ctx.isNa
-      );
-    }
-    if (detailNaNoteInput) {
-      detailNaNoteInput.value = "";
-      detailNaNoteInput.disabled = false;
-    }
-    if (detailMarkNaBtn) {
-      detailMarkNaBtn.classList.remove("hidden");
-    }
-    if (detailRestoreNaBtn) {
-      detailRestoreNaBtn.classList.toggle("hidden", !ctx.isNa || !isAdmin);
-    }
-
-    const balanceValue = ctx.isNa ? "—" : formatCurrency(ctx.pending);
+    const balanceValue = formatCurrency(ctx.pending);
     const balanceClass =
-      ctx.isNa || ctx.pending <= 0.009 ? "salary-detail-balance is-clear" : "salary-detail-balance";
+      ctx.pending <= 0.009 ? "salary-detail-balance is-clear" : "salary-detail-balance";
 
     const pf = computePfBreakdown(staff.monthly_salary, staff);
     const pfNo = staff.pf_number?.trim();
 
     if (statsEl) {
       statsEl.innerHTML = `
-        <div><dt>Gross salary</dt><dd>${ctx.isNa ? "—" : formatCurrency(staff.monthly_salary)}</dd></div>
-        <div><dt>Net (after PF)</dt><dd>${ctx.isNa ? "—" : formatCurrency(pf.netSalary)}</dd></div>
+        <div><dt>Gross salary</dt><dd>${formatCurrency(staff.monthly_salary)}</dd></div>
+        <div><dt>Net (after PF)</dt><dd>${formatCurrency(pf.netSalary)}</dd></div>
         <div><dt>PF contribution</dt><dd>${
-          ctx.isNa
-            ? "—"
-            : pf.fixedAmount > 0
-              ? formatCurrency(pf.fixedAmount)
-              : '<span class="muted">Not set — <a href="staff.html">Staff</a></span>'
+          pf.fixedAmount > 0
+            ? formatCurrency(pf.fixedAmount)
+            : '<span class="muted">Not set — <a href="staff.html">Staff</a></span>'
         }</dd></div>
-        <div><dt>Employer PF</dt><dd>${ctx.isNa ? "—" : formatCurrency(pf.employerPf)}</dd></div>
+        <div><dt>Employer PF</dt><dd>${formatCurrency(pf.employerPf)}</dd></div>
         <div><dt>PF / UAN</dt><dd>${pfNo ? escapeHtml(pfNo) : '<span class="muted">Not set</span>'}</dd></div>
         <div><dt>Mobile</dt><dd>${staff.phone_number ? escapeHtml(staff.phone_number) : '<span class="muted">—</span>'}</dd></div>
         <div><dt>Paid this month</dt><dd>${formatCurrency(paid)}</dd></div>
@@ -828,10 +757,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     if (detailPrintBtn) {
-      detailPrintBtn.disabled = ctx.isNa;
-      detailPrintBtn.title = ctx.isNa ? "Salary slip is not available for N/A months" : "";
+      detailPrintBtn.disabled = false;
+      detailPrintBtn.title = "";
       detailPrintBtn.onclick = async () => {
-        if (ctx.isNa) return;
         try {
           await runSalarySlipPrint(staff, list, monthValue);
         } catch (err) {
@@ -842,10 +770,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     if (detailAddPaymentBtn) {
-      detailAddPaymentBtn.disabled = ctx.isNa;
-      detailAddPaymentBtn.title = ctx.isNa
-        ? "Restore this month before recording payment"
-        : "";
+      detailAddPaymentBtn.disabled = false;
+      detailAddPaymentBtn.title = "";
     }
   }
 
@@ -860,6 +786,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       staffList = [];
     }
     return staffList;
+  }
+
+  /** Active roster + inactive lookups for history / slips. */
+  async function staffMapForIds(ids) {
+    const map = new Map(staffList.map((s) => [s.id, s]));
+    const missing = [...new Set((ids || []).filter((id) => id && !map.has(id)))];
+    if (!missing.length) return map;
+    try {
+      const resolved = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missing);
+      resolved.forEach((emp, id) => map.set(id, emp));
+    } catch (err) {
+      AppError.report(err, { context: "staffMapForIds" });
+    }
+    return map;
   }
 
   function fillStaffSelect(selectEl, includeEmpty = true) {
@@ -927,118 +867,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     return data ?? [];
   }
 
-  async function loadSalaryMonthExclusions(monthValue) {
-    if (!monthExclusionsSupported) return new Map();
-
-    const salaryMonth = normalizeSalaryMonth(monthValue);
-    if (!salaryMonth) return new Map();
-
-    const { data, error } = await supabaseClient
-      .from("salary_month_exclusions")
-      .select("id, employee_id, note, salary_month")
-      .eq("salary_month", salaryMonth);
-
-    if (error) {
-      if (isMissingSalaryMonthExclusionsTable(error)) {
-        monthExclusionsSupported = false;
-        return new Map();
-      }
-      AppError.report(error, { context: "loadSalaryMonthExclusions" });
-      return new Map();
-    }
-
-    return new Map((data ?? []).map((row) => [row.employee_id, row]));
-  }
-
-  async function markSalaryMonthNa(staffId, monthValue, note) {
-    if (!isAdmin) {
-      alert("Only an admin can mark a salary month as not applicable.");
-      return false;
-    }
-    if (!monthExclusionsSupported) {
-      alert("Salary month exclusions are not available yet. Apply the latest database migration.");
-      return false;
-    }
-
-    const staff = staffList.find((s) => s.id === staffId);
-    if (!staff) return false;
-
-    const salaryMonth = normalizeSalaryMonth(monthValue);
-    if (!salaryMonth) return false;
-
-    const paid = paidByStaffInRange(monthPayments).get(staffId) || 0;
-    const monthLabel = formatMonthLabel(monthValue);
-    let msg = `Mark ${staff.name} as not applicable for ${monthLabel}?\n\nThey will be excluded from payroll totals for this month.`;
-    if (paid > 0.009) {
-      msg += `\n\n${formatCurrency(paid)} is already recorded for this month. Payments stay in history but the month remains excluded from totals.`;
-    }
-    if (!confirm(msg)) return false;
-
-    const payload = {
-      employee_id: staffId,
-      salary_month: salaryMonth,
-      note: note?.trim() || null,
-    };
-    if (auth.session?.user?.id) payload.created_by = auth.session.user.id;
-
-    const { error } = await supabaseClient.from("salary_month_exclusions").upsert(payload, {
-      onConflict: "employee_id,salary_month",
-    });
-
-    if (error) {
-      alert(AppError.getUserMessage(error));
-      AppError.report(error, { context: "markSalaryMonthNa", staffId, monthValue });
-      return false;
-    }
-
-    if (typeof AppCache !== "undefined" && AppCache) {
-      CacheInvalidation.invalidate("operational");
-    }
-    await refreshAll();
-    return true;
-  }
-
-  async function restoreSalaryMonth(staffId, monthValue) {
-    if (!isAdmin) {
-      alert("Only an admin can restore a salary month.");
-      return false;
-    }
-    if (!monthExclusionsSupported) return false;
-
-    const staff = staffList.find((s) => s.id === staffId);
-    if (!staff) return false;
-
-    const salaryMonth = normalizeSalaryMonth(monthValue);
-    if (!salaryMonth) return false;
-
-    const monthLabel = formatMonthLabel(monthValue);
-    if (
-      !confirm(
-        `Restore ${staff.name} for ${monthLabel}?\n\nThey will rejoin payroll totals for this month based on their configured salary.`
-      )
-    ) {
-      return false;
-    }
-
-    const { error } = await supabaseClient
-      .from("salary_month_exclusions")
-      .delete()
-      .eq("employee_id", staffId)
-      .eq("salary_month", salaryMonth);
-
-    if (error) {
-      alert(AppError.getUserMessage(error));
-      AppError.report(error, { context: "restoreSalaryMonth", staffId, monthValue });
-      return false;
-    }
-
-    if (typeof AppCache !== "undefined" && AppCache) {
-      CacheInvalidation.invalidate("operational");
-    }
-    await refreshAll();
-    return true;
-  }
-
   async function getPaymentsForSalaryMonth(monthValue) {
     if (monthValue === getSelectedMonth() && monthPayments.length) {
       return monthPayments;
@@ -1056,15 +884,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     const staff = staffList.find((s) => s.id === staffId);
     if (!staff) return;
-
-    const exclusion = monthExclusions.get(staffId);
-    if (exclusion) {
-      paymentMonthHint.textContent = `${formatMonthLabel(monthVal)}: marked not applicable${
-        exclusion.note?.trim() ? ` (${exclusion.note.trim()})` : ""
-      }. Restore the month in salary details before recording payment.`;
-      paymentMonthHint.classList.remove("hidden");
-      return;
-    }
 
     const payments = await getPaymentsForSalaryMonth(monthVal);
     const balance = getStaffBalanceForMonth(staffId, payments, staffList);
@@ -1127,20 +946,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     monthPayments = await loadPaymentsForSalaryMonth(monthValue);
-    monthExclusions = await loadSalaryMonthExclusions(monthValue);
     const paidMap = paidByStaffInRange(monthPayments);
 
     let totalPayroll = 0;
     let totalPaid = 0;
     let totalPending = 0;
-    let naCount = 0;
 
     staffList.forEach((s) => {
-      const exclusion = monthExclusions.get(s.id);
-      if (exclusion) {
-        naCount += 1;
-        return;
-      }
       const gross = Number(s.monthly_salary ?? 0);
       const paid = paidMap.get(s.id) || 0;
       const { salary: payable, pending } = computeSalaryBalance(gross, paid, s);
@@ -1153,20 +965,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (kpiPaid) kpiPaid.textContent = formatCurrency(totalPaid);
     if (kpiPending) kpiPending.textContent = formatCurrency(totalPending);
 
-    const kpiGrid = document.querySelector(".salary-kpi-grid");
-    let kpiNote = document.getElementById("salary-kpi-note");
-    if (naCount > 0) {
-      if (!kpiNote && kpiGrid) {
-        kpiNote = document.createElement("p");
-        kpiNote.id = "salary-kpi-note";
-        kpiNote.className = "muted salary-kpi-note";
-        kpiGrid.insertAdjacentElement("afterend", kpiNote);
-      }
-      if (kpiNote) {
-        kpiNote.textContent = `${naCount} staff excluded as not applicable for ${formatMonthLabel(monthValue)}.`;
-        kpiNote.classList.remove("hidden");
-      }
-    } else if (kpiNote) {
+    const kpiNote = document.getElementById("salary-kpi-note");
+    if (kpiNote) {
       kpiNote.classList.add("hidden");
       kpiNote.textContent = "";
     }
@@ -1174,20 +974,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     tbody.innerHTML = staffList
       .map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const exclusion = monthExclusions.get(s.id) || null;
-        const ctx = getStaffSalaryMonthContext(s, paid, exclusion);
-        const remaining = ctx.isNa
-          ? "—"
-          : ctx.advance > 0.009
+        const ctx = getStaffSalaryMonthContext(s, paid);
+        const remaining =
+          ctx.advance > 0.009
             ? `<span class="muted">Advance ${formatCurrency(ctx.advance)}</span>`
             : formatCurrency(ctx.pending);
         const name = escapeHtml(s.name);
         const role = escapeHtml(s.role_display ?? "—");
-        const rowClass = ctx.isNa ? "salary-row--na" : "";
-        const payDisabled = ctx.isNa ? " disabled title=\"Month marked not applicable\"" : "";
-        const slipDisabled = ctx.isNa ? " disabled title=\"Salary slip not available for N/A months\"" : "";
         return `
-          <tr data-staff-id="${escapeHtml(s.id)}" class="${rowClass}" tabindex="0" role="button" aria-label="View ${name} salary details">
+          <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
             <td class="num">${formatSalaryAmount(ctx.payable)}</td>
@@ -1196,8 +991,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             <td><span class="salary-status ${ctx.className}">${escapeHtml(ctx.label)}</span></td>
             <td class="table-actions">
               <button type="button" class="button-secondary button-small salary-view-btn" data-staff-id="${escapeHtml(s.id)}">Details</button>
-              <button type="button" class="button-secondary button-small salary-slip-btn" data-staff-id="${escapeHtml(s.id)}"${slipDisabled}>Slip</button>
-              <button type="button" class="button-secondary button-small add-payment-btn" data-staff-id="${escapeHtml(s.id)}"${payDisabled}>Pay</button>
+              <button type="button" class="button-secondary button-small salary-slip-btn" data-staff-id="${escapeHtml(s.id)}">Slip</button>
+              <button type="button" class="button-secondary button-small add-payment-btn" data-staff-id="${escapeHtml(s.id)}">Pay</button>
             </td>
           </tr>
         `;
@@ -1233,7 +1028,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (btn.disabled) return;
         const staffId = btn.getAttribute("data-staff-id");
         const staff = staffList.find((s) => s.id === staffId);
-        if (!staff || monthExclusions.has(staffId)) return;
+        if (!staff) return;
         const list = paymentsForEmployee(monthPayments, staffId);
         try {
           await runSalarySlipPrint(staff, list, monthValue);
@@ -1249,10 +1044,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.stopPropagation();
         if (btn.disabled) return;
         const staffId = btn.getAttribute("data-staff-id");
-        if (monthExclusions.has(staffId)) {
-          alert("This month is marked not applicable. Open details and restore the month before recording payment.");
-          return;
-        }
         prefillPayment(staffId);
       });
     });
@@ -1288,13 +1079,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const staffById = new Map(staffList.map((s) => [s.id, s]));
+    const staffById = await staffMapForIds(list.map((p) => p.employee_id));
 
     tbody.innerHTML = list
       .map((p) => {
         const staff = staffById.get(p.employee_id);
-        const name = staff ? escapeHtml(staff.name) : "—";
+        const name = escapeHtml(StaffEmployees.displayName(staff));
         const staffId = p.employee_id;
+        const slipDisabled = staff ? "" : " disabled title=\"Staff record not found\"";
         return `
           <tr>
             <td>${escapeHtml(formatDisplayDate(p.date))}</td>
@@ -1302,7 +1094,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <td class="num">${formatCurrency(p.amount)}</td>
             <td>${escapeHtml(p.note ?? "—")}</td>
             <td class="table-actions">
-              <button type="button" class="button-secondary button-small history-slip-btn" data-staff-id="${escapeHtml(staffId)}">Slip</button>
+              <button type="button" class="button-secondary button-small history-slip-btn" data-staff-id="${escapeHtml(staffId)}"${slipDisabled}>Slip</button>
               ${salaryDeleteButtonHtml(p, staff, isAdmin)}
             </td>
           </tr>
@@ -1313,7 +1105,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     tbody.querySelectorAll(".history-slip-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const staffId = btn.getAttribute("data-staff-id");
-        const staff = staffList.find((s) => s.id === staffId);
+        const staff = staffById.get(staffId);
         if (!staff) return;
         const payments = await loadPaymentsForMonth(monthValue);
         const list = paymentsForEmployee(payments, staffId);
@@ -1400,14 +1192,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const staff = staffList.find((s) => s.id === staffId);
 
-      if (monthExclusions.has(staffId)) {
-        resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) {
-          paymentError.textContent = `${staff?.name || "This staff member"} is marked not applicable for ${formatMonthLabel(salaryMonthVal)}. Restore the month in salary details first.`;
-        }
-        return;
-      }
       const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
       const balance = getStaffBalanceForMonth(staffId, payments, staffList);
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
@@ -1562,7 +1346,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!monthVal) return;
       await loadStaffMembers();
       const payments = await loadPaymentsForSalaryMonth(monthVal);
-      const exclusions = await loadSalaryMonthExclusions(monthVal);
       const paidMap = paidByStaffInRange(payments);
       const headers = [
         "Name",
@@ -1571,25 +1354,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         "Paid this month (₹)",
         "Remaining (₹)",
         "Status",
-        "N/A reason",
       ];
       const rows = staffList.map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const exclusion = exclusions.get(s.id) || null;
-        const ctx = getStaffSalaryMonthContext(s, paid, exclusion);
-        const remaining = ctx.isNa
-          ? "N/A"
-          : ctx.advance > 0.009
-            ? `Advance ${ctx.advance}`
-            : String(ctx.pending);
+        const ctx = getStaffSalaryMonthContext(s, paid);
+        const remaining =
+          ctx.advance > 0.009 ? `Advance ${ctx.advance}` : String(ctx.pending);
         return [
           String(s.name ?? "").replace(/"/g, '""'),
           String(s.role_display ?? "").replace(/"/g, '""'),
-          ctx.isNa ? "N/A" : String(ctx.payable),
+          String(ctx.payable),
           String(paid),
           remaining,
           ctx.label,
-          String(exclusion?.note ?? "").replace(/"/g, '""'),
         ];
       });
       const csv = [headers.join(","), ...rows.map((r) => r.map((c) => `"${c}"`).join(","))].join("\n");
@@ -1607,38 +1384,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   detailBackdrop?.addEventListener("click", closeDetailModal);
   detailAddPaymentBtn?.addEventListener("click", () => {
     if (detailStaffId) {
-      if (monthExclusions.has(detailStaffId)) {
-        alert("This month is marked not applicable. Restore it before recording payment.");
-        return;
-      }
       closeDetailModal();
       prefillPayment(detailStaffId);
-    }
-  });
-
-  detailMarkNaBtn?.addEventListener("click", async () => {
-    if (!detailStaffId) return;
-    detailMarkNaBtn.disabled = true;
-    try {
-      const ok = await markSalaryMonthNa(
-        detailStaffId,
-        getSelectedMonth(),
-        detailNaNoteInput?.value || ""
-      );
-      if (ok) openDetailModal(detailStaffId, getSelectedMonth());
-    } finally {
-      detailMarkNaBtn.disabled = false;
-    }
-  });
-
-  detailRestoreNaBtn?.addEventListener("click", async () => {
-    if (!detailStaffId) return;
-    detailRestoreNaBtn.disabled = true;
-    try {
-      const ok = await restoreSalaryMonth(detailStaffId, getSelectedMonth());
-      if (ok) openDetailModal(detailStaffId, getSelectedMonth());
-    } finally {
-      detailRestoreNaBtn.disabled = false;
     }
   });
 
