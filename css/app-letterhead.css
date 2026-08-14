@@ -27,6 +27,60 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   font-size: 0.9em;
 }
 
+/* E-20-style letter report view */
+.letterhead-report-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.25rem;
+}
+
+.letterhead-report-view.hidden {
+  display: none;
+}
+
+.letterhead-report-output-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.letterhead-report-title {
+  margin: 0;
+  font-size: var(--heading-sm, 1.05rem);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.letterhead-report-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: var(--text-sm);
+}
+
+.letterhead-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.letterhead-sheet-preview {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  padding: 1.25rem 1.5rem;
+  background: #e8eef5;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-height: 18rem;
+}
+
+.letterhead-sheet-preview .letterhead-preview-sheet {
+  width: 100%;
+}
+
 .letterhead-compose-layout {
   display: grid;
   gap: var(--space-4);
@@ -75,6 +129,39 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   .letterhead-export {
     grid-template-columns: 1fr 1fr;
   }
+
+  .letterhead-export-group--save {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1100px) {
+  .letterhead-export {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .letterhead-export-group--save {
+    grid-column: auto;
+  }
+}
+
+.letterhead-sign-option {
+  margin-top: 0.25rem;
+}
+
+.letterhead-sign-option .checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: var(--text-sm, 0.875rem);
+  line-height: 1.45;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.letterhead-sign-option .checkbox-label input {
+  margin-top: 0.15rem;
+  flex: 0 0 auto;
 }
 
 .letterhead-export-group {
@@ -453,6 +540,10 @@ body.letterhead-page main.settings-layout.page-layout-wide {
     grid-template-columns: 1fr;
   }
 
+  .letterhead-export-group--save {
+    grid-column: auto;
+  }
+
   .letterhead-export-actions {
     flex-direction: column;
   }
@@ -461,6 +552,14 @@ body.letterhead-page main.settings-layout.page-layout-wide {
     flex: 1 1 auto;
     width: 100%;
     min-width: 0;
+  }
+
+  .letterhead-sheet-preview {
+    padding: 0.75rem;
+  }
+
+  .letterhead-sheet-preview .letterhead-preview-sheet {
+    min-height: 0;
   }
 
   .letterhead-preview-wrap {
