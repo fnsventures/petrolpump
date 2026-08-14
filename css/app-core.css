@@ -1592,4 +1592,37 @@ tr.is-editing .expense-cat-drag-handle {
   color: #059669;
 }
 
+/* Brief task status toast (Tasks + Dashboard) */
+.task-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%) translateY(120%);
+  z-index: 1200;
+  max-width: min(22rem, calc(100vw - 2rem));
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-md, 10px);
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: var(--text-sm, 0.9rem);
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+}
+
+.task-toast.is-visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-toast {
+    transition: none;
+  }
+}
+
 
