@@ -1,13 +1,16 @@
 /* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
 
 (function () {
-  const PRINT_CSS = "css/letterhead-print.css?v=3";
+  const PRINT_CSS = "css/letterhead-print.css?v=4";
   const PAGE_SIZE = 20;
   const HISTORY_COLSPAN = 5;
+  const LETTER_SELECT = "id, letter_date, subject, body, export_type, include_sign, created_at";
 
   let currentAuth = null;
   let letterheadPrintBusy = false;
   let letterheadPrintCssCache = null;
+  let historyReportLetter = null;
+  let reportSeq = 0;
   let historyPagination = {
     offset: 0,
     hasMore: true,
@@ -31,7 +34,7 @@
   }
 
   function setPrintButtonsBusy(busy) {
-    ["letterhead-print-blank", "letterhead-print-content"].forEach((id) => {
+    ["letterhead-print-blank", "letterhead-print-content", "letterhead-report-print-btn"].forEach((id) => {
       const btn = document.getElementById(id);
       if (!btn) return;
       btn.disabled = busy;
@@ -50,6 +53,7 @@
       date: document.getElementById("letterhead-date")?.value || "",
       subject: document.getElementById("letterhead-subject")?.value?.trim() || "",
       body: document.getElementById("letterhead-body")?.value || "",
+      includeSign: Boolean(document.getElementById("letterhead-include-sign")?.checked),
     };
   }
 
@@ -73,7 +77,7 @@
       license: (s.license || "").trim(),
       legalName: legal || `${short} ${accent}`,
       displayName: PumpSettings.getStationDisplayName() || `${short} ${accent}`,
-      signFor: `FOR ${(legal || `${short} ${accent}`).toUpperCase()}`,
+      signFrom: `FROM ${(legal || `${short} ${accent}`).toUpperCase()}`,
     };
   }
 
@@ -137,7 +141,7 @@
 
     const sign = includeSign
       ? `<div class="letterhead-sign">
-          <p class="letterhead-sign-for">${escapeHtml(stationParts().signFor)}</p>
+          <p class="letterhead-sign-for">${escapeHtml(stationParts().signFrom)}</p>
           <p class="letterhead-sign-role">Authorised Signatory</p>
         </div>`
       : "";
@@ -153,13 +157,22 @@
       </div>`;
   }
 
+  function valuesFromLetterRow(row) {
+    return {
+      date: row?.letter_date || "",
+      subject: row?.subject || "",
+      body: row?.body || "",
+      includeSign: row?.include_sign !== false,
+    };
+  }
+
   function refreshPreview() {
     const preview = document.getElementById("letterhead-preview");
     if (!preview) return;
     const values = getComposeValues();
     preview.innerHTML = buildSheetHtml({
       ...values,
-      includeSign: hasLetterContent(values),
+      includeSign: hasLetterContent(values) && values.includeSign,
     });
   }
 
@@ -198,7 +211,9 @@
   }
 
   function exportTypeLabel(type) {
-    return type === "word" ? "Word" : "Print";
+    if (type === "word") return "Word";
+    if (type === "save") return "Saved";
+    return "Print";
   }
 
   async function saveLetterHistory(values, exportType) {
@@ -210,7 +225,8 @@
         (typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10)),
       subject: values.subject || "",
       body: values.body || "",
-      export_type: exportType === "word" ? "word" : "print",
+      export_type: exportType === "word" ? "word" : exportType === "save" ? "save" : "print",
+      include_sign: Boolean(values.includeSign),
     };
     if (currentAuth?.session?.user?.id) {
       payload.created_by = currentAuth.session.user.id;
@@ -222,6 +238,38 @@
       return { ok: false, error };
     }
     return { ok: true };
+  }
+
+  async function saveLetterOnly() {
+    clearMessages();
+    const values = getComposeValues();
+    if (!hasLetterContent(values)) {
+      showError("Type a subject or letter body before saving.");
+      return;
+    }
+
+    const btn = document.getElementById("letterhead-save");
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.prevLabel = btn.textContent || "";
+      btn.textContent = "Saving…";
+    }
+
+    try {
+      const saved = await saveLetterHistory(values, "save");
+      if (!saved.ok) {
+        showError(AppError?.getUserMessage?.(saved.error) || "Could not save the letter. Try again.");
+        return;
+      }
+      showSuccess("Letter saved. Open Letter history to view it.");
+      if (location.hash === "#history") loadHistory(true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.prevLabel || "Save letter";
+        delete btn.dataset.prevLabel;
+      }
+    }
   }
 
   async function printLetterhead({ includeContent, values: overrideValues, saveHistory = true }) {
@@ -249,7 +297,7 @@
               date: useContent ? values.date : "",
               subject: useContent ? values.subject : "",
               body: useContent ? values.body : "",
-              includeSign: useContent && hasLetterContent(values),
+              includeSign: useContent && hasLetterContent(values) && values.includeSign,
             })
           )
         ),
@@ -436,7 +484,7 @@
         subject: useContent ? values.subject : "",
         body: useContent ? values.body : "",
         logoSrc,
-        includeSign: useContent && hasLetterContent(values),
+        includeSign: useContent && hasLetterContent(values) && values.includeSign,
       });
       const blob = new Blob(["\ufeff", html], {
         type: "application/msword",
@@ -495,7 +543,10 @@
       applyBtn: "letterhead-apply-filter",
       trigger: "apply",
       runOnInit: false,
-      onApply: () => loadHistory(true),
+      onApply: () => {
+        closeHistoryReport();
+        loadHistory(true);
+      },
     });
 
     document
@@ -524,6 +575,128 @@
         !historyPagination.hasMore || historyPagination.offset === 0
       );
     }
+  }
+
+  function setHistoryReportError(msg) {
+    const el = document.getElementById("letterhead-report-error");
+    if (!el) return;
+    if (!msg) {
+      el.textContent = "";
+      el.classList.add("hidden");
+      return;
+    }
+    el.textContent = msg;
+    el.classList.remove("hidden");
+  }
+
+  function closeHistoryReport() {
+    reportSeq += 1;
+    historyReportLetter = null;
+    setHistoryReportError("");
+    const reportView = document.getElementById("letterhead-report-view");
+    const sheetPreview = document.getElementById("letterhead-sheet-preview");
+    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
+    const historyList = document.getElementById("letterhead-history-list");
+    const historyHead = document.getElementById("letterhead-history-head");
+
+    if (reportView) {
+      reportView.classList.add("hidden");
+      reportView.setAttribute("aria-hidden", "true");
+    }
+    if (sheetPreview) sheetPreview.innerHTML = "";
+    if (reportSubtitle) reportSubtitle.textContent = "";
+    if (historyList) historyList.classList.remove("hidden");
+    if (historyHead) historyHead.classList.remove("hidden");
+  }
+
+  function showHistoryReport(row) {
+    historyReportLetter = row;
+    setHistoryReportError("");
+    const reportView = document.getElementById("letterhead-report-view");
+    const sheetPreview = document.getElementById("letterhead-sheet-preview");
+    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
+    const historyList = document.getElementById("letterhead-history-list");
+    const historyHead = document.getElementById("letterhead-history-head");
+
+    if (historyList) historyList.classList.add("hidden");
+    if (historyHead) historyHead.classList.add("hidden");
+    if (reportView) {
+      reportView.classList.remove("hidden");
+      reportView.setAttribute("aria-hidden", "false");
+    }
+
+    const values = valuesFromLetterRow(row);
+    if (sheetPreview) {
+      sheetPreview.innerHTML = `<div class="letterhead-preview-sheet">${buildSheetHtml({
+        ...values,
+        includeSign: hasLetterContent(values) && values.includeSign,
+      })}</div>`;
+    }
+    if (reportSubtitle) {
+      reportSubtitle.textContent = [
+        formatNumericDate(row.letter_date) || row.letter_date,
+        row.subject?.trim() || "(No subject)",
+        exportTypeLabel(row.export_type),
+        values.includeSign ? "With signature" : "No signature",
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    }
+  }
+
+  async function openHistoryReport(id) {
+    if (!id) return;
+    const seq = ++reportSeq;
+    setHistoryReportError("");
+    clearMessages();
+
+    const reportView = document.getElementById("letterhead-report-view");
+    const sheetPreview = document.getElementById("letterhead-sheet-preview");
+    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
+    const historyList = document.getElementById("letterhead-history-list");
+    const historyHead = document.getElementById("letterhead-history-head");
+
+    if (sheetPreview) sheetPreview.innerHTML = `<p class="muted">Loading letter…</p>`;
+    if (historyList) historyList.classList.add("hidden");
+    if (historyHead) historyHead.classList.add("hidden");
+    if (reportView) {
+      reportView.classList.remove("hidden");
+      reportView.setAttribute("aria-hidden", "false");
+    }
+    if (reportSubtitle) reportSubtitle.textContent = "";
+
+    try {
+      const row = await fetchLetterById(id);
+      if (seq !== reportSeq) return;
+      if (!row) {
+        setHistoryReportError("Could not load that letter.");
+        if (sheetPreview) sheetPreview.innerHTML = "";
+        return;
+      }
+      showHistoryReport(row);
+    } catch (err) {
+      if (seq !== reportSeq) return;
+      AppError.report(err, { context: "letterheadHistoryReport" });
+      setHistoryReportError("Could not load this letter.");
+      if (sheetPreview) sheetPreview.innerHTML = "";
+    }
+  }
+
+  async function printHistoryReport() {
+    if (!historyReportLetter) return;
+    await printLetterhead({
+      includeContent: true,
+      saveHistory: false,
+      values: valuesFromLetterRow(historyReportLetter),
+    });
+  }
+
+  function editHistoryReportInCompose() {
+    if (!historyReportLetter) return;
+    setComposeValues(valuesFromLetterRow(historyReportLetter));
+    closeHistoryReport();
+    location.hash = "#compose";
+    showSuccess("Letter loaded into Compose. Edit if needed, then save, print, or download.");
   }
 
   async function loadHistory(reset = false) {
@@ -560,7 +733,7 @@
 
       let listQuery = supabaseClient
         .from("letterhead_letters")
-        .select("id, letter_date, subject, body, export_type, created_at")
+        .select(LETTER_SELECT)
         .order("created_at", { ascending: false })
         .range(historyPagination.offset, historyPagination.offset + PAGE_SIZE - 1);
       if (start) listQuery = listQuery.gte("letter_date", start);
@@ -609,7 +782,7 @@
           <td class="letterhead-history-preview">${escapeHtml(previewSnippet(row.body || row.subject))}</td>
           <td>${escapeHtml(exportTypeLabel(row.export_type))}</td>
           <td class="table-actions">
-            <button type="button" class="link" data-open-letter="${row.id}">Open</button>
+            <button type="button" class="link" data-view-letter="${row.id}">View</button>
             <button type="button" class="link" data-print-letter="${row.id}">Print</button>${deleteBtn}
           </td>
         `;
@@ -618,14 +791,17 @@
         tbody.appendChild(tr);
       });
 
-      tbody.querySelectorAll("[data-open-letter]").forEach((btn) => {
-        btn.addEventListener("click", () => openLetterInCompose(btn.dataset.openLetter));
-      });
-      tbody.querySelectorAll("[data-print-letter]").forEach((btn) => {
-        btn.addEventListener("click", () => reprintLetter(btn.dataset.printLetter));
-      });
-
-      if (!tbody.dataset.letterheadDeleteBound) {
+      if (!tbody.dataset.letterheadActionsBound) {
+        tbody.dataset.letterheadActionsBound = "1";
+        tbody.addEventListener("click", (e) => {
+          const viewBtn = e.target.closest("[data-view-letter]");
+          if (viewBtn) {
+            openHistoryReport(viewBtn.dataset.viewLetter);
+            return;
+          }
+          const printBtn = e.target.closest("[data-print-letter]");
+          if (printBtn) reprintLetter(printBtn.dataset.printLetter);
+        });
         AdminDelete.bindOnce(tbody, ".letterhead-delete-btn", deleteLetter, "letterheadDeleteBound");
       }
     } catch (err) {
@@ -652,7 +828,7 @@
 
     const { data, error } = await supabaseClient
       .from("letterhead_letters")
-      .select("id, letter_date, subject, body, export_type, created_at")
+      .select(LETTER_SELECT)
       .eq("id", id)
       .maybeSingle();
 
@@ -663,30 +839,16 @@
     return data;
   }
 
-  function setComposeValues({ date = "", subject = "", body = "" }) {
+  function setComposeValues({ date = "", subject = "", body = "", includeSign = true }) {
     const dateEl = document.getElementById("letterhead-date");
     const subjectEl = document.getElementById("letterhead-subject");
     const bodyEl = document.getElementById("letterhead-body");
+    const signEl = document.getElementById("letterhead-include-sign");
     if (dateEl) dateEl.value = date || "";
     if (subjectEl) subjectEl.value = subject || "";
     if (bodyEl) bodyEl.value = body || "";
+    if (signEl) signEl.checked = includeSign !== false;
     refreshPreview();
-  }
-
-  async function openLetterInCompose(id) {
-    clearMessages();
-    const row = await fetchLetterById(id);
-    if (!row) {
-      showError("Could not load that letter.");
-      return;
-    }
-    setComposeValues({
-      date: row.letter_date || "",
-      subject: row.subject || "",
-      body: row.body || "",
-    });
-    location.hash = "#compose";
-    showSuccess("Letter loaded into Compose. Edit if needed, then print or download.");
   }
 
   async function reprintLetter(id) {
@@ -699,11 +861,7 @@
     await printLetterhead({
       includeContent: true,
       saveHistory: false,
-      values: {
-        date: row.letter_date || "",
-        subject: row.subject || "",
-        body: row.body || "",
-      },
+      values: valuesFromLetterRow(row),
     });
   }
 
@@ -719,7 +877,10 @@
       confirmMessage: `Delete letter “${subject}” dated ${formatNumericDate(letterDate)}?\n\nThis cannot be undone.`,
       deleteFn: () => supabaseClient.from("letterhead_letters").delete().eq("id", letterId),
       cacheScope: "operational",
-      onSuccess: () => loadHistory(true),
+      onSuccess: () => {
+        if (historyReportLetter?.id === letterId) closeHistoryReport();
+        loadHistory(true);
+      },
       errorContext: { context: "letterheadDeleteLetter", letterId },
     });
   }
@@ -728,6 +889,7 @@
     const dateEl = document.getElementById("letterhead-date");
     const subject = document.getElementById("letterhead-subject");
     const body = document.getElementById("letterhead-body");
+    const includeSign = document.getElementById("letterhead-include-sign");
     const onInput = () => {
       clearMessages();
       refreshPreview();
@@ -735,7 +897,11 @@
     dateEl?.addEventListener("change", onInput);
     subject?.addEventListener("input", onInput);
     body?.addEventListener("input", onInput);
+    includeSign?.addEventListener("change", onInput);
 
+    document
+      .getElementById("letterhead-save")
+      ?.addEventListener("click", () => saveLetterOnly());
     document
       .getElementById("letterhead-print-blank")
       ?.addEventListener("click", () => printLetterhead({ includeContent: false }));
@@ -750,6 +916,16 @@
       e.preventDefault();
       printLetterhead({ includeContent: true });
     });
+
+    document
+      .getElementById("letterhead-report-print-btn")
+      ?.addEventListener("click", () => printHistoryReport());
+    document
+      .getElementById("letterhead-report-edit-btn")
+      ?.addEventListener("click", () => editHistoryReportInCompose());
+    document
+      .getElementById("letterhead-report-history-btn")
+      ?.addEventListener("click", () => closeHistoryReport());
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
@@ -772,7 +948,10 @@
         defaultSection: "compose",
         validSections: ["compose", "history", "guide"],
         onSectionChange: (section) => {
-          if (section === "history") loadHistory(true);
+          if (section === "history") {
+            closeHistoryReport();
+            loadHistory(true);
+          }
         },
       });
     }
