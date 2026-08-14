@@ -72,8 +72,10 @@ Open dashboard.html
         → Links to Analysis / Reports P&L and Meter Reading → Purchase cost
 
     notifications (all roles)
-        → Tasks due today / overdue + high-priority undated todos (Done + Manage)
+        → Tasks due today / overdue + high-priority undated todos (Done / +3 days / More… / Call)
         → On login: landing popup for actionable tasks (once per session) + strip on Daily Snapshot
+        → One-tap +3 days defers follow-up; More… offers quick choices (+ custom date)
+        → Duplicate open credit calls blocked at schedule time
         → Day-closing reminder (if enabled in alerts)
         → Low stock MS/HSD vs pump_settings thresholds
         → Smart alerts (each toggleable in Settings → Alerts): total high credit,
