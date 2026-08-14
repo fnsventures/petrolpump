@@ -80,6 +80,40 @@ function toLocalDateString(date) {
 }
 
 /**
+ * Add days to a YYYY-MM-DD string in local calendar time.
+ * @param {string} yyyyMmDd
+ * @param {number} days
+ * @returns {string}
+ */
+function addDaysToDateString(yyyyMmDd, days) {
+  const base = String(yyyyMmDd || "").slice(0, 10);
+  const [y, m, d] = base.split("-").map(Number);
+  if (!y || !m || !d) return base;
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + (Number(days) || 0));
+  return toLocalDateString(dt);
+}
+
+/**
+ * Append a dated follow-up line to notes (max 2000 chars).
+ * Returns null when noteText is empty.
+ * @param {string|null|undefined} existingNotes
+ * @param {string} noteText
+ * @param {string} [dateLabel]
+ * @returns {string|null}
+ */
+function appendDatedNote(existingNotes, noteText, dateLabel) {
+  const note = String(noteText || "").trim();
+  if (!note) return null;
+  const stamp = String(dateLabel || "").trim();
+  const line = stamp ? `[${stamp}] ${note}` : note;
+  const prev = String(existingNotes || "").trim();
+  let next = prev ? `${prev}\n${line}` : line;
+  if (next.length > 2000) next = next.slice(next.length - 2000);
+  return next;
+}
+
+/**
  * Format a Date object as YYYY-MM-DD (local timezone).
  * @param {Date} date
  * @returns {string}
@@ -606,6 +640,8 @@ window.escapeHtml = escapeHtml;
 window.debounce = debounce;
 window.throttle = throttle;
 window.toLocalDateString = toLocalDateString;
+window.addDaysToDateString = addDaysToDateString;
+window.appendDatedNote = appendDatedNote;
 window.formatDateInput = formatDateInput;
 window.formatDisplayDate = formatDisplayDate;
 window.formatNumericDate = formatNumericDate;

@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
 
 (function () {
   const PAGE_SIZE = 30;
@@ -312,9 +312,13 @@
   }
 
   function addDaysLocal(yyyyMmDd, days) {
-    const [y, m, d] = yyyyMmDd.split("-").map(Number);
+    if (typeof addDaysToDateString === "function") return addDaysToDateString(yyyyMmDd, days);
+    if (typeof TaskUtils?.addDaysYmd === "function") return TaskUtils.addDaysYmd(yyyyMmDd, days);
+    const base = String(yyyyMmDd || "").slice(0, 10);
+    const [y, m, d] = base.split("-").map(Number);
+    if (!y || !m || !d) return base;
     const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + days);
+    dt.setDate(dt.getDate() + (Number(days) || 0));
     return typeof toLocalDateString === "function" ? toLocalDateString(dt) : dt.toISOString().slice(0, 10);
   }
 
@@ -397,6 +401,37 @@
           failForm(errorEl, submitBtn, doneLabel, "Due date is required for credit collection.", "reminder-due-date");
           return;
         }
+
+        const { data: existingOpen, error: existingError } = await supabaseClient
+          .from("reminders")
+          .select("id, due_date, title")
+          .eq("status", "open")
+          .eq("credit_customer_id", customerId)
+          .order("due_date", { ascending: true, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        if (existingError) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = doneLabel;
+          }
+          AppError.handle(existingError, { target: errorEl });
+          return;
+        }
+        if (existingOpen) {
+          const dueLabelText = existingOpen.due_date
+            ? formatDisplayDate(existingOpen.due_date)
+            : "no date";
+          failForm(
+            errorEl,
+            submitBtn,
+            doneLabel,
+            `Open call already exists (due ${dueLabelText}). Open Credit collection and use +3 days / More… on that task instead of creating another.`,
+            "reminder-customer-search"
+          );
+          return;
+        }
+
         title = creditTitleForCustomer(customerId);
         reminderType = "credit_followup";
         priority = "high";
@@ -756,27 +791,184 @@
   }
 
   function bindListActions() {
-    document.querySelector(".settings-panels")?.addEventListener("click", async (e) => {
+    const inFlight = new Set();
+    const panels = document.querySelector(".settings-panels");
+    panels?.addEventListener("click", async (e) => {
       const btn = e.target.closest?.("[data-reminder-action]");
       if (!btn) return;
       e.preventDefault();
       const id = btn.getAttribute("data-id");
       const action = btn.getAttribute("data-reminder-action");
       if (!id || !action) return;
+      if (inFlight.has(id) && (action === "done" || action === "reschedule" || action === "reschedule-pick" || action === "reopen" || action === "delete")) {
+        return;
+      }
 
-      if (action === "done") await completeTask(id, btn);
-      else if (action === "reopen") await reopenTask(id, btn);
-      else if (action === "delete") await deleteTask(id, btn);
+      if (action === "done") await completeTask(id, btn, inFlight);
+      else if (action === "reopen") await reopenTask(id, btn, inFlight);
+      else if (action === "delete") await deleteTask(id, btn, inFlight);
+      else if (action === "later-toggle") toggleLaterPanel(id, btn);
+      else if (action === "later-cancel") closeLaterPanel(id, btn);
+      else if (action === "reschedule") {
+        const days = Number(btn.getAttribute("data-days"));
+        if (!Number.isFinite(days) || days < 1) return;
+        const dueDate = addDaysLocal(getLocalDateString(), days);
+        const note = btn.getAttribute("data-note") || "";
+        await rescheduleTask(id, dueDate, note, btn, inFlight);
+      } else if (action === "reschedule-pick") {
+        const dueDate = laterPanelEl(id, btn)?.querySelector("[data-later-date]")?.value || "";
+        if (!dueDate) {
+          showLaterError(id, btn, "Pick a follow-up date.");
+          return;
+        }
+        await rescheduleTask(id, dueDate, "", btn, inFlight);
+      }
+    });
+
+    panels?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      const input = e.target.closest?.("[data-later-date]");
+      if (!input || !panels.contains(input)) return;
+      e.preventDefault();
+      input
+        .closest(".reminder-later-pick")
+        ?.querySelector('[data-reminder-action="reschedule-pick"]')
+        ?.click();
     });
   }
 
-  function removeCard(id) {
-    document.querySelector(`[data-reminder-id="${CSS.escape(id)}"]`)?.remove();
+  function laterPanelEl(id, fromEl) {
+    const card = fromEl?.closest?.("article[data-reminder-id]");
+    if (card) {
+      return card.querySelector(`[data-later-for="${CSS.escape(id)}"]`);
+    }
+    return document.querySelector(`[data-later-for="${CSS.escape(id)}"]`);
   }
 
-  async function completeTask(id, btn) {
+  function showLaterError(id, fromEl, message) {
+    const panel = laterPanelEl(id, fromEl);
+    const err = panel?.querySelector("[data-later-error]");
+    if (err) {
+      err.textContent = message;
+      err.hidden = false;
+      return;
+    }
+    alert(message);
+  }
+
+  function clearLaterError(panel) {
+    const err = panel?.querySelector("[data-later-error]");
+    if (err) {
+      err.textContent = "";
+      err.hidden = true;
+    }
+  }
+
+  function closeAllLaterPanels() {
+    document.querySelectorAll(".reminder-later-panel").forEach((panel) => {
+      panel.hidden = true;
+      clearLaterError(panel);
+    });
+    document.querySelectorAll('[data-reminder-action="later-toggle"]').forEach((btn) => {
+      btn.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function closeLaterPanel(id, fromEl) {
+    const panel = laterPanelEl(id, fromEl);
+    if (panel) {
+      panel.hidden = true;
+      clearLaterError(panel);
+    }
+    const card = fromEl?.closest?.("article[data-reminder-id]") || panel?.closest?.("article[data-reminder-id]");
+    card
+      ?.querySelector(`[data-reminder-action="later-toggle"][data-id="${CSS.escape(id)}"]`)
+      ?.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleLaterPanel(id, btn) {
+    const panel = laterPanelEl(id, btn);
+    if (!panel) return;
+    const willOpen = panel.hasAttribute("hidden") || panel.hidden;
+    closeAllLaterPanels();
+    if (!willOpen) return;
+    panel.hidden = false;
+    panel.removeAttribute("hidden");
+    btn.setAttribute("aria-expanded", "true");
+    clearLaterError(panel);
+    const today = getLocalDateString();
+    const dateInput = panel.querySelector("[data-later-date]");
+    if (dateInput) {
+      dateInput.min = today;
+      if (!dateInput.value || dateInput.value < today) {
+        dateInput.value = addDaysLocal(today, 3);
+      }
+    }
+    panel.querySelector(".reminder-later-choice")?.focus?.();
+    panel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function removeCard(id) {
+    document.querySelectorAll(`article[data-reminder-id="${CSS.escape(id)}"]`).forEach((el) => {
+      const group = el.closest(".reminders-open-group");
+      el.remove();
+      if (group && !group.querySelector("article[data-reminder-id]")) group.remove();
+    });
+  }
+
+  function setLaterControlsDisabled(panel, disabled) {
+    panel?.querySelectorAll("button, input").forEach((el) => {
+      el.disabled = disabled;
+    });
+  }
+
+  function toast(message) {
+    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast(message);
+  }
+
+  async function rescheduleTask(id, dueDate, noteRaw, btn, inFlight) {
+    if (!dueDate) return;
+    const today = getLocalDateString();
+    if (dueDate < today) {
+      showLaterError(id, btn, "Follow-up date cannot be in the past.");
+      return;
+    }
+
+    const panel = laterPanelEl(id, btn);
+    inFlight?.add(id);
+    if (btn) btn.disabled = true;
+    setLaterControlsDisabled(panel, true);
+    clearLaterError(panel);
+
+    const { error } =
+      typeof TaskUtils?.rescheduleOpenTask === "function"
+        ? await TaskUtils.rescheduleOpenTask(supabaseClient, {
+            id,
+            dueDate,
+            note: noteRaw,
+            dateLabel: formatDisplayDate(today),
+          })
+        : { error: new Error("Reschedule helper unavailable") };
+
+    if (error) {
+      inFlight?.delete(id);
+      if (btn) btn.disabled = false;
+      setLaterControlsDisabled(panel, false);
+      AppError.handle(error, { context: { source: "rescheduleTask" } });
+      return;
+    }
+
+    toast(`Follow-up set for ${formatDisplayDate(dueDate)}`);
+    removeCard(id);
+    TaskUtils.notifyTasksUpdated();
+    await loadOpenBoard();
+    inFlight?.delete(id);
+  }
+
+  async function completeTask(id, btn, inFlight) {
+    inFlight?.add(id);
     btn.disabled = true;
-    const { error } = await supabaseClient
+    const { data: doneRow, error } = await supabaseClient
       .from("reminders")
       .update({
         status: "done",
@@ -785,23 +977,31 @@
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .eq("status", "open");
+      .eq("status", "open")
+      .select("id")
+      .maybeSingle();
 
-    if (error) {
+    if (error || !doneRow?.id) {
+      inFlight?.delete(id);
       btn.disabled = false;
-      AppError.handle(error, { context: { source: "completeTask" } });
+      AppError.handle(error || new Error("Could not mark done — task may already be closed."), {
+        context: { source: "completeTask" },
+      });
       return;
     }
 
     removeCard(id);
+    toast("Marked done");
     TaskUtils.notifyTasksUpdated();
     doneLoadedOnce = false;
     await loadOpenBoard();
+    inFlight?.delete(id);
   }
 
-  async function reopenTask(id, btn) {
+  async function reopenTask(id, btn, inFlight) {
+    inFlight?.add(id);
     btn.disabled = true;
-    const { error } = await supabaseClient
+    const { data: openRow, error } = await supabaseClient
       .from("reminders")
       .update({
         status: "open",
@@ -810,20 +1010,27 @@
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .eq("status", "done");
+      .eq("status", "done")
+      .select("id")
+      .maybeSingle();
 
-    if (error) {
+    if (error || !openRow?.id) {
+      inFlight?.delete(id);
       btn.disabled = false;
-      AppError.handle(error, { context: { source: "reopenTask" } });
+      AppError.handle(error || new Error("Could not reopen task."), {
+        context: { source: "reopenTask" },
+      });
       return;
     }
 
     removeCard(id);
     TaskUtils.notifyTasksUpdated();
     await loadOpenBoard();
+    inFlight?.delete(id);
   }
 
-  async function deleteTask(id, btn) {
+  async function deleteTask(id, btn, inFlight) {
+    inFlight?.add(id);
     await AdminDelete.execute({
       btn,
       auth: currentAuth,
@@ -839,6 +1046,7 @@
       },
       errorContext: { source: "deleteTask", id },
     });
+    inFlight?.delete(id);
   }
 
   function renderTaskCard(row, { today, mode }) {
@@ -902,9 +1110,10 @@
         : "";
 
     const tel = TaskUtils.telHref(mobile);
-    const waText = customerName
-      ? `Hello ${customerName}, this is Bishnupriya Fuels regarding your credit balance.`
-      : "Hello, this is Bishnupriya Fuels regarding your credit balance.";
+    const waText =
+      typeof TaskUtils.waMessageForCustomer === "function"
+        ? TaskUtils.waMessageForCustomer(customerName)
+        : "";
     const wa = TaskUtils.waHref(mobile, waText);
     const contactHtml =
       credit && mode === "open" && (tel || wa)
@@ -932,10 +1141,22 @@
         ? `<button type="button" class="button-delete button-small" data-reminder-action="delete" data-id="${escapeHtml(row.id)}" title="Delete (admin)">Delete</button>`
         : "";
 
+    const laterPanel =
+      mode === "open" && typeof TaskUtils?.laterPanelHtml === "function"
+        ? TaskUtils.laterPanelHtml(row.id, {
+            credit,
+            escapeHtml,
+            forRemindersPage: true,
+            today,
+          })
+        : "";
+
     const actions =
       mode === "open"
-        ? `<button type="button" data-reminder-action="done" data-id="${escapeHtml(row.id)}">Done</button>${deleteBtn}`
-        : `<button type="button" class="button-secondary" data-reminder-action="reopen" data-id="${escapeHtml(row.id)}">Reopen</button>${deleteBtn}`;
+        ? `<button type="button" class="button-small" data-reminder-action="done" data-id="${escapeHtml(row.id)}">Done</button>
+        <button type="button" class="button-secondary button-small" data-reminder-action="reschedule" data-id="${escapeHtml(row.id)}" data-days="3" title="Follow up in 3 days">+3 days</button>
+        <button type="button" class="button-secondary button-small" data-reminder-action="later-toggle" data-id="${escapeHtml(row.id)}" aria-expanded="false">More…</button>${deleteBtn}`
+        : `<button type="button" class="button-secondary button-small" data-reminder-action="reopen" data-id="${escapeHtml(row.id)}">Reopen</button>${deleteBtn}`;
 
     return `<article class="${cardClass}" data-reminder-id="${escapeHtml(row.id)}">
       <div class="reminder-card-main">
@@ -946,6 +1167,7 @@
         ${contactHtml}
       </div>
       <div class="reminder-card-actions">${actions}</div>
+      ${laterPanel}
     </article>`;
   }
 
