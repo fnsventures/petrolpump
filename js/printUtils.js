@@ -202,7 +202,7 @@
   }
 
   /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=7";
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=8";
 
   let reportPrintCssCache = null;
   let reportPrintCssInflight = null;

@@ -519,6 +519,18 @@
   background: #dbeafe;
 }
 
+.dc-status-badge--certified {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.dc-status-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
 .dc-status-ref {
   display: block;
   font-size: 0.72rem;
@@ -537,6 +549,71 @@
   justify-content: space-between;
   gap: 1rem 1.5rem;
   flex-wrap: wrap;
+}
+
+.dc-certify {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+}
+
+.dc-certify.hidden {
+  display: none;
+}
+
+.dc-certify--pending {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.dc-certify--done {
+  background: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #14532d;
+}
+
+.dc-certify-copy {
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.dc-certify-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.dc-certify-detail {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  max-width: 40rem;
+}
+
+.dc-certify--done .dc-certify-detail {
+  color: #166534;
+}
+
+.dc-certify-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dc-certify-actions .hidden {
+  display: none;
+}
+
+#dc-certify-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 

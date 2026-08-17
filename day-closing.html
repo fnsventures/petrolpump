@@ -10,7 +10,7 @@
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-day-closing.css?v=9" />
+    <link rel="stylesheet" href="css/app-day-closing.css?v=10" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
@@ -20,10 +20,10 @@
     <script defer src="js/utils.js?v=12"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/printUtils.js?v=11"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/day-closing.js"></script>
+    <script defer src="js/day-closing.js?v=11"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -46,7 +46,7 @@
         <div class="panel-head dc-close-head">
           <div>
             <h2 class="dashboard-section-title">Day closing &amp; short</h2>
-              <p class="muted panel-lead dc-close-lead">Enter night cash and PhonePe/UPI totals, then save. The short shows how much is still unaccounted for.</p>
+              <p class="muted panel-lead dc-close-lead">Enter night cash and PhonePe/UPI totals, then save. An admin acknowledges the statement after the supervisor saves.</p>
           </div>
           <div class="form-field dc-date-field">
             <label for="day-closing-date">Date</label>
@@ -189,6 +189,17 @@
           <p id="day-closing-already-saved" class="muted hidden">Day closing already saved for this date.</p>
           <p id="day-closing-success" class="success hidden">Day closing saved. Short computed and stored for next day.</p>
           <p id="day-closing-error" class="error hidden" role="alert"></p>
+          <div id="dc-certify-panel" class="dc-certify hidden" hidden>
+            <div class="dc-certify-copy">
+              <p id="dc-certify-title" class="dc-certify-title"></p>
+              <p id="dc-certify-detail" class="muted dc-certify-detail"></p>
+            </div>
+            <div class="dc-certify-actions">
+              <button type="button" id="dc-certify-btn" class="primary" data-role="admin-only">Acknowledge &amp; certify</button>
+              <button type="button" id="dc-uncertify-btn" class="button-secondary hidden" data-role="admin-only">Remove certification</button>
+            </div>
+            <p id="dc-certify-error" class="error hidden" role="alert"></p>
+          </div>
         </form>
         </section>
 
@@ -266,12 +277,13 @@
                     <th class="col-amount col-secondary">Short prev</th>
                     <th class="col-amount col-secondary">Short</th>
                     <th class="col-secondary">Status</th>
+                    <th class="col-secondary">Certified</th>
                     <th class="col-secondary">Remarks</th>
                     <th id="dc-register-actions-head" class="table-actions" hidden>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="dc-register-body">
-                  <tr><td colspan="12" class="muted">Select date range and click Load.</td></tr>
+                  <tr><td colspan="13" class="muted">Select date range and click Load.</td></tr>
                 </tbody>
                 <tfoot id="dc-register-foot" hidden></tfoot>
               </table>
