@@ -110,6 +110,15 @@
   color: #15803d;
 }
 
+.credit-summary-kpi--outstanding.is-advance {
+  border-color: #5eead4;
+  background: #f0fdfa;
+}
+
+.credit-summary-kpi--outstanding.is-advance .credit-summary-kpi-value {
+  color: #0f766e;
+}
+
 .credit-summary-kpi-meta {
   display: block;
   margin: 2pt 0 0;
@@ -195,7 +204,21 @@
 }
 
 .credit-overview-print-overpaid {
-  color: #15803d;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.credit-overview-print-advance-tag {
+  display: inline-block;
+  margin-left: 4pt;
+  padding: 0 3pt;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0f766e;
+  border: 0.5pt solid #5eead4;
+  background: #f0fdfa;
 }
 
 .credit-overview-print-sheet .credit-summary-block {
