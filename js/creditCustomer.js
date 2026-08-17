@@ -6,7 +6,7 @@
   let creditPager = null;
   let paymentPager = null;
   let customerPeriodFilterApi = null;
-  const CREDIT_SUMMARY_PRINT_CSS = "css/credit-summary-print.css?v=2";
+  const CREDIT_SUMMARY_PRINT_CSS = "css/credit-summary-print.css?v=3";
 
 function applyCustomerPeriodFromUrl(params) {
   const period = (params.get("period") || "").trim();
@@ -498,6 +498,39 @@ function sortSummaryEntriesByDate(entries) {
   );
 }
 
+/** Derive outstanding vs advance from credit − settled (single source of truth for print). */
+function resolveCreditPrintBalance(creditTaken, settlementDone) {
+  const credit = Number(creditTaken) || 0;
+  const settled = Number(settlementDone) || 0;
+  const net = credit - settled;
+  const outstanding = Math.max(0, net);
+  const advancePayment = Math.max(0, -net);
+  const hasAdvance = advancePayment > 0.009;
+  return {
+    credit,
+    settled,
+    outstanding,
+    advancePayment,
+    hasAdvance,
+    cleared: !hasAdvance && outstanding <= 0.009,
+    balanceLabel: hasAdvance ? "Advance payment" : "Outstanding",
+    balanceValue: hasAdvance ? advancePayment : outstanding,
+  };
+}
+
+function entryDateBounds(entries) {
+  let first = null;
+  let last = null;
+  for (const e of entries || []) {
+    const d = e?.entry_date;
+    if (!d) continue;
+    const s = String(d);
+    if (!first || s < first) first = s;
+    if (!last || s > last) last = s;
+  }
+  return { first, last };
+}
+
 function updateCreditSummaryPrintButton() {
   const btn = document.getElementById("customer-summary-print-btn");
   if (!btn) return;
@@ -505,21 +538,29 @@ function updateCreditSummaryPrintButton() {
   btn.disabled = !canPrint;
 }
 
-function buildCreditSummaryLedgerRows(entries, emptyLabel) {
+/** One pass: sorted ledger rows + total (avoids a second sort for footer totals). */
+function buildCreditSummaryLedger(entries, emptyLabel) {
   const sorted = sortSummaryEntriesByDate(entries);
   if (!sorted.length) {
-    return `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`;
+    return {
+      rows: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
+      total: 0,
+    };
   }
-  return sorted
-    .map(
-      (e, i) => `
+  let total = 0;
+  const rows = sorted
+    .map((e, i) => {
+      const amount = Number(e.amount) || 0;
+      total += amount;
+      return `
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(formatDisplayDate(e.entry_date))}</td>
-          <td class="num">₹ ${formatNumberPlain(e.amount)}</td>
-        </tr>`
-    )
+          <td class="num">₹ ${formatNumberPlain(amount)}</td>
+        </tr>`;
+    })
     .join("");
+  return { rows, total };
 }
 
 function creditSummaryReportHeader(title, subtitleLines) {
@@ -544,17 +585,29 @@ function creditSummaryReportHeader(title, subtitleLines) {
 }
 
 function buildCreditSummaryPrintHtml(summary, context) {
-  const outstanding = summary ? Number(summary.remaining) : 0;
-  const creditTaken = summary ? Number(summary.credit_taken) : 0;
-  const settlementDone = summary ? Number(summary.settlement_done) : 0;
-  const periodCredit = context?.periodCredit ?? 0;
-  const periodSettled = context?.periodSettled ?? 0;
+  const balance = resolveCreditPrintBalance(summary?.credit_taken, summary?.settlement_done);
+  const {
+    credit: creditTaken,
+    settled: settlementDone,
+    outstanding,
+    advancePayment,
+    hasAdvance,
+    cleared,
+    balanceLabel,
+    balanceValue,
+  } = balance;
+  const periodCredit = context?.periodCredit ?? creditTaken;
+  const periodSettled = context?.periodSettled ?? settlementDone;
   const name = context?.customerName || page().state.customerName || "Customer";
   const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
   const generatedOn = formatDisplayDate(getLocalDateString());
   const periodActivity = context?.periodActivity || "";
-  const periodScopedOutstanding = Boolean(periodActivity);
-  const cleared = outstanding <= 0;
+  // "All time" is lifetime through asOf — not a partial period slice.
+  const isPeriodScoped = Boolean(periodActivity) && context?.selection !== "all-time";
+  const netPhrase = hasAdvance
+    ? `advance ₹ ${formatNumberPlain(advancePayment)}`
+    : `outstanding ₹ ${formatNumberPlain(outstanding)}`;
+  const netScopePhrase = isPeriodScoped ? "net for this period" : "net through date";
 
   let creditMeta = "";
   if (summary) {
@@ -575,23 +628,35 @@ function buildCreditSummaryPrintHtml(summary, context) {
   const mobile = context?.mobile?.trim() || "—";
   const address = context?.address?.trim() || "—";
 
-  const creditRows = buildCreditSummaryLedgerRows(
+  const creditLedger = buildCreditSummaryLedger(
     summary?.credit_entries,
     "No credit entries through this date"
   );
-  const paymentRows = buildCreditSummaryLedgerRows(
+  const paymentLedger = buildCreditSummaryLedger(
     summary?.payment_entries,
     "No settlements through this date"
   );
 
-  const creditTotal = sortSummaryEntriesByDate(summary?.credit_entries).reduce(
-    (s, e) => s + Number(e.amount || 0),
-    0
-  );
-  const paymentTotal = sortSummaryEntriesByDate(summary?.payment_entries).reduce(
-    (s, e) => s + Number(e.amount || 0),
-    0
-  );
+  let balanceMeta;
+  if (hasAdvance) {
+    balanceMeta = isPeriodScoped
+      ? "Settlements exceed credit in this period"
+      : "Prepaid credit on account";
+  } else if (cleared) {
+    balanceMeta = isPeriodScoped ? "No net balance in period" : "Account cleared";
+  } else {
+    balanceMeta = isPeriodScoped
+      ? "Net credit minus settlements in period"
+      : "Amount still owed";
+  }
+
+  const noteBody = isPeriodScoped
+    ? hasAdvance
+      ? "Advance payment shown is settlements minus credit for the selected period only (not the customer&rsquo;s full account balance)."
+      : "Outstanding shown is net credit minus settlements for the selected period only (not the customer&rsquo;s full account balance)."
+    : hasAdvance
+      ? "Advance payment = settlements minus credit taken (prepaid balance on account)."
+      : "Outstanding = credit taken minus settlements (FIFO allocation on payments).";
 
   return `
     <article class="credit-summary-sheet report-print-sheet">
@@ -605,7 +670,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
         <p class="credit-summary-doc-meta">
           ${
             periodActivity
-              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatNumberPlain(periodCredit)}, settled ₹ ${formatNumberPlain(periodSettled)}, outstanding ₹ ${formatNumberPlain(outstanding)} (net for this period).`
+              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatNumberPlain(periodCredit)}, settled ₹ ${formatNumberPlain(periodSettled)}, ${netPhrase} (${netScopePhrase}).`
               : `Figures below are cumulative through ${escapeHtml(asOfLabel)}.`
           }
         </p>
@@ -629,18 +694,10 @@ function buildCreditSummaryPrintHtml(summary, context) {
       </dl>
 
       <div class="credit-summary-kpis">
-        <div class="credit-summary-kpi credit-summary-kpi--outstanding${cleared ? " is-cleared" : ""}">
-          <span class="credit-summary-kpi-label">Outstanding</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(outstanding)}</span>
-          <span class="credit-summary-kpi-meta">${
-            cleared
-              ? periodScopedOutstanding
-                ? "No net balance in period"
-                : "Account cleared"
-              : periodScopedOutstanding
-                ? "Net credit minus settlements in period"
-                : "Amount still owed"
-          }</span>
+        <div class="credit-summary-kpi credit-summary-kpi--outstanding${cleared ? " is-cleared" : ""}${hasAdvance ? " is-advance" : ""}">
+          <span class="credit-summary-kpi-label">${balanceLabel}</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(balanceValue)}</span>
+          <span class="credit-summary-kpi-meta">${balanceMeta}</span>
         </div>
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Credit taken</span>
@@ -673,7 +730,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
             : `All credit taken (through ${escapeHtml(asOfLabel)})`
         }</h3>
         <p class="credit-summary-block-lead">${
-          periodActivity
+          isPeriodScoped
             ? "Credit sales in the selected activity period."
             : "Every credit sale recorded up to the through date."
         }</p>
@@ -685,11 +742,11 @@ function buildCreditSummaryPrintHtml(summary, context) {
               <th class="num">Amount (₹)</th>
             </tr>
           </thead>
-          <tbody>${creditRows}</tbody>
+          <tbody>${creditLedger.rows}</tbody>
           <tfoot>
             <tr class="report-total-row">
               <td colspan="2">Total credit</td>
-              <td class="num">₹ ${formatNumberPlain(creditTotal)}</td>
+              <td class="num">₹ ${formatNumberPlain(creditLedger.total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -702,7 +759,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
             : `All settlements (through ${escapeHtml(asOfLabel)})`
         }</h3>
         <p class="credit-summary-block-lead">${
-          periodActivity
+          isPeriodScoped
             ? "Payments received in the selected activity period."
             : "Every payment received up to the through date."
         }</p>
@@ -714,11 +771,11 @@ function buildCreditSummaryPrintHtml(summary, context) {
               <th class="num">Amount (₹)</th>
             </tr>
           </thead>
-          <tbody>${paymentRows}</tbody>
+          <tbody>${paymentLedger.rows}</tbody>
           <tfoot>
             <tr class="report-total-row">
               <td colspan="2">Total settled</td>
-              <td class="num">₹ ${formatNumberPlain(paymentTotal)}</td>
+              <td class="num">₹ ${formatNumberPlain(paymentLedger.total)}</td>
             </tr>
           </tfoot>
         </table>
@@ -726,11 +783,7 @@ function buildCreditSummaryPrintHtml(summary, context) {
 
       <p class="credit-summary-note">
         Computer-generated credit account summary.
-        ${
-          periodScopedOutstanding
-            ? "Outstanding shown is net credit minus settlements for the selected period only (not the customer&rsquo;s full account balance)."
-            : "Outstanding = credit taken minus settlements (FIFO allocation on payments)."
-        }
+        ${noteBody}
         Hand this copy to the customer or keep for your records.
       </p>
 
@@ -808,19 +861,10 @@ function buildPeriodScopedSummary(summary, from, to) {
   const payment_entries = filterEntriesByRange(summary.payment_entries || [], from, to);
   const periodCredit = sumAmount(credit_entries);
   const periodSettled = sumAmount(payment_entries);
-  const periodNet = Math.max(0, periodCredit - periodSettled);
-  const remaining = from
-    ? periodNet
-    : Math.max(0, Number(summary.remaining) || periodNet);
-
-  const creditDates = credit_entries
-    .map((e) => e.entry_date)
-    .filter(Boolean)
-    .sort();
-  const paymentDates = payment_entries
-    .map((e) => e.entry_date)
-    .filter(Boolean)
-    .sort();
+  // Keep signed net so advance/overpayment (settled > credit) is not clamped to zero.
+  const remaining = periodCredit - periodSettled;
+  const creditBounds = entryDateBounds(credit_entries);
+  const paymentBounds = entryDateBounds(payment_entries);
 
   return {
     ...summary,
@@ -829,9 +873,9 @@ function buildPeriodScopedSummary(summary, from, to) {
     credit_taken: periodCredit,
     settlement_done: periodSettled,
     remaining,
-    first_sale_date: creditDates[0] || null,
-    last_credit_date: creditDates[creditDates.length - 1] || null,
-    last_payment_date: paymentDates[paymentDates.length - 1] || null,
+    first_sale_date: creditBounds.first,
+    last_credit_date: creditBounds.last,
+    last_payment_date: paymentBounds.last,
   };
 }
 
@@ -917,7 +961,7 @@ async function loadCustomerDetail() {
     errorEl.classList.remove("success");
   }
 
-  const { asOfDate, from, to } = getCustomerViewFilter();
+  const { asOfDate, from, to, selection } = getCustomerViewFilter();
   updateCustomerFilterSummary();
   await resolveCustomerIds();
 
@@ -1002,6 +1046,7 @@ async function loadCustomerDetail() {
     page().state.lastCustomerSummaryContext = {
       customerName: resolvedName,
       asOfDate,
+      selection,
       periodActivity,
       periodCredit,
       periodSettled,

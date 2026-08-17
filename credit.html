@@ -126,7 +126,7 @@
                 <strong id="credit-overview-settled" class="stat-value">—</strong>
               </div>
               <div class="stat-card stat-card-compact">
-                <span class="stat-label">Outstanding</span>
+                <span class="stat-label" id="credit-overview-balance-label">Outstanding</span>
                 <strong id="credit-overview-overdue" class="stat-value">—</strong>
               </div>
             </div>
@@ -140,7 +140,7 @@
                     <th>Customer</th>
                     <th>Credit taken (₹)</th>
                     <th>Settled (₹)</th>
-                    <th>Outstanding (₹)</th>
+                    <th>Net (₹)</th>
                   </tr>
                 </thead>
                 <tbody id="credit-overview-body">
@@ -472,7 +472,7 @@
         <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
           <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
           <p class="muted text-sm customer-summary-lead">
-            Credit and settlements below match the activity period filter. Outstanding above is the customer&rsquo;s current balance; the printed summary shows net outstanding for the selected period only.
+            Credit and settlements below match the activity period filter. Balance above is the customer&rsquo;s current outstanding or advance; the printed summary shows the same net for the selected period (or full account for All time).
           </p>
 
           <div class="customer-lifetime-stats">
