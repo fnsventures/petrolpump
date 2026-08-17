@@ -396,6 +396,43 @@ body.report-print-body {
   color: #b45309;
 }
 
+.report-certify {
+  margin-top: 10pt;
+  padding-top: 6pt;
+  border-top: 0.75pt solid var(--report-border);
+}
+
+.report-certify-statement {
+  margin: 0 0 8pt;
+  font-size: 8pt;
+  line-height: 1.4;
+}
+
+.report-certify-sign {
+  display: flex;
+  justify-content: space-between;
+  gap: 16pt;
+}
+
+.report-certify-sign > div {
+  flex: 1 1 40%;
+  max-width: 55%;
+}
+
+.report-certify-sign .line {
+  min-height: 14pt;
+  border-bottom: 0.5pt solid var(--report-text);
+  font-size: 8.5pt;
+  font-weight: 600;
+  padding-bottom: 2pt;
+}
+
+.report-certify-sign .cap {
+  margin-top: 3pt;
+  font-size: 7pt;
+  color: var(--report-muted);
+}
+
 .muted {
   color: var(--report-muted);
 }

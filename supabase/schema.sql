@@ -2262,13 +2262,22 @@ create table if not exists public.day_closing (
   expenses_today numeric(14,2),
   closing_reference text,
   remarks text,
+  certified boolean not null default false,
+  certified_at timestamptz,
+  certified_by uuid references auth.users (id) on delete set null,
+  certified_by_name text check (certified_by_name is null or char_length(trim(certified_by_name)) <= 120),
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
-  updated_at timestamp with time zone default timezone('utc'::text, now())
+  updated_at timestamp with time zone default timezone('utc'::text, now()),
+  constraint day_closing_certified_consistency check (
+    (certified = false and certified_at is null and certified_by is null and certified_by_name is null)
+    or (certified = true and certified_at is not null)
+  )
 );
 
 create index if not exists day_closing_date_idx on public.day_closing (date desc);
 create unique index if not exists day_closing_closing_reference_idx on public.day_closing (closing_reference) where closing_reference is not null;
+create index if not exists day_closing_uncertified_idx on public.day_closing (date desc) where certified = false;
 
 comment on table public.day_closing is 'Daily closing statement: full snapshot for accounting and future reference. One row per date.';
 comment on column public.day_closing.night_cash is 'Hard cash counted at day end.';
@@ -2281,6 +2290,10 @@ comment on column public.day_closing.credit_today is 'New credit (₹) that day 
 comment on column public.day_closing.expenses_today is 'Expenses (₹) that day – snapshot.';
 comment on column public.day_closing.closing_reference is 'Unique reference for accounting (e.g. DC-2026-00001).';
 comment on column public.day_closing.remarks is 'Optional remarks at closing.';
+comment on column public.day_closing.certified is 'True after an admin acknowledges the supervisor''s saved statement.';
+comment on column public.day_closing.certified_at is 'When the admin certified this closing.';
+comment on column public.day_closing.certified_by is 'auth.users.id of the admin who certified.';
+comment on column public.day_closing.certified_by_name is 'Display name (or email) snapshot of the certifying admin.';
 
 alter table public.day_closing enable row level security;
 
@@ -2359,11 +2372,13 @@ create policy "day_closing_update_by_role" on public.day_closing
     public.is_supervisor_or_admin()
     and (created_by = auth.uid() or public.is_admin())
     and (night_cash_collection_id is null or public.is_admin())
+    and (certified = false or public.is_admin())
   )
   with check (
     public.is_supervisor_or_admin()
     and (created_by = auth.uid() or public.is_admin())
     and (night_cash_collection_id is null or public.is_admin())
+    and (certified = false or public.is_admin())
   );
 
 drop policy if exists "day_closing_delete_admin" on public.day_closing;
@@ -2511,6 +2526,7 @@ revoke all on function public.recascade_day_closing_short_from(date) from authen
 create or replace function public.get_day_closing_breakdown(p_date date)
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_components jsonb;
@@ -2519,6 +2535,7 @@ declare
   v_already_saved boolean := false;
   v_can_overwrite boolean := false;
   v_night_cash_collected boolean := false;
+  v_certified boolean := false;
   v_use_snapshot boolean := false;
   v_expenses_live numeric := 0;
   v_total_sale numeric := 0;
@@ -2530,6 +2547,7 @@ begin
 
   select dc.total_sale, dc.collection, dc.short_previous, dc.credit_today, dc.expenses_today,
          dc.night_cash, dc.phone_pay, dc.short_today, dc.closing_reference, dc.remarks,
+         dc.certified, dc.certified_at, dc.certified_by_name,
          dc.night_cash_collection_id, ncc.collection_reference
   into v_existing
   from public.day_closing dc
@@ -2539,8 +2557,12 @@ begin
 
   v_already_saved := found;
   v_night_cash_collected := v_already_saved and v_existing.night_cash_collection_id is not null;
+  v_certified := v_already_saved and coalesce(v_existing.certified, false);
   v_collection_ref := v_existing.collection_reference;
-  v_can_overwrite := v_already_saved and (not v_night_cash_collected or public.is_admin());
+  v_can_overwrite := v_already_saved and (
+    public.is_admin()
+    or (not v_night_cash_collected and not v_certified)
+  );
   v_use_snapshot := v_already_saved and v_existing.total_sale is not null and not v_can_overwrite;
 
   if v_use_snapshot then
@@ -2575,12 +2597,16 @@ begin
     'already_saved', v_already_saved,
     'can_overwrite', v_can_overwrite,
     'night_cash_collected', v_night_cash_collected,
-    'night_cash_collection_reference', v_collection_ref
+    'night_cash_collection_reference', v_collection_ref,
+    'certified', v_certified,
+    'certified_at', case when v_certified then v_existing.certified_at else null end,
+    'certified_by_name', case when v_certified then v_existing.certified_by_name else null end,
+    'can_certify', v_already_saved and not v_certified and public.is_admin()
   );
 end;
 $$;
 comment on function public.get_day_closing_breakdown(date) is
-  'Returns day closing components. Supervisors may edit until night cash is collected; after collection only admins may edit.';
+  'Returns day closing components. Supervisors may edit until certified or night cash is collected; after either, only admins may edit.';
 
 -- RPC: Available (uncollected) night cash summary
 create or replace function public.get_night_cash_available()
@@ -2761,6 +2787,7 @@ create or replace function public.save_day_closing(
 )
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_components jsonb;
@@ -2784,11 +2811,14 @@ begin
     raise exception 'phone_pay must be >= 0';
   end if;
 
-  select closing_reference, night_cash_collection_id into v_existing
+  select closing_reference, night_cash_collection_id, certified into v_existing
   from public.day_closing where date = p_date;
   if found then
     if v_existing.night_cash_collection_id is not null and not public.is_admin() then
       raise exception 'Day closing for % is locked: night cash was collected. Only an admin can modify it.', p_date;
+    end if;
+    if coalesce(v_existing.certified, false) and not public.is_admin() then
+      raise exception 'Day closing for % is locked: it has been certified. Only an admin can modify it.', p_date;
     end if;
     v_is_overwrite := true;
     v_ref := v_existing.closing_reference;
@@ -2814,7 +2844,11 @@ begin
       short_previous = v_short_previous,
       credit_today = v_credit_today,
       expenses_today = v_expenses_today,
-      remarks = nullif(trim(p_remarks), '')
+      remarks = nullif(trim(p_remarks), ''),
+      certified = false,
+      certified_at = null,
+      certified_by = null,
+      certified_by_name = null
     where date = p_date;
 
     perform public.recascade_day_closing_short_from(p_date);
@@ -2852,12 +2886,109 @@ begin
     'short_today', coalesce(v_short_today, 0),
     'closing_reference', v_ref,
     'remarks', nullif(trim(p_remarks), ''),
-    'overwritten', v_is_overwrite
+    'overwritten', v_is_overwrite,
+    'certified', false
   );
 end;
 $$;
 comment on function public.save_day_closing(date, numeric, numeric, text) is
-  'Save or overwrite day closing. Supervisors may edit until night cash is collected; after collection only admins may edit.';
+  'Save or overwrite day closing. Supervisors may edit until certified or night cash is collected. Overwrite clears certification.';
+
+create or replace function public.set_day_closing_certified(
+  p_date date,
+  p_certified boolean
+)
+returns jsonb
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_existing record;
+  v_name text;
+  v_at timestamptz;
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can certify or remove certification on a day closing';
+  end if;
+
+  if p_date is null then
+    raise exception 'date is required';
+  end if;
+
+  select date, closing_reference, certified, certified_at, certified_by_name
+  into v_existing
+  from public.day_closing
+  where date = p_date
+  for update;
+
+  if not found then
+    raise exception 'Save day closing for % before certifying it.', p_date;
+  end if;
+
+  if coalesce(p_certified, false) then
+    if coalesce(v_existing.certified, false) then
+      return jsonb_build_object(
+        'date', v_existing.date,
+        'closing_reference', v_existing.closing_reference,
+        'certified', true,
+        'certified_at', v_existing.certified_at,
+        'certified_by_name', v_existing.certified_by_name
+      );
+    end if;
+
+    select coalesce(nullif(trim(u.display_name), ''), u.email)
+    into v_name
+    from public.users u
+    where lower(trim(u.email)) = lower(trim(coalesce(auth.jwt() ->> 'email', '')))
+    limit 1;
+    v_name := coalesce(nullif(trim(v_name), ''), 'Admin');
+    v_at := timezone('utc'::text, now());
+
+    update public.day_closing set
+      certified = true,
+      certified_at = v_at,
+      certified_by = auth.uid(),
+      certified_by_name = v_name
+    where date = p_date;
+
+    return jsonb_build_object(
+      'date', p_date,
+      'closing_reference', v_existing.closing_reference,
+      'certified', true,
+      'certified_at', v_at,
+      'certified_by_name', v_name
+    );
+  end if;
+
+  if not coalesce(v_existing.certified, false) then
+    return jsonb_build_object(
+      'date', v_existing.date,
+      'closing_reference', v_existing.closing_reference,
+      'certified', false,
+      'certified_at', null,
+      'certified_by_name', null
+    );
+  end if;
+
+  update public.day_closing set
+    certified = false,
+    certified_at = null,
+    certified_by = null,
+    certified_by_name = null
+  where date = p_date;
+
+  return jsonb_build_object(
+    'date', p_date,
+    'closing_reference', v_existing.closing_reference,
+    'certified', false,
+    'certified_at', null,
+    'certified_by_name', null
+  );
+end;
+$$;
+
+comment on function public.set_day_closing_certified(date, boolean) is
+  'Admin-only: acknowledge (certify) a saved day closing, or remove certification so figures can be edited again.';
 
 -- RPC: Add credit entry (Transaction Date = DSR date)
 create or replace function public.add_credit_entry(
@@ -3222,9 +3353,16 @@ as $$
 declare
   v_row record;
   v_components jsonb;
+  v_total_sale numeric;
+  v_collection numeric;
+  v_short_previous numeric;
+  v_credit_today numeric;
+  v_expenses_today numeric;
   v_short_today numeric;
+  v_changed boolean := false;
 begin
-  select night_cash, phone_pay
+  select night_cash, phone_pay, total_sale, collection, short_previous, credit_today,
+         expenses_today, short_today
   into v_row
   from public.day_closing
   where date = p_date
@@ -3235,23 +3373,37 @@ begin
   end if;
 
   v_components := public.compute_day_closing_components(p_date);
-  v_short_today := (
-    coalesce((v_components->>'total_sale')::numeric, 0)
-    + coalesce((v_components->>'collection')::numeric, 0)
-    + coalesce((v_components->>'short_previous')::numeric, 0)
-  ) - (
-    coalesce(v_row.night_cash, 0) + coalesce(v_row.phone_pay, 0)
-    + coalesce((v_components->>'credit_today')::numeric, 0)
-    + coalesce((v_components->>'expenses_today')::numeric, 0)
-  );
+  v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
+  v_collection := coalesce((v_components->>'collection')::numeric, 0);
+  v_short_previous := coalesce((v_components->>'short_previous')::numeric, 0);
+  v_credit_today := coalesce((v_components->>'credit_today')::numeric, 0);
+  v_expenses_today := coalesce((v_components->>'expenses_today')::numeric, 0);
+  v_short_today := (v_total_sale + v_collection + v_short_previous)
+    - (coalesce(v_row.night_cash, 0) + coalesce(v_row.phone_pay, 0) + v_credit_today + v_expenses_today);
+
+  v_changed :=
+    v_row.total_sale is distinct from v_total_sale
+    or v_row.collection is distinct from v_collection
+    or v_row.short_previous is distinct from v_short_previous
+    or v_row.credit_today is distinct from v_credit_today
+    or v_row.expenses_today is distinct from v_expenses_today
+    or v_row.short_today is distinct from v_short_today;
+
+  if not v_changed then
+    return;
+  end if;
 
   update public.day_closing set
-    total_sale = coalesce((v_components->>'total_sale')::numeric, 0),
-    collection = coalesce((v_components->>'collection')::numeric, 0),
-    short_previous = coalesce((v_components->>'short_previous')::numeric, 0),
-    credit_today = coalesce((v_components->>'credit_today')::numeric, 0),
-    expenses_today = coalesce((v_components->>'expenses_today')::numeric, 0),
-    short_today = v_short_today
+    total_sale = v_total_sale,
+    collection = v_collection,
+    short_previous = v_short_previous,
+    credit_today = v_credit_today,
+    expenses_today = v_expenses_today,
+    short_today = v_short_today,
+    certified = false,
+    certified_at = null,
+    certified_by = null,
+    certified_by_name = null
   where date = p_date;
 
   perform public.recascade_day_closing_short_from(p_date);
@@ -3259,7 +3411,7 @@ end;
 $$;
 
 comment on function public.sync_saved_day_closing_for_date(date) is
-  'Refresh saved day_closing snapshot from live DSR/credit/expense data and recascade short chain.';
+  'Refresh saved day_closing snapshot from live DSR/credit/expense data; clear certification only when values change; recascade short chain.';
 
 revoke all on function public.sync_saved_day_closing_for_date(date) from public;
 revoke all on function public.sync_saved_day_closing_for_date(date) from authenticated;
@@ -4012,6 +4164,7 @@ grant execute on function public.get_night_cash_available() to authenticated;
 grant execute on function public.preview_night_cash_collection(date, date) to authenticated;
 grant execute on function public.collect_night_cash(date, date, text) to authenticated;
 grant execute on function public.save_day_closing(date, numeric, numeric, text) to authenticated;
+grant execute on function public.set_day_closing_certified(date, boolean) to authenticated;
 grant execute on function public.save_e20_testing_register(date, text, text, jsonb, jsonb, boolean, timestamptz, text, text) to authenticated;
 grant execute on function public.e20_parse_yes_no(text) to authenticated;
 grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text) to authenticated;

@@ -847,7 +847,7 @@ async function fetchDayClosingWindow() {
 
   const { data, error } = await supabaseClient
     .from("day_closing")
-    .select("date, short_today")
+    .select("date, short_today, certified")
     .gte("date", startStr)
     .lte("date", todayStr);
 
@@ -1986,7 +1986,7 @@ async function loadDayClosingBanners(prefetched = null) {
     return;
   }
 
-  const closedSet = new Set((closedRows ?? []).map((r) => r.date));
+  const closedByDate = new Map((closedRows ?? []).map((r) => [r.date, r]));
   const today = new Date();
   const datesToShow = [];
   for (let i = 0; i <= DAY_CLOSING_LOOKBACK_DAYS; i++) {
@@ -1996,11 +1996,30 @@ async function loadDayClosingBanners(prefetched = null) {
   }
 
   function bannerForDate(dateStr, showDone) {
-    const done = closedSet.has(dateStr);
-    if (!showDone && done) return null;
+    const row = closedByDate.get(dateStr);
+    const done = !!row;
+    const certified = !!row?.certified;
+    if (!showDone && done && certified) return null;
     const label = formatDisplayDate(dateStr);
     const isToday = dateStr === todayStr;
     const dayLabel = isToday ? "Today" : label;
+    if (done && !certified) {
+      const isAdminUser = dashboardRole === "admin";
+      return renderNotifItem({
+        type: "warning",
+        label: dayLabel,
+        message: "Day closing awaiting acknowledgment",
+        meta: isAdminUser
+          ? isToday
+            ? "Saved — acknowledge tonight's statement on Day closing."
+            : "Saved but not yet certified. Open Day closing to acknowledge."
+          : isToday
+            ? "Saved — waiting for admin acknowledgment."
+            : "Saved but not yet certified. Waiting for admin acknowledgment.",
+        cta: isAdminUser ? "Acknowledge" : "View",
+        href: `day-closing.html?date=${encodeURIComponent(dateStr)}`,
+      });
+    }
     if (done) {
       return renderNotifItem({
         type: "success",
