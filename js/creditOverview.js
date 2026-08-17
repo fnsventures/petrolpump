@@ -8,7 +8,7 @@
   let lastOverviewData = null;
   let lastOverviewPeriodLabel = "";
   const OVERVIEW_EMPTY = Object.freeze({ credit_taken: 0, settled: 0, overdue: 0, customers: [] });
-  const CREDIT_OVERVIEW_PRINT_CSS = "css/credit-summary-print.css?v=2";
+  const CREDIT_OVERVIEW_PRINT_CSS = "css/credit-summary-print.css?v=3";
 
 function readOverviewDateRange() {
   return readDateRangeFromControls(
@@ -127,26 +127,37 @@ function renderOverviewCustomerRows(tbody, rows, periodFilter) {
   tbody.innerHTML = rows
     .map((row) => {
       const detailHref = page().customerSummaryUrl(row.customer_name, periodFilter);
-      const isOverpaid = row.overdue < 0;
+      const isOverpaid = row.overdue < -0.009;
+      const netDisplay = isOverpaid ? Math.abs(row.overdue) : row.overdue;
       const rowClass = isOverpaid ? ' class="credit-overview-row--overpaid"' : "";
       return `<tr${rowClass}>
-        <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a></td>
+        <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${
+          isOverpaid ? ' <span class="credit-advance-tag">Advance</span>' : ""
+        }</td>
         <td class="num">${formatCurrency(row.credit_taken)}</td>
         <td class="num${isOverpaid ? " credit-overview-settled" : ""}">${formatCurrency(row.settled)}</td>
-        <td class="num credit-overview-outstanding">${formatCurrency(row.overdue)}</td>
+        <td class="num credit-overview-outstanding">${
+          isOverpaid ? `+ ${formatCurrency(netDisplay)}` : formatCurrency(netDisplay)
+        }</td>
       </tr>`;
     })
     .join("");
 }
 
 function setOverviewPeriodStats(creditTaken, settled, overdue) {
-  const set = (id, value) => {
+  const net = Number(overdue) || 0;
+  const hasAdvance = net < -0.009;
+  const balance = hasAdvance ? Math.abs(net) : Math.max(0, net);
+
+  const set = (id, text) => {
     const el = document.getElementById(id);
-    if (el) el.textContent = formatCurrency(value);
+    if (el) el.textContent = text;
   };
-  set("credit-overview-credit-taken", creditTaken);
-  set("credit-overview-settled", settled);
-  set("credit-overview-overdue", overdue);
+
+  set("credit-overview-credit-taken", formatCurrency(creditTaken));
+  set("credit-overview-settled", formatCurrency(settled));
+  set("credit-overview-overdue", hasAdvance ? `+ ${formatCurrency(balance)}` : formatCurrency(balance));
+  set("credit-overview-balance-label", hasAdvance ? "Advance payment" : "Outstanding");
 }
 
 async function loadOverviewPeriodActivity() {
@@ -231,15 +242,19 @@ function buildOverviewCustomerPrintRows(customers) {
   }
   return customers
     .map((row, i) => {
-      const outstanding = Number(row.overdue) || 0;
-      const outstandingClass = outstanding < 0 ? ' class="num credit-overview-print-overpaid"' : ' class="num"';
+      const net = Number(row.overdue) || 0;
+      const isAdvance = net < -0.009;
+      const display = Math.abs(net);
+      const outstandingClass = isAdvance
+        ? ' class="num credit-overview-print-overpaid"'
+        : ' class="num"';
       return `
         <tr>
           <td>${i + 1}</td>
-          <td>${escapeHtml(row.customer_name)}</td>
+          <td>${escapeHtml(row.customer_name)}${isAdvance ? ' <span class="credit-overview-print-advance-tag">Advance</span>' : ""}</td>
           <td class="num">₹ ${formatNumberPlain(row.credit_taken)}</td>
           <td class="num">₹ ${formatNumberPlain(row.settled)}</td>
-          <td${outstandingClass}>₹ ${formatNumberPlain(outstanding)}</td>
+          <td${outstandingClass}>₹ ${formatNumberPlain(display)}${isAdvance ? " adv." : ""}</td>
         </tr>`;
     })
     .join("");
@@ -250,7 +265,12 @@ function buildOverviewPrintHtml(data, periodLabel) {
   const period = periodLabel || "All time";
   const creditTaken = Number(data.credit_taken) || 0;
   const settled = Number(data.settled) || 0;
-  const outstanding = Number(data.overdue) || 0;
+  const net = Number(data.overdue) || 0;
+  const hasAdvance = net < -0.009;
+  const outstanding = Math.max(0, net);
+  const advancePayment = Math.max(0, -net);
+  const balanceLabel = hasAdvance ? "Advance payment" : "Outstanding";
+  const balanceValue = hasAdvance ? advancePayment : outstanding;
   const customers = Array.isArray(data.customers) ? data.customers : [];
   const customerCount = customers.length;
 
@@ -264,7 +284,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
       <div class="credit-summary-title-band">
         <h2 class="credit-summary-doc-title">Period activity by customer</h2>
         <p class="credit-summary-doc-meta">
-          Credit taken, settlements received, and outstanding for sales in the selected period.
+          Credit taken, settlements received, and net balance for sales in the selected period.
         </p>
       </div>
 
@@ -277,10 +297,12 @@ function buildOverviewPrintHtml(data, periodLabel) {
           <span class="credit-summary-kpi-label">Settled</span>
           <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(settled)}</span>
         </div>
-        <div class="credit-summary-kpi credit-summary-kpi--outstanding">
-          <span class="credit-summary-kpi-label">Outstanding</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(outstanding)}</span>
-          <span class="credit-summary-kpi-meta">Credit taken minus settled</span>
+        <div class="credit-summary-kpi credit-summary-kpi--outstanding${hasAdvance ? " is-advance" : ""}">
+          <span class="credit-summary-kpi-label">${balanceLabel}</span>
+          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(balanceValue)}</span>
+          <span class="credit-summary-kpi-meta">${
+            hasAdvance ? "Settlements exceed credit in this period" : "Credit taken minus settled"
+          }</span>
         </div>
       </div>
 
@@ -294,7 +316,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
               <th>Customer</th>
               <th class="num">Credit taken (₹)</th>
               <th class="num">Settled (₹)</th>
-              <th class="num">Outstanding (₹)</th>
+              <th class="num">Net (₹)</th>
             </tr>
           </thead>
           <tbody>${buildOverviewCustomerPrintRows(customers)}</tbody>
@@ -303,15 +325,15 @@ function buildOverviewPrintHtml(data, periodLabel) {
               <td colspan="2">Total</td>
               <td class="num">₹ ${formatNumberPlain(creditTaken)}</td>
               <td class="num">₹ ${formatNumberPlain(settled)}</td>
-              <td class="num">₹ ${formatNumberPlain(outstanding)}</td>
+              <td class="num">₹ ${formatNumberPlain(balanceValue)}${hasAdvance ? " adv." : ""}</td>
             </tr>
           </tfoot>
         </table>
       </section>
 
       <p class="credit-summary-note">
-        Computer-generated credit overview. Outstanding = credit taken minus settlements for the selected period
-        (not the live portfolio due). Negative outstanding means settlements exceeded credit in this period.
+        Computer-generated credit overview. Net = credit taken minus settlements for the selected period
+        (not the live portfolio due). Advance means settlements exceeded credit in this period.
       </p>
 
       <footer class="report-print-foot">
