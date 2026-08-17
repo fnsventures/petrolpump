@@ -119,8 +119,10 @@ A typical daily sequence:
    → Enter night_cash, phone_pay, remarks
    → save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
    → short_today becomes next day’s short_previous
-   → Supervisor: after save, form is read-only (snapshot frozen)
-   → Admin: can_overwrite when allowed → re-save; recascades short forward
+   → Supervisor: may edit until certified or night cash is collected
+   → Admin: can_overwrite when allowed → re-save (clears certification); recascades short forward
+   → Admin: set_day_closing_certified(date, true) to acknowledge after supervisor save
+   → After certify: supervisors cannot edit; print statement shows certifier name/time
    → Admin register tab: delete_day_closing (latest date only) to reopen a day
 
 5. Night-cash collection (day-closing.html — collection UI)
@@ -137,6 +139,7 @@ A typical daily sequence:
 - **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
+- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save).
 - **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---
 
@@ -376,7 +379,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Billing | products, invoices, save_invoice |
 | Invoice documents | invoice_documents, edge function invoice-documents, pump_settings.integrations.googleDrive |
 | Expenses | expenses, expense_categories |
-| Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, collect_night_cash, delete_day_closing |
+| Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, set_day_closing_certified, collect_night_cash, delete_day_closing |
 | Staff | employees, set_employee_photo, staff-photos bucket (admin) |
 | Attendance | employee_attendance, list_employees_roster, save_employee_attendance_batch |
 | Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees |

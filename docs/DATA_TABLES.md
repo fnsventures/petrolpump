@@ -537,24 +537,29 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 | expenses_today | numeric | Expenses that day (snapshot) |
 | closing_reference | text | Unique ref (e.g. DC-2026-00001) |
 | night_cash_collection_id | uuid | FK → night_cash_collections when cash was picked up |
+| certified | boolean | True after an admin acknowledges the saved statement |
+| certified_at | timestamptz | When certified |
+| certified_by | uuid | auth.users.id of the certifying admin |
+| certified_by_name | text | Display name (or email) snapshot at certify time |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** Default operational pattern, with extra rules when `night_cash_collection_id` is set: supervisors cannot update/delete collected closings; admins still can.
+**RLS:** Default operational pattern, with extra rules when `night_cash_collection_id` is set or `certified` is true: supervisors cannot update/delete collected or certified closings; admins still can.
 
 **RPCs:**
 
 | RPC | Behaviour |
 |-----|-----------|
-| `get_day_closing_breakdown(date)` | Components + `already_saved`, `can_overwrite`, `night_cash_collected` |
-| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Insert or admin overwrite; recascades short |
+| `get_day_closing_breakdown(date)` | Components + `already_saved`, `can_overwrite`, `night_cash_collected`, `certified`, `can_certify` |
+| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Insert or overwrite; clears certification; recascades short |
+| `set_day_closing_certified(date, certified)` | Admin-only acknowledge / remove certification |
 | `delete_day_closing(id)` | Admin only, **latest date only** |
 | `get_night_cash_available()` | Uncollected closings ready for pickup |
 | `preview_night_cash_collection(from, to)` | Preview amounts before collecting |
 | `collect_night_cash(from, to, remarks?)` | Create register row and link closings |
 
-`recascade_day_closing_short_from` is internal (not callable by clients).
+`recascade_day_closing_short_from` is internal (not callable by clients). Snapshot sync (`sync_saved_day_closing_for_date`) clears certification only when computed amounts change.
 
 ---
 
@@ -643,8 +648,9 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `list_employees_salary()` | Active employees with HR fields | — |
 | `set_employee_photo(id, url)` | Update employee photo URL | admin |
 | `save_employee_attendance_batch(date, jsonb)` | Upsert attendance rows | — |
-| `get_day_closing_breakdown(date)` | Closing components + overwrite / collected flags | — |
-| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing | overwrite: admin (rules apply if collected) |
+| `get_day_closing_breakdown(date)` | Closing components + overwrite / collected / certified flags | — |
+| `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing (clears certification) | overwrite: until certified/collected (supervisor); admin always |
+| `set_day_closing_certified(date, certified)` | Acknowledge or remove certification | admin |
 | `delete_day_closing(id)` | Remove latest closing | admin |
 | `compute_day_closing_components(date)` | Live component calculation | internal use |
 | `get_night_cash_available()` | Uncollected night cash totals | — |
