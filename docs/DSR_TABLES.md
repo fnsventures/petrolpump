@@ -8,11 +8,13 @@ Part of the [Petrol Pump documentation](README.md). For all tables and flows, se
 |--------|------|---------|------------|
 | **dsr_petrol** | Table | MS (petrol) meter readings — one row per date | Meter Reading form |
 | **dsr_diesel** | Table | HSD (diesel) meter readings — one row per date | Meter Reading form |
+| **meter_shift_readings** | Table | Optional shift nozzle + staff assignments | Meter Reading → Shift register |
+| **meter_shift_cash** | Table | Optional staff cash handover (short) per shift | Meter Reading → Shift register |
 | **dsr** | View | Union of both products (`product` = `petrol` \| `diesel`) for reads | — (SELECT only) |
 | **dsr_stock** | View | Stock reconciliation derived from meter rows | — (computed) |
 | **get_dsr_stock_range** | RPC | Same stock logic scoped to a date range | — |
 
-**Recommendation:** Treat **dsr_petrol** and **dsr_diesel** as the source of truth. Use the **dsr** view when you need product-agnostic queries. Use **dsr_stock** (or `get_dsr_stock_range`) for opening/closing stock, dip, and variation — there is no separate stock table to maintain.
+**Recommendation:** Treat **dsr_petrol** and **dsr_diesel** as the source of truth for daily totals, day closing, and stock. Use **meter_shift_*** for staff/shift accountability without changing those downstream flows.
 
 ---
 
@@ -23,7 +25,7 @@ Part of the [Petrol Pump documentation](README.md). For all tables and flows, se
 - **Listed by:** The **DSR** page (`dsr.html` → `js/dsr.js`) for range summaries and stock views.
 - **Used by:** Day closing (sales), dashboard (snapshot, Net profit glance), meter reading (Purchase cost), analysis, reports (tank-wise DSR, purchase registers).
 
-Each table has one row per **date** (not per pump). MS and HSD are stored separately so tank capacity and defaults can differ (e.g. 15KL vs 20KL).
+Each table has **exactly one row per date** (`unique (date)`). MS and HSD are stored separately so tank capacity and defaults can differ (e.g. 15KL vs 20KL).
 
 ---
 

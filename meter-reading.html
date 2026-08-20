@@ -11,7 +11,7 @@
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=14" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
-    <link rel="stylesheet" href="css/app-meter-reading.css?v=13" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=20" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -19,14 +19,16 @@
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=3"></script>
-    <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/utils.js?v=12"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/buyingPriceEntry.js?v=1"></script>
     <script defer src="js/dsrFuelNav.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/meterReading.js"></script>
+    <script defer src="js/staffEmployees.js?v=3"></script>
+    <script defer src="js/meterShiftReading.js?v=10"></script>
+    <script defer src="js/meterReading.js?v=22"></script>
   </head>
   <body class="meter-reading-page">
     <header class="topbar" data-build-topbar>
@@ -41,7 +43,11 @@
     <main class="settings-layout page-layout-wide" id="meter-page-main">
       <nav class="settings-nav card dsr-fuel-nav" id="meter-sidebar-nav" aria-label="Meter reading sections">
         <p class="settings-nav-title">Sections</p>
-        <button type="button" class="settings-nav-item settings-nav-item--petrol is-active" data-section="petrol">
+        <button type="button" class="settings-nav-item is-active" data-section="shift-readings">
+          <span class="settings-nav-item-label">Shift register</span>
+          <span class="settings-nav-item-meta">Meters · staff · cash</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="petrol">
           <span class="fuel-rate-icon" aria-hidden="true">MS</span>
           <span class="settings-nav-item-label">MS</span>
           <span class="settings-nav-item-meta">Petrol · 15 KL</span>
@@ -57,7 +63,7 @@
         </button>
       </nav>
       <div class="settings-panels">
-        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol is-visible" data-panel="petrol" data-product="petrol">
+        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol" data-panel="petrol" data-product="petrol" hidden>
         <div class="panel-head dsr-card-head">
           <div class="dsr-fuel-head">
             <span class="fuel-rate-icon" aria-hidden="true">MS</span>
@@ -81,7 +87,10 @@
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
-                <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
               </div>
               <table class="dsr-table meter-table compact">
                 <colgroup>
@@ -489,7 +498,10 @@
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
-                <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
               </div>
               <table class="dsr-table meter-table compact">
                 <colgroup>
@@ -871,6 +883,116 @@
           </div>
         </div>
       </section>
+
+        <section
+          class="settings-panel card dashboard-card dsr-card is-visible"
+          data-panel="shift-readings"
+          id="shift-readings"
+        >
+          <div class="panel-head dsr-card-head">
+            <div>
+              <h2 class="dashboard-section-title">Shift register</h2>
+              <p class="muted panel-lead">
+                Assign staff to each nozzle for the shift, enter opening/closing meters, then record cash handed over.
+                Openings auto-fill from the prior shift or daily sheet. Saving a shift updates daily MS/HSD meters; saving daily updates existing shift meters.
+                View pump / shift / salesman totals on <a href="dsr.html#by-pump">DSR → Sales detail</a>.
+              </p>
+              <p id="shift-meter-shift-meta" class="muted"></p>
+            </div>
+          </div>
+
+          <div class="panel-head card-head snapshot-head shift-meter-controls">
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="shift-meter-date">Date</label>
+                <input id="shift-meter-date" type="date" required />
+              </div>
+              <div class="form-field">
+                <label for="shift-meter-shift">Shift</label>
+                <select id="shift-meter-shift"></select>
+              </div>
+              <div class="form-field form-field--fuel-petrol">
+                <label for="shift-meter-rate-petrol">MS rate (₹/L)</label>
+                <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="₹/L" />
+              </div>
+              <div class="form-field form-field--fuel-diesel">
+                <label for="shift-meter-rate-diesel">HSD rate (₹/L)</label>
+                <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="₹/L" />
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="shift-meter-copy-openings" class="button-secondary">Copy openings</button>
+                <button type="button" id="shift-meter-save">Save shift</button>
+                <button type="button" id="shift-meter-clear" class="button-delete hidden" data-role="admin-only">Delete shift</button>
+              </div>
+            </div>
+          </div>
+
+          <p id="shift-meter-locked-banner" class="dsr-meter-locked-banner hidden" role="status" aria-live="polite"></p>
+          <p id="shift-meter-loading" class="muted hidden">Loading…</p>
+          <p id="shift-meter-attendance-note" class="muted hidden" aria-live="polite"></p>
+          <div id="shift-meter-totals" class="shift-totals" aria-live="polite"></div>
+
+          <div id="shift-meter-edit-zone" class="shift-meter-edit-zone">
+          <div id="shift-meter-nozzle-tables" class="shift-nozzle-blocks meter-stack"></div>
+
+          <div class="meter-block shift-staff-block">
+            <div class="meter-block-head">
+              <h3 class="meter-title">Staff summary · cash &amp; short</h3>
+            </div>
+            <div id="shift-meter-staff-hint"></div>
+            <div class="table-scroll">
+              <table class="dsr-table meter-table compact shift-staff-table">
+                <thead>
+                  <tr>
+                    <th>Staff · meters</th>
+                    <th>MS (L)</th>
+                    <th>HSD (L)</th>
+                    <th>Expected ₹</th>
+                    <th>Cash collected</th>
+                    <th>Short ₹</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="shift-meter-staff-body">
+                  <tr>
+                    <td colspan="7" class="muted">Select a date and shift.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="shift-meter-reconcile" class="shift-reconcile muted" aria-live="polite"></div>
+          </div>
+
+          <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>
+          <p id="shift-meter-error" class="error hidden" role="alert"></p>
+
+          <div class="meter-block">
+            <div class="meter-block-head">
+              <h3 class="meter-title">Recent shifts</h3>
+            </div>
+            <div class="table-scroll">
+              <table class="dsr-table meter-history compact">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Shift</th>
+                    <th>MS (L)</th>
+                    <th>HSD (L)</th>
+                    <th>Staff</th>
+                    <th>Cash ₹</th>
+                  </tr>
+                </thead>
+                <tbody id="shift-meter-history-body">
+                  <tr>
+                    <td colspan="6" class="muted">Loading…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
 
         <section
           class="settings-panel card dashboard-card"

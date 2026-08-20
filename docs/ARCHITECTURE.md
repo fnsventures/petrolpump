@@ -253,8 +253,8 @@ docs/
 | Page | Script | Primary purpose |
 |------|--------|-----------------|
 | `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + Net profit glance loaded lazily per section |
-| `meter-reading.html` | `meterReading.js` | Enter/edit MS and HSD meter readings; admin Purchase cost (buying prices) |
-| `dsr.html` | `dsr.js` | DSR listing and stock summary (`dsrSummary.js`) |
+| `meter-reading.html` | `meterReading.js`, `meterShiftReading.js` | Daily MS/HSD entry; shift+staff meters with daily sync; Purchase cost |
+| `dsr.html` | `dsr.js`, `dsrSummary.js`, `dsrSalesBreakdown.js` | Period DSR register (Total/MS/HSD) + sales detail by pump / shift / salesman |
 | `sales-daily.html` | — | Legacy redirect to `dsr.html` |
 | `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
 | `expenses.html` | `expenses.js` | Daily expenses by category |

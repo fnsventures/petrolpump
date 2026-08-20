@@ -8,7 +8,7 @@
       label: "Operations",
       links: [
         { href: "dashboard.html", label: "Dashboard" },
-        { href: "meter-reading.html", label: "Meter Reading" },
+        { href: "meter-reading.html#shift-readings", label: "Meter Reading" },
         { href: "dsr.html", label: "DSR" },
         { href: "e20-register.html", label: "E-20 testing" },
         { href: "reminders.html", label: "Tasks" },

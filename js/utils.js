@@ -468,6 +468,7 @@ const RECORD_DATE_KEYS = {
   dsrDiesel: "record_dsr_diesel_date",
   reminder: "record_reminder_due_date",
   e20Register: "record_e20_register_date",
+  meterShift: "record_meter_shift_date",
 };
 
 /**

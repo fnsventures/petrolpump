@@ -395,12 +395,12 @@ const AdminDelete = (function () {
     if (!requireAdmin(auth, actionLabel)) return;
     if (!confirm(confirmMessage)) return;
 
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
     try {
       const result = await deleteFn();
       const error = result?.error ?? null;
       if (error) {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
         alert(window.AppError.getUserMessage(error));
         window.AppError.report(error, errorContext || {});
         return;
@@ -410,7 +410,7 @@ const AdminDelete = (function () {
       }
       if (onSuccess) await onSuccess();
     } catch (err) {
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
       alert(window.AppError.getUserMessage(err));
       window.AppError.report(err, errorContext || {});
     }
