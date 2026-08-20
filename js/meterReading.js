@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint */
+/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -29,9 +29,28 @@ const RATE_FIELD_BY_PRODUCT = { petrol: "petrol_rate", diesel: "diesel_rate" };
 /** Maps product to its dedicated database table name (writes go here). */
 const DSR_TABLE = { petrol: "dsr_petrol", diesel: "dsr_diesel" };
 
-/** Shown when a supervisor picks a date that already has a meter entry (read-only view). */
+/** Shown when a supervisor picks a date that already has a completed meter entry (read-only view). */
 const MSG_SUPERVISOR_METER_DAY_LOCKED =
   "Meter readings for this date are already saved. Choose another date to enter new readings, or contact an admin if a correction is needed.";
+
+/** Hint when shift register created meter fields but dip/rate are still empty. */
+const MSG_SHIFT_STUB_HINT =
+  "Nozzle meters were filled from the shift register. Add dip, selling rate, and save to finish this day.";
+
+/**
+ * True when the daily sheet was finished (rate/dip/stock/receipts), not a shift-sync stub.
+ * Shift sync inserts rows with meters only — those must stay editable for supervisors.
+ */
+function isDailyMeterEntryComplete(row, product) {
+  if (!row) return false;
+  const rateField = RATE_FIELD_BY_PRODUCT[product];
+  const rate = rateField != null ? Number(row[rateField]) : NaN;
+  if (Number.isFinite(rate) && rate > 0) return true;
+  if (Number(row.dip_reading) !== 0) return true;
+  if (Number(row.stock) !== 0) return true;
+  if (Number(row.receipts) !== 0) return true;
+  return false;
+}
 
 /** Resolved after auth; drives supervisor vs admin meter form behaviour. */
 let currentUserRole = "supervisor";
@@ -115,21 +134,45 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const meterSections =
     currentUserRole === "admin"
-      ? ["petrol", "diesel", "purchase-cost"]
-      : ["petrol", "diesel"];
+      ? ["shift-readings", "petrol", "diesel", "purchase-cost"]
+      : ["shift-readings", "petrol", "diesel"];
 
   initPageSections({
     navItemSelector: "#meter-sidebar-nav .settings-nav-item",
     panelSelector: ".settings-panels .settings-panel",
-    defaultSection: "petrol",
+    defaultSection: "shift-readings",
     validSections: meterSections,
-    hashAliases: { meter: "petrol", pl: "purchase-cost" },
+    hashAliases: {
+      meter: "petrol",
+      register: "shift-readings",
+      handover: "shift-readings",
+      pl: "purchase-cost",
+      shift: "shift-readings",
+      sales: "shift-readings",
+      breakdown: "shift-readings",
+    },
     onSectionChange: (section) => {
       if (section === "purchase-cost" && currentUserRole === "admin") {
         void ensurePurchaseCostLoaded();
       }
+      if (section === "shift-readings" && typeof MeterShiftReading !== "undefined") {
+        void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+      }
     },
   });
+
+  const landingHash = (location.hash || "").replace(/^#/, "").split("?")[0];
+  const landsOnShift =
+    !landingHash ||
+    landingHash === "shift-readings" ||
+    landingHash === "shift" ||
+    landingHash === "register" ||
+    landingHash === "handover" ||
+    landingHash === "sales" ||
+    landingHash === "breakdown";
+  if (typeof MeterShiftReading !== "undefined" && landsOnShift) {
+    void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+  }
 
   PRODUCTS.forEach((product) => {
     initReadingForm(product);
@@ -138,7 +181,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   initMeterDeleteHandlers();
   await Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
 
-  const landingHash = (location.hash || "").replace(/^#/, "");
   const landingPurchaseCost =
     currentUserRole === "admin" &&
     (landingHash === "purchase-cost" || landingHash === "pl");
@@ -312,6 +354,7 @@ function applyDsrRowFieldsToMeterForm(form, row, product, openingStockHint) {
 
 /**
  * Hydrate meter form from an already-fetched DSR row (opening stock from previous day).
+ * Shift-sync stubs also get selling-rate fallback and prior-day openings for zero nozzles.
  */
 async function applyExistingDsrRowToMeterForm(product, form, row) {
   if (!row) return;
@@ -319,18 +362,113 @@ async function applyExistingDsrRowToMeterForm(product, form, row) {
   const openingHint = await getPreviousDayDipStock(product, row.date);
 
   applyDsrRowFieldsToMeterForm(form, row, product, openingHint);
+
+  // Incomplete shift stubs: fill rate + any zero openings from prior day
+  if (!isDailyMeterEntryComplete(row, product)) {
+    await enrichShiftStubOnForm(product, form, row);
+  }
+
   updateDerivedFields(form);
 }
 
-function setMeterFormSupervisorLocked(form, locked) {
+/**
+ * For shift-synced stubs (meters only): backfill rate and zero openings so MS/HSD
+ * sheets look continuous with yesterday without overwriting real shift meters.
+ */
+async function enrichShiftStubOnForm(product, form, row) {
+  const dateStr = row.date || form.querySelector("input[name='date']")?.value;
+  if (!dateStr) return;
+
+  const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
+  const rateField = RATE_FIELD_BY_PRODUCT[product];
+  const rateInput = rateField ? form.querySelector(`[name="${rateField}"]`) : null;
+  const needsRate =
+    !rateInput?.value ||
+    !Number.isFinite(Number(rateInput.value)) ||
+    Number(rateInput.value) <= 0;
+
+  const closingFields = getClosingMeterFields(config);
+  const selectCols = closingFields.join(", ") + (rateField ? `, ${rateField}` : "");
+
+  const [{ row: priorRow }, rateFallback] = await Promise.all([
+    fetchDsrRowForPrefill(product, dateStr, selectCols),
+    needsRate ? fetchLastDsrRate(product) : Promise.resolve(null),
+  ]);
+
+  // Only fill openings that are empty / zero — keep shift-synced values
+  for (let p = 1; p <= config.pumps; p++) {
+    for (let n = 1; n <= config.nozzlesPerPump; n++) {
+      const openName = `opening_pump${p}_nozzle${n}`;
+      const closeName = `closing_pump${p}_nozzle${n}`;
+      const openInput = form.querySelector(`[name="${openName}"]`);
+      const closeInput = form.querySelector(`[name="${closeName}"]`);
+      if (!openInput) continue;
+      const openVal = Number(openInput.value);
+      if (Number.isFinite(openVal) && openVal !== 0) continue;
+      const priorClose = priorRow ? Number(priorRow[closeName]) : NaN;
+      if (!Number.isFinite(priorClose)) continue;
+      openInput.value = priorClose.toFixed(2);
+      // Unused nozzle: closing should match opening until that nozzle sells
+      const closeVal = closeInput ? Number(closeInput.value) : NaN;
+      if (closeInput && (!Number.isFinite(closeVal) || closeVal === 0)) {
+        closeInput.value = priorClose.toFixed(2);
+      }
+    }
+  }
+
+  if (needsRate) {
+    let rateValue = priorRow?.[rateField];
+    if (rateValue == null || !Number.isFinite(Number(rateValue)) || Number(rateValue) <= 0) {
+      rateValue = rateFallback;
+    } else {
+      rateValue = Number(rateValue);
+    }
+    applyRateToForm(form, product, rateValue);
+  }
+}
+
+/**
+ * Refresh MS/HSD forms when their selected date matches (e.g. after shift sync).
+ * Optionally force the form date to match so meters are visible immediately.
+ */
+async function refreshMeterFormsForShiftDate(dateStr, products, { alignDate = true } = {}) {
+  if (!dateStr) return;
+  const list = Array.isArray(products) && products.length ? products : ["petrol", "diesel"];
+  for (const product of list) {
+    const form = document.getElementById(`dsr-form-${product}`);
+    if (!form) continue;
+    const dateInput = form.querySelector("input[name='date']");
+    if (!dateInput) continue;
+    if (alignDate && dateInput.value !== dateStr) {
+      dateInput.value = dateStr;
+      try {
+        localStorage.setItem(meterDateStorageKey(product), dateStr);
+      } catch (_) {
+        /* ignore */
+      }
+    }
+    if (dateInput.value === dateStr) {
+      await refreshMeterFormForSelectedDate(product, form);
+    }
+  }
+}
+
+function setMeterFormSupervisorLocked(form, locked, { hint = null } = {}) {
   const suffix = form.id?.replace("dsr-form-", "") || "";
   const banner = document.getElementById(`dsr-meter-locked-banner-${suffix}`);
 
   if (!locked) {
     form.classList.remove("dsr-meter-supervisor-locked");
     if (banner) {
-      banner.classList.add("hidden");
-      banner.textContent = "";
+      if (hint) {
+        banner.textContent = hint;
+        banner.classList.remove("hidden");
+        banner.classList.add("dsr-meter-stub-hint");
+      } else {
+        banner.classList.add("hidden");
+        banner.classList.remove("dsr-meter-stub-hint");
+        banner.textContent = "";
+      }
     }
     form.querySelectorAll("[data-dsr-supervisor-lock]").forEach((el) => {
       if (el.tagName === "BUTTON") {
@@ -348,10 +486,13 @@ function setMeterFormSupervisorLocked(form, locked) {
   if (banner) {
     banner.textContent = MSG_SUPERVISOR_METER_DAY_LOCKED;
     banner.classList.remove("hidden");
+    banner.classList.remove("dsr-meter-stub-hint");
   }
 
   form.querySelectorAll("input, textarea, button").forEach((el) => {
     if (el.name === "date" || el.type === "hidden") return;
+    // Refresh must stay available so supervisors can clear stale closings after a date change.
+    if (el.classList?.contains("dsr-refresh-form")) return;
     if (el.hasAttribute("data-dsr-supervisor-lock")) return;
 
     if (el.tagName === "BUTTON") {
@@ -365,16 +506,58 @@ function setMeterFormSupervisorLocked(form, locked) {
   });
 }
 
-function applyMeterDayLockState(product, form, hasEntryForDate) {
-  if (currentUserRole !== "supervisor" || !hasEntryForDate) {
-    setMeterFormSupervisorLocked(form, false);
+function applyMeterDayLockState(product, form, row) {
+  const complete = isDailyMeterEntryComplete(row, product);
+  if (currentUserRole !== "supervisor" || !complete) {
+    const stubHint =
+      currentUserRole === "supervisor" && row && !complete ? MSG_SHIFT_STUB_HINT : null;
+    setMeterFormSupervisorLocked(form, false, { hint: stubHint });
     return;
   }
   setMeterFormSupervisorLocked(form, true);
 }
 
 /**
+ * Clear entry fields so a prior date’s closings/testing/dip do not linger
+ * when the selected date has no saved row (or the user hits Refresh).
+ * Date is preserved; openings/rate/stock are filled by prefill next.
+ */
+function clearMeterFormEntryFields(form, product) {
+  if (!form) return;
+  const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
+  const names = [
+    ...Array.from({ length: config.pumps }, (_, i) => {
+      const p = i + 1;
+      const openings = [];
+      for (let n = 1; n <= config.nozzlesPerPump; n++) {
+        openings.push(`opening_pump${p}_nozzle${n}`);
+      }
+      return openings;
+    }).flat(),
+    ...getClosingMeterFields(config),
+    ...Array.from({ length: config.pumps }, (_, i) => `sales_pump${i + 1}`),
+    "total_sales",
+    "total_stock",
+    "net_sale",
+    "variation",
+    "testing",
+    "dip_reading",
+    "stock",
+    "receipts",
+    "remarks",
+    "opening_stock",
+    RATE_FIELD_BY_PRODUCT[product],
+  ].filter(Boolean);
+
+  for (const name of names) {
+    const input = getFormFieldInput(form, name) || form.querySelector(`[name="${name}"]`);
+    if (input) input.value = "";
+  }
+}
+
+/**
  * Prefill for new dates, load saved row for dates that already have a DSR, then apply supervisor lock.
+ * Clears the sheet immediately (like a page reload) so prior closings never linger during fetch.
  */
 async function refreshMeterFormForSelectedDate(product, form) {
   const dateInput = form.querySelector("input[name='date']");
@@ -382,6 +565,11 @@ async function refreshMeterFormForSelectedDate(product, form) {
 
   const gen = (meterRefreshGeneration[product] = (meterRefreshGeneration[product] || 0) + 1);
   const dateStr = dateInput.value;
+
+  // Drop lock + wipe stale values right away (same effect as reloading the page).
+  setMeterFormSupervisorLocked(form, false);
+  clearMeterFormEntryFields(form, product);
+  updateDerivedFields(form);
 
   const existingRow = await fetchDsrFullRowForDate(product, dateStr);
 
@@ -395,7 +583,12 @@ async function refreshMeterFormForSelectedDate(product, form) {
 
   if (gen !== meterRefreshGeneration[product]) return;
 
-  applyMeterDayLockState(product, form, !!existingRow);
+  // Stubs / incomplete days often have meters but no rate — always fill if empty.
+  await ensureMeterRatePrefill(product, form);
+
+  if (gen !== meterRefreshGeneration[product]) return;
+
+  applyMeterDayLockState(product, form, existingRow || null);
 }
 
 function initReadingForm(product) {
@@ -428,13 +621,40 @@ function initReadingForm(product) {
       if (form.classList.contains("dsr-meter-supervisor-locked")) return;
       copyPrevBtn.disabled = true;
       copyPrevBtn.textContent = "Loading…";
-      await prefillOpeningFromPreviousDay(product, form);
-      updateDerivedFields(form);
       const d = form.querySelector("input[name='date']")?.value;
-      const id = d ? await fetchDsrEntryIdForDate(product, d) : null;
-      applyMeterDayLockState(product, form, id != null);
+      const existing = d ? await fetchDsrFullRowForDate(product, d) : null;
+      if (existing && !isDailyMeterEntryComplete(existing, product)) {
+        // Shift stub already on form — only fill gaps, don't wipe shift meters
+        await enrichShiftStubOnForm(product, form, existing);
+        updateDerivedFields(form);
+        applyMeterDayLockState(product, form, existing);
+      } else {
+        await prefillOpeningFromPreviousDay(product, form);
+        updateDerivedFields(form);
+        const row = d ? await fetchDsrFullRowForDate(product, d) : null;
+        applyMeterDayLockState(product, form, row);
+      }
       copyPrevBtn.disabled = false;
       copyPrevBtn.textContent = "Copy from previous day";
+    });
+  }
+
+  const refreshBtn = form.querySelector(".dsr-refresh-form[data-product]");
+  if (refreshBtn && refreshBtn.dataset.product === product) {
+    refreshBtn.addEventListener("click", async () => {
+      if (refreshBtn.dataset.busy === "1") return;
+      refreshBtn.dataset.busy = "1";
+      refreshBtn.disabled = true;
+      const prevLabel = refreshBtn.textContent;
+      refreshBtn.textContent = "Refreshing…";
+      try {
+        await refreshMeterFormForSelectedDate(product, form);
+      } finally {
+        refreshBtn.dataset.busy = "0";
+        refreshBtn.textContent = prevLabel || "Refresh";
+        // Keep enabled even when the day is supervisor-locked (excluded from lock).
+        refreshBtn.disabled = false;
+      }
     });
   }
 
@@ -455,6 +675,45 @@ function initReadingForm(product) {
     updateDerivedFields(form);
 
     const formData = new FormData(form);
+
+    // Closing must be ≥ opening on every nozzle (same rule as shift register)
+    {
+      const config = PUMP_CONFIG[product] || PUMP_CONFIG.petrol;
+      const { pumps, nozzlesPerPump } = config;
+      for (let p = 1; p <= pumps; p++) {
+        for (let n = 1; n <= nozzlesPerPump; n++) {
+          const opening = toNumber(formData.get(`opening_pump${p}_nozzle${n}`));
+          const closing = toNumber(formData.get(`closing_pump${p}_nozzle${n}`));
+          if (closing < opening) {
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Save meter entry";
+            }
+            if (errorEl) {
+              errorEl.classList.remove("dsr-meter-locked-msg");
+              errorEl.textContent = `Closing must be ≥ opening for Pump ${p} · Nozzle ${n}.`;
+              errorEl.classList.remove("hidden");
+            }
+            return;
+          }
+        }
+      }
+      const testing = toNumber(formData.get("testing"));
+      const totalSales = toNumber(formData.get("total_sales"));
+      if (testing > totalSales) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Save meter entry";
+        }
+        if (errorEl) {
+          errorEl.classList.remove("dsr-meter-locked-msg");
+          errorEl.textContent = "Testing cannot exceed total sales.";
+          errorEl.classList.remove("hidden");
+        }
+        return;
+      }
+    }
+
     const payload = {
       date: formData.get("date"),
       product,
@@ -504,11 +763,13 @@ function initReadingForm(product) {
     }
 
     const table = DSR_TABLE[product] || "dsr_petrol";
-    const existingId = await fetchDsrEntryIdForDate(product, payload.date);
+    const existingRow = await fetchDsrFullRowForDate(product, payload.date);
+    const existingId = existingRow?.id || null;
     let saveError = null;
 
     if (existingId) {
-      if (currentUserRole !== "admin") {
+      const complete = isDailyMeterEntryComplete(existingRow, product);
+      if (currentUserRole !== "admin" && complete) {
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save meter entry";
@@ -530,7 +791,33 @@ function initReadingForm(product) {
       const insertPayload = { ...payload };
       delete insertPayload.product;
       const { error } = await supabaseClient.from(table).insert(insertPayload);
-      saveError = error;
+      // Race: another writer inserted the same date — fall back to update when allowed
+      if (error && /duplicate|unique|23505/i.test(`${error.message || ""} ${error.code || ""}`)) {
+        const racedRow = await fetchDsrFullRowForDate(product, payload.date);
+        const racedId = racedRow?.id;
+        const canUpdate =
+          racedId &&
+          (currentUserRole === "admin" || !isDailyMeterEntryComplete(racedRow, product));
+        if (canUpdate) {
+          const updatePayload = { ...payload };
+          delete updatePayload.created_by;
+          delete updatePayload.product;
+          const { error: updErr } = await supabaseClient
+            .from(table)
+            .update(updatePayload)
+            .eq("id", racedId);
+          saveError = updErr;
+        } else if (racedId) {
+          saveError = {
+            message:
+              "A meter entry for this date already exists. Only an admin can update it.",
+          };
+        } else {
+          saveError = error;
+        }
+      } else {
+        saveError = error;
+      }
     }
 
     if (saveError) {
@@ -550,18 +837,37 @@ function initReadingForm(product) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save meter entry";
     }
+
+    // Push daily openings into morning shift rows; afternoon closings when afternoon exists
+    let syncFailed = false;
+    try {
+      const { error: syncErr } = await supabaseClient.rpc("sync_shift_meters_from_dsr", {
+        p_date: payload.date,
+        p_shift: null,
+      });
+      if (syncErr) throw syncErr;
+    } catch (syncErr) {
+      syncFailed = true;
+      AppError.report(syncErr, { context: "meterReading.syncShiftFromDaily", product });
+    }
+
     await refreshMeterFormForSelectedDate(product, form);
     successEl?.classList.remove("hidden");
     if (successEl) {
-      const hasReceipts = Number(payload.receipts) > 0;
-      if (hasReceipts && currentUserRole === "admin") {
-        successEl.innerHTML =
-          'Entry saved. Receipts recorded — <a href="#purchase-cost">Enter pre-VAT ₹/KL under Purchase cost</a> to calculate profit from this day until the next receipt.';
-      } else if (hasReceipts) {
+      if (syncFailed) {
         successEl.textContent =
-          "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL under Meter Reading → Purchase cost to calculate profit.";
+          "Entry saved, but shift meter sync failed — check the shift register.";
       } else {
-        successEl.textContent = "Entry saved successfully.";
+        const hasReceipts = Number(payload.receipts) > 0;
+        if (hasReceipts && currentUserRole === "admin") {
+          successEl.innerHTML =
+            'Entry saved. Receipts recorded — <a href="#purchase-cost">Enter pre-VAT ₹/KL under Purchase cost</a> to calculate profit from this day until the next receipt.';
+        } else if (hasReceipts) {
+          successEl.textContent =
+            "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL under Meter Reading → Purchase cost to calculate profit.";
+        } else {
+          successEl.textContent = "Entry saved successfully.";
+        }
       }
     }
     loadReadingHistory(product, true); // Reset pagination to show new entry
@@ -582,6 +888,8 @@ async function getPreviousDayDipStock(product, dateStr) {
     .from(table)
     .select("stock")
     .eq("date", prevDateStr)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (!error && data != null && Number.isFinite(Number(data.stock))) {
     return Number(data.stock);
@@ -846,7 +1154,7 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
 }
 
 /**
- * Fetches the most recent non-null rate for a product from dsr.
+ * Last positive selling rate for a product (skips null/zero shift-sync stubs).
  * @param {string} product - petrol | diesel
  * @returns {Promise<number | null>}
  */
@@ -860,12 +1168,28 @@ async function fetchLastDsrRate(product) {
     .select(rateField)
     .not(rateField, "is", null)
     .order("date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(30);
 
-  if (error || data?.[rateField] == null) return null;
-  const num = Number(data[rateField]);
-  return Number.isFinite(num) ? num : null;
+  if (error || !data?.length) return null;
+  for (const row of data) {
+    const num = Number(row[rateField]);
+    if (Number.isFinite(num) && num > 0) return num;
+  }
+  return null;
+}
+
+/**
+ * If the rate field is empty or zero, fill from the last entered selling rate.
+ */
+async function ensureMeterRatePrefill(product, form) {
+  const rateField = RATE_FIELD_BY_PRODUCT[product];
+  if (!rateField) return;
+  const input = form.querySelector(`[name="${rateField}"]`);
+  if (!input) return;
+  const current = Number(input.value);
+  if (Number.isFinite(current) && current > 0) return;
+  const lastRate = await fetchLastDsrRate(product);
+  if (lastRate != null) applyRateToForm(form, product, lastRate);
 }
 
 /**
@@ -900,7 +1224,7 @@ function applyRateToForm(form, product, rateValue) {
   const rateField = RATE_FIELD_BY_PRODUCT[product];
   if (!rateField) return;
   const input = form.querySelector(`[name="${rateField}"]`);
-  if (!input || rateValue == null || !Number.isFinite(rateValue)) return;
+  if (!input || rateValue == null || !Number.isFinite(rateValue) || rateValue <= 0) return;
   input.value = rateValue.toFixed(2);
 }
 
@@ -924,8 +1248,8 @@ async function prefillOpeningFromPreviousDay(product, form) {
 
   applyOpeningMeterToForm(form, row, config);
 
-  const needsRateFallback =
-    !row || row[rateField] == null || !Number.isFinite(Number(row[rateField]));
+  const priorRate = row?.[rateField] != null ? Number(row[rateField]) : NaN;
+  const needsRateFallback = !Number.isFinite(priorRate) || priorRate <= 0;
 
   const [openingStock, rateFallback] = await Promise.all([
     getPreviousDayDipStock(product, selectedDateStr),
@@ -937,13 +1261,11 @@ async function prefillOpeningFromPreviousDay(product, form) {
     openingStockInput.value = openingStock > 0 ? openingStock.toFixed(2) : "";
   }
 
-  let rateValue = row?.[rateField];
-  if (rateValue == null || !Number.isFinite(Number(rateValue))) {
-    rateValue = rateFallback;
-  } else {
-    rateValue = Number(rateValue);
-  }
-  applyRateToForm(form, product, rateValue);
+  applyRateToForm(
+    form,
+    product,
+    needsRateFallback ? rateFallback : priorRate
+  );
 
   updateDerivedFields(form);
 }
@@ -999,7 +1321,7 @@ function updateDerivedFields(form) {
     for (let n = 1; n <= nozzlesPerPump; n++) {
       const opening = getNumber(form, `opening_pump${p}_nozzle${n}`);
       const closing = getNumber(form, `closing_pump${p}_nozzle${n}`);
-      pumpSales += closing - opening;
+      pumpSales += Math.max(closing - opening, 0);
     }
     salesByPump.push(pumpSales);
     setNumber(form, `sales_pump${p}`, pumpSales);
@@ -1035,3 +1357,9 @@ function setNumber(form, name, value) {
   }
   input.value = value.toFixed(2);
 }
+
+// Expose for shift register → MS/HSD sync refresh
+window.MeterReadingForms = {
+  refreshForShiftDate: refreshMeterFormsForShiftDate,
+  isEntryComplete: isDailyMeterEntryComplete,
+};

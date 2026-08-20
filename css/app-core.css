@@ -653,9 +653,17 @@ tbody tr:hover {
   margin: 0;
 }
 
-.meter-block-head .dsr-copy-prev {
+.meter-block-head .dsr-copy-prev,
+.meter-block-head .dsr-refresh-form {
   font-size: 0.85rem;
   padding: 0.4rem 0.75rem;
+}
+
+.meter-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .meter-title {
@@ -673,6 +681,12 @@ tbody tr:hover {
   color: #9a3412;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.dsr-meter-locked-banner.dsr-meter-stub-hint {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
 }
 
 /* Same copy when shown under the form actions (e.g. blocked submit) */

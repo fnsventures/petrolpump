@@ -10,6 +10,8 @@
    * @param {string} [config.defaultSection]
    * @param {string[]} [config.validSections]
    * @param {(section: string) => string} [config.resolvePanelId]
+   * @param {(section: string) => string} [config.navSectionFor] Map logical section → nav button data-section
+   * @param {(section: string) => string} [config.normalizeSection] Collapse alias sections (e.g. sales-detail → by-pump)
    * @param {(section: string) => void} [config.onSectionChange]
    */
   function initPageSections(config = {}) {
@@ -26,7 +28,10 @@
 
     function normalizeSectionId(raw) {
       const hashAliases = config.hashAliases || {};
-      const h = String(raw || "").replace(/^#/, "");
+      const h = String(raw || "")
+        .replace(/^#/, "")
+        .split("?")[0]
+        .split("&")[0];
       return hashAliases[h] || h;
     }
 
@@ -34,11 +39,25 @@
       return typeof config.resolvePanelId === "function" ? config.resolvePanelId(section) : section;
     }
 
+    function navIdForSection(section) {
+      return typeof config.navSectionFor === "function" ? config.navSectionFor(section) : section;
+    }
+
+    function resolveSection(id) {
+      let section = valid.includes(id) ? id : defaultSection;
+      if (typeof config.normalizeSection === "function") {
+        const next = config.normalizeSection(section);
+        if (next && valid.includes(next)) section = next;
+      }
+      return section;
+    }
+
     function showSection(id) {
-      const section = valid.includes(id) ? id : defaultSection;
+      const section = resolveSection(id);
       const panelId = panelIdForSection(section);
+      const navId = navIdForSection(section);
       navItems.forEach((btn) => {
-        btn.classList.toggle("is-active", btn.dataset.section === section);
+        btn.classList.toggle("is-active", btn.dataset.section === navId);
       });
       panels.forEach((panel) => {
         const active = panel.dataset.panel === panelId;

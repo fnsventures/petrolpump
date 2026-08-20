@@ -69,7 +69,12 @@
       const end = endInput.value || todayStr;
       dsrDailyDateRange = { start, end };
       saveDailyFilter();
+      window.DsrSalesBreakdown?.invalidate?.();
       void loadDailySummary(start, end);
+      const section = getCurrentSection();
+      if (window.DsrSections?.isBreakdownSection?.(section)) {
+        void window.DsrSalesBreakdown?.loadForRange?.(start, end, section, { force: true });
+      }
     };
 
     startInput.addEventListener("change", onChange);
@@ -95,11 +100,22 @@
     const end = dsrDailyDateRange.end || document.getElementById("dsr-daily-end-date")?.value;
     if (!start || !end) return;
 
+    const isBreakdown = window.DsrSections?.isBreakdownSection?.(section);
+
+    if (isBreakdown) {
+      await window.DsrSalesBreakdown?.loadForRange?.(start, end, section, {
+        force: force || pendingInvalidate,
+      });
+      pendingInvalidate = false;
+      return;
+    }
+
     const shouldReload = force || pendingInvalidate || !dsrDailySummaryLoaded;
     pendingInvalidate = false;
 
     if (shouldReload) {
       await loadDailySummary(start, end);
+      window.DsrSalesBreakdown?.invalidate?.();
     } else {
       updateDailyPeriodStatsForSection(section);
     }
@@ -346,9 +362,22 @@
     });
   }
 
+  function getPeriodStatsSnapshot(section = getCurrentSection()) {
+    if (!lastDailyPeriodStats) return null;
+    const metrics = getSectionPeriodMetrics(lastDailyPeriodStats, section);
+    return {
+      petrolNet: lastDailyPeriodStats.petrolNet,
+      dieselNet: lastDailyPeriodStats.dieselNet,
+      receipts: metrics.receipts,
+      variation: metrics.variation,
+      days: metrics.days,
+    };
+  }
+
   window.DsrSummary = {
     initFilters,
     refreshIfNeeded,
     invalidate,
+    getPeriodStatsSnapshot,
   };
 })();

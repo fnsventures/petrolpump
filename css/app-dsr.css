@@ -261,6 +261,97 @@ body.dsr-page .dc-stat-meta {
   margin: 0;
 }
 
+/* Sidebar group label under Daily register */
+body.dsr-page .dsr-nav-group {
+  margin-top: 1.15rem;
+}
+
+body.dsr-page .dsr-panel-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-top: 0.35rem;
+}
+
+body.dsr-page .dsr-panel-links a {
+  white-space: nowrap;
+}
+
+/* Sales detail (pump / shift / salesman) */
+body.dsr-page .dsr-breakdown-view[hidden] {
+  display: none !important;
+}
+
+body.dsr-page .dsr-breakdown-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.15rem 0 0.85rem;
+}
+
+body.dsr-page .dsr-breakdown-tab {
+  border: 1px solid var(--border);
+  background: #f8fafc;
+  color: var(--text);
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+body.dsr-page .dsr-breakdown-tab:hover {
+  background: #f1f5f9;
+}
+
+body.dsr-page .dsr-breakdown-tab.is-active {
+  background: var(--text);
+  color: #fff;
+  border-color: var(--text);
+}
+
+body.dsr-page .dsr-breakdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+body.dsr-page #dsr-breakdown-reports-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+body.dsr-page #dsr-print-btn {
+  min-height: var(--input-height);
+  align-self: end;
+}
+
+body.dsr-page .dsr-breakdown-table {
+  min-width: 36rem;
+}
+
+body.dsr-page .dsr-breakdown-table td.num,
+body.dsr-page .dsr-breakdown-table th:nth-child(n + 4) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+body.dsr-page .dsr-short--shortage {
+  color: #b91c1c;
+}
+
+body.dsr-page .dsr-short--surplus {
+  color: #047857;
+}
+
+body.dsr-page .dsr-short--balanced {
+  color: #334155;
+}
+
 @media (max-width: 768px) {
   /* Row stacking handled by app-core; only fuel-nav / table specifics here */
   body.dsr-page .dsr-fuel-nav,

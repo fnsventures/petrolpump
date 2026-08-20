@@ -102,6 +102,7 @@ A typical daily sequence:
 1. Meter Reading (meter-reading.html)
    → Upsert dsr_petrol and/or dsr_diesel for today
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
+   → Optional: Shift register — staff per nozzle, shift meters, cash short (₹)
    → Admin: if receipts > 0, enter pre-VAT ₹/KL under Purchase cost
    → dsr_stock view recalculates opening/closing/variation automatically
    → Optional: open dsr.html for listing / stock summary
@@ -372,8 +373,8 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 |------|------------------------|
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
-| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, update_dsr_buying_price (Purchase cost) |
-| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range |
+| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, sync_dsr_meters_from_shifts, sync_shift_meters_from_dsr, update_dsr_buying_price |
+| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman) |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
 | Billing | products, invoices, save_invoice |
