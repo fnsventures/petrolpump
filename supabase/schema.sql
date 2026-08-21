@@ -59,13 +59,14 @@ immutable
 as $$
   select
     (p_selling_rate is not null and p_selling_rate > 0)
-    or coalesce(p_dip_reading, 0) <> 0
-    or coalesce(p_stock, 0) <> 0
-    or coalesce(p_receipts, 0) <> 0;
+    and (
+      coalesce(p_dip_reading, 0) <> 0
+      or coalesce(p_stock, 0) > 0
+    );
 $$;
 
 comment on function public.dsr_meter_row_is_complete(numeric, numeric, numeric, numeric) is
-  'True when daily meter sheet was finished (rate/dip/stock/receipts), not a shift-sync stub.';
+  'True when daily meter sheet is finished: selling rate set and dip or stock entered. Receipts/rate alone do not count.';
 
 grant execute on function public.dsr_meter_row_is_complete(numeric, numeric, numeric, numeric) to authenticated;
 
@@ -392,22 +393,32 @@ create policy "dsr_petrol_select_authenticated" on public.dsr_petrol
 drop policy if exists "dsr_petrol_insert_own" on public.dsr_petrol;
 create policy "dsr_petrol_insert_own" on public.dsr_petrol
   for insert to authenticated
-  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
+  with check (
+    public.is_supervisor_or_admin()
+    and created_by = auth.uid()
+    and (public.is_admin() or not public.meter_day_is_locked(date))
+  );
 
 drop policy if exists "dsr_petrol_update_by_role" on public.dsr_petrol;
 create policy "dsr_petrol_update_by_role" on public.dsr_petrol
   for update to authenticated
   using (
     public.is_admin()
-    or created_by = auth.uid()
     or (
       public.is_supervisor_or_admin()
+      and not public.meter_day_is_locked(date)
       and not public.dsr_meter_row_is_complete(
         petrol_rate, dip_reading, stock, receipts
       )
     )
   )
-  with check (public.is_supervisor_or_admin());
+  with check (
+    public.is_admin()
+    or (
+      public.is_supervisor_or_admin()
+      and not public.meter_day_is_locked(date)
+    )
+  );
 
 drop policy if exists "dsr_petrol_delete_admin" on public.dsr_petrol;
 create policy "dsr_petrol_delete_admin" on public.dsr_petrol
@@ -492,22 +503,32 @@ create policy "dsr_diesel_select_authenticated" on public.dsr_diesel
 drop policy if exists "dsr_diesel_insert_own" on public.dsr_diesel;
 create policy "dsr_diesel_insert_own" on public.dsr_diesel
   for insert to authenticated
-  with check (public.is_supervisor_or_admin() and created_by = auth.uid());
+  with check (
+    public.is_supervisor_or_admin()
+    and created_by = auth.uid()
+    and (public.is_admin() or not public.meter_day_is_locked(date))
+  );
 
 drop policy if exists "dsr_diesel_update_by_role" on public.dsr_diesel;
 create policy "dsr_diesel_update_by_role" on public.dsr_diesel
   for update to authenticated
   using (
     public.is_admin()
-    or created_by = auth.uid()
     or (
       public.is_supervisor_or_admin()
+      and not public.meter_day_is_locked(date)
       and not public.dsr_meter_row_is_complete(
         diesel_rate, dip_reading, stock, receipts
       )
     )
   )
-  with check (public.is_supervisor_or_admin());
+  with check (
+    public.is_admin()
+    or (
+      public.is_supervisor_or_admin()
+      and not public.meter_day_is_locked(date)
+    )
+  );
 
 drop policy if exists "dsr_diesel_delete_admin" on public.dsr_diesel;
 create policy "dsr_diesel_delete_admin" on public.dsr_diesel
@@ -566,7 +587,13 @@ with base as (
   select
     date,
     'petrol'::text as product,
-    stock as dip_stock,
+    (
+      case
+        when public.dsr_meter_row_is_complete(petrol_rate, dip_reading, stock, receipts)
+          then stock
+        else null
+      end
+    )::numeric(14,2) as dip_stock,
     receipts,
     total_sales as sale_from_meter,
     testing,
@@ -583,7 +610,13 @@ with base as (
   select
     date,
     'diesel'::text as product,
-    stock as dip_stock,
+    (
+      case
+        when public.dsr_meter_row_is_complete(diesel_rate, dip_reading, stock, receipts)
+          then stock
+        else null
+      end
+    )::numeric(14,2) as dip_stock,
     receipts,
     total_sales as sale_from_meter,
     testing,
@@ -598,32 +631,46 @@ with base as (
   ) d
 ),
 with_opening as (
-  select *,
+  select
+    b.*,
     coalesce(
-      lag(dip_stock) over (partition by product order by date),
+      (
+        select p.dip_stock
+        from base p
+        where p.product = b.product
+          and p.date < b.date
+          and p.dip_stock is not null
+        order by p.date desc
+        limit 1
+      ),
       0
-    ) as opening_stock
-  from base
+    )::numeric(14,2) as opening_stock
+  from base b
 )
 select
   date,
   product,
   opening_stock,
   receipts,
-  (opening_stock + receipts) as total_stock,
+  (opening_stock + receipts)::numeric(14,2) as total_stock,
   sale_from_meter,
   testing,
   net_sale,
-  ((opening_stock + receipts) - net_sale) as closing_stock,
+  ((opening_stock + receipts) - net_sale)::numeric(14,2) as closing_stock,
   dip_stock,
-  (((opening_stock + receipts) - net_sale) - dip_stock) as variation,
+  (
+    case
+      when dip_stock is null then null
+      else (((opening_stock + receipts) - net_sale) - dip_stock)
+    end
+  )::numeric(14,2) as variation,
   remark,
   created_by,
   created_at
 from with_opening;
 
 comment on view public.dsr_stock is
-  'Computed stock reconciliation (one row per product per date). Derived from dsr_petrol/dsr_diesel.';
+  'Stock reconciliation from dsr_petrol/dsr_diesel. Shift stubs (no rate/dip/stock) expose NULL dip_stock so opening looks back to last real dip.';
 
 
 create or replace function public.get_dsr_stock_range(p_start date, p_end date)
@@ -655,10 +702,21 @@ begin
     select (p_start - interval '1 day')::date as lookback_start
   ),
   base as (
-    select d.date, 'petrol'::text as product, d.stock as dip_stock, d.receipts,
-      d.total_sales as sale_from_meter, d.testing,
+    select
+      d.date,
+      'petrol'::text as product,
+      case
+        when public.dsr_meter_row_is_complete(d.petrol_rate, d.dip_reading, d.stock, d.receipts)
+          then d.stock
+        else null
+      end::numeric(14,2) as dip_stock,
+      d.receipts,
+      d.total_sales as sale_from_meter,
+      d.testing,
       greatest(d.total_sales - d.testing, 0) as net_sale,
-      d.remarks as remark, d.created_by, d.created_at
+      d.remarks as remark,
+      d.created_by,
+      d.created_at
     from (
       select distinct on (p.date) p.*
       from public.dsr_petrol p, bounds b
@@ -666,8 +724,21 @@ begin
       order by p.date, p.created_at desc nulls last, p.id desc
     ) d
     union all
-    select d.date, 'diesel'::text, d.stock, d.receipts, d.total_sales, d.testing,
-      greatest(d.total_sales - d.testing, 0), d.remarks, d.created_by, d.created_at
+    select
+      d.date,
+      'diesel'::text,
+      case
+        when public.dsr_meter_row_is_complete(d.diesel_rate, d.dip_reading, d.stock, d.receipts)
+          then d.stock
+        else null
+      end::numeric(14,2),
+      d.receipts,
+      d.total_sales,
+      d.testing,
+      greatest(d.total_sales - d.testing, 0),
+      d.remarks,
+      d.created_by,
+      d.created_at
     from (
       select distinct on (p.date) p.*
       from public.dsr_diesel p, bounds b
@@ -676,22 +747,47 @@ begin
     ) d
   ),
   with_opening as (
-    select b.*,
-      coalesce(lag(b.dip_stock) over (partition by b.product order by b.date), 0) as opening_stock
+    select
+      b.*,
+      coalesce(
+        (
+          select p.dip_stock
+          from base p
+          where p.product = b.product
+            and p.date < b.date
+            and p.dip_stock is not null
+          order by p.date desc
+          limit 1
+        ),
+        0
+      ) as opening_stock
     from base b
   )
-  select w.date, w.product, w.opening_stock, w.receipts,
-    (w.opening_stock + w.receipts) as total_stock, w.sale_from_meter, w.testing, w.net_sale,
-    ((w.opening_stock + w.receipts) - w.net_sale) as closing_stock, w.dip_stock,
-    (((w.opening_stock + w.receipts) - w.net_sale) - w.dip_stock) as variation,
-    w.remark, w.created_by, w.created_at
+  select
+    w.date,
+    w.product,
+    w.opening_stock,
+    w.receipts,
+    (w.opening_stock + w.receipts) as total_stock,
+    w.sale_from_meter,
+    w.testing,
+    w.net_sale,
+    ((w.opening_stock + w.receipts) - w.net_sale) as closing_stock,
+    w.dip_stock,
+    case
+      when w.dip_stock is null then null
+      else (((w.opening_stock + w.receipts) - w.net_sale) - w.dip_stock)
+    end as variation,
+    w.remark,
+    w.created_by,
+    w.created_at
   from with_opening w
   where w.date >= p_start and w.date <= p_end;
 end;
 $$;
 
 comment on function public.get_dsr_stock_range(date, date) is
-  'DSR stock reconciliation for a date range; one row per product per date; LAG scoped to range + 1 prior day.';
+  'DSR stock range; incomplete shift stubs return NULL dip_stock; opening uses last real dip before the date.';
 
 
 -- Operating expenses
@@ -4301,7 +4397,7 @@ create index if not exists meter_shift_readings_employee_date_idx
   on public.meter_shift_readings (employee_id, reading_date desc);
 
 comment on table public.meter_shift_readings is
-  'Shift nozzle meter readings with staff assignment. Optional; daily DSR remains source of truth for day closing.';
+  'Per-nozzle shift meters + staff. Writes only via save/delete_meter_shift_readings RPCs.';
 
 comment on column public.meter_shift_readings.shift is
   'Shift key: morning | afternoon (labels from pump_settings.config.shifts).';
@@ -4319,6 +4415,8 @@ create table if not exists public.meter_shift_cash (
   employee_id uuid not null references public.employees (id) on delete restrict,
   cash_collected numeric(14, 2) not null default 0
     check (cash_collected >= 0),
+  phone_pay numeric(14, 2) not null default 0
+    check (phone_pay >= 0),
   remarks text
     check (remarks is null or char_length(remarks) <= 500),
   created_by uuid references auth.users (id) on delete set null,
@@ -4332,9 +4430,14 @@ create index if not exists meter_shift_cash_date_shift_idx
   on public.meter_shift_cash (reading_date desc, shift);
 
 comment on table public.meter_shift_cash is
-  'Cash handed over by staff for a shift. Expected ₹ is derived from assigned nozzle litres × day rates.';
+  'Staff handover per shift: hard cash + phone pay (UPI). Writes only via save/delete_meter_shift_readings RPCs. Total = cash_collected + phone_pay.';
 
--- ─── RLS ────────────────────────────────────────────────────────────────────
+comment on column public.meter_shift_cash.cash_collected is
+  'Hard cash handed over by staff for the shift (₹).';
+
+comment on column public.meter_shift_cash.phone_pay is
+  'PhonePe / UPI collected by staff for the shift (₹).';
+-- ─── RLS (select only — writes go through SECURITY DEFINER RPCs) ─────────────
 
 alter table public.meter_shift_readings enable row level security;
 alter table public.meter_shift_cash enable row level security;
@@ -4345,25 +4448,10 @@ create policy "meter_shift_readings_select" on public.meter_shift_readings
   using (public.is_supervisor_or_admin());
 
 drop policy if exists "meter_shift_readings_insert" on public.meter_shift_readings;
-create policy "meter_shift_readings_insert" on public.meter_shift_readings
-  for insert to authenticated
-  with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
-  );
-
 drop policy if exists "meter_shift_readings_update" on public.meter_shift_readings;
-create policy "meter_shift_readings_update" on public.meter_shift_readings
-  for update to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
-
 drop policy if exists "meter_shift_readings_delete" on public.meter_shift_readings;
 drop policy if exists "meter_shift_readings_delete_admin" on public.meter_shift_readings;
 drop policy if exists "meter_shift_readings_delete_staff" on public.meter_shift_readings;
-create policy "meter_shift_readings_delete" on public.meter_shift_readings
-  for delete to authenticated
-  using (public.is_supervisor_or_admin());
 
 drop policy if exists "meter_shift_cash_select" on public.meter_shift_cash;
 create policy "meter_shift_cash_select" on public.meter_shift_cash
@@ -4371,28 +4459,15 @@ create policy "meter_shift_cash_select" on public.meter_shift_cash
   using (public.is_supervisor_or_admin());
 
 drop policy if exists "meter_shift_cash_insert" on public.meter_shift_cash;
-create policy "meter_shift_cash_insert" on public.meter_shift_cash
-  for insert to authenticated
-  with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
-  );
-
 drop policy if exists "meter_shift_cash_update" on public.meter_shift_cash;
-create policy "meter_shift_cash_update" on public.meter_shift_cash
-  for update to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
-
 drop policy if exists "meter_shift_cash_delete" on public.meter_shift_cash;
 drop policy if exists "meter_shift_cash_delete_admin" on public.meter_shift_cash;
 drop policy if exists "meter_shift_cash_delete_staff" on public.meter_shift_cash;
-create policy "meter_shift_cash_delete" on public.meter_shift_cash
-  for delete to authenticated
-  using (public.is_supervisor_or_admin());
 
-grant select, insert, update, delete on public.meter_shift_readings to authenticated;
-grant select, insert, update, delete on public.meter_shift_cash to authenticated;
+revoke insert, update, delete on public.meter_shift_readings from authenticated;
+revoke insert, update, delete on public.meter_shift_cash from authenticated;
+grant select on public.meter_shift_readings to authenticated;
+grant select on public.meter_shift_cash to authenticated;
 
 -- ─── Audit ──────────────────────────────────────────────────────────────────
 
@@ -4406,137 +4481,7 @@ create trigger audit_meter_shift_cash_trigger
   after insert or update or delete on public.meter_shift_cash
   for each row execute function public.audit_trigger_fn();
 
--- ─── get_meter_shift_readings ───────────────────────────────────────────────
-
-create or replace function public.get_meter_shift_readings(
-  p_date date,
-  p_shift text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_shift text;
-  v_petrol_rate numeric;
-  v_diesel_rate numeric;
-  v_petrol_sales numeric;
-  v_petrol_testing numeric;
-  v_diesel_sales numeric;
-  v_diesel_testing numeric;
-  v_has_petrol boolean := false;
-  v_has_diesel boolean := false;
-begin
-  perform public.require_staff_access();
-
-  if p_date is null then
-    raise exception 'Date is required';
-  end if;
-
-  v_shift := lower(btrim(coalesce(p_shift, '')));
-  if v_shift not in ('morning', 'afternoon') then
-    raise exception 'Shift must be morning or afternoon';
-  end if;
-
-  select p.petrol_rate, p.total_sales, p.testing
-  into v_petrol_rate, v_petrol_sales, v_petrol_testing
-  from public.dsr_petrol p
-  where p.date = p_date
-  order by p.created_at desc
-  limit 1;
-  v_has_petrol := found;
-
-  select d.diesel_rate, d.total_sales, d.testing
-  into v_diesel_rate, v_diesel_sales, v_diesel_testing
-  from public.dsr_diesel d
-  where d.date = p_date
-  order by d.created_at desc
-  limit 1;
-  v_has_diesel := found;
-
-  return jsonb_build_object(
-    'date', p_date,
-    'shift', v_shift,
-    'rates', jsonb_build_object(
-      'petrol', v_petrol_rate,
-      'diesel', v_diesel_rate
-    ),
-    'daily_totals', jsonb_build_object(
-      'petrol', jsonb_build_object(
-        'total_sales', coalesce(v_petrol_sales, 0),
-        'testing', coalesce(v_petrol_testing, 0),
-        'has_row', v_has_petrol
-      ),
-      'diesel', jsonb_build_object(
-        'total_sales', coalesce(v_diesel_sales, 0),
-        'testing', coalesce(v_diesel_testing, 0),
-        'has_row', v_has_diesel
-      )
-    ),
-    'nozzles', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'id', r.id,
-          'product', r.product,
-          'pump_no', r.pump_no,
-          'nozzle_no', r.nozzle_no,
-          'employee_id', r.employee_id,
-          'employee_name', e.name,
-          'opening_meter', r.opening_meter,
-          'closing_meter', r.closing_meter,
-          'testing_litres', r.testing_litres,
-          'litres_sold', greatest(r.closing_meter - r.opening_meter, 0),
-          'net_litres', greatest(r.closing_meter - r.opening_meter - r.testing_litres, 0),
-          'remarks', r.remarks
-        )
-        order by r.product, r.pump_no, r.nozzle_no
-      )
-      from public.meter_shift_readings r
-      left join public.employees e on e.id = r.employee_id
-      where r.reading_date = p_date
-        and r.shift = v_shift
-    ), '[]'::jsonb),
-    'cash', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'id', c.id,
-          'employee_id', c.employee_id,
-          'employee_name', e.name,
-          'cash_collected', c.cash_collected,
-          'remarks', c.remarks
-        )
-        order by e.display_order nulls last, e.name
-      )
-      from public.meter_shift_cash c
-      left join public.employees e on e.id = c.employee_id
-      where c.reading_date = p_date
-        and c.shift = v_shift
-    ), '[]'::jsonb),
-    'attendance_hints', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'employee_id', a.employee_id,
-          'employee_name', e.name,
-          'status', a.status
-        )
-        order by e.display_order nulls last, e.name
-      )
-      from public.employee_attendance a
-      join public.employees e on e.id = a.employee_id
-      where a.date = p_date
-        and a.shift = v_shift
-        and a.status in ('present', 'half_day')
-        and coalesce(e.is_active, true)
-    ), '[]'::jsonb)
-  );
-end;
-$$;
-
-comment on function public.get_meter_shift_readings(date, text) is
-  'Load shift nozzle readings, cash handovers, day rates, daily DSR totals, and attendance hints.';
-
-grant execute on function public.get_meter_shift_readings(date, text) to authenticated;
+-- get_meter_shift_readings is defined once later (with suggested openings).
 
 -- ─── save_meter_shift_readings ──────────────────────────────────────────────
 
@@ -4564,12 +4509,14 @@ declare
   v_testing numeric;
   v_remarks text;
   v_cash_amt numeric;
+  v_phone_pay numeric;
   v_kept_nozzles int := 0;
   v_kept_cash int := 0;
   v_keys text[] := array[]::text[];
   v_emp_ids uuid[] := array[]::uuid[];
   v_existing_count int;
   v_morning_close numeric;
+  v_dsr_apply jsonb;
 begin
   perform public.require_staff_access();
 
@@ -4709,21 +4656,26 @@ begin
     end if;
 
     v_cash_amt := coalesce((v_row->>'cash_collected')::numeric, 0);
+    v_phone_pay := coalesce((v_row->>'phone_pay')::numeric, 0);
     if v_cash_amt < 0 then
       raise exception 'Cash collected must be >= 0';
+    end if;
+    if v_phone_pay < 0 then
+      raise exception 'Phone pay must be >= 0';
     end if;
     v_remarks := nullif(btrim(coalesce(v_row->>'remarks', '')), '');
 
     insert into public.meter_shift_cash (
-      reading_date, shift, employee_id, cash_collected, remarks, created_by, updated_at
+      reading_date, shift, employee_id, cash_collected, phone_pay, remarks, created_by, updated_at
     )
     values (
-      p_date, v_shift, v_employee, v_cash_amt, v_remarks, v_uid,
+      p_date, v_shift, v_employee, v_cash_amt, v_phone_pay, v_remarks, v_uid,
       timezone('utc'::text, now())
     )
     on conflict (reading_date, shift, employee_id)
     do update set
       cash_collected = excluded.cash_collected,
+      phone_pay = excluded.phone_pay,
       remarks = excluded.remarks,
       updated_at = timezone('utc'::text, now());
 
@@ -4742,20 +4694,22 @@ begin
         and r.employee_id = c.employee_id
     );
 
+  v_dsr_apply := public.apply_shift_aggregate_to_dsr(p_date);
+
   return public.get_meter_shift_readings(p_date, v_shift)
     || jsonb_build_object(
       'saved_nozzles', v_kept_nozzles,
-      'saved_cash', v_kept_cash
+      'saved_cash', v_kept_cash,
+      'dsr_meters_updated', coalesce(v_dsr_apply->'updated', '[]'::jsonb)
     );
 end;
 $$;
 
 comment on function public.save_meter_shift_readings(date, text, jsonb, jsonb) is
-  'Upsert shift nozzle + cash rows; per-shift past-day lock; refuses empty wipe.';
+  'Upsert shift nozzle + cash/phone-pay; push meter columns into existing dsr_* rows; refuses empty wipe.';
 
 
--- ─── delete_meter_shift_readings: re-sync daily from remaining shifts ───────
-
+-- ─── delete_meter_shift_readings ────────────────────────────────────────────
 
 create or replace function public.delete_meter_shift_readings(
   p_date date,
@@ -4770,7 +4724,7 @@ declare
   v_shift text;
   v_n int;
   v_c int;
-  v_sync jsonb;
+  v_dsr_apply jsonb;
 begin
   perform public.require_staff_access();
   if not public.is_admin() then
@@ -4794,27 +4748,22 @@ begin
   where reading_date = p_date and shift = v_shift;
   get diagnostics v_c = row_count;
 
-  -- Recompute daily meters from whatever shifts remain
-  v_sync := public.sync_dsr_meters_from_shifts(p_date);
+  v_dsr_apply := public.apply_shift_aggregate_to_dsr(p_date);
 
   return jsonb_build_object(
     'date', p_date,
     'shift', v_shift,
     'deleted_nozzles', v_n,
     'deleted_cash', v_c,
-    'daily_sync', v_sync
+    'dsr_meters_updated', coalesce(v_dsr_apply->'updated', '[]'::jsonb)
   );
 end;
 $$;
 
 comment on function public.delete_meter_shift_readings(date, text) is
-  'Admin-only: remove shift nozzle/cash for date+shift, then re-sync daily meters from remaining shifts.';
+  'Admin-only: remove shift nozzle/cash; refresh meter columns on existing dsr_* from remaining shifts.';
 
--- ─── sync_dsr_meters_from_shifts ────────────────────────────────────────────
--- Daily sales = sum of shift nozzle deltas (avoids handoff-gap inflation).
--- Open/close still morning open → afternoon close for continuity display.
--- Locked-day gate for non-admin. Testing = max(existing daily, shift sum).
-
+grant execute on function public.delete_meter_shift_readings(date, text) to authenticated;
 
 create or replace function public.get_meter_shift_prior_closings(
   p_date date,
@@ -4875,8 +4824,11 @@ begin
           'closing_pump2_nozzle2', p.closing_pump2_nozzle2
         )
         from public.dsr_petrol p
-        where p.date = v_prior_date
-        order by p.created_at desc
+        where p.date < p_date
+          and public.dsr_meter_row_is_complete(
+            p.petrol_rate, p.dip_reading, p.stock, p.receipts
+          )
+        order by p.date desc
         limit 1
       ),
       'diesel', (
@@ -4887,8 +4839,11 @@ begin
           'closing_pump2_nozzle2', d.closing_pump2_nozzle2
         )
         from public.dsr_diesel d
-        where d.date = v_prior_date
-        order by d.created_at desc
+        where d.date < p_date
+          and public.dsr_meter_row_is_complete(
+            d.diesel_rate, d.dip_reading, d.stock, d.receipts
+          )
+        order by d.date desc
         limit 1
       )
     )
@@ -4897,12 +4852,9 @@ end;
 $$;
 
 comment on function public.get_meter_shift_prior_closings(date, text) is
-  'Prior shift/daily closing meters for prefilling openings (afternoon←morning; morning←prior afternoon/daily).';
+  'Prior shift closings + last complete daily closings for opening prefill.';
 
 grant execute on function public.get_meter_shift_prior_closings(date, text) to authenticated;
-
--- Bidirectional meter sync (shift ↔ daily) + sales breakdown for pump / shift / staff.
--- Additive on top of 20260820120000_meter_shift_readings.
 
 create or replace function public.meter_day_is_locked(p_date date)
 returns boolean
@@ -4968,16 +4920,15 @@ as $$
 $$;
 
 comment on function public.meter_day_has_daily_entry(date) is
-  'True when a completed daily MS or HSD sheet exists (excludes shift-sync stubs).';
+  'True when a completed daily MS or HSD sheet exists (excludes incomplete meter rows).';
 
 grant execute on function public.meter_day_has_daily_entry(date) to authenticated;
 
 drop function if exists public.meter_shift_lock_info(date);
 
--- Per-shift past-day lock: saving morning must not lock an empty afternoon.
--- Supervisors may still fill the other shift on a past date; re-editing a shift
--- that already has rows is blocked once a completed daily sheet exists.
--- Sync only checks day-closing lock (certified / night cash).
+-- Per-shift lock: saving morning must not lock an empty afternoon.
+-- Supervisors cannot re-edit a shift once it has nozzle rows; admins can.
+-- Sync / daily push only checks day-closing lock (certified / night cash).
 
 create or replace function public.meter_shift_has_readings(p_date date, p_shift text)
 returns boolean
@@ -5011,13 +4962,14 @@ set search_path = public
 as $$
 declare
   v_day_locked boolean := false;
-  v_past_closed boolean := false;
+  v_shift_saved boolean := false;
   v_shift text;
-  v_shift_has_data boolean := false;
   v_today date := public.meter_station_today();
   v_reason text := null;
   v_readonly boolean := false;
 begin
+  perform public.require_staff_access();
+
   if p_date is null then
     raise exception 'Date is required';
   end if;
@@ -5028,27 +4980,20 @@ begin
   end if;
 
   v_day_locked := public.meter_day_is_locked(p_date);
-  v_past_closed :=
-    p_date < v_today
-    and public.meter_day_has_daily_entry(p_date);
 
   if v_shift is not null then
-    v_shift_has_data := public.meter_shift_has_readings(p_date, v_shift);
+    v_shift_saved := public.meter_shift_has_readings(p_date, v_shift);
   end if;
 
   if v_day_locked and not public.is_admin() then
     v_readonly := true;
     v_reason :=
       'Day closing is certified or night cash is collected. Only an admin can change meters.';
-  elsif v_past_closed and v_shift is not null and v_shift_has_data and not public.is_admin() then
-    -- Only lock shifts that already have data — empty afternoon stays editable
+  elsif v_shift_saved and not public.is_admin() then
+    -- Once a shift has rows, supervisors cannot re-edit; empty other shift stays open.
     v_readonly := true;
     v_reason :=
-      'This shift is already saved for a past date with daily meters. Only an admin can change it.';
-  elsif v_past_closed and v_shift is null and not public.is_admin() then
-    -- Date-level probe without shift: not fully readonly (afternoon may still be open)
-    v_readonly := false;
-    v_reason := null;
+      'This shift is already saved. Only an admin can change it.';
   end if;
 
   return jsonb_build_object(
@@ -5056,8 +5001,8 @@ begin
     'shift', v_shift,
     'today', v_today,
     'day_locked', v_day_locked,
-    'past_closed', v_past_closed,
-    'shift_has_data', v_shift_has_data,
+    'past_closed', p_date < v_today and public.meter_day_has_daily_entry(p_date),
+    'shift_has_data', v_shift_saved,
     'has_daily_entry', public.meter_day_has_daily_entry(p_date),
     'supervisor_readonly', v_readonly,
     'admin_can_edit', public.is_admin(),
@@ -5067,7 +5012,7 @@ end;
 $$;
 
 comment on function public.meter_shift_lock_info(date, text) is
-  'Shift register lock: certified day, or past+completed-daily only for shifts that already have rows.';
+  'Shift register lock: certified day, or any shift that already has saved rows (supervisors).';
 
 grant execute on function public.meter_shift_lock_info(date, text) to authenticated;
 
@@ -5094,7 +5039,7 @@ $$;
 comment on function public.require_meter_day_writable(date) is
   'Non-admins blocked when day closing is certified or night cash is collected.';
 
--- Shift save: also block re-editing an existing shift on a past day with completed daily.
+-- Shift save: block supervisors from re-editing a shift that already has rows.
 create or replace function public.require_meter_shift_writable(p_date date, p_shift text)
 returns void
 language plpgsql
@@ -5115,64 +5060,41 @@ begin
     raise exception 'Shift must be morning or afternoon';
   end if;
 
-  if p_date < public.meter_station_today()
-     and public.meter_day_has_daily_entry(p_date)
-     and public.meter_shift_has_readings(p_date, v_shift) then
+  if public.meter_shift_has_readings(p_date, v_shift) then
     raise exception
-      'Shift % for % is already saved. Only an admin can change it on a past date with daily meters.',
+      'Shift % for % is already saved. Only an admin can change it.',
       v_shift, p_date;
   end if;
 end;
 $$;
 
 comment on function public.require_meter_shift_writable(date, text) is
-  'Supervisors cannot re-edit an existing shift on a past date once daily MS/HSD is completed.';
+  'Supervisors cannot re-edit a shift once it has saved nozzle rows; admins can.';
 
 grant execute on function public.require_meter_shift_writable(date, text) to authenticated;
 
 
--- ─── save_meter_shift_readings ──────────────────────────────────────────────
--- - Block non-admin on locked days
--- - Refuse empty save that would wipe existing nozzles (use Clear shift)
--- - Afternoon handoff: opening must match morning closing when morning exists
--- - Cash rows require active staff
+-- ─── get_shift_aggregated_daily_meters ──────────────────────────────────────
 
-
--- Fix sync_dsr_meters_from_shifts writing all-zero MS/HSD stubs.
--- Bug: SELECT INTO from dsr_* when no row exists nulls the shift-derived
--- meter variables (Postgres sets INTO targets to NULL on 0 rows), then
--- coalesce(..., 0) inserts zeros.
-
-create or replace function public.sync_dsr_meters_from_shifts(p_date date)
+create or replace function public.get_shift_aggregated_daily_meters(p_date date)
 returns jsonb
 language plpgsql
+stable
 security definer
 set search_path = public
 as $$
 declare
-  v_uid uuid := auth.uid();
   v_product text;
+  v_result jsonb := jsonb_build_object('date', p_date);
   v_o11 numeric; v_o12 numeric; v_o21 numeric; v_o22 numeric;
   v_c11 numeric; v_c12 numeric; v_c21 numeric; v_c22 numeric;
-  v_ex_o11 numeric; v_ex_o12 numeric; v_ex_o21 numeric; v_ex_o22 numeric;
-  v_ex_c11 numeric; v_ex_c12 numeric; v_ex_c21 numeric; v_ex_c22 numeric;
-  v_pr_c11 numeric; v_pr_c12 numeric; v_pr_c21 numeric; v_pr_c22 numeric;
   v_test numeric;
-  v_s1 numeric; v_s2 numeric; v_total numeric;
-  v_existing_id uuid;
-  v_existing_testing numeric;
-  v_existing_rate numeric;
-  v_existing_dip numeric;
-  v_existing_stock numeric;
-  v_existing_receipts numeric;
-  v_touched text[] := array[]::text[];
-  v_skipped text[] := array[]::text[];
+  v_s1 numeric; v_s2 numeric;
   v_has_any boolean;
-  v_found boolean;
-  v_complete boolean;
+  v_has_morning boolean;
+  v_has_afternoon boolean;
 begin
   perform public.require_staff_access();
-  perform public.require_meter_day_writable(p_date);
 
   if p_date is null then
     raise exception 'Date is required';
@@ -5180,24 +5102,10 @@ begin
 
   foreach v_product in array array['petrol', 'diesel']
   loop
-    v_existing_id := null;
-    v_existing_testing := null;
-    v_existing_rate := null;
-    v_existing_dip := null;
-    v_existing_stock := null;
-    v_existing_receipts := null;
-    v_ex_o11 := null; v_ex_o12 := null; v_ex_o21 := null; v_ex_o22 := null;
-    v_ex_c11 := null; v_ex_c12 := null; v_ex_c21 := null; v_ex_c22 := null;
-    v_pr_c11 := null; v_pr_c12 := null; v_pr_c21 := null; v_pr_c22 := null;
-    v_o11 := null; v_o12 := null; v_o21 := null; v_o22 := null;
-    v_c11 := null; v_c12 := null; v_c21 := null; v_c22 := null;
-    v_test := 0;
-    v_has_any := false;
-    v_found := false;
-    v_complete := false;
-
     select
       q.has_any,
+      q.has_morning,
+      q.has_afternoon,
       coalesce(q.o11_m, q.o11_a),
       coalesce(q.o12_m, q.o12_a),
       coalesce(q.o21_m, q.o21_a),
@@ -5211,6 +5119,8 @@ begin
       q.s2
     into
       v_has_any,
+      v_has_morning,
+      v_has_afternoon,
       v_o11, v_o12, v_o21, v_o22,
       v_c11, v_c12, v_c21, v_c22,
       v_test,
@@ -5218,6 +5128,8 @@ begin
     from (
       select
         count(*) > 0 as has_any,
+        bool_or(r.shift = 'morning') as has_morning,
+        bool_or(r.shift = 'afternoon') as has_afternoon,
         max(r.opening_meter) filter (where r.shift = 'morning' and r.pump_no = 1 and r.nozzle_no = 1) as o11_m,
         max(r.opening_meter) filter (where r.shift = 'afternoon' and r.pump_no = 1 and r.nozzle_no = 1) as o11_a,
         max(r.opening_meter) filter (where r.shift = 'morning' and r.pump_no = 1 and r.nozzle_no = 2) as o12_m,
@@ -5245,175 +5157,157 @@ begin
     ) q;
 
     if not coalesce(v_has_any, false) then
+      v_result := v_result || jsonb_build_object(
+        v_product,
+        jsonb_build_object(
+          'has_shifts', false,
+          'has_morning', false,
+          'has_afternoon', false
+        )
+      );
       continue;
     end if;
 
-    if v_product = 'petrol' then
-      select
-        id,
-        opening_pump1_nozzle1, opening_pump1_nozzle2,
-        opening_pump2_nozzle1, opening_pump2_nozzle2,
-        closing_pump1_nozzle1, closing_pump1_nozzle2,
-        closing_pump2_nozzle1, closing_pump2_nozzle2,
-        testing, petrol_rate, dip_reading, stock, receipts
-      into
-        v_existing_id,
-        v_ex_o11, v_ex_o12, v_ex_o21, v_ex_o22,
-        v_ex_c11, v_ex_c12, v_ex_c21, v_ex_c22,
-        v_existing_testing, v_existing_rate, v_existing_dip, v_existing_stock, v_existing_receipts
-      from public.dsr_petrol
-      where date = p_date
-      limit 1;
-      v_found := found;
-
-      select
-        closing_pump1_nozzle1, closing_pump1_nozzle2,
-        closing_pump2_nozzle1, closing_pump2_nozzle2
-      into v_pr_c11, v_pr_c12, v_pr_c21, v_pr_c22
-      from public.dsr_petrol
-      where date < p_date
-      order by date desc
-      limit 1;
-    else
-      select
-        id,
-        opening_pump1_nozzle1, opening_pump1_nozzle2,
-        opening_pump2_nozzle1, opening_pump2_nozzle2,
-        closing_pump1_nozzle1, closing_pump1_nozzle2,
-        closing_pump2_nozzle1, closing_pump2_nozzle2,
-        testing, diesel_rate, dip_reading, stock, receipts
-      into
-        v_existing_id,
-        v_ex_o11, v_ex_o12, v_ex_o21, v_ex_o22,
-        v_ex_c11, v_ex_c12, v_ex_c21, v_ex_c22,
-        v_existing_testing, v_existing_rate, v_existing_dip, v_existing_stock, v_existing_receipts
-      from public.dsr_diesel
-      where date = p_date
-      limit 1;
-      v_found := found;
-
-      select
-        closing_pump1_nozzle1, closing_pump1_nozzle2,
-        closing_pump2_nozzle1, closing_pump2_nozzle2
-      into v_pr_c11, v_pr_c12, v_pr_c21, v_pr_c22
-      from public.dsr_diesel
-      where date < p_date
-      order by date desc
-      limit 1;
-    end if;
-
-    -- Do not clobber a finished daily sheet (rate/dip/stock/receipts) unless admin.
-    if v_found and public.dsr_meter_row_is_complete(
-      v_existing_rate, v_existing_dip, v_existing_stock, v_existing_receipts
-    ) and not public.is_admin() then
-      v_skipped := array_append(v_skipped, v_product);
-      continue;
-    end if;
-
-    -- Prefer shift → existing (non-zero) → prior-day closing → 0
-    v_o11 := coalesce(v_o11, nullif(v_ex_o11, 0), v_pr_c11, 0);
-    v_o12 := coalesce(v_o12, nullif(v_ex_o12, 0), v_pr_c12, 0);
-    v_o21 := coalesce(v_o21, nullif(v_ex_o21, 0), v_pr_c21, 0);
-    v_o22 := coalesce(v_o22, nullif(v_ex_o22, 0), v_pr_c22, 0);
-    -- Closing: shift → existing non-zero → opening (no sale on unused nozzle)
-    v_c11 := coalesce(v_c11, nullif(v_ex_c11, 0), v_o11);
-    v_c12 := coalesce(v_c12, nullif(v_ex_c12, 0), v_o12);
-    v_c21 := coalesce(v_c21, nullif(v_ex_c21, 0), v_o21);
-    v_c22 := coalesce(v_c22, nullif(v_ex_c22, 0), v_o22);
-
+    v_c11 := coalesce(v_c11, v_o11);
+    v_c12 := coalesce(v_c12, v_o12);
+    v_c21 := coalesce(v_c21, v_o21);
+    v_c22 := coalesce(v_c22, v_o22);
     v_s1 := coalesce(v_s1, 0);
     v_s2 := coalesce(v_s2, 0);
-    v_total := v_s1 + v_s2;
-    v_test := greatest(coalesce(v_existing_testing, 0), coalesce(v_test, 0));
+    v_test := coalesce(v_test, 0);
 
-    if v_product = 'petrol' then
-      if v_existing_id is not null then
-        update public.dsr_petrol set
-          opening_pump1_nozzle1 = v_o11,
-          opening_pump1_nozzle2 = v_o12,
-          opening_pump2_nozzle1 = v_o21,
-          opening_pump2_nozzle2 = v_o22,
-          closing_pump1_nozzle1 = v_c11,
-          closing_pump1_nozzle2 = v_c12,
-          closing_pump2_nozzle1 = v_c21,
-          closing_pump2_nozzle2 = v_c22,
-          sales_pump1 = v_s1,
-          sales_pump2 = v_s2,
-          total_sales = v_total,
-          testing = v_test
-        where id = v_existing_id;
-      else
-        insert into public.dsr_petrol (
-          date,
-          opening_pump1_nozzle1, opening_pump1_nozzle2,
-          opening_pump2_nozzle1, opening_pump2_nozzle2,
-          closing_pump1_nozzle1, closing_pump1_nozzle2,
-          closing_pump2_nozzle1, closing_pump2_nozzle2,
-          sales_pump1, sales_pump2, total_sales, testing,
-          dip_reading, stock, receipts, created_by
-        ) values (
-          p_date,
-          v_o11, v_o12, v_o21, v_o22,
-          v_c11, v_c12, v_c21, v_c22,
-          v_s1, v_s2, v_total, v_test,
-          0, 0, 0, v_uid
-        );
-      end if;
-    else
-      if v_existing_id is not null then
-        update public.dsr_diesel set
-          opening_pump1_nozzle1 = v_o11,
-          opening_pump1_nozzle2 = v_o12,
-          opening_pump2_nozzle1 = v_o21,
-          opening_pump2_nozzle2 = v_o22,
-          closing_pump1_nozzle1 = v_c11,
-          closing_pump1_nozzle2 = v_c12,
-          closing_pump2_nozzle1 = v_c21,
-          closing_pump2_nozzle2 = v_c22,
-          sales_pump1 = v_s1,
-          sales_pump2 = v_s2,
-          total_sales = v_total,
-          testing = v_test
-        where id = v_existing_id;
-      else
-        insert into public.dsr_diesel (
-          date,
-          opening_pump1_nozzle1, opening_pump1_nozzle2,
-          opening_pump2_nozzle1, opening_pump2_nozzle2,
-          closing_pump1_nozzle1, closing_pump1_nozzle2,
-          closing_pump2_nozzle1, closing_pump2_nozzle2,
-          sales_pump1, sales_pump2, total_sales, testing,
-          dip_reading, stock, receipts, created_by
-        ) values (
-          p_date,
-          v_o11, v_o12, v_o21, v_o22,
-          v_c11, v_c12, v_c21, v_c22,
-          v_s1, v_s2, v_total, v_test,
-          0, 0, 0, v_uid
-        );
-      end if;
-    end if;
-
-    v_touched := array_append(v_touched, v_product);
+    v_result := v_result || jsonb_build_object(
+      v_product,
+      jsonb_build_object(
+        'has_shifts', true,
+        'has_morning', coalesce(v_has_morning, false),
+        'has_afternoon', coalesce(v_has_afternoon, false),
+        'opening_pump1_nozzle1', v_o11,
+        'opening_pump1_nozzle2', v_o12,
+        'opening_pump2_nozzle1', v_o21,
+        'opening_pump2_nozzle2', v_o22,
+        'closing_pump1_nozzle1', v_c11,
+        'closing_pump1_nozzle2', v_c12,
+        'closing_pump2_nozzle1', v_c21,
+        'closing_pump2_nozzle2', v_c22,
+        'sales_pump1', v_s1,
+        'sales_pump2', v_s2,
+        'total_sales', v_s1 + v_s2,
+        'testing', v_test
+      )
+    );
   end loop;
+
+  return v_result;
+end;
+$$;
+
+comment on function public.get_shift_aggregated_daily_meters(date) is
+  'Clean model: read-only shift rollup for meter form prefill. Never writes dsr_*.';
+
+grant execute on function public.get_shift_aggregated_daily_meters(date) to authenticated;
+
+-- sync_dsr_meters_from_shifts removed (no stub inserts).
+-- Existing dsr_* meter columns refresh via apply_shift_aggregate_to_dsr on shift save/delete.
+
+create or replace function public.apply_shift_aggregate_to_dsr(p_date date)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_agg jsonb;
+  v_block jsonb;
+  v_updated text[] := array[]::text[];
+  v_id uuid;
+begin
+  perform public.require_staff_access();
+
+  if p_date is null then
+    raise exception 'Date is required';
+  end if;
+
+  if public.meter_day_is_locked(p_date) and not public.is_admin() then
+    return jsonb_build_object(
+      'date', p_date,
+      'updated', '[]'::jsonb,
+      'skipped_locked', true
+    );
+  end if;
+
+  v_agg := public.get_shift_aggregated_daily_meters(p_date);
+
+  v_block := v_agg->'petrol';
+  if coalesce((v_block->>'has_shifts')::boolean, false) then
+    select p.id into v_id
+    from public.dsr_petrol p
+    where p.date = p_date
+    order by p.created_at desc
+    limit 1;
+
+    if v_id is not null then
+      update public.dsr_petrol p set
+        opening_pump1_nozzle1 = coalesce((v_block->>'opening_pump1_nozzle1')::numeric, p.opening_pump1_nozzle1),
+        opening_pump1_nozzle2 = coalesce((v_block->>'opening_pump1_nozzle2')::numeric, p.opening_pump1_nozzle2),
+        opening_pump2_nozzle1 = coalesce((v_block->>'opening_pump2_nozzle1')::numeric, p.opening_pump2_nozzle1),
+        opening_pump2_nozzle2 = coalesce((v_block->>'opening_pump2_nozzle2')::numeric, p.opening_pump2_nozzle2),
+        closing_pump1_nozzle1 = coalesce((v_block->>'closing_pump1_nozzle1')::numeric, p.closing_pump1_nozzle1),
+        closing_pump1_nozzle2 = coalesce((v_block->>'closing_pump1_nozzle2')::numeric, p.closing_pump1_nozzle2),
+        closing_pump2_nozzle1 = coalesce((v_block->>'closing_pump2_nozzle1')::numeric, p.closing_pump2_nozzle1),
+        closing_pump2_nozzle2 = coalesce((v_block->>'closing_pump2_nozzle2')::numeric, p.closing_pump2_nozzle2),
+        sales_pump1 = coalesce((v_block->>'sales_pump1')::numeric, 0),
+        sales_pump2 = coalesce((v_block->>'sales_pump2')::numeric, 0),
+        total_sales = coalesce((v_block->>'total_sales')::numeric, 0),
+        testing = coalesce((v_block->>'testing')::numeric, 0)
+      where p.id = v_id;
+      v_updated := array_append(v_updated, 'petrol');
+    end if;
+  end if;
+
+  v_block := v_agg->'diesel';
+  if coalesce((v_block->>'has_shifts')::boolean, false) then
+    select d.id into v_id
+    from public.dsr_diesel d
+    where d.date = p_date
+    order by d.created_at desc
+    limit 1;
+
+    if v_id is not null then
+      update public.dsr_diesel d set
+        opening_pump1_nozzle1 = coalesce((v_block->>'opening_pump1_nozzle1')::numeric, d.opening_pump1_nozzle1),
+        opening_pump1_nozzle2 = coalesce((v_block->>'opening_pump1_nozzle2')::numeric, d.opening_pump1_nozzle2),
+        opening_pump2_nozzle1 = coalesce((v_block->>'opening_pump2_nozzle1')::numeric, d.opening_pump2_nozzle1),
+        opening_pump2_nozzle2 = coalesce((v_block->>'opening_pump2_nozzle2')::numeric, d.opening_pump2_nozzle2),
+        closing_pump1_nozzle1 = coalesce((v_block->>'closing_pump1_nozzle1')::numeric, d.closing_pump1_nozzle1),
+        closing_pump1_nozzle2 = coalesce((v_block->>'closing_pump1_nozzle2')::numeric, d.closing_pump1_nozzle2),
+        closing_pump2_nozzle1 = coalesce((v_block->>'closing_pump2_nozzle1')::numeric, d.closing_pump2_nozzle1),
+        closing_pump2_nozzle2 = coalesce((v_block->>'closing_pump2_nozzle2')::numeric, d.closing_pump2_nozzle2),
+        sales_pump1 = coalesce((v_block->>'sales_pump1')::numeric, 0),
+        sales_pump2 = coalesce((v_block->>'sales_pump2')::numeric, 0),
+        total_sales = coalesce((v_block->>'total_sales')::numeric, 0),
+        testing = coalesce((v_block->>'testing')::numeric, 0)
+      where d.id = v_id;
+      v_updated := array_append(v_updated, 'diesel');
+    end if;
+  end if;
 
   return jsonb_build_object(
     'date', p_date,
-    'synced_products', to_jsonb(v_touched),
-    'skipped_complete', to_jsonb(v_skipped)
+    'updated', to_jsonb(v_updated),
+    'skipped_locked', false
   );
 end;
 $$;
 
-comment on function public.sync_dsr_meters_from_shifts(date) is
-  'Roll shift meters into daily MS/HSD; backfill unused nozzles from prior day; skip completed sheets for non-admins.';
+comment on function public.apply_shift_aggregate_to_dsr(date) is
+  'Update meter columns on existing dsr_* rows from shift rollup. Never inserts stubs; leaves dip/stock/rate/remarks alone.';
 
-grant execute on function public.sync_dsr_meters_from_shifts(date) to authenticated;
+grant execute on function public.apply_shift_aggregate_to_dsr(date) to authenticated;
+
 
 -- ─── sync_shift_meters_from_dsr ─────────────────────────────────────────────
--- Never push daily closing into morning when afternoon is absent (mid-day trap).
--- Only push openings to morning; closings to afternoon when it exists.
-
+-- Push openings to morning and closings to afternoon only from finished sheets.
 
 create or replace function public.sync_shift_meters_from_dsr(
   p_date date,
@@ -5448,7 +5342,7 @@ begin
   )
   into v_has_afternoon;
 
-  -- Morning: align openings from daily; never overwrite closings with end-of-day
+  -- Morning: align openings from complete daily only
   with daily as (
     (
       select 'petrol'::text as product,
@@ -5456,6 +5350,9 @@ begin
         p.opening_pump2_nozzle1 as o21, p.opening_pump2_nozzle2 as o22
       from public.dsr_petrol p
       where p.date = p_date
+        and public.dsr_meter_row_is_complete(
+          p.petrol_rate, p.dip_reading, p.stock, p.receipts
+        )
       order by p.created_at desc
       limit 1
     )
@@ -5466,6 +5363,9 @@ begin
         d.opening_pump2_nozzle1, d.opening_pump2_nozzle2
       from public.dsr_diesel d
       where d.date = p_date
+        and public.dsr_meter_row_is_complete(
+          d.diesel_rate, d.dip_reading, d.stock, d.receipts
+        )
       order by d.created_at desc
       limit 1
     )
@@ -5499,6 +5399,9 @@ begin
           p.closing_pump2_nozzle1 as c21, p.closing_pump2_nozzle2 as c22
         from public.dsr_petrol p
         where p.date = p_date
+          and public.dsr_meter_row_is_complete(
+            p.petrol_rate, p.dip_reading, p.stock, p.receipts
+          )
         order by p.created_at desc
         limit 1
       )
@@ -5509,6 +5412,9 @@ begin
           d.closing_pump2_nozzle1, d.closing_pump2_nozzle2
         from public.dsr_diesel d
         where d.date = p_date
+          and public.dsr_meter_row_is_complete(
+            d.diesel_rate, d.dip_reading, d.stock, d.receipts
+          )
         order by d.created_at desc
         limit 1
       )
@@ -5562,10 +5468,9 @@ end;
 $$;
 
 comment on function public.sync_shift_meters_from_dsr(date, text) is
-  'Push daily openings into morning and daily closings into afternoon only; handoff afternoon open from morning close.';
+  'Push openings/closings from a finished meter sheet into shift rows; handoff afternoon open from morning close.';
 
--- ─── get_meter_sales_breakdown: expose net litres per product for expected ₹ ─
-
+-- ─── get_meter_shift_readings (with suggested openings) ─────────────────────
 
 create or replace function public.get_meter_shift_readings(
   p_date date,
@@ -5580,6 +5485,8 @@ declare
   v_shift text;
   v_petrol record;
   v_diesel record;
+  v_petrol_complete boolean := false;
+  v_diesel_complete boolean := false;
   v_prior jsonb;
   v_daily_meters jsonb;
   v_suggested jsonb := '{}'::jsonb;
@@ -5609,6 +5516,17 @@ begin
   order by d.created_at desc
   limit 1;
 
+  if v_petrol.id is not null then
+    v_petrol_complete := public.dsr_meter_row_is_complete(
+      v_petrol.petrol_rate, v_petrol.dip_reading, v_petrol.stock, v_petrol.receipts
+    );
+  end if;
+  if v_diesel.id is not null then
+    v_diesel_complete := public.dsr_meter_row_is_complete(
+      v_diesel.diesel_rate, v_diesel.dip_reading, v_diesel.stock, v_diesel.receipts
+    );
+  end if;
+
   v_prior := public.get_meter_shift_prior_closings(p_date, v_shift);
 
   v_daily_meters := jsonb_build_object(
@@ -5623,7 +5541,8 @@ begin
       'closing_pump2_nozzle2', v_petrol.closing_pump2_nozzle2,
       'sales_pump1', v_petrol.sales_pump1,
       'sales_pump2', v_petrol.sales_pump2,
-      'total_sales', v_petrol.total_sales
+      'total_sales', v_petrol.total_sales,
+      'is_complete', v_petrol_complete
     ) else null end,
     'diesel', case when v_diesel.id is not null then jsonb_build_object(
       'opening_pump1_nozzle1', v_diesel.opening_pump1_nozzle1,
@@ -5636,11 +5555,11 @@ begin
       'closing_pump2_nozzle2', v_diesel.closing_pump2_nozzle2,
       'sales_pump1', v_diesel.sales_pump1,
       'sales_pump2', v_diesel.sales_pump2,
-      'total_sales', v_diesel.total_sales
+      'total_sales', v_diesel.total_sales,
+      'is_complete', v_diesel_complete
     ) else null end
   );
 
-  -- Suggested openings: prior shift closings first
   select coalesce(
     jsonb_object_agg(
       (elem->>'product') || ':' || (elem->>'pump_no') || ':' || (elem->>'nozzle_no'),
@@ -5652,8 +5571,8 @@ begin
   from jsonb_array_elements(coalesce(v_prior->'from_shift', '[]'::jsonb)) as elem;
 
   if v_shift = 'morning' then
-    -- Same-day daily openings, then prior-day daily closings (fill gaps only)
-    if v_daily_meters->'petrol' is not null then
+    -- Same-day daily openings only from a finished sheet (avoid partial-row poison)
+    if v_petrol_complete then
       v_suggested := v_suggested || jsonb_strip_nulls(jsonb_build_object(
         'petrol:1:1', coalesce(v_suggested->'petrol:1:1', v_daily_meters->'petrol'->'opening_pump1_nozzle1'),
         'petrol:1:2', coalesce(v_suggested->'petrol:1:2', v_daily_meters->'petrol'->'opening_pump1_nozzle2'),
@@ -5661,7 +5580,7 @@ begin
         'petrol:2:2', coalesce(v_suggested->'petrol:2:2', v_daily_meters->'petrol'->'opening_pump2_nozzle2')
       ));
     end if;
-    if v_daily_meters->'diesel' is not null then
+    if v_diesel_complete then
       v_suggested := v_suggested || jsonb_strip_nulls(jsonb_build_object(
         'diesel:1:1', coalesce(v_suggested->'diesel:1:1', v_daily_meters->'diesel'->'opening_pump1_nozzle1'),
         'diesel:1:2', coalesce(v_suggested->'diesel:1:2', v_daily_meters->'diesel'->'opening_pump1_nozzle2'),
@@ -5686,8 +5605,6 @@ begin
       ));
     end if;
   end if;
-  -- Afternoon: only prior/morning closings (already in v_suggested). Do NOT
-  -- fall back to same-day daily openings — those are start-of-day meters.
 
   return jsonb_build_object(
     'date', p_date,
@@ -5700,12 +5617,14 @@ begin
       'petrol', jsonb_build_object(
         'total_sales', coalesce(v_petrol.total_sales, 0),
         'testing', coalesce(v_petrol.testing, 0),
-        'has_row', v_petrol.id is not null
+        'has_row', v_petrol.id is not null,
+        'has_complete_row', v_petrol_complete
       ),
       'diesel', jsonb_build_object(
         'total_sales', coalesce(v_diesel.total_sales, 0),
         'testing', coalesce(v_diesel.testing, 0),
-        'has_row', v_diesel.id is not null
+        'has_row', v_diesel.id is not null,
+        'has_complete_row', v_diesel_complete
       )
     ),
     'daily_meters', coalesce(v_daily_meters, '{}'::jsonb),
@@ -5741,6 +5660,8 @@ begin
           'employee_id', c.employee_id,
           'employee_name', e.name,
           'cash_collected', c.cash_collected,
+          'phone_pay', c.phone_pay,
+          'total_collected', coalesce(c.cash_collected, 0) + coalesce(c.phone_pay, 0),
           'remarks', c.remarks
         )
         order by e.display_order nulls last, e.name
@@ -5769,6 +5690,11 @@ begin
   );
 end;
 $$;
+
+comment on function public.get_meter_shift_readings(date, text) is
+  'Load shift nozzles, cash/phone-pay, rates, daily meters (has_complete_row), suggested openings, attendance hints.';
+
+grant execute on function public.get_meter_shift_readings(date, text) to authenticated;
 
 -- ─── get_meter_sales_breakdown ──────────────────────────────────────────────
 
@@ -5808,12 +5734,12 @@ begin
       'start', p_start,
       'end', p_end,
       'by_pump', coalesce((
-        select jsonb_agg(to_jsonb(t) order by t.reading_date desc, t.product, t.pump_no)
+        select jsonb_agg(to_jsonb(t) order by t.reading_date desc, t.shift, t.product, t.pump_no)
         from (
-          select reading_date, product, pump_no,
+          select reading_date, shift, product, pump_no,
             sum(litres) as litres, sum(net_litres) as net_litres
           from readings
-          group by reading_date, product, pump_no
+          group by reading_date, shift, product, pump_no
         ) t
       ), '[]'::jsonb),
       'by_shift', coalesce((
@@ -5840,7 +5766,9 @@ begin
             sum(case when r.product = 'diesel' then r.net_litres else 0 end) as diesel_net_litres,
             sum(r.litres) as total_litres,
             sum(r.net_litres) as net_litres,
-            coalesce(max(c.cash_collected), 0) as cash_collected
+            coalesce(max(c.cash_collected), 0) as cash_collected,
+            coalesce(max(c.phone_pay), 0) as phone_pay,
+            coalesce(max(c.cash_collected), 0) + coalesce(max(c.phone_pay), 0) as total_collected
           from readings r
           left join public.employees e on e.id = r.employee_id
           left join public.meter_shift_cash c
@@ -5878,5 +5806,5 @@ end;
 $$;
 
 comment on function public.get_meter_sales_breakdown(date, date) is
-  'Pump / shift / salesman aggregates (incl. net litres per fuel) plus daily pump columns.';
+  'Pump (with shift) / shift / salesman aggregates plus daily pump columns.';
 

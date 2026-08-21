@@ -12,7 +12,7 @@
     <script src="js/appNav.js"></script>
     <script src="js/dsrSections.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-dsr.css?v=14" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=19" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -26,8 +26,8 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/dsrSummary.js?v=3"></script>
-    <script defer src="js/dsrSalesBreakdown.js?v=4"></script>
-    <script defer src="js/dsr.js?v=3"></script>
+    <script defer src="js/dsrSalesBreakdown.js?v=10"></script>
+    <script defer src="js/dsr.js?v=7"></script>
   </head>
   <body class="dsr-page">
     <header class="topbar" data-build-topbar>
@@ -58,7 +58,7 @@
         </button>
         <button type="button" class="settings-nav-item" data-section="sales-detail">
           <span class="settings-nav-item-label">Sales detail</span>
-          <span class="settings-nav-item-meta">Pump · shift · salesman</span>
+          <span class="settings-nav-item-meta">Staff · shift · pump</span>
         </button>
       </nav>
       <div class="settings-panels">
@@ -184,15 +184,53 @@
           </div>
 
           <div id="dsr-breakdown-view" class="dsr-breakdown-view" hidden>
-            <div class="dsr-breakdown-tabs" role="tablist" aria-label="Sales detail views">
-              <button type="button" class="dsr-breakdown-tab is-active" role="tab" data-breakdown="by-pump" aria-selected="true">By pump</button>
-              <button type="button" class="dsr-breakdown-tab" role="tab" data-breakdown="by-shift" aria-selected="false">By shift</button>
-              <button type="button" class="dsr-breakdown-tab" role="tab" data-breakdown="by-salesman" aria-selected="false">By salesman</button>
+            <div class="dsr-sd-toolbar filter-bar" aria-label="Filters">
+              <div class="form-field">
+                <label for="dsr-filter-view">View</label>
+                <select id="dsr-filter-view">
+                  <option value="by-salesman">Staff</option>
+                  <option value="by-shift">Shift</option>
+                  <option value="by-pump">Pump</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="dsr-filter-shift">Shift</label>
+                <select id="dsr-filter-shift">
+                  <option value="">All shifts</option>
+                  <option value="morning">Morning</option>
+                  <option value="afternoon">Afternoon</option>
+                </select>
+              </div>
+              <div class="form-field" id="dsr-filter-staff-wrap">
+                <label for="dsr-filter-staff">Staff</label>
+                <select id="dsr-filter-staff">
+                  <option value="">All staff</option>
+                </select>
+              </div>
+              <div class="form-field" id="dsr-filter-short-wrap">
+                <label for="dsr-filter-short">Short</label>
+                <select id="dsr-filter-short">
+                  <option value="">All</option>
+                  <option value="shortage">Shortage</option>
+                  <option value="ok">Balanced</option>
+                  <option value="surplus">Surplus</option>
+                </select>
+              </div>
+              <div class="form-field" id="dsr-filter-pump-wrap" hidden>
+                <label for="dsr-filter-pump">Pump</label>
+                <select id="dsr-filter-pump">
+                  <option value="">All pumps</option>
+                  <option value="1">Pump 1</option>
+                  <option value="2">Pump 2</option>
+                </select>
+              </div>
+              <div class="filter-actions dsr-sd-actions">
+                <p id="dsr-breakdown-loading" class="muted hidden">Loading…</p>
+                <a id="dsr-breakdown-reports-link" class="button-secondary" href="reports.html?tab=salesman-sales" data-role="admin-only">Full report</a>
+              </div>
             </div>
-            <div class="dsr-breakdown-toolbar">
-              <p id="dsr-breakdown-loading" class="muted hidden">Loading…</p>
-              <a id="dsr-breakdown-reports-link" class="button-secondary" href="reports.html?tab=pump-sales" data-role="admin-only">Full report →</a>
-            </div>
+
+            <div id="dsr-breakdown-meta" class="dsr-sd-meta" hidden></div>
             <p id="dsr-breakdown-error" class="error hidden" role="alert"></p>
             <div id="dsr-breakdown-body" class="dsr-breakdown-body"></div>
           </div>

@@ -3,7 +3,7 @@
 const DS = window.DsrSections;
 const DSR_SUMMARY_SECTIONS = DS?.SUMMARY ?? new Set(["filters", "dsr-petrol", "dsr-diesel"]);
 let currentDsrSection = "filters";
-let lastBreakdownSection = "by-pump";
+let lastBreakdownSection = "by-salesman";
 let dsrPrintBusy = false;
 
 window.DsrPage = {
@@ -50,12 +50,9 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
     return "dsr";
   }
 
-  function syncBreakdownTabs(section) {
-    document.querySelectorAll(".dsr-breakdown-tab").forEach((tab) => {
-      const active = tab.dataset.breakdown === section;
-      tab.classList.toggle("is-active", active);
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-    });
+  function syncBreakdownView(section) {
+    const sel = document.getElementById("dsr-filter-view");
+    if (sel && DS?.isBreakdownSection?.(section)) sel.value = section;
   }
 
   function applySummaryLayout(section) {
@@ -66,6 +63,7 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
 
     layoutEls.registerView?.toggleAttribute("hidden", isBreakdown);
     layoutEls.breakdownView?.toggleAttribute("hidden", !isBreakdown);
+    document.querySelector(".dsr-panel-links")?.toggleAttribute("hidden", isBreakdown);
 
     layoutEls.petrolBlock?.toggleAttribute("hidden", !showPetrol);
     layoutEls.dieselBlock?.toggleAttribute("hidden", !showDiesel);
@@ -77,7 +75,7 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
     if (copy && layoutEls.titleEl) layoutEls.titleEl.textContent = copy.title;
     if (copy && layoutEls.leadEl) layoutEls.leadEl.textContent = copy.lead;
 
-    if (isBreakdown) syncBreakdownTabs(section);
+    if (isBreakdown) syncBreakdownView(section);
 
     if (layoutEls.reportLink) {
       const start = document.getElementById("dsr-daily-start-date")?.value || "";
@@ -123,16 +121,14 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
     navSectionFor: (section) =>
       section === "sales-detail" || DS?.isBreakdownSection?.(section) ? "sales-detail" : section,
     normalizeSection: (section) => {
-      if (section === "sales-detail") return lastBreakdownSection || "by-pump";
+      if (section === "sales-detail") return lastBreakdownSection || "by-salesman";
       return section;
     },
     onSectionChange,
   });
 
-  document.querySelector(".dsr-breakdown-tabs")?.addEventListener("click", (e) => {
-    const tab = e.target.closest?.("[data-breakdown]");
-    if (!tab?.dataset.breakdown) return;
-    const next = tab.dataset.breakdown;
+  document.getElementById("dsr-filter-view")?.addEventListener("change", (e) => {
+    const next = e.target.value;
     if (!DS?.isBreakdownSection?.(next)) return;
     lastBreakdownSection = next;
     if (location.hash !== "#" + next) {
@@ -208,7 +204,9 @@ function buildBreakdownPrintBody(section) {
   if (!table) {
     throw new Error("Nothing to print. Load sales detail for this period first.");
   }
-  const note = document.querySelector("#dsr-breakdown-body > p.muted");
+  const note = document.querySelector(
+    "#dsr-breakdown-body .dsr-breakdown-note, #dsr-breakdown-body > p.muted"
+  );
   return `${cloneTableForPrint(table)}${
     note ? `<p class="report-note muted">${escapeHtml(note.textContent || "")}</p>` : ""
   }`;

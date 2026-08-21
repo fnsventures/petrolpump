@@ -683,7 +683,7 @@ tbody tr:hover {
   line-height: 1.45;
 }
 
-.dsr-meter-locked-banner.dsr-meter-stub-hint {
+.dsr-meter-locked-banner.dsr-meter-prefill-hint {
   background: #eff6ff;
   border-color: #93c5fd;
   color: #1e3a8a;
@@ -709,6 +709,18 @@ form.dsr-meter-supervisor-locked .sheet-remarks textarea {
 form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   background-color: #fff;
   color: inherit;
+}
+
+/* Shift-synced meters: nozzles locked; dip/stock/rate stay editable */
+form.dsr-meter-shift-meters-locked input[data-dsr-supervisor-lock] {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  cursor: default;
+}
+
+form.dsr-meter-shift-meters-locked .dsr-copy-prev {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .sheet-remarks label {

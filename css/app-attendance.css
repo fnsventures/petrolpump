@@ -1,3 +1,123 @@
+/* Attendance: mark / history filter (label above date/month control) */
+.att-mark-head,
+.att-history-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.att-mark-head > div:first-child,
+.att-history-head > div:first-child {
+  min-width: 0;
+}
+
+.att-mark-filter,
+.att-history-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.att-date-field,
+.att-month-field {
+  margin: 0;
+  flex: 0 1 16rem;
+  min-width: min(100%, 12rem);
+}
+
+.att-date-field label,
+.att-month-field label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #475569;
+}
+
+.att-date-field input[type="date"] {
+  width: 100%;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+
+.att-month-control {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  background: var(--surface, #fff);
+  overflow: hidden;
+}
+
+.att-month-control:focus-within {
+  outline: 2px solid var(--bpcl-blue, #0070c0);
+  outline-offset: 1px;
+}
+
+.att-month-control select {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  min-height: 2.5rem;
+  box-shadow: none;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.att-month-control select:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.att-month-control #history-month-month {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 0.7rem;
+  padding-right: 0.35rem;
+}
+
+.att-month-control #history-month-year {
+  flex: 0 0 5.25rem;
+  width: 5.25rem;
+  padding-left: 0.25rem;
+  padding-right: 0.55rem;
+  border-left: 1px solid var(--border);
+}
+
+.att-mark-actions,
+.att-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+@media (max-width: 640px) {
+  .att-date-field,
+  .att-month-field {
+    flex: 1 1 100%;
+  }
+
+  .att-mark-actions,
+  .att-history-actions {
+    width: 100%;
+  }
+
+  .att-mark-actions .button-secondary,
+  .att-history-actions .button-secondary {
+    flex: 1 1 auto;
+  }
+}
+
 /* Attendance matrix */
 /* Attendance: daily mark table row tint (absent / half-day / leave stand out) */
 .attendance-mark-table tbody tr.att-row-absent {

@@ -9,9 +9,9 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=14" />
+    <link rel="stylesheet" href="css/app-core.css?v=16" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
-    <link rel="stylesheet" href="css/app-meter-reading.css?v=20" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=31" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -27,8 +27,8 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js?v=3"></script>
-    <script defer src="js/meterShiftReading.js?v=10"></script>
-    <script defer src="js/meterReading.js?v=22"></script>
+    <script defer src="js/meterShiftReading.js?v=28"></script>
+    <script defer src="js/meterReading.js?v=30"></script>
   </head>
   <body class="meter-reading-page">
     <header class="topbar" data-build-topbar>
@@ -885,95 +885,89 @@
       </section>
 
         <section
-          class="settings-panel card dashboard-card dsr-card is-visible"
+          class="settings-panel card dashboard-card dsr-card is-visible shift-register-panel"
           data-panel="shift-readings"
           id="shift-readings"
         >
-          <div class="panel-head dsr-card-head">
-            <div>
+          <div class="panel-head dsr-card-head shift-register-head">
+            <div class="shift-register-title-block">
               <h2 class="dashboard-section-title">Shift register</h2>
-              <p class="muted panel-lead">
-                Assign staff to each nozzle for the shift, enter opening/closing meters, then record cash handed over.
-                Openings auto-fill from the prior shift or daily sheet. Saving a shift updates daily MS/HSD meters; saving daily updates existing shift meters.
-                View pump / shift / salesman totals on <a href="dsr.html#by-pump">DSR → Sales detail</a>.
-              </p>
-              <p id="shift-meter-shift-meta" class="muted"></p>
+              <p id="shift-meter-attendance-note" class="shift-attendance-note muted hidden"></p>
+            </div>
+            <div class="shift-register-meta">
+              <p id="shift-meter-context-label" class="muted shift-context-label">Select a date and shift</p>
+              <span id="shift-meter-context-status" class="shift-status-badge shift-status-badge--idle">—</span>
             </div>
           </div>
 
-          <div class="panel-head card-head snapshot-head shift-meter-controls">
-            <div class="snapshot-controls">
-              <div class="form-field">
-                <label for="shift-meter-date">Date</label>
-                <input id="shift-meter-date" type="date" required />
-              </div>
-              <div class="form-field">
-                <label for="shift-meter-shift">Shift</label>
-                <select id="shift-meter-shift"></select>
-              </div>
-              <div class="form-field form-field--fuel-petrol">
-                <label for="shift-meter-rate-petrol">MS rate (₹/L)</label>
-                <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="₹/L" />
-              </div>
-              <div class="form-field form-field--fuel-diesel">
-                <label for="shift-meter-rate-diesel">HSD rate (₹/L)</label>
-                <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="₹/L" />
-              </div>
-              <div class="filter-actions">
-                <button type="button" id="shift-meter-copy-openings" class="button-secondary">Copy openings</button>
-                <button type="button" id="shift-meter-save">Save shift</button>
-                <button type="button" id="shift-meter-clear" class="button-delete hidden" data-role="admin-only">Delete shift</button>
-              </div>
+          <div class="shift-meter-controls">
+            <div class="form-field">
+              <label for="shift-meter-date">Date</label>
+              <input id="shift-meter-date" type="date" required />
+            </div>
+            <div class="form-field">
+              <label for="shift-meter-shift">Shift</label>
+              <select id="shift-meter-shift"></select>
+            </div>
+            <div class="form-field form-field--fuel-petrol">
+              <label for="shift-meter-rate-petrol">MS ₹/L</label>
+              <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="form-field form-field--fuel-diesel">
+              <label for="shift-meter-rate-diesel">HSD ₹/L</label>
+              <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="shift-control-actions">
+              <button type="button" id="shift-meter-copy-openings" class="button-secondary">Copy openings</button>
+              <button type="button" id="shift-meter-clear" class="button-delete hidden" data-role="admin-only">Delete</button>
             </div>
           </div>
 
           <p id="shift-meter-locked-banner" class="dsr-meter-locked-banner hidden" role="status" aria-live="polite"></p>
-          <p id="shift-meter-loading" class="muted hidden">Loading…</p>
-          <p id="shift-meter-attendance-note" class="muted hidden" aria-live="polite"></p>
+          <p id="shift-meter-loading" class="muted shift-loading hidden">Loading shift…</p>
           <div id="shift-meter-totals" class="shift-totals" aria-live="polite"></div>
 
           <div id="shift-meter-edit-zone" class="shift-meter-edit-zone">
-          <div id="shift-meter-nozzle-tables" class="shift-nozzle-blocks meter-stack"></div>
+            <section class="shift-section" aria-labelledby="shift-section-meters-title">
+              <h3 id="shift-section-meters-title" class="shift-section-title">Nozzle meters</h3>
+              <div id="shift-meter-nozzle-tables" class="shift-nozzle-blocks meter-stack"></div>
+            </section>
 
-          <div class="meter-block shift-staff-block">
-            <div class="meter-block-head">
-              <h3 class="meter-title">Staff summary · cash &amp; short</h3>
-            </div>
-            <div id="shift-meter-staff-hint"></div>
-            <div class="table-scroll">
-              <table class="dsr-table meter-table compact shift-staff-table">
-                <thead>
-                  <tr>
-                    <th>Staff · meters</th>
-                    <th>MS (L)</th>
-                    <th>HSD (L)</th>
-                    <th>Expected ₹</th>
-                    <th>Cash collected</th>
-                    <th>Short ₹</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="shift-meter-staff-body">
-                  <tr>
-                    <td colspan="7" class="muted">Select a date and shift.</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <section class="shift-section" aria-labelledby="shift-section-cash-title">
+              <h3 id="shift-section-cash-title" class="shift-section-title">Staff collections</h3>
+              <div id="shift-meter-staff-hint"></div>
+              <div id="shift-meter-staff-body" class="shift-staff-host">
+                <p class="muted shift-staff-empty">Assign staff to nozzles above to see cash rows.</p>
+              </div>
+            </section>
           </div>
 
-          <div id="shift-meter-reconcile" class="shift-reconcile muted" aria-live="polite"></div>
+          <div class="shift-save-row" id="shift-save-row">
+            <div class="shift-save-notes">
+              <label for="shift-meter-remarks">Comments</label>
+              <textarea
+                id="shift-meter-remarks"
+                rows="2"
+                maxlength="500"
+                placeholder="Optional notes for this shift"
+              ></textarea>
+              <p id="shift-save-summary" class="shift-save-summary muted"></p>
+            </div>
+            <button type="button" id="shift-meter-save" class="shift-save-btn">Save shift</button>
           </div>
 
           <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>
           <p id="shift-meter-error" class="error hidden" role="alert"></p>
 
-          <div class="meter-block">
-            <div class="meter-block-head">
-              <h3 class="meter-title">Recent shifts</h3>
-            </div>
+          <section class="shift-section shift-section--quiet" aria-labelledby="shift-section-sheets-title">
+            <h3 id="shift-section-sheets-title" class="shift-section-title">Daily sheets</h3>
+            <div id="shift-meter-reconcile" class="shift-reconcile" aria-live="polite"></div>
+          </section>
+
+          <section class="shift-section shift-section--history" aria-labelledby="shift-history-title">
+            <h3 id="shift-history-title" class="shift-section-title">Recent shifts</h3>
             <div class="table-scroll">
-              <table class="dsr-table meter-history compact">
+              <table class="dsr-table meter-history compact shift-history-table">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -981,17 +975,18 @@
                     <th>MS (L)</th>
                     <th>HSD (L)</th>
                     <th>Staff</th>
-                    <th>Cash ₹</th>
+                    <th>Total ₹</th>
+                    <th>View</th>
                   </tr>
                 </thead>
                 <tbody id="shift-meter-history-body">
                   <tr>
-                    <td colspan="6" class="muted">Loading…</td>
+                    <td colspan="7" class="muted">Loading…</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         </section>
 
         <section
@@ -1025,6 +1020,34 @@
         </section>
       </div>
     </main>
+
+    <div
+      id="shift-view-overlay"
+      class="shift-view-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shift-view-title"
+    >
+      <div class="shift-view-backdrop" id="shift-view-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card shift-view-card">
+        <div class="shift-view-head">
+          <div>
+            <h2 id="shift-view-title">Shift register</h2>
+            <p id="shift-view-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="shift-view-close" id="shift-view-close" aria-label="Close">×</button>
+        </div>
+        <div id="shift-view-body" class="shift-view-body">
+          <p class="muted">Loading…</p>
+        </div>
+        <div class="shift-view-actions">
+          <button type="button" id="shift-view-open-editor" class="button-secondary">Open in editor</button>
+          <button type="button" id="shift-view-dismiss">Close</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
