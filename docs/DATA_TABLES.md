@@ -15,7 +15,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
 | [dsr_diesel](#dsr_diesel) | HSD meter readings — one row per date |
 | [meter_shift_readings](#meter_shift_readings) | Optional shift nozzle readings with staff (per date · shift · meter) |
-| [meter_shift_cash](#meter_shift_cash) | Optional staff cash handover per shift (for short) |
+| [meter_shift_cash](#meter_shift_cash) | Optional staff cash + phone pay per shift (for short) |
 | [dsr](#dsr-view) | **View:** union of petrol + diesel (SELECT only) |
 | [dsr_stock](#dsr_stock-view) | **View:** computed stock reconciliation |
 | [products](#products) | Product master for lube/accessory billing |
@@ -159,7 +159,11 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Unique:** `(reading_date, product, shift, pump_no, nozzle_no)`.
 
-**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `sync_dsr_meters_from_shifts`, `sync_shift_meters_from_dsr`, `get_meter_sales_breakdown`.
+**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`.
+
+**Ownership:** Shift save writes `meter_shift_*` (via RPC; clients have SELECT only) and refreshes meter columns on existing `dsr_*` rows via `apply_shift_aggregate_to_dsr` (never inserts stubs). Daily MS/HSD save writes dip/stock/rate on `dsr_*`. Shift meters also prefill the meter sheet via `get_shift_aggregated_daily_meters`. Daily layout is fixed **2 pumps × 2 nozzles** (matches `dsr_*` columns).
+
+**Lock:** Supervisors cannot re-edit a shift once it has nozzle rows; empty other shift stays writable. Certified day / night-cash collected locks both shifts.
 
 **UI:** Meter Reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
 
@@ -167,7 +171,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## meter_shift_cash
 
-**Purpose:** Cash handed over by staff for a shift. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − collected.
+**Purpose:** Cash handed over by staff for a shift. Stores **hard cash** and **phone pay** (UPI). **Total** = cash_collected + phone_pay. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -175,7 +179,8 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | reading_date | date | Business date |
 | shift | text | `morning` \| `afternoon` |
 | employee_id | uuid | → employees |
-| cash_collected | numeric | Amount handed over (₹) |
+| cash_collected | numeric | Hard cash handed over (₹) |
+| phone_pay | numeric | PhonePe / UPI for the shift (₹) |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Audit |

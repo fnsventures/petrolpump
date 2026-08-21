@@ -243,6 +243,7 @@
         <!-- Pumps -->
         <section id="settings-panel-pumps" class="settings-panel card" data-panel="pumps" hidden>
           <h2>Pumps &amp; tanks</h2>
+          <p class="muted">Daily meter sheets support up to 2 pumps × 2 nozzles per product (MS / HSD schema).</p>
           <p class="muted">Meter reading layout and tank labels. Changing pump/nozzle counts may require HTML form updates until dynamic forms are enabled.</p>
           <form id="pumps-form" class="form">
             <div class="settings-fuel-block settings-fuel-block--petrol">
@@ -250,11 +251,11 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="pump-petrol-pumps">Pumps</label>
-                <input id="pump-petrol-pumps" type="number" min="1" max="8" required />
+                <input id="pump-petrol-pumps" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-petrol-nozzles">Nozzles per pump</label>
-                <input id="pump-petrol-nozzles" type="number" min="1" max="8" required />
+                <input id="pump-petrol-nozzles" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-petrol-label">Tank label</label>
@@ -271,11 +272,11 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="pump-diesel-pumps">Pumps</label>
-                <input id="pump-diesel-pumps" type="number" min="1" max="8" required />
+                <input id="pump-diesel-pumps" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-diesel-nozzles">Nozzles per pump</label>
-                <input id="pump-diesel-nozzles" type="number" min="1" max="8" required />
+                <input id="pump-diesel-nozzles" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-diesel-label">Tank label</label>

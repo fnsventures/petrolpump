@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -124,7 +124,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const attendanceDateInput = document.getElementById("attendance-date");
-  const historyMonthInput = document.getElementById("history-month");
+  const historyMonthSelect = document.getElementById("history-month-month");
+  const historyYearSelect = document.getElementById("history-month-year");
   const attendanceBody = document.getElementById("attendance-body");
   const attendanceSummary = document.getElementById("attendance-summary");
   const attendanceMessage = document.getElementById("attendance-message");
@@ -134,6 +135,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const historyMatrixSummary = document.getElementById("attendance-matrix-summary");
   const historyRefreshBtn = document.getElementById("history-refresh");
   const historyDownloadBtn = document.getElementById("history-download-csv");
+
+  function getHistoryMonthValue() {
+    return readMonthYearValue(historyMonthSelect, historyYearSelect);
+  }
 
   function syncMarkRowClass(row) {
     if (!row) return;
@@ -170,9 +175,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     initPersistedDateInput(attendanceDateInput, RECORD_DATE_KEYS.attendance, { urlParam: "date" });
   }
   const now = new Date();
-  if (historyMonthInput) {
-    historyMonthInput.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  }
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  populateMonthYearSelects(historyMonthSelect, historyYearSelect);
+  writeMonthYearValue(historyMonthSelect, historyYearSelect, currentMonth);
 
   let staffList = [];
   let attendanceByDate = new Map();
@@ -343,8 +348,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     await loadAttendanceForDate(date);
     renderAttendanceTable(date);
-    if (historyMonthInput?.value) {
-      await loadHistoryMonth(historyMonthInput.value);
+    if (getHistoryMonthValue()) {
+      await loadHistoryMonth(getHistoryMonthValue());
     }
   }
 
@@ -610,12 +615,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (date) saveAll(date);
   });
 
-  historyMonthInput?.addEventListener("change", () => {
-    loadHistoryMonth(historyMonthInput.value);
-  });
+  function onHistoryMonthChange() {
+    const monthValue = getHistoryMonthValue();
+    if (monthValue) loadHistoryMonth(monthValue);
+  }
+
+  historyMonthSelect?.addEventListener("change", onHistoryMonthChange);
+  historyYearSelect?.addEventListener("change", onHistoryMonthChange);
 
   async function refreshHistoryMonth() {
-    const monthValue = historyMonthInput?.value ?? "";
+    const monthValue = getHistoryMonthValue();
     if (historyRefreshBtn) {
       historyRefreshBtn.disabled = true;
       historyRefreshBtn.setAttribute("aria-busy", "true");
@@ -636,8 +645,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   historyDownloadBtn?.addEventListener("click", () => {
-    downloadHistoryCsv(historyMonthInput?.value);
+    downloadHistoryCsv(getHistoryMonthValue());
   });
 
-  loadHistoryMonth(historyMonthInput?.value ?? "");
+  loadHistoryMonth(getHistoryMonthValue());
 });

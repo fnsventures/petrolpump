@@ -28,7 +28,7 @@ const REPORT_CATALOG = [
       {
         id: "salesman-sales",
         title: "Salesman sales",
-        description: "Per salesman litres, expected cash, collected, and short from shift register.",
+        description: "Per salesman litres, expected cash, cash + phone pay total, and short from shift register.",
       },
     ],
   },
@@ -2863,6 +2863,7 @@ function renderPumpSalesReport(data, range) {
       if (shiftKeys.has(key)) continue;
       out.push({
         reading_date: date,
+        shift: null,
         product,
         pump_no: pumpNo,
         litres: pumpNo === 1 ? Number(r.sales_pump1) || 0 : Number(r.sales_pump2) || 0,
@@ -2876,6 +2877,8 @@ function renderPumpSalesReport(data, range) {
   const merged = [...shiftRows, ...fallback].sort((a, b) => {
     const d = String(b.reading_date).localeCompare(String(a.reading_date));
     if (d) return d;
+    const s = String(a.shift || "").localeCompare(String(b.shift || ""));
+    if (s) return s;
     const p = String(a.product).localeCompare(String(b.product));
     if (p) return p;
     return (a.pump_no || 0) - (b.pump_no || 0);
@@ -2887,8 +2890,9 @@ function renderPumpSalesReport(data, range) {
       total += Number(r.litres) || 0;
       return `<tr>
           <td>${formatNumericDate(r.reading_date)}</td>
+          <td>${r.from_daily ? "Daily" : escapeHtml(shiftReportLabel(r.shift))}</td>
           <td>${formatFuelBadge(productFuelLabel(r.product))}</td>
-          <td>Pump ${escapeHtml(String(r.pump_no))}${r.from_daily ? " (daily)" : ""}</td>
+          <td>Pump ${escapeHtml(String(r.pump_no))}</td>
           <td class="num">${formatNumberPlain(r.litres)}</td>
           <td class="num">${r.net_litres == null ? "—" : formatNumberPlain(r.net_litres)}</td>
         </tr>`;
@@ -2908,6 +2912,7 @@ function renderPumpSalesReport(data, range) {
       <thead>
         <tr>
           <th>Date</th>
+          <th>Shift</th>
           <th>Fuel</th>
           <th>Pump</th>
           <th class="num">Sale (L)</th>
@@ -2917,7 +2922,7 @@ function renderPumpSalesReport(data, range) {
       <tbody>${body}</tbody>
       <tfoot>
         <tr>
-          <td colspan="3"><strong>Total</strong></td>
+          <td colspan="4"><strong>Total</strong></td>
           <td class="num"><strong>${formatNumberPlain(total)}</strong></td>
           <td></td>
         </tr>
@@ -2991,6 +2996,8 @@ function renderSalesmanSalesReport(data, range) {
 
   let totL = 0;
   let totExpected = 0;
+  let totCashHard = 0;
+  let totPhonePay = 0;
   let totCash = 0;
   let totShort = 0;
   let hasExpected = false;
@@ -3003,7 +3010,10 @@ function renderSalesmanSalesReport(data, range) {
       const dieselNet =
         r.diesel_net_litres != null ? Number(r.diesel_net_litres) : Number(r.diesel_litres) || 0;
       const expected = petrolNet * (rates.petrol || 0) + dieselNet * (rates.diesel || 0);
-      const collected = Number(r.cash_collected) || 0;
+      const cash = Number(r.cash_collected) || 0;
+      const phonePay = Number(r.phone_pay) || 0;
+      const collected =
+        r.total_collected != null ? Number(r.total_collected) || 0 : cash + phonePay;
       const canExpect = rates.petrol || rates.diesel;
       if (canExpect) {
         hasExpected = true;
@@ -3011,6 +3021,8 @@ function renderSalesmanSalesReport(data, range) {
         totShort += expected - collected;
       }
       totL += Number(r.total_litres) || 0;
+      totCashHard += cash;
+      totPhonePay += phonePay;
       totCash += collected;
       return `<tr>
         <td>${formatNumericDate(r.reading_date)}</td>
@@ -3020,6 +3032,8 @@ function renderSalesmanSalesReport(data, range) {
         <td class="num">${formatNumberPlain(r.diesel_litres)}</td>
         <td class="num">${formatNumberPlain(r.total_litres)}</td>
         <td class="num">${canExpect ? formatNumberPlain(expected) : "—"}</td>
+        <td class="num">${formatNumberPlain(cash)}</td>
+        <td class="num">${formatNumberPlain(phonePay)}</td>
         <td class="num">${formatNumberPlain(collected)}</td>
         <td class="num">${canExpect ? formatNumberPlain(expected - collected) : "—"}</td>
       </tr>`;
@@ -3028,7 +3042,7 @@ function renderSalesmanSalesReport(data, range) {
 
   return `
     ${reportHeader("Salesman sales", range.start, range.end)}
-    <p class="muted report-note">Short = expected − cash collected. Expected = net litres (sale − testing) × daily selling rates.</p>
+    <p class="muted report-note">Short = expected − (cash + phone pay). Expected = net litres (sale − testing) × daily selling rates.</p>
     <table class="report-table">
       <thead>
         <tr>
@@ -3040,6 +3054,8 @@ function renderSalesmanSalesReport(data, range) {
           <th class="num">Total (L)</th>
           <th class="num">Expected ₹</th>
           <th class="num">Cash ₹</th>
+          <th class="num">Phone ₹</th>
+          <th class="num">Total ₹</th>
           <th class="num">Short ₹</th>
         </tr>
       </thead>
@@ -3049,6 +3065,8 @@ function renderSalesmanSalesReport(data, range) {
           <td colspan="5"><strong>Total</strong></td>
           <td class="num"><strong>${formatNumberPlain(totL)}</strong></td>
           <td class="num"><strong>${hasExpected ? formatNumberPlain(totExpected) : "—"}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totCashHard)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totPhonePay)}</strong></td>
           <td class="num"><strong>${formatNumberPlain(totCash)}</strong></td>
           <td class="num"><strong>${hasExpected ? formatNumberPlain(totShort) : "—"}</strong></td>
         </tr>

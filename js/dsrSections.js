@@ -22,19 +22,19 @@
     },
     "sales-detail": {
       title: "Sales detail",
-      lead: "Break down the period by pump, shift, or salesman.",
+      lead: "Staff, shift, or pump for the selected dates.",
     },
     "by-pump": {
-      title: "Sales detail · By pump",
-      lead: "Sale litres by pump (P1 / P2) for the selected period — from shift nozzles when available, otherwise daily meters.",
+      title: "Pump sales",
+      lead: "Sale litres by pump for the selected dates.",
     },
     "by-shift": {
-      title: "Sales detail · By shift",
-      lead: "Morning and afternoon sales by fuel, with staff count from shift register.",
+      title: "Shift sales",
+      lead: "Morning and afternoon totals for the selected dates.",
     },
     "by-salesman": {
-      title: "Sales detail · By salesman",
-      lead: "Which staff sold how much — litres, expected cash, collected, and short.",
+      title: "Staff sales",
+      lead: "Staff litres, cash collected, and short for the selected dates.",
     },
   };
 
