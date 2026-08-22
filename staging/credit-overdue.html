@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <title>Redirecting…</title>
+    <meta http-equiv="refresh" content="0;url=credit.html" />
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var hash = (window.location.hash || "").replace(/^#/, "");
+        if (hash === "overdue-list") hash = "outstanding";
+        if (hash === "overdue-summary") hash = "overview";
+        var url = "credit.html";
+        var qs = params.toString();
+        if (qs) url += "?" + qs;
+        if (hash) url += "#" + hash;
+        window.location.replace(url);
+      })();
+    </script>
+      <script defer src="js/pwa.js"></script>
+  </head>
+  <body>
+    <p>Redirecting to <a href="credit.html">Credit</a>…</p>
+  </body>
+</html>

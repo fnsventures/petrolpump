@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Tasks · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js"></script>
+    <script src="js/appNav.js"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=16" />
+    <link rel="stylesheet" href="css/app-reminders.css?v=13" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=13"></script>
+    <script defer src="js/taskUtils.js?v=9"></script>
+    <script defer src="js/pwa.js"></script>
+    <script defer src="js/supabase.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js"></script>
+    <script defer src="js/reminders.js?v=17"></script>
+  </head>
+  <body class="reminders-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Tasks</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+        <a href="e20-register.html">E-20 testing</a>
+        <a href="reminders.html">Tasks</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout">
+      <nav class="settings-nav card" aria-label="Task sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="credit">
+          Credit collection
+          <span id="reminders-credit-nav-badge" class="reminders-nav-badge hidden" aria-hidden="true">0</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="todo">
+          Todo
+          <span id="reminders-todo-nav-badge" class="reminders-nav-badge reminders-nav-badge--muted hidden" aria-hidden="true">0</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="add">Add task</button>
+        <button type="button" class="settings-nav-item" data-section="done">Completed</button>
+      </nav>
+
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible" data-panel="credit" aria-label="Credit collection">
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Credit collection</h2>
+              <p class="muted panel-lead">
+                Call or WhatsApp, then Done when settled. Use <strong>+3 days</strong> when they need time — or More… for other options.
+              </p>
+            </div>
+            <div class="filter-actions">
+              <a href="#add" class="button-secondary" id="reminders-goto-add-credit" data-add-kind="credit">Schedule call</a>
+            </div>
+          </header>
+          <div id="reminders-credit-list" class="reminders-list" aria-live="polite">
+            <p class="muted">Loading…</p>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="todo" aria-label="Todo" hidden>
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Todo</h2>
+              <p class="muted panel-lead">
+                General station work. Tap <strong>+3 days</strong> to push a due date, or More… for other options. High-priority items surface on the dashboard.
+              </p>
+            </div>
+            <div class="filter-actions">
+              <a href="#add" class="button-secondary" id="reminders-goto-add-todo" data-add-kind="todo">Add todo</a>
+            </div>
+          </header>
+          <div id="reminders-todo-list" class="reminders-list" aria-live="polite">
+            <p class="muted">Loading…</p>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="add" aria-label="Add task" hidden>
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Add task</h2>
+              <p class="muted panel-lead" id="reminder-form-lead">
+                Schedule a collection call. Customer is required; due date defaults to today.
+              </p>
+            </div>
+          </header>
+
+          <form id="reminder-form" class="form reminders-form" autocomplete="off">
+            <fieldset class="reminders-kind-fieldset">
+              <legend class="reminders-kind-legend">Task type</legend>
+              <div class="reminders-kind-toggle" role="radiogroup" aria-label="Task type">
+                <label class="reminders-kind-option">
+                  <input type="radio" name="task_kind" value="credit" checked />
+                  <span>Credit collection</span>
+                </label>
+                <label class="reminders-kind-option">
+                  <input type="radio" name="task_kind" value="todo" />
+                  <span>Todo</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="form-grid reminders-form-grid">
+              <div class="form-field reminders-title-field" id="reminder-title-wrap" hidden>
+                <label for="reminder-title">What needs doing?</label>
+                <input
+                  id="reminder-title"
+                  name="title"
+                  type="text"
+                  maxlength="200"
+                  placeholder="e.g. Order nozzle seals · Check dip rod"
+                />
+              </div>
+
+              <div class="form-field reminders-customer-field" id="reminder-customer-wrap">
+                <label for="reminder-customer-search">Credit customer</label>
+                <div class="combobox" id="reminder-customer-combobox">
+                  <input
+                    id="reminder-customer-search"
+                    type="search"
+                    placeholder="Type to search name or mobile…"
+                    autocomplete="off"
+                    enterkeyhint="search"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded="false"
+                    aria-controls="reminder-customer-suggestions"
+                  />
+                  <ul
+                    id="reminder-customer-suggestions"
+                    class="combobox-list hidden"
+                    role="listbox"
+                    hidden
+                  ></ul>
+                </div>
+                <input type="hidden" id="reminder-customer" name="credit_customer_id" value="" />
+                <p id="reminder-credit-preview" class="reminders-credit-preview muted text-sm" aria-live="polite">
+                  Saved as <strong>Call …</strong>
+                </p>
+              </div>
+
+              <div class="form-field">
+                <label for="reminder-due-date">Due date <span class="optional-label" id="reminder-due-optional" hidden>(optional)</span></label>
+                <input id="reminder-due-date" name="due_date" type="date" />
+                <div class="reminders-due-shortcuts" role="group" aria-label="Due date shortcuts">
+                  <button type="button" class="button-secondary button-small" data-due-shortcut="today">Today</button>
+                  <button type="button" class="button-secondary button-small" data-due-shortcut="tomorrow">Tomorrow</button>
+                  <button type="button" class="button-secondary button-small" data-due-shortcut="none" id="reminder-due-none" hidden>No date</button>
+                </div>
+              </div>
+
+              <div class="form-field" id="reminder-priority-wrap" hidden>
+                <label for="reminder-priority">Priority</label>
+                <select id="reminder-priority" name="priority">
+                  <option value="normal" selected>Normal</option>
+                  <option value="high">High — dashboard alert</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+
+              <div class="form-field reminders-notes-field">
+                <label for="reminder-notes">Notes <span class="optional-label">(optional)</span></label>
+                <textarea
+                  id="reminder-notes"
+                  name="notes"
+                  rows="3"
+                  maxlength="2000"
+                  placeholder="Promised amount, best time to call, or other detail"
+                ></textarea>
+              </div>
+            </div>
+
+            <div class="reminders-form-actions">
+              <button type="submit" id="reminder-submit">Schedule call</button>
+              <button type="button" id="reminder-form-reset" class="button-secondary">Clear</button>
+            </div>
+            <p id="reminder-success" class="success hidden" role="status"></p>
+            <p id="reminder-error" class="error hidden" role="alert"></p>
+          </form>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="done" aria-label="Completed tasks" hidden>
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Completed</h2>
+              <p class="muted panel-lead">Recently finished tasks. Reopen one if it still needs attention.</p>
+            </div>
+          </header>
+
+          <div class="reminders-done-groups">
+            <div class="reminders-done-group">
+              <h3 class="reminders-group-title">Credit collection</h3>
+              <div id="reminders-done-credit-list" class="reminders-list" aria-live="polite">
+                <p class="muted">Loading…</p>
+              </div>
+            </div>
+            <div class="reminders-done-group">
+              <h3 class="reminders-group-title">Todo</h3>
+              <div id="reminders-done-todo-list" class="reminders-list" aria-live="polite">
+                <p class="muted">Loading…</p>
+              </div>
+            </div>
+          </div>
+          <div class="pagination-controls">
+            <span id="reminders-done-pagination-info" class="muted"></span>
+            <button type="button" id="reminders-done-load-more" class="button-secondary hidden">Load more</button>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

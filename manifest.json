@@ -1,0 +1,59 @@
+{
+  "id": "./",
+  "name": "Bishnupriya Fuels",
+  "short_name": "BPFuels",
+  "description": "Petrol pump daily operations — DSR, credit, billing, and HR",
+  "lang": "en",
+  "dir": "ltr",
+  "start_url": "./dashboard.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#0070c0",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Daily overview and KPIs",
+      "url": "./dashboard.html",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "DSR",
+      "short_name": "DSR",
+      "description": "Daily sales register",
+      "url": "./dsr.html",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Meter reading",
+      "short_name": "Meters",
+      "description": "Shift meter readings",
+      "url": "./meter-reading.html#shift-readings",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
