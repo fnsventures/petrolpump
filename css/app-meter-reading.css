@@ -140,7 +140,7 @@ body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:n
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  font-size: var(--text-base);
+  font-size: max(16px, var(--text-base));
 }
 
 body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input[type="date"] {
@@ -370,7 +370,7 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
   }
 
   body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
-    font-size: var(--text-sm, 0.8125rem);
+    font-size: max(16px, var(--text-sm, 0.8125rem));
     min-height: 2.25rem;
   }
 
@@ -750,13 +750,13 @@ body.meter-reading-page .shift-nozzle-table select.shift-staff {
   min-width: 7.5rem;
   min-height: 2.15rem;
   text-align: left;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
 }
 
 body.meter-reading-page .shift-nozzle-table .meter-reading,
 body.meter-reading-page .shift-nozzle-table .calc-field {
   min-height: 2.15rem;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
 }
 
 body.meter-reading-page .shift-nozzle-table .shift-closing {
@@ -1172,7 +1172,6 @@ body.meter-reading-page.modal-open {
   position: relative;
   z-index: 1;
   width: min(52rem, 100%);
-  max-height: min(90vh, calc(100dvh - 2rem));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1421,7 +1420,10 @@ body.meter-reading-page .shift-history-table .shift-history-view {
   }
 
   .shift-view-card {
-    max-height: min(94vh, calc(100dvh - 1rem));
+    max-height: min(
+      calc(var(--viewport-height) * 0.94),
+      calc(var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 1rem)
+    );
     padding: 0.85rem 0.85rem 0;
   }
 

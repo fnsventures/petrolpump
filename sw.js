@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v166";
+const CACHE_VERSION = "v169";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -99,6 +99,7 @@ const STATIC_ASSET_PATHS = [
   "js/dsrLegacyRedirect.js",
   "js/dsrFuelNav.js",
   "js/errorHandler.js",
+  "js/pwa.js",
   "js/cache.js",
   "js/appConfig.js",
   "js/utils.js",
@@ -463,7 +464,7 @@ async function getOfflineFallback() {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Offline - Bishnupriya Fuels</title>
   <style>
     body {

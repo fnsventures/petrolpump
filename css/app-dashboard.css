@@ -67,11 +67,11 @@
 /* Right rail: secondary glance info (rates + dip tanks) */
 .dashboard-context-rail {
   position: sticky;
-  top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
+  top: calc(var(--topbar-offset, 3.75rem) + 0.75rem);
   align-self: start;
   padding: var(--space-3);
   background: var(--surface);
-  max-height: calc(100vh - var(--topbar-height, 3.75rem) - 2rem);
+  max-height: calc(var(--viewport-height) - var(--topbar-offset, 3.75rem) - 2rem);
   overflow-y: auto;
 }
 
@@ -822,7 +822,6 @@
   position: relative;
   z-index: 1;
   width: min(32rem, 100%);
-  max-height: min(85vh, 40rem);
   display: flex;
   flex-direction: column;
   margin-bottom: 0;
@@ -1655,7 +1654,7 @@ a.dashboard-fuel-chip:hover {
   flex-shrink: 0;
   width: 280px;
   position: sticky;
-  top: var(--space-3);
+  top: calc(var(--topbar-offset, 3.75rem) + var(--space-3));
   order: 2;
 }
 

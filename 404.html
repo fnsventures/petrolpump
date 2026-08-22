@@ -2,17 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Page not found · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
     <style>
       .not-found {
-        min-height: 100vh;
+        min-height: var(--viewport-height, 100vh);
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 2rem;
+        padding:
+          max(2rem, var(--safe-top, 0px))
+          max(2rem, var(--safe-right, 0px))
+          max(2rem, var(--safe-bottom, 0px))
+          max(2rem, var(--safe-left, 0px));
         text-align: center;
       }
       .not-found-card {
@@ -89,6 +99,7 @@
         background: var(--bpcl-blue-soft);
       }
     </style>
+      <script defer src="js/pwa.js"></script>
   </head>
   <body class="app-page">
     <main class="not-found">

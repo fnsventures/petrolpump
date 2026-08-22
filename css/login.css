@@ -4,8 +4,12 @@
   --login-logo-size: clamp(5.25rem, 20vw, 6.5rem);
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  padding: var(--space-4) var(--space-3) var(--space-3);
+  min-height: var(--viewport-height, 100vh);
+  padding:
+    max(var(--space-4), var(--safe-top, 0px))
+    max(var(--space-3), var(--safe-right, 0px))
+    max(var(--space-3), var(--safe-bottom, 0px))
+    max(var(--space-3), var(--safe-left, 0px));
   background:
     radial-gradient(ellipse 85% 50% at 50% -5%, rgba(0, 112, 192, 0.12), transparent 58%),
     linear-gradient(165deg, #ffffff 0%, #f0f7fc 48%, #fff9e6 100%);

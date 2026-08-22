@@ -81,6 +81,18 @@
   --transition-fast: 0.15s ease;
   --transition-base: 0.2s ease;
   --topbar-height: 3.75rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --topbar-offset: calc(var(--topbar-height) + var(--safe-top));
+  --viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
 }
 
 /* Reserve scrollbar space so layout/background don't shift when content height changes */
@@ -97,13 +109,15 @@ html {
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: var(--viewport-height);
   display: flex;
   flex-direction: column;
   max-width: 100%;
   overflow-x: clip;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 img,
@@ -185,8 +199,12 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   isolation: isolate;
   background: #ffffff;
   color: var(--bpcl-blue);
-  padding: 0.5rem clamp(1rem, 4vw, 2.5rem);
-  min-height: var(--topbar-height);
+  padding:
+    max(0.5rem, var(--safe-top))
+    max(clamp(1rem, 4vw, 2.5rem), var(--safe-right))
+    0.5rem
+    max(clamp(1rem, 4vw, 2.5rem), var(--safe-left));
+  min-height: var(--topbar-offset);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1567,6 +1585,16 @@ button {
   font-size: var(--text-base);
   font-weight: 600;
   border-radius: var(--radius-sm);
+  touch-action: manipulation;
+}
+
+/* Prevent iOS Safari from zooming focused fields (needs >= 16px computed size) */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, var(--text-base));
+  }
 }
 
 input:focus,
@@ -1702,7 +1730,11 @@ footer a:hover {
 .app-footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
-  padding: 1.25rem clamp(1rem, 4vw, 2rem);
+  padding:
+    1.25rem
+    max(clamp(1rem, 4vw, 2rem), var(--safe-right))
+    max(1.25rem, var(--safe-bottom))
+    max(clamp(1rem, 4vw, 2rem), var(--safe-left));
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -2044,7 +2076,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
     border: 1px solid rgba(0, 112, 192, 0.18);
     border-radius: var(--radius-md, 10px);
     box-shadow: 0 10px 28px rgba(15, 23, 42, 0.1);
-    max-height: min(70vh, 28rem);
+    max-height: min(calc(var(--viewport-height) - var(--topbar-offset) - 1rem), 28rem);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -2054,6 +2086,11 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   }
 
   body.topbar-nav-open {
+    overflow: hidden;
+    touch-action: none;
+  }
+
+  html:has(body.topbar-nav-open) {
     overflow: hidden;
   }
 
@@ -2119,8 +2156,8 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   .topbar {
     flex-direction: row;
     align-items: center;
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
   }
 
   .topbar .brand {
@@ -2212,7 +2249,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
   position: sticky;
-  top: calc(var(--topbar-height, 3.75rem) + 0.25rem);
+  top: calc(var(--topbar-offset, 3.75rem) + 0.25rem);
   z-index: 20;
 }
 
@@ -2361,7 +2398,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   }
 
   .meter-toolbar {
-    top: 0;
+    top: calc(var(--topbar-offset) + 0.25rem);
     border-radius: 0;
     flex-wrap: wrap;
     gap: var(--space-2);
@@ -2389,12 +2426,93 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   }
 }
 
-/* App shell: config, update, network status (injected via js/supabase.js) */
+/* Shared modal / overlay shell — safe area + dynamic viewport (all app pages) */
+.overdue-detail-overlay,
+.shift-view-overlay,
+.staff-id-modal,
+.reminders-landing-overlay {
+  padding:
+    max(var(--space-4, 1rem), var(--safe-top))
+    max(var(--space-4, 1rem), var(--safe-right))
+    max(var(--space-4, 1rem), var(--safe-bottom))
+    max(var(--space-4, 1rem), var(--safe-left));
+}
+
+.overdue-detail-card,
+.shift-view-card,
+.salary-detail-card,
+.staff-id-modal-panel {
+  max-height: min(
+    calc(var(--viewport-height) * 0.9),
+    calc(var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 2 * var(--space-4, 1rem))
+  );
+}
+
+.reminders-landing-card {
+  max-height: min(calc(var(--viewport-height) * 0.85), 40rem);
+}
+
+@media (max-width: 640px) {
+  .overdue-detail-overlay,
+  .shift-view-overlay,
+  .staff-id-modal {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+    padding-top: var(--safe-top);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overdue-detail-backdrop,
+  .shift-view-backdrop,
+  .staff-id-modal-backdrop {
+    position: fixed;
+  }
+
+  .overdue-detail-card,
+  .shift-view-card,
+  .staff-id-modal-panel {
+    max-width: none;
+    width: 100%;
+    max-height: min(
+      calc(var(--viewport-height) * 0.92),
+      calc(var(--viewport-height) - var(--safe-top) - 0.5rem)
+    );
+    margin: 0;
+    border-radius: 1rem 1rem 0 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .staff-id-modal-panel {
+    padding-bottom: max(var(--space-5, 1.25rem), var(--safe-bottom));
+  }
+
+  .reminders-landing-overlay {
+    padding:
+      var(--space-4)
+      var(--space-4)
+      max(var(--space-4), var(--safe-bottom));
+  }
+}
+
+/* App shell: config, update, install, network status (js/pwa.js + js/supabase.js) */
+.app-config-banner,
+.app-update-banner,
+.app-install-banner {
+  padding-left: max(clamp(1rem, 4vw, 2rem), var(--safe-left));
+  padding-right: max(clamp(1rem, 4vw, 2rem), var(--safe-right));
+}
+
 .app-config-banner {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  padding: 0.75rem clamp(1rem, 4vw, 2rem);
+  padding-top: max(0.75rem, var(--safe-top));
+  padding-bottom: 0.75rem;
   background: #fffbeb;
   color: #92400e;
   border-bottom: 1px solid #fde68a;
@@ -2414,7 +2532,8 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
-  padding: 0.65rem clamp(1rem, 4vw, 2rem);
+  padding-top: max(0.65rem, var(--safe-top));
+  padding-bottom: 0.65rem;
   background: #eff6ff;
   color: #1e40af;
   border-bottom: 1px solid #bfdbfe;
@@ -2453,13 +2572,62 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.app-install-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding-top: max(0.65rem, var(--safe-top));
+  padding-bottom: 0.65rem;
+  background: #ecfdf5;
+  color: #065f46;
+  border-bottom: 1px solid #a7f3d0;
+  font-size: var(--text-sm);
+  box-shadow: var(--shadow-xs);
+}
+
+.app-install-banner-action {
+  padding: 0.35rem 0.85rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  background: #059669;
+  color: #fff;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.app-install-banner-action:hover {
+  background: #047857;
+}
+
+.app-install-banner-close {
+  margin-left: auto;
+  padding: 0.2rem 0.5rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.app-install-banner-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 .app-network-status {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 9000;
-  padding: 0.5rem 1rem;
+  padding:
+    0.5rem
+    max(1rem, var(--safe-right))
+    max(0.5rem, var(--safe-bottom))
+    max(1rem, var(--safe-left));
   text-align: center;
   font-size: var(--text-sm);
   background: #1e293b;
@@ -2471,8 +2639,13 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   display: none;
 }
 
+body:has(.app-network-status:not(.hidden)) {
+  padding-bottom: calc(2.75rem + var(--safe-bottom));
+}
+
 body:has(.app-config-banner) .topbar,
 body:has(.app-update-banner) .topbar,
+body:has(.app-install-banner) .topbar,
 body:has(.app-error-banner) .topbar {
   scroll-margin-top: 2.5rem;
 }

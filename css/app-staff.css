@@ -5,7 +5,7 @@
 }
 
 .staff-roster-nav {
-  max-height: calc(100vh - 6rem);
+  max-height: calc(var(--viewport-height) - var(--topbar-offset, 3.75rem) - 3rem);
   overflow: hidden;
 }
 
@@ -418,7 +418,6 @@
   position: relative;
   z-index: 1;
   width: min(100%, 44rem);
-  max-height: calc(100vh - 2rem);
   overflow-y: auto;
   margin: 0;
   padding: var(--space-5, 1.25rem);
@@ -517,7 +516,7 @@
   }
 
   .staff-roster-list {
-    max-height: min(40vh, 280px);
+    max-height: min(calc(var(--viewport-height) * 0.4), 280px);
   }
 
   .staff-profile-grid {
@@ -527,7 +526,7 @@
 
 @media (max-width: 480px) {
   .staff-roster-list {
-    max-height: min(45vh, 320px);
+    max-height: min(calc(var(--viewport-height) * 0.45), 320px);
   }
 
   .staff-id-preview-wrap {
