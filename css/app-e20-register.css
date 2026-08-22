@@ -361,7 +361,7 @@ body.e20-register-page .e20-table select {
   box-sizing: border-box;
   border-radius: var(--radius-sm);
   min-height: 2.1rem;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
 }
 
 body.e20-register-page .e20-table input[type="number"],
