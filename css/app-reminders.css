@@ -606,6 +606,15 @@ button.reminder-later-choice:hover {
   }
 }
 
+@media (max-width: 480px) {
+  .reminder-card-actions .button-secondary,
+  .reminder-card-actions .button-delete,
+  .reminder-card-actions button {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .reminder-card {
     transition: none;

@@ -473,3 +473,8 @@ async function deleteInvoice(id) {
     hideProgress();
   }
 }
+
+bindAppResume(() => {
+  loadInvoicesController?.abort();
+  void loadInvoices();
+}, { match: () => Boolean(document.getElementById("invoice-table-body")) });

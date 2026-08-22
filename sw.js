@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v166";
+const CACHE_VERSION = "v172";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -99,6 +99,7 @@ const STATIC_ASSET_PATHS = [
   "js/dsrLegacyRedirect.js",
   "js/dsrFuelNav.js",
   "js/errorHandler.js",
+  "js/pwa.js",
   "js/cache.js",
   "js/appConfig.js",
   "js/utils.js",
@@ -269,10 +270,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML is versioned with CACHE_VERSION (precached on install) — cache-first
-  // avoids a background re-fetch on every navigation while online.
+  // HTML navigations: network-first so PWA resumes with a fresh shell when online.
+  // Cache is used only when offline or the network fails (avoids stale page lock-ups).
   if (isHtmlPage(url)) {
-    event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
+    if (request.mode === "navigate") {
+      event.respondWith(networkFirstHtmlStrategy(request, DYNAMIC_CACHE));
+    } else {
+      event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
+    }
     return;
   }
 
@@ -395,6 +400,24 @@ async function networkFirstStrategy(request, cacheName) {
   }
 }
 
+async function networkFirstHtmlStrategy(request, cacheName) {
+  try {
+    const networkResponse = await fetch(request);
+
+    if (networkResponse.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, networkResponse.clone());
+    }
+
+    return networkResponse;
+  } catch (error) {
+    console.log("[SW] HTML network failed, trying cache:", request.url);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+    if (cachedResponse) return cachedResponse;
+    return getOfflineFallback();
+  }
+}
+
 /**
  * Cache-first strategy - try cache, fall back to network
  * Best for static assets that rarely change
@@ -463,7 +486,7 @@ async function getOfflineFallback() {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Offline - Bishnupriya Fuels</title>
   <style>
     body {

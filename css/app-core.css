@@ -503,7 +503,7 @@ tbody tr:hover {
   box-sizing: border-box;
   text-align: right;
   padding: 0.35rem 0.5rem;
-  font-size: 0.95rem;
+  font-size: max(16px, 0.95rem);
   line-height: 1.3;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -653,9 +653,17 @@ tbody tr:hover {
   margin: 0;
 }
 
-.meter-block-head .dsr-copy-prev {
+.meter-block-head .dsr-copy-prev,
+.meter-block-head .dsr-refresh-form {
   font-size: 0.85rem;
   padding: 0.4rem 0.75rem;
+}
+
+.meter-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .meter-title {
@@ -673,6 +681,12 @@ tbody tr:hover {
   color: #9a3412;
   font-size: 0.9rem;
   line-height: 1.45;
+}
+
+.dsr-meter-locked-banner.dsr-meter-prefill-hint {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1e3a8a;
 }
 
 /* Same copy when shown under the form actions (e.g. blocked submit) */
@@ -695,6 +709,18 @@ form.dsr-meter-supervisor-locked .sheet-remarks textarea {
 form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   background-color: #fff;
   color: inherit;
+}
+
+/* Shift-synced meters: nozzles locked; dip/stock/rate stay editable */
+form.dsr-meter-shift-meters-locked input[data-dsr-supervisor-lock] {
+  background-color: #f3f4f6;
+  color: #4b5563;
+  cursor: default;
+}
+
+form.dsr-meter-shift-meters-locked .dsr-copy-prev {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .sheet-remarks label {
@@ -790,7 +816,11 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.75rem clamp(1rem, 4vw, 2rem);
+  padding:
+    max(0.75rem, var(--safe-top, 0px))
+    max(clamp(1rem, 4vw, 2rem), var(--safe-right, 0px))
+    0.75rem
+    max(clamp(1rem, 4vw, 2rem), var(--safe-left, 0px));
   background: #fef2f2;
   color: #991b1b;
   border-bottom: 1px solid #fecaca;
@@ -995,12 +1025,12 @@ form.dsr-meter-supervisor-locked .meter-stack input[name="date"] {
 
 .settings-layout .settings-sidebar .settings-nav {
   position: sticky;
-  top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
+  top: calc(var(--topbar-offset, 3.75rem) + 0.75rem);
 }
 
 .settings-nav {
   position: sticky;
-  top: calc(var(--topbar-height, 3.75rem) + 0.75rem);
+  top: calc(var(--topbar-offset, 3.75rem) + 0.75rem);
   padding: 0.75rem;
   display: flex;
   flex-direction: column;

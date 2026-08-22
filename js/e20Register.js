@@ -1283,4 +1283,18 @@
       AppError.handle(err, { target: dom.error });
     }
   }
+
+  bindAppResume(
+    () => {
+      historyLoading = false;
+      historySeq += 1;
+      const dateStr = dom.dateInput?.value || getLocalDateString();
+      if (isSettingsPanelActive("history") || location.hash === "#history") {
+        void loadHistory(true);
+      } else if (dateStr) {
+        void loadRegister(dateStr);
+      }
+    },
+    { match: () => Boolean(document.getElementById("e20-form")) }
+  );
 })();

@@ -2,27 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Attendance · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-attendance.css?v=9" />
+    <link rel="stylesheet" href="css/app-attendance.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/utils.js?v=9"></script>
+    <script defer src="js/pwa.js"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js?v=3"></script>
-    <script defer src="js/attendance.js?v=10"></script>
+    <script defer src="js/attendance.js?v=12"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -42,17 +49,17 @@
       </nav>
       <div class="settings-panels">
         <section class="settings-panel card dashboard-card is-visible" data-panel="mark">
-        <div class="panel-head card-head snapshot-head">
+        <div class="panel-head att-mark-head">
           <div>
             <h2 class="dashboard-section-title">Mark attendance</h2>
             <p class="muted panel-lead">Select a date and set status (Present / Absent / Half-day / Leave) for each staff.</p>
           </div>
-          <div class="snapshot-controls">
-            <div class="form-field">
+          <div class="att-mark-filter">
+            <div class="form-field att-date-field">
               <label for="attendance-date">Date</label>
               <input id="attendance-date" type="date" />
             </div>
-            <div class="filter-actions">
+            <div class="filter-actions att-mark-actions">
               <button type="button" id="attendance-save-all" class="button-secondary">Save all</button>
             </div>
           </div>
@@ -81,17 +88,20 @@
         </section>
 
         <section class="settings-panel card dashboard-card" data-panel="history" hidden>
-        <div class="panel-head card-head snapshot-head">
+        <div class="panel-head att-history-head">
           <div>
             <h2 class="dashboard-section-title">Attendance history</h2>
             <p class="muted panel-lead">Month grid: each column is a day; scan across a row to see that staff member’s month at a glance. Hover a cell for shift and note. Use Download CSV for a detailed list.</p>
           </div>
-          <div class="snapshot-controls">
-            <div class="form-field">
-              <label for="history-month">Month</label>
-              <input id="history-month" type="month" />
+          <div class="att-history-filter">
+            <div class="form-field att-month-field">
+              <label id="history-month-label">Month</label>
+              <div class="att-month-control" role="group" aria-labelledby="history-month-label">
+                <select id="history-month-month" aria-label="Month name"></select>
+                <select id="history-month-year" aria-label="Year"></select>
+              </div>
             </div>
-            <div class="filter-actions">
+            <div class="filter-actions att-history-actions">
               <button type="button" id="history-refresh" class="button-secondary" title="Reload this month from the server">Refresh</button>
               <button type="button" id="history-download-csv" class="button-secondary">Download CSV</button>
             </div>

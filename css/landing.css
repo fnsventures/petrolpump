@@ -5,7 +5,7 @@
   color: #f8fafc;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: var(--viewport-height, 100vh);
 }
 
 .landing-hero {
@@ -80,7 +80,11 @@
   position: relative;
   z-index: 2;
   min-height: 70vh;
-  padding: 2.5rem 5vw 3rem;
+  padding:
+    max(2.5rem, calc(1.5rem + var(--safe-top, 0px)))
+    max(5vw, var(--safe-right, 0px))
+    max(3rem, var(--safe-bottom, 0px))
+    max(5vw, var(--safe-left, 0px));
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -93,7 +97,7 @@
 
 .about-page {
   position: relative;
-  min-height: 100vh;
+  min-height: var(--viewport-height, 100vh);
   overflow: hidden;
 }
 

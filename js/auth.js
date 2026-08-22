@@ -814,34 +814,32 @@ function initNavToggle() {
   });
 
   /* Mobile: tap group label to expand/collapse that group (accordion) */
-  nav.querySelectorAll(".nav-group-label").forEach((label) => {
-    const toggleGroup = () => {
-      /* Desktop uses hover/focus-within dropdowns; accordion is mobile-only */
-      if (window.matchMedia("(min-width: 769px)").matches) return;
-      const block = label.closest(".nav-group-block");
-      if (!block) return;
-      const willOpen = !block.classList.contains("is-open");
-      nav.querySelectorAll(".nav-group-block.is-open").forEach((other) => {
-        if (other === block) return;
-        other.classList.remove("is-open");
-        other.querySelector(".nav-group-label")?.setAttribute("aria-expanded", "false");
-      });
-      block.classList.toggle("is-open", willOpen);
-      label.setAttribute("aria-expanded", String(willOpen));
-    };
+  nav.addEventListener("click", (e) => {
+    if (window.matchMedia("(min-width: 769px)").matches) return;
+    const label = e.target.closest(".nav-group-label");
+    if (!label || !nav.contains(label)) return;
+    e.preventDefault();
+    e.stopPropagation();
 
-    label.addEventListener("click", (e) => {
-      if (window.matchMedia("(min-width: 769px)").matches) return;
-      e.preventDefault();
-      e.stopPropagation();
-      toggleGroup();
+    const block = label.closest(".nav-group-block");
+    if (!block) return;
+    const willOpen = !block.classList.contains("is-open");
+    nav.querySelectorAll(".nav-group-block.is-open").forEach((other) => {
+      if (other === block) return;
+      other.classList.remove("is-open");
+      other.querySelector(".nav-group-label")?.setAttribute("aria-expanded", "false");
     });
-    label.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter" && e.key !== " ") return;
-      e.preventDefault();
-      if (window.matchMedia("(min-width: 769px)").matches) return;
-      toggleGroup();
-    });
+    block.classList.toggle("is-open", willOpen);
+    label.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  nav.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    if (window.matchMedia("(min-width: 769px)").matches) return;
+    const label = e.target.closest(".nav-group-label");
+    if (!label || !nav.contains(label)) return;
+    e.preventDefault();
+    label.click();
   });
 
   nav.querySelectorAll(".nav-group a[href]").forEach((link) => {

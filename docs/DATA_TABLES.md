@@ -14,6 +14,8 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [users](#users) | App users (login / operator roles) |
 | [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
 | [dsr_diesel](#dsr_diesel) | HSD meter readings — one row per date |
+| [meter_shift_readings](#meter_shift_readings) | Optional shift nozzle readings with staff (per date · shift · meter) |
+| [meter_shift_cash](#meter_shift_cash) | Optional staff cash + phone pay per shift (for short) |
 | [dsr](#dsr-view) | **View:** union of petrol + diesel (SELECT only) |
 | [dsr_stock](#dsr_stock-view) | **View:** computed stock reconciliation |
 | [products](#products) | Product master for lube/accessory billing |
@@ -85,7 +87,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **RLS:** SELECT only for admin; no direct INSERT/UPDATE/DELETE (only via triggers).
 
-**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
+**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
 
 ---
 
@@ -131,15 +133,65 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**Index:** `(date desc)`.
+**Index / constraint:** `unique (date)` — one MS row per business date (prevents day-closing and stock double-count).
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
 
+## meter_shift_readings
+
+**Purpose:** Optional **shift-wise** nozzle meter readings with staff assignment. Does **not** replace daily `dsr_petrol` / `dsr_diesel` (those remain the source of truth for day closing, stock, and reports).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| reading_date | date | Business date |
+| product | text | `petrol` \| `diesel` |
+| shift | text | `morning` \| `afternoon` (labels from Settings → Attendance shifts) |
+| employee_id | uuid | → employees |
+| pump_no, nozzle_no | smallint | Meter identity (P1·N1 …) |
+| opening_meter, closing_meter | numeric | Shift open/close |
+| testing_litres | numeric | Testing attributed to this nozzle |
+| remarks | text | Optional |
+| created_by | uuid | auth.users.id |
+| created_at, updated_at | timestamptz | Audit |
+
+**Unique:** `(reading_date, product, shift, pump_no, nozzle_no)`.
+
+**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`.
+
+**Ownership:** Shift save writes `meter_shift_*` (via RPC; clients have SELECT only) and refreshes meter columns on existing `dsr_*` rows via `apply_shift_aggregate_to_dsr` (never inserts stubs). Daily MS/HSD save writes dip/stock/rate on `dsr_*`. Shift meters also prefill the meter sheet via `get_shift_aggregated_daily_meters`. Daily layout is fixed **2 pumps × 2 nozzles** (matches `dsr_*` columns).
+
+**Lock:** Supervisors cannot re-edit a shift once it has nozzle rows; empty other shift stays writable. Certified day / night-cash collected locks both shifts.
+
+**UI:** Meter Reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
+
+---
+
+## meter_shift_cash
+
+**Purpose:** Cash handed over by staff for a shift. Stores **hard cash** and **phone pay** (UPI). **Total** = cash_collected + phone_pay. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| reading_date | date | Business date |
+| shift | text | `morning` \| `afternoon` |
+| employee_id | uuid | → employees |
+| cash_collected | numeric | Hard cash handed over (₹) |
+| phone_pay | numeric | PhonePe / UPI for the shift (₹) |
+| remarks | text | Optional |
+| created_by | uuid | auth.users.id |
+| created_at, updated_at | timestamptz | Audit |
+
+**Unique:** `(reading_date, shift, employee_id)`.
+
+---
+
 ## dsr_diesel
 
-**Purpose:** HSD (diesel) meter readings — same column layout as `dsr_petrol`, default `tank_capacity` typically `20KL`. One row per date.
+**Purpose:** HSD (diesel) meter readings — same column layout as `dsr_petrol`, default `tank_capacity` typically `20KL`. **One row per date** (`unique (date)`).
 
 **RLS:** Same as `dsr_petrol`.
 

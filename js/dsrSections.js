@@ -2,7 +2,9 @@
  * DSR summary section ids and copy — used by dsr.html and dsrSummary.js.
  */
 (function () {
-  const SUMMARY = new Set(["filters", "dsr-petrol", "dsr-diesel"]);
+  const REGISTER = new Set(["filters", "dsr-petrol", "dsr-diesel"]);
+  const BREAKDOWN = new Set(["by-pump", "by-shift", "by-salesman"]);
+  const SUMMARY = new Set([...REGISTER, "sales-detail", ...BREAKDOWN]);
   const YYYYMMDD = /^\d{4}-\d{2}-\d{2}$/;
 
   const SUMMARY_COPY = {
@@ -18,10 +20,34 @@
       title: "HSD (Diesel)",
       lead: "Diesel meter readings, sales, stock, and variation for the selected period.",
     },
+    "sales-detail": {
+      title: "Sales detail",
+      lead: "Staff, shift, or pump for the selected dates.",
+    },
+    "by-pump": {
+      title: "Pump sales",
+      lead: "Sale litres by pump for the selected dates.",
+    },
+    "by-shift": {
+      title: "Shift sales",
+      lead: "Morning and afternoon totals for the selected dates.",
+    },
+    "by-salesman": {
+      title: "Staff sales",
+      lead: "Staff litres, cash collected, and short for the selected dates.",
+    },
   };
 
   function getSummaryCopy(section) {
     return SUMMARY_COPY[section] || SUMMARY_COPY.filters;
+  }
+
+  function isRegisterSection(section) {
+    return REGISTER.has(section);
+  }
+
+  function isBreakdownSection(section) {
+    return BREAKDOWN.has(section);
   }
 
   function consumeDashboardDateDeepLink() {
@@ -45,9 +71,13 @@
 
   window.DsrSections = {
     SUMMARY,
+    REGISTER,
+    BREAKDOWN,
     YYYYMMDD,
     SUMMARY_COPY,
     getSummaryCopy,
+    isRegisterSection,
+    isBreakdownSection,
     consumeDashboardDateDeepLink,
     getUrlDateParam,
   };

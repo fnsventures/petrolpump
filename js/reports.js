@@ -15,6 +15,21 @@ const REPORT_CATALOG = [
         title: "Fuel Income",
         description: "Daily dealer margin: net litres × (selling − landed buying) for MS and HSD.",
       },
+      {
+        id: "pump-sales",
+        title: "Pump-wise sales",
+        description: "Sale litres by pump (P1/P2) from daily meters and shift nozzle rollups.",
+      },
+      {
+        id: "shift-sales",
+        title: "Shift-wise sales",
+        description: "Morning / afternoon sales by fuel with staff count from shift register.",
+      },
+      {
+        id: "salesman-sales",
+        title: "Salesman sales",
+        description: "Per salesman litres, expected cash, cash + phone pay total, and short from shift register.",
+      },
     ],
   },
   {
@@ -375,6 +390,8 @@ function initReportsPage() {
   });
 
   const params = new URLSearchParams(window.location.search);
+  if (params.get("start") && startInput) startInput.value = params.get("start");
+  if (params.get("end") && endInput) endInput.value = params.get("end");
   const tab = params.get("tab");
   if (tab && findReportMeta(tab)) {
     setActiveReportTab(tab);
@@ -813,6 +830,17 @@ async function loadAndRenderReports() {
     }
     cachedRange = { start: rangeStart, end: rangeEnd };
     clearReportDerivedCache();
+    try {
+      const { data: breakdown, error: brErr } = await supabaseClient.rpc("get_meter_sales_breakdown", {
+        p_start: rangeStart,
+        p_end: rangeEnd,
+      });
+      if (brErr) throw brErr;
+      if (cachedData) cachedData.meterBreakdown = breakdown || null;
+    } catch (brErr) {
+      AppError.report(brErr, { context: "loadAndRenderReports.meterBreakdown" });
+      if (cachedData) cachedData.meterBreakdown = null;
+    }
     renderActiveReport();
   } catch (err) {
     AppError.report(err, { context: "loadAndRenderReports" });
@@ -2792,10 +2820,258 @@ function renderReportHtml(reportId, data, range) {
       return renderGstr3bRegister(data, range);
     case "fuel-income":
       return renderFuelIncome(data, range);
+    case "pump-sales":
+      return renderPumpSalesReport(data, range);
+    case "shift-sales":
+      return renderShiftSalesReport(data, range);
+    case "salesman-sales":
+      return renderSalesmanSalesReport(data, range);
     case "dsr":
     default:
       return renderTankWiseDsr(data, range);
   }
+}
+
+function productFuelLabel(product) {
+  const p = normalizeProduct(product);
+  if (p === "petrol") return "MS";
+  if (p === "diesel") return "HSD";
+  return product || "—";
+}
+
+function shiftReportLabel(key) {
+  const cfg = PumpSettings.getShiftConfig?.() || {};
+  if (key === "morning") return cfg.morningName || "Morning";
+  if (key === "afternoon") return cfg.afternoonName || "Afternoon";
+  return key || "—";
+}
+
+function renderPumpSalesReport(data, range) {
+  const br = data.meterBreakdown;
+  const shiftRows = br?.by_pump || [];
+  const dailyRows = br?.daily_pump || [];
+
+  const shiftKeys = new Set(
+    shiftRows.map((r) => `${r.reading_date}|${normalizeProduct(r.product)}|${r.pump_no}`)
+  );
+  const fallback = (dailyRows || []).flatMap((r) => {
+    const date = r.date || r.reading_date;
+    const product = normalizeProduct(r.product);
+    const out = [];
+    for (const pumpNo of [1, 2]) {
+      const key = `${date}|${product}|${pumpNo}`;
+      if (shiftKeys.has(key)) continue;
+      out.push({
+        reading_date: date,
+        shift: null,
+        product,
+        pump_no: pumpNo,
+        litres: pumpNo === 1 ? Number(r.sales_pump1) || 0 : Number(r.sales_pump2) || 0,
+        net_litres: null,
+        from_daily: true,
+      });
+    }
+    return out;
+  });
+
+  const merged = [...shiftRows, ...fallback].sort((a, b) => {
+    const d = String(b.reading_date).localeCompare(String(a.reading_date));
+    if (d) return d;
+    const s = String(a.shift || "").localeCompare(String(b.shift || ""));
+    if (s) return s;
+    const p = String(a.product).localeCompare(String(b.product));
+    if (p) return p;
+    return (a.pump_no || 0) - (b.pump_no || 0);
+  });
+
+  let total = 0;
+  const body = merged
+    .map((r) => {
+      total += Number(r.litres) || 0;
+      return `<tr>
+          <td>${formatNumericDate(r.reading_date)}</td>
+          <td>${r.from_daily ? "Daily" : escapeHtml(shiftReportLabel(r.shift))}</td>
+          <td>${formatFuelBadge(productFuelLabel(r.product))}</td>
+          <td>Pump ${escapeHtml(String(r.pump_no))}</td>
+          <td class="num">${formatNumberPlain(r.litres)}</td>
+          <td class="num">${r.net_litres == null ? "—" : formatNumberPlain(r.net_litres)}</td>
+        </tr>`;
+    })
+    .join("");
+
+  if (!body) {
+    return `${reportHeader("Pump-wise sales", range.start, range.end)}
+      <p class="muted">No pump sales in this period.</p>
+      <p class="muted">Enter meters on <a href="meter-reading.html">Meter Reading</a> or shift nozzle assignments.</p>`;
+  }
+
+  return `
+    ${reportHeader("Pump-wise sales", range.start, range.end)}
+    <p class="muted report-note">Shift nozzle rollups when available; days without shift data fall back to daily P1/P2.</p>
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Shift</th>
+          <th>Fuel</th>
+          <th>Pump</th>
+          <th class="num">Sale (L)</th>
+          <th class="num">Net (L)</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4"><strong>Total</strong></td>
+          <td class="num"><strong>${formatNumberPlain(total)}</strong></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function renderShiftSalesReport(data, range) {
+  const rows = data.meterBreakdown?.by_shift || [];
+  if (!rows.length) {
+    return `${reportHeader("Shift-wise sales", range.start, range.end)}
+      <p class="muted">No shift register entries in this period.</p>
+      <p class="muted">Enter data under <a href="meter-reading.html#shift-readings">Meter Reading → Shift register</a>.</p>`;
+  }
+
+  let total = 0;
+  const body = rows
+    .map((r) => {
+      total += Number(r.litres) || 0;
+      return `<tr>
+        <td>${formatNumericDate(r.reading_date)}</td>
+        <td>${escapeHtml(shiftReportLabel(r.shift))}</td>
+        <td>${formatFuelBadge(productFuelLabel(r.product))}</td>
+        <td class="num">${formatNumberPlain(r.litres)}</td>
+        <td class="num">${formatNumberPlain(r.net_litres)}</td>
+        <td class="num">${r.staff_count ?? "—"}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `
+    ${reportHeader("Shift-wise sales", range.start, range.end)}
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Shift</th>
+          <th>Fuel</th>
+          <th class="num">Sale (L)</th>
+          <th class="num">Net (L)</th>
+          <th class="num">Staff</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3"><strong>Total</strong></td>
+          <td class="num"><strong>${formatNumberPlain(total)}</strong></td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function renderSalesmanSalesReport(data, range) {
+  const rows = data.meterBreakdown?.by_salesman || [];
+  if (!rows.length) {
+    return `${reportHeader("Salesman sales", range.start, range.end)}
+      <p class="muted">No salesman assignments in this period.</p>
+      <p class="muted">Assign staff to nozzles under <a href="meter-reading.html#shift-readings">Shift register</a>.</p>`;
+  }
+
+  const rateByDate = new Map();
+  (data.dsrRows || []).forEach((r) => {
+    const cur = rateByDate.get(r.date) || { petrol: 0, diesel: 0 };
+    const p = normalizeProduct(r.product);
+    if (p === "petrol") cur.petrol = Number(r.petrol_rate) || cur.petrol;
+    if (p === "diesel") cur.diesel = Number(r.diesel_rate) || cur.diesel;
+    rateByDate.set(r.date, cur);
+  });
+
+  let totL = 0;
+  let totExpected = 0;
+  let totCashHard = 0;
+  let totPhonePay = 0;
+  let totCash = 0;
+  let totShort = 0;
+  let hasExpected = false;
+
+  const body = rows
+    .map((r) => {
+      const rates = rateByDate.get(r.reading_date) || {};
+      const petrolNet =
+        r.petrol_net_litres != null ? Number(r.petrol_net_litres) : Number(r.petrol_litres) || 0;
+      const dieselNet =
+        r.diesel_net_litres != null ? Number(r.diesel_net_litres) : Number(r.diesel_litres) || 0;
+      const expected = petrolNet * (rates.petrol || 0) + dieselNet * (rates.diesel || 0);
+      const cash = Number(r.cash_collected) || 0;
+      const phonePay = Number(r.phone_pay) || 0;
+      const collected =
+        r.total_collected != null ? Number(r.total_collected) || 0 : cash + phonePay;
+      const canExpect = rates.petrol || rates.diesel;
+      if (canExpect) {
+        hasExpected = true;
+        totExpected += expected;
+        totShort += expected - collected;
+      }
+      totL += Number(r.total_litres) || 0;
+      totCashHard += cash;
+      totPhonePay += phonePay;
+      totCash += collected;
+      return `<tr>
+        <td>${formatNumericDate(r.reading_date)}</td>
+        <td>${escapeHtml(shiftReportLabel(r.shift))}</td>
+        <td>${escapeHtml(r.employee_name || "Staff")}</td>
+        <td class="num">${formatNumberPlain(r.petrol_litres)}</td>
+        <td class="num">${formatNumberPlain(r.diesel_litres)}</td>
+        <td class="num">${formatNumberPlain(r.total_litres)}</td>
+        <td class="num">${canExpect ? formatNumberPlain(expected) : "—"}</td>
+        <td class="num">${formatNumberPlain(cash)}</td>
+        <td class="num">${formatNumberPlain(phonePay)}</td>
+        <td class="num">${formatNumberPlain(collected)}</td>
+        <td class="num">${canExpect ? formatNumberPlain(expected - collected) : "—"}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `
+    ${reportHeader("Salesman sales", range.start, range.end)}
+    <p class="muted report-note">Short = expected − (cash + phone pay). Expected = net litres (sale − testing) × daily selling rates.</p>
+    <table class="report-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Shift</th>
+          <th>Salesman</th>
+          <th class="num">MS (L)</th>
+          <th class="num">HSD (L)</th>
+          <th class="num">Total (L)</th>
+          <th class="num">Expected ₹</th>
+          <th class="num">Cash ₹</th>
+          <th class="num">Phone ₹</th>
+          <th class="num">Total ₹</th>
+          <th class="num">Short ₹</th>
+        </tr>
+      </thead>
+      <tbody>${body}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="5"><strong>Total</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totL)}</strong></td>
+          <td class="num"><strong>${hasExpected ? formatNumberPlain(totExpected) : "—"}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totCashHard)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totPhonePay)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totCash)}</strong></td>
+          <td class="num"><strong>${hasExpected ? formatNumberPlain(totShort) : "—"}</strong></td>
+        </tr>
+      </tfoot>
+    </table>`;
 }
 
 function sanitizeReportHtmlForPrint(html) {

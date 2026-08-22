@@ -9,9 +9,70 @@ function getDashboardCacheKey(startDate, endDate) {
 
 /**
  * Generate cache key for today's sales
+ * (v2: includes shift-register fallback when no finished DSR sheet)
  */
 function getTodaySalesCacheKey(dateStr) {
-  return `today_sales_net_${dateStr}`;
+  return `today_sales_v2_${dateStr}`;
+}
+
+/**
+ * Merge finished DSR sheet rows with shift-register sales for the same date.
+ * Clean model: shifts do not insert dsr_* stubs, so snapshot must read
+ * get_shift_aggregated_daily_meters when the meter sheet is missing or has 0 sales.
+ */
+function mergeDsrRowsWithShiftSales(dsrRows, shiftAgg, dateStr) {
+  const byProduct = new Map();
+  for (const row of dsrRows ?? []) {
+    const product = normalizeProduct(row.product);
+    if (product) byProduct.set(product, { ...row, product });
+  }
+
+  for (const product of ["petrol", "diesel"]) {
+    const block = shiftAgg?.[product];
+    if (!block?.has_shifts) continue;
+    const shiftSales = Number(block.total_sales ?? 0);
+    if (!(shiftSales > 0)) continue;
+
+    const existing = byProduct.get(product);
+    const sheetSales = Number(existing?.total_sales ?? 0);
+    if (sheetSales > 0) continue;
+
+    if (existing) {
+      byProduct.set(product, {
+        ...existing,
+        total_sales: shiftSales,
+        testing: Number(block.testing ?? existing.testing ?? 0),
+        _fromShiftAggregate: true,
+      });
+    } else {
+      byProduct.set(product, {
+        product,
+        date: dateStr,
+        total_sales: shiftSales,
+        testing: Number(block.testing ?? 0),
+        petrol_rate: null,
+        diesel_rate: null,
+        _fromShiftAggregate: true,
+      });
+    }
+  }
+
+  return Array.from(byProduct.values());
+}
+
+/** Copy resolved (on-date or last-entered) rates onto rows for ₹ totals. */
+function applyResolvedRatesToSalesRows(rows, rates) {
+  return (rows ?? []).map((row) => {
+    const product = normalizeProduct(row.product);
+    const next = { ...row };
+    if (product === "petrol" && !(Number(next.petrol_rate) > 0) && Number(rates?.petrolRate) > 0) {
+      next.petrol_rate = rates.petrolRate;
+    }
+    if (product === "diesel" && !(Number(next.diesel_rate) > 0) && Number(rates?.dieselRate) > 0) {
+      next.diesel_rate = rates.dieselRate;
+    }
+    return next;
+  });
 }
 
 /**
@@ -273,7 +334,8 @@ function findLastDipStockEntry(stockData, dsrData, product, asOfDate) {
         row.date <= asOfDate &&
         normalizeProduct(row.product) === prod &&
         row.dip_stock != null &&
-        Number.isFinite(Number(row.dip_stock))
+        Number.isFinite(Number(row.dip_stock)) &&
+        Number(row.dip_stock) > 0
     )
     .sort((a, b) => b.date.localeCompare(a.date));
   if (stockRows.length) {
@@ -286,7 +348,8 @@ function findLastDipStockEntry(stockData, dsrData, product, asOfDate) {
         row.date <= asOfDate &&
         normalizeProduct(row.product) === prod &&
         row.stock != null &&
-        Number.isFinite(Number(row.stock))
+        Number.isFinite(Number(row.stock)) &&
+        Number(row.stock) > 0
     )
     .sort((a, b) => b.date.localeCompare(a.date));
   if (dsrRows.length) {
@@ -2208,7 +2271,25 @@ async function loadTodaySales(dateStr) {
       AppError.report(error, { context: "loadTodaySales", date: selectedDate });
       return null;
     }
-    return data ?? [];
+
+    const dsrRows = data ?? [];
+    const missingProductSales = ["petrol", "diesel"].some((product) => {
+      const row = dsrRows.find((r) => normalizeProduct(r.product) === product);
+      return !(Number(row?.total_sales ?? 0) > 0);
+    });
+    if (!missingProductSales) return dsrRows;
+
+    // Missing sheet sales for a product — fill from shift register rollup
+    // (clean model no longer inserts dsr_* stubs from shifts).
+    const { data: shiftAgg, error: shiftErr } = await supabaseClient.rpc(
+      "get_shift_aggregated_daily_meters",
+      { p_date: selectedDate }
+    );
+    if (shiftErr) {
+      AppError.report(shiftErr, { context: "loadTodaySales.shiftAgg", date: selectedDate });
+      return dsrRows;
+    }
+    return mergeDsrRowsWithShiftSales(dsrRows, shiftAgg, selectedDate);
   };
 
   const renderSalesBlock = async (rows) => {
@@ -2252,7 +2333,8 @@ function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate,
     return;
   }
 
-  snapshotDsrRows = data;
+  snapshotDsrRows = applyResolvedRatesToSalesRows(data, rates);
+  const fromShifts = snapshotDsrRows.some((row) => row._fromShiftAggregate);
 
   // Total quantity = net + testing (i.e. total_sales) for Daily Snapshot
   const petrolTotalQty = sumByProduct(
@@ -2279,18 +2361,21 @@ function renderTodaySales(data, selectedDate, todayStat, todayRupees, todayDate,
     todayStat.textContent = formatQuantity(totalLiters);
   }
   updateTotalSaleRupees();
-  if (todayDate) todayDate.textContent = formatSnapshotDatePill(selectedDate);
+  if (todayDate) {
+    todayDate.textContent = formatSnapshotDatePill(selectedDate, { fromShifts });
+  }
   scheduleAutoFitStats();
 }
 
-function formatSnapshotDatePill(dateStr) {
+function formatSnapshotDatePill(dateStr, { fromShifts = false } = {}) {
   const labelDate = new Date(`${dateStr}T00:00:00`);
   const short = labelDate.toLocaleDateString("en-IN", {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
-  return dateStr === getLocalDateString() ? `Today · ${short}` : short;
+  const base = dateStr === getLocalDateString() ? `Today · ${short}` : short;
+  return fromShifts ? `${base} · shifts` : base;
 }
 
 function updateTotalSaleRupees() {
@@ -2742,15 +2827,8 @@ function refreshDashboardOnVisible() {
   void loadRemindersBanners();
   if (dashboardRole === "admin") void refreshMissingBuyingPriceUi();
 }
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && document.getElementById("snapshot-card")) {
-    refreshDashboardOnVisible();
-  }
-});
-window.addEventListener("pageshow", (e) => {
-  if (e.persisted && document.getElementById("snapshot-card")) {
-    refreshDashboardOnVisible();
-  }
+bindAppResume(refreshDashboardOnVisible, {
+  match: () => Boolean(document.getElementById("snapshot-card")),
 });
 
 function applyVariationTone(element, value, isActive) {

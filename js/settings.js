@@ -363,14 +363,14 @@ function bindPumpsForm(auth) {
       await PumpSettings.savePumpSettings({
         pumps: {
           petrol: {
-            pumps: Number(read("petrol", "pumps")),
-            nozzlesPerPump: Number(read("petrol", "nozzles")),
+            pumps: Math.min(Math.max(Number(read("petrol", "pumps")) || 2, 1), 2),
+            nozzlesPerPump: Math.min(Math.max(Number(read("petrol", "nozzles")) || 2, 1), 2),
             tankLabel: read("petrol", "label")?.trim(),
             tankCapacity: read("petrol", "capacity")?.trim(),
           },
           diesel: {
-            pumps: Number(read("diesel", "pumps")),
-            nozzlesPerPump: Number(read("diesel", "nozzles")),
+            pumps: Math.min(Math.max(Number(read("diesel", "pumps")) || 2, 1), 2),
+            nozzlesPerPump: Math.min(Math.max(Number(read("diesel", "nozzles")) || 2, 1), 2),
             tankLabel: read("diesel", "label")?.trim(),
             tankCapacity: read("diesel", "capacity")?.trim(),
           },

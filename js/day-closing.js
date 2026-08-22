@@ -1801,3 +1801,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadPumpSettings();
   await initializeDayClosing();
 });
+
+bindAppResume(
+  () => {
+    if (isSettingsPanelActive("register")) {
+      void onRegisterSectionShown();
+      return;
+    }
+    if (document.getElementById("day-closing-date")) {
+      void initializeDayClosing();
+    }
+  },
+  { match: () => Boolean(document.getElementById("day-closing-date") || document.getElementById("dc-register-body")) }
+);

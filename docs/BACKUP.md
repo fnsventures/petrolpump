@@ -108,7 +108,7 @@ The frontend and GitHub Pages deploy **never** receive `PROD_DB_URL` or Google O
 | `prod-data-*.sql.gz` | Row data for schemas **`public`**, **`auth`**, **`storage`** |
 | `backup-manifest-*.txt` | Timestamp, UTC capture time, DSR row counts |
 
-**`public` schema** includes all operational data: DSR (`dsr_petrol`, `dsr_diesel`), credit, billing, expenses, day closing, HR, `pump_settings`, `invoice_documents` metadata, etc.
+**`public` schema** includes all operational data: DSR (`dsr_petrol`, `dsr_diesel`), optional shift register (`meter_shift_readings`, `meter_shift_cash`), credit, billing, expenses, day closing, HR, `pump_settings`, `invoice_documents` metadata, etc.
 
 **`auth` schema** includes user accounts (needed to restore logins). Session/token tables are not required for restore and may be omitted depending on dump behaviour.
 

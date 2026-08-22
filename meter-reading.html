@@ -2,16 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Meter Reading · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=14" />
+    <link rel="stylesheet" href="css/app-core.css?v=16" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
-    <link rel="stylesheet" href="css/app-meter-reading.css?v=13" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=31" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -19,14 +25,17 @@
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/purchaseTaxUtils.js?v=3"></script>
-    <script defer src="js/utils.js?v=11"></script>
+    <script defer src="js/utils.js?v=12"></script>
+    <script defer src="js/pwa.js"></script>
     <script defer src="js/supabase.js"></script>
     <script defer src="js/dsrQueries.js"></script>
     <script defer src="js/buyingPriceEntry.js?v=1"></script>
     <script defer src="js/dsrFuelNav.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/meterReading.js"></script>
+    <script defer src="js/staffEmployees.js?v=3"></script>
+    <script defer src="js/meterShiftReading.js?v=28"></script>
+    <script defer src="js/meterReading.js?v=30"></script>
   </head>
   <body class="meter-reading-page">
     <header class="topbar" data-build-topbar>
@@ -41,7 +50,11 @@
     <main class="settings-layout page-layout-wide" id="meter-page-main">
       <nav class="settings-nav card dsr-fuel-nav" id="meter-sidebar-nav" aria-label="Meter reading sections">
         <p class="settings-nav-title">Sections</p>
-        <button type="button" class="settings-nav-item settings-nav-item--petrol is-active" data-section="petrol">
+        <button type="button" class="settings-nav-item is-active" data-section="shift-readings">
+          <span class="settings-nav-item-label">Shift register</span>
+          <span class="settings-nav-item-meta">Meters · staff · cash</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="petrol">
           <span class="fuel-rate-icon" aria-hidden="true">MS</span>
           <span class="settings-nav-item-label">MS</span>
           <span class="settings-nav-item-meta">Petrol · 15 KL</span>
@@ -57,7 +70,7 @@
         </button>
       </nav>
       <div class="settings-panels">
-        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol is-visible" data-panel="petrol" data-product="petrol">
+        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol" data-panel="petrol" data-product="petrol" hidden>
         <div class="panel-head dsr-card-head">
           <div class="dsr-fuel-head">
             <span class="fuel-rate-icon" aria-hidden="true">MS</span>
@@ -81,7 +94,10 @@
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
-                <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
               </div>
               <table class="dsr-table meter-table compact">
                 <colgroup>
@@ -489,7 +505,10 @@
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
-                <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
               </div>
               <table class="dsr-table meter-table compact">
                 <colgroup>
@@ -873,6 +892,111 @@
       </section>
 
         <section
+          class="settings-panel card dashboard-card dsr-card is-visible shift-register-panel"
+          data-panel="shift-readings"
+          id="shift-readings"
+        >
+          <div class="panel-head dsr-card-head shift-register-head">
+            <div class="shift-register-title-block">
+              <h2 class="dashboard-section-title">Shift register</h2>
+              <p id="shift-meter-attendance-note" class="shift-attendance-note muted hidden"></p>
+            </div>
+            <div class="shift-register-meta">
+              <p id="shift-meter-context-label" class="muted shift-context-label">Select a date and shift</p>
+              <span id="shift-meter-context-status" class="shift-status-badge shift-status-badge--idle">—</span>
+            </div>
+          </div>
+
+          <div class="shift-meter-controls">
+            <div class="form-field">
+              <label for="shift-meter-date">Date</label>
+              <input id="shift-meter-date" type="date" required />
+            </div>
+            <div class="form-field">
+              <label for="shift-meter-shift">Shift</label>
+              <select id="shift-meter-shift"></select>
+            </div>
+            <div class="form-field form-field--fuel-petrol">
+              <label for="shift-meter-rate-petrol">MS ₹/L</label>
+              <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="form-field form-field--fuel-diesel">
+              <label for="shift-meter-rate-diesel">HSD ₹/L</label>
+              <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="shift-control-actions">
+              <button type="button" id="shift-meter-copy-openings" class="button-secondary">Copy openings</button>
+              <button type="button" id="shift-meter-clear" class="button-delete hidden" data-role="admin-only">Delete</button>
+            </div>
+          </div>
+
+          <p id="shift-meter-locked-banner" class="dsr-meter-locked-banner hidden" role="status" aria-live="polite"></p>
+          <p id="shift-meter-loading" class="muted shift-loading hidden">Loading shift…</p>
+          <div id="shift-meter-totals" class="shift-totals" aria-live="polite"></div>
+
+          <div id="shift-meter-edit-zone" class="shift-meter-edit-zone">
+            <section class="shift-section" aria-labelledby="shift-section-meters-title">
+              <h3 id="shift-section-meters-title" class="shift-section-title">Nozzle meters</h3>
+              <div id="shift-meter-nozzle-tables" class="shift-nozzle-blocks meter-stack"></div>
+            </section>
+
+            <section class="shift-section" aria-labelledby="shift-section-cash-title">
+              <h3 id="shift-section-cash-title" class="shift-section-title">Staff collections</h3>
+              <div id="shift-meter-staff-hint"></div>
+              <div id="shift-meter-staff-body" class="shift-staff-host">
+                <p class="muted shift-staff-empty">Assign staff to nozzles above to see cash rows.</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="shift-save-row" id="shift-save-row">
+            <div class="shift-save-notes">
+              <label for="shift-meter-remarks">Comments</label>
+              <textarea
+                id="shift-meter-remarks"
+                rows="2"
+                maxlength="500"
+                placeholder="Optional notes for this shift"
+              ></textarea>
+              <p id="shift-save-summary" class="shift-save-summary muted"></p>
+            </div>
+            <button type="button" id="shift-meter-save" class="shift-save-btn">Save shift</button>
+          </div>
+
+          <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>
+          <p id="shift-meter-error" class="error hidden" role="alert"></p>
+
+          <section class="shift-section shift-section--quiet" aria-labelledby="shift-section-sheets-title">
+            <h3 id="shift-section-sheets-title" class="shift-section-title">Daily sheets</h3>
+            <div id="shift-meter-reconcile" class="shift-reconcile" aria-live="polite"></div>
+          </section>
+
+          <section class="shift-section shift-section--history" aria-labelledby="shift-history-title">
+            <h3 id="shift-history-title" class="shift-section-title">Recent shifts</h3>
+            <div class="table-scroll">
+              <table class="dsr-table meter-history compact shift-history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Shift</th>
+                    <th>MS (L)</th>
+                    <th>HSD (L)</th>
+                    <th>Staff</th>
+                    <th>Total ₹</th>
+                    <th>View</th>
+                  </tr>
+                </thead>
+                <tbody id="shift-meter-history-body">
+                  <tr>
+                    <td colspan="7" class="muted">Loading…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section
           class="settings-panel card dashboard-card"
           data-panel="purchase-cost"
           data-role="admin-only"
@@ -903,6 +1027,34 @@
         </section>
       </div>
     </main>
+
+    <div
+      id="shift-view-overlay"
+      class="shift-view-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shift-view-title"
+    >
+      <div class="shift-view-backdrop" id="shift-view-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card shift-view-card">
+        <div class="shift-view-head">
+          <div>
+            <h2 id="shift-view-title">Shift register</h2>
+            <p id="shift-view-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="shift-view-close" id="shift-view-close" aria-label="Close">×</button>
+        </div>
+        <div id="shift-view-body" class="shift-view-body">
+          <p class="muted">Loading…</p>
+        </div>
+        <div class="shift-view-actions">
+          <button type="button" id="shift-view-open-editor" class="button-secondary">Open in editor</button>
+          <button type="button" id="shift-view-dismiss">Close</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>

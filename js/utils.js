@@ -468,6 +468,7 @@ const RECORD_DATE_KEYS = {
   dsrDiesel: "record_dsr_diesel_date",
   reminder: "record_reminder_due_date",
   e20Register: "record_e20_register_date",
+  meterShift: "record_meter_shift_date",
 };
 
 /**
@@ -1173,18 +1174,42 @@ const _scriptLoadPromises = new Map();
  * @param {string} src - URL relative to the page or absolute
  * @returns {Promise<void>}
  */
-function loadScript(src) {
+function loadScript(src, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 12000;
   const url = src.includes("://") ? src : new URL(src, window.location.href).href;
   if (_scriptLoadPromises.has(url)) return _scriptLoadPromises.get(url);
   const promise = new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+
+    const timer = setTimeout(() => {
+      finish(reject, new Error(`Timed out loading ${src}`));
+    }, timeoutMs);
+
     const existing = document.querySelector(`script[src="${url}"]`);
     if (existing) {
       if (existing.dataset.loaded === "1") {
-        resolve();
+        finish(resolve);
         return;
       }
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+      if (existing.dataset.loadFailed === "1") {
+        finish(reject, new Error(`Failed to load ${src}`));
+        return;
+      }
+      existing.addEventListener("load", () => finish(resolve), { once: true });
+      existing.addEventListener(
+        "error",
+        () => {
+          existing.dataset.loadFailed = "1";
+          finish(reject, new Error(`Failed to load ${src}`));
+        },
+        { once: true }
+      );
       return;
     }
     const el = document.createElement("script");
@@ -1194,15 +1219,131 @@ function loadScript(src) {
       "load",
       () => {
         el.dataset.loaded = "1";
-        resolve();
+        finish(resolve);
       },
       { once: true }
     );
-    el.addEventListener("error", () => reject(new Error(`Failed to load ${src}`)), { once: true });
+    el.addEventListener(
+      "error",
+      () => {
+        el.dataset.loadFailed = "1";
+        finish(reject, new Error(`Failed to load ${src}`));
+      },
+      { once: true }
+    );
     document.head.appendChild(el);
   });
   _scriptLoadPromises.set(url, promise);
   return promise;
 }
 
+/** PWA / mobile: recover from background freeze, hung fetches, and stale loading flags. */
+let appLoadGeneration = 0;
+const _appResumeHandlers = new Map();
+let _appResumeDispatchTimer = null;
+const APP_REQUEST_TIMEOUT_MS = 20000;
+
+function bumpAppLoadGeneration() {
+  appLoadGeneration += 1;
+  return appLoadGeneration;
+}
+
+function getAppLoadGeneration() {
+  return appLoadGeneration;
+}
+
+function isCancelledRequestError(err) {
+  return err?.code === "CANCELLED";
+}
+
+function isSettingsPanelActive(panelId) {
+  const panel = document.querySelector(`[data-panel="${panelId}"]`);
+  return Boolean(panel && !panel.hidden);
+}
+
+function withRequestTimeout(promise, ms, label) {
+  const timeoutMs = ms ?? APP_REQUEST_TIMEOUT_MS;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`${label || "Request"} timed out. Check your connection and try again.`));
+      }, timeoutMs);
+    }),
+  ]);
+}
+
+async function runAppRequest(label, fn, options = {}) {
+  const loadId = options.loadId ?? appLoadGeneration;
+  const runner =
+    typeof AppError !== "undefined" && AppError.withRetry
+      ? AppError.withRetry(fn, {
+          maxAttempts: options.maxAttempts ?? 2,
+          baseMs: options.baseMs ?? 400,
+          maxMs: options.maxMs ?? 2500,
+          isRetryable: options.isRetryable,
+        })
+      : fn();
+  const result = await withRequestTimeout(runner, options.timeoutMs, label);
+  if (loadId !== appLoadGeneration) {
+    const err = new Error("Request cancelled.");
+    err.code = "CANCELLED";
+    throw err;
+  }
+  return result;
+}
+
+function resetPaginationLoading(pagination, loadMoreBtn, loadMoreLabel = "Load more") {
+  if (pagination) pagination.isLoading = false;
+  if (loadMoreBtn) {
+    loadMoreBtn.disabled = false;
+    loadMoreBtn.textContent = loadMoreLabel;
+  }
+}
+
+function renderTableRetryRow(tbody, colSpan, message, onRetry) {
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="${colSpan}" class="error">${escapeHtml(message)} <button type="button" class="button-secondary button-small" data-app-retry-row>Retry</button></td></tr>`;
+  tbody.querySelector("[data-app-retry-row]")?.addEventListener("click", () => {
+    void onRetry();
+  });
+}
+
+function onAppResumeEvent() {
+  clearTimeout(_appResumeDispatchTimer);
+  _appResumeDispatchTimer = setTimeout(() => {
+    bumpAppLoadGeneration();
+    for (const { handler, match } of _appResumeHandlers.values()) {
+      try {
+        if (typeof match === "function" && !match()) continue;
+        handler();
+      } catch (err) {
+        console.warn("[AppResume] handler failed:", err);
+      }
+    }
+  }, 250);
+}
+
+function bindAppResume(handler, options = {}) {
+  if (typeof handler !== "function") return;
+  const key = options.key || handler;
+  _appResumeHandlers.set(key, {
+    handler,
+    match: options.match,
+  });
+  if (_appResumeHandlers.size === 1) {
+    window.addEventListener("bpf:app-resume", onAppResumeEvent);
+  }
+}
+
 window.loadScript = loadScript;
+window.withRequestTimeout = withRequestTimeout;
+window.runAppRequest = runAppRequest;
+window.resetPaginationLoading = resetPaginationLoading;
+window.renderTableRetryRow = renderTableRetryRow;
+window.bindAppResume = bindAppResume;
+window.bumpAppLoadGeneration = bumpAppLoadGeneration;
+window.getAppLoadGeneration = getAppLoadGeneration;
+window.isCancelledRequestError = isCancelledRequestError;
+window.isSettingsPanelActive = isSettingsPanelActive;
+window.APP_REQUEST_TIMEOUT_MS = APP_REQUEST_TIMEOUT_MS;
