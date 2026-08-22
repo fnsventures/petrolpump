@@ -1,5 +1,7 @@
 /* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion */
 
+let analysisFilterApi = null;
+
 document.addEventListener("DOMContentLoaded", async () => {
   const auth = await requireAuth({
     allowedRoles: ["admin"],
@@ -16,6 +18,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadPumpSettings();
   await initAnalysisPage();
 });
+
+bindAppResume(() => {
+  const range = analysisFilterApi?.getRange?.();
+  if (range && document.getElementById("analysis-range")) {
+    void loadAndRender(range);
+  }
+}, { match: () => Boolean(document.getElementById("analysis-range")) });
 
 function formatPercent(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
@@ -779,7 +788,7 @@ async function loadAndRender(range) {
     await loadChartJs();
 
     const { dsrData, expenseData, receiptRows, lubeSales, lubeCogs, lubeByDate, vaultByDate, categoryMap } =
-      await fetchAnalysisData(range.start, range.end);
+      await runAppRequest("Analysis data", () => fetchAnalysisData(range.start, range.end));
     const buyingContext = createBuyingRateContext(receiptRows);
     const pl = computePeriodTotals(
       dsrData,
@@ -879,7 +888,7 @@ async function initAnalysisPage() {
 
   initDocsAccordion(document.querySelector(".analysis-docs-accordion"));
 
-  const filterApi = createDateRangeFilter({
+  analysisFilterApi = createDateRangeFilter({
     storageKey: "analysis",
     ranges: ["this-week", "this-month", "last-3-months", "custom"],
     defaultRange: "this-month",
@@ -897,7 +906,7 @@ async function initAnalysisPage() {
   });
 
   const previewPeriodLabel = () => {
-    const range = filterApi?.getRange();
+    const range = analysisFilterApi?.getRange();
     if (range) updateAnalysisPeriodLabel(range);
   };
   document.getElementById("analysis-range")?.addEventListener("change", previewPeriodLabel);

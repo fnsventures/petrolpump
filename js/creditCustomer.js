@@ -1278,5 +1278,5 @@ function pickContactFromRows(rows) {
     await initCustomerView();
   }
 
-  window.CreditCustomer = { init };
+  window.CreditCustomer = { init, refresh: loadCustomerDetail };
 })();

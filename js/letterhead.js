@@ -727,7 +727,7 @@
           .select("id", { count: "exact", head: true });
         if (start) countQuery = countQuery.gte("letter_date", start);
         if (end) countQuery = countQuery.lte("letter_date", end);
-        const { count } = await countQuery;
+        const { count } = await runAppRequest("Letter history count", () => countQuery);
         historyPagination.totalCount = count || 0;
       }
 
@@ -738,11 +738,11 @@
         .range(historyPagination.offset, historyPagination.offset + PAGE_SIZE - 1);
       if (start) listQuery = listQuery.gte("letter_date", start);
       if (end) listQuery = listQuery.lte("letter_date", end);
-      const { data, error } = await listQuery;
+      const { data, error } = await runAppRequest("Letter history", () => listQuery);
 
       if (error) {
         if (reset) {
-          tbody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+          renderTableRetryRow(tbody, HISTORY_COLSPAN, AppError.getUserMessage(error), () => loadHistory(true));
         }
         AppError.report(error, { context: "letterheadLoadHistory" });
         return;
@@ -805,12 +805,14 @@
         AdminDelete.bindOnce(tbody, ".letterhead-delete-btn", deleteLetter, "letterheadDeleteBound");
       }
     } catch (err) {
-      if (reset) {
-        tbody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+      if (reset && !isCancelledRequestError(err)) {
+        renderTableRetryRow(tbody, HISTORY_COLSPAN, AppError.getUserMessage(err), () => loadHistory(true));
       }
-      AppError.report(err, { context: "letterheadLoadHistory" });
+      if (!isCancelledRequestError(err)) {
+        AppError.report(err, { context: "letterheadLoadHistory" });
+      }
     } finally {
-      historyPagination.isLoading = false;
+      resetPaginationLoading(historyPagination, loadMoreBtn);
       updateHistoryPaginationUI();
     }
   }
@@ -965,4 +967,17 @@
       loadHistory(true);
     }
   });
+
+  bindAppResume(
+    () => {
+      resetPaginationLoading(
+        historyPagination,
+        document.getElementById("letterhead-load-more")
+      );
+      if (isSettingsPanelActive("history") || location.hash === "#history") {
+        void loadHistory(true);
+      }
+    },
+    { match: () => Boolean(document.getElementById("letterhead-history-body")) }
+  );
 })();

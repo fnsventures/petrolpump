@@ -658,26 +658,30 @@ async function loadInvoices(reset = false) {
 
   try {
     if (reset) {
-      const { count } = await supabaseClient
-        .from("invoices")
-        .select("id", { count: "exact", head: true })
-        .gte("invoice_date", start)
-        .lte("invoice_date", end);
+      const { count } = await runAppRequest("Invoice count", () =>
+        supabaseClient
+          .from("invoices")
+          .select("id", { count: "exact", head: true })
+          .gte("invoice_date", start)
+          .lte("invoice_date", end)
+      );
       invoicesPagination.totalCount = count || 0;
     }
 
-    const { data, error } = await supabaseClient
-      .from("invoices")
-      .select("id, invoice_number, invoice_date, party_name, vehicle_no, total_amount, invoice_type")
-      .gte("invoice_date", start)
-      .lte("invoice_date", end)
-      .order("created_at", { ascending: false })
-      .range(invoicesPagination.offset, invoicesPagination.offset + PAGE_SIZE - 1);
+    const { data, error } = await runAppRequest("Invoices", () =>
+      supabaseClient
+        .from("invoices")
+        .select("id, invoice_number, invoice_date, party_name, vehicle_no, total_amount, invoice_type")
+        .gte("invoice_date", start)
+        .lte("invoice_date", end)
+        .order("created_at", { ascending: false })
+        .range(invoicesPagination.offset, invoicesPagination.offset + PAGE_SIZE - 1)
+    );
 
     if (error) {
-      if (reset) tbody.innerHTML = `<tr><td colspan='7' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+      if (reset) renderTableRetryRow(tbody, 7, AppError.getUserMessage(error), () => loadInvoices(true));
       AppError.report(error, { context: "loadInvoices" });
-      invoicesPagination.isLoading = false;
+      resetPaginationLoading(invoicesPagination, loadMoreBtn);
       updateInvoicesPaginationUI();
       return;
     }
@@ -746,8 +750,12 @@ async function loadInvoices(reset = false) {
     }
 
   } catch (err) {
-    if (reset) tbody.innerHTML = `<tr><td colspan='7' class='error'>${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
-    AppError.report(err, { context: "loadInvoices" });
+    if (reset && !isCancelledRequestError(err)) {
+      renderTableRetryRow(tbody, 7, AppError.getUserMessage(err), () => loadInvoices(true));
+    }
+    if (!isCancelledRequestError(err)) {
+      AppError.report(err, { context: "loadInvoices" });
+    }
   } finally {
     invoicesPagination.isLoading = false;
     updateInvoicesPaginationUI();
@@ -792,3 +800,11 @@ function updateInvoicesPaginationUI() {
     loadMoreBtn.onclick = () => loadInvoices(false);
   }
 }
+
+bindAppResume(
+  () => {
+    resetPaginationLoading(invoicesPagination, document.getElementById("invoices-load-more"));
+    if (isSettingsPanelActive("history")) void loadInvoices(true);
+  },
+  { match: () => document.body.classList.contains("billing-page") }
+);

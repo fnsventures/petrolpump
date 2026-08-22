@@ -2827,15 +2827,8 @@ function refreshDashboardOnVisible() {
   void loadRemindersBanners();
   if (dashboardRole === "admin") void refreshMissingBuyingPriceUi();
 }
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && document.getElementById("snapshot-card")) {
-    refreshDashboardOnVisible();
-  }
-});
-window.addEventListener("pageshow", (e) => {
-  if (e.persisted && document.getElementById("snapshot-card")) {
-    refreshDashboardOnVisible();
-  }
+bindAppResume(refreshDashboardOnVisible, {
+  match: () => Boolean(document.getElementById("snapshot-card")),
 });
 
 function applyVariationTone(element, value, isActive) {

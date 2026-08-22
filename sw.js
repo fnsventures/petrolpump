@@ -3,7 +3,7 @@
  * Provides offline capability, network caching, and background sync
  */
 
-const CACHE_VERSION = "v169";
+const CACHE_VERSION = "v172";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -270,10 +270,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // HTML is versioned with CACHE_VERSION (precached on install) — cache-first
-  // avoids a background re-fetch on every navigation while online.
+  // HTML navigations: network-first so PWA resumes with a fresh shell when online.
+  // Cache is used only when offline or the network fails (avoids stale page lock-ups).
   if (isHtmlPage(url)) {
-    event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
+    if (request.mode === "navigate") {
+      event.respondWith(networkFirstHtmlStrategy(request, DYNAMIC_CACHE));
+    } else {
+      event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
+    }
     return;
   }
 
@@ -393,6 +397,24 @@ async function networkFirstStrategy(request, cacheName) {
         headers: { "Content-Type": "application/json" },
       }
     );
+  }
+}
+
+async function networkFirstHtmlStrategy(request, cacheName) {
+  try {
+    const networkResponse = await fetch(request);
+
+    if (networkResponse.ok) {
+      const cache = await caches.open(cacheName);
+      cache.put(request, networkResponse.clone());
+    }
+
+    return networkResponse;
+  } catch (error) {
+    console.log("[SW] HTML network failed, trying cache:", request.url);
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+    if (cachedResponse) return cachedResponse;
+    return getOfflineFallback();
   }
 }
 
