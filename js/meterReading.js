@@ -1196,18 +1196,20 @@ async function loadReadingHistory(product, reset = false) {
     let error;
 
     if (reset) {
-      const [countRes, pageRes] = await Promise.all([
-        supabaseClient
-          .from(table)
-          .select("id", { count: "exact", head: true })
-          .or(completeOr),
-        supabaseClient
-          .from(table)
-          .select(selectCols)
-          .or(completeOr)
-          .order("date", { ascending: false })
-          .range(rangeStart, rangeEnd),
-      ]);
+      const [countRes, pageRes] = await runAppRequest(`${product} meter history`, () =>
+        Promise.all([
+          supabaseClient
+            .from(table)
+            .select("id", { count: "exact", head: true })
+            .or(completeOr),
+          supabaseClient
+            .from(table)
+            .select(selectCols)
+            .or(completeOr)
+            .order("date", { ascending: false })
+            .range(rangeStart, rangeEnd),
+        ])
+      );
 
       if (!countRes.error) {
         pagination.totalCount = countRes.count || 0;
@@ -1215,22 +1217,26 @@ async function loadReadingHistory(product, reset = false) {
       data = pageRes.data;
       error = pageRes.error || countRes.error;
     } else {
-      const pageRes = await supabaseClient
-        .from(table)
-        .select(selectCols)
-        .or(completeOr)
-        .order("date", { ascending: false })
-        .range(rangeStart, rangeEnd);
+      const pageRes = await runAppRequest(`${product} meter history`, () =>
+        supabaseClient
+          .from(table)
+          .select(selectCols)
+          .or(completeOr)
+          .order("date", { ascending: false })
+          .range(rangeStart, rangeEnd)
+      );
       data = pageRes.data;
       error = pageRes.error;
     }
 
     if (error) {
       if (reset) {
-        tbody.innerHTML = `<tr><td colspan='${colCount}' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+        renderTableRetryRow(tbody, colCount, AppError.getUserMessage(error), () =>
+          loadReadingHistory(product, true)
+        );
       }
       AppError.report(error, { context: "loadReadingHistory", product });
-      pagination.isLoading = false;
+      resetPaginationLoading(pagination, loadMoreBtn);
       updateDsrPaginationUI(product);
       return;
     }
@@ -1278,9 +1284,14 @@ async function loadReadingHistory(product, reset = false) {
       })
       .join("");
   } catch (err) {
-    if (reset) {
+    if (reset && !isCancelledRequestError(err)) {
       const errColCount = getHistoryColCount(product);
-      tbody.innerHTML = `<tr><td colspan="${errColCount}" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+      renderTableRetryRow(tbody, errColCount, AppError.getUserMessage(err), () =>
+        loadReadingHistory(product, true)
+      );
+    }
+    if (!isCancelledRequestError(err)) {
+      AppError.report(err, { context: "loadReadingHistory", product });
     }
     AppError.report(err, { context: "loadReadingHistory", product });
   } finally {
@@ -1580,3 +1591,19 @@ function setNumber(form, name, value) {
 window.MeterReadingForms = {
   refreshForShiftDate: refreshMeterFormsForShiftDate,
 };
+
+bindAppResume(
+  () => {
+    PRODUCTS.forEach((product) => {
+      resetPaginationLoading(dsrPagination[product], document.getElementById(`dsr-load-more-${product}`));
+    });
+    void Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
+    if (typeof MeterShiftReading !== "undefined" && isSettingsPanelActive("shift-readings")) {
+      void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+    }
+    if (currentUserRole === "admin" && isSettingsPanelActive("purchase-cost")) {
+      void ensurePurchaseCostLoaded();
+    }
+  },
+  { match: () => document.body.classList.contains("meter-reading-page") }
+);

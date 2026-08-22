@@ -26,6 +26,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     dateFromDashboard: DS?.consumeDashboardDateDeepLink?.() ?? null,
     urlDateParam: DS?.getUrlDateParam?.() ?? null,
   });
+
+  bindAppResume(() => {
+    void window.DsrSummary?.refreshIfNeeded?.(true);
+  }, { match: () => document.body.classList.contains("dsr-page") });
 });
 
 function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {

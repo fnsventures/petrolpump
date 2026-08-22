@@ -728,44 +728,51 @@
     const from = donePagination.offset;
     const to = from + PAGE_SIZE - 1;
 
-    const { data, error, count } = await supabaseClient
-      .from("reminders")
-      .select(DONE_SELECT, { count: "exact" })
-      .eq("status", "done")
-      .order("completed_at", { ascending: false })
-      .range(from, to);
+    try {
+      const { data, error, count } = await runAppRequest("Done reminders", () =>
+        supabaseClient
+          .from("reminders")
+          .select(DONE_SELECT, { count: "exact" })
+          .eq("status", "done")
+          .order("completed_at", { ascending: false })
+          .range(from, to)
+      );
 
-    donePagination.isLoading = false;
-    if (loadMoreBtn) loadMoreBtn.disabled = false;
-
-    if (error) {
-      AppError.report(error, { context: "tasksLoadDone" });
-      if (from === 0) {
-        const msg = `<p class="error">Could not load completed tasks.</p>`;
-        if (creditList) creditList.innerHTML = msg;
-        if (todoList) todoList.innerHTML = msg;
+      if (error) {
+        AppError.report(error, { context: "tasksLoadDone" });
+        if (from === 0) {
+          const msg = `<p class="error">Could not load completed tasks.</p>`;
+          if (creditList) creditList.innerHTML = msg;
+          if (todoList) todoList.innerHTML = msg;
+        }
+        return;
       }
-      return;
+
+      const rows = data || [];
+      donePagination.totalCount = count ?? donePagination.totalCount;
+      donePagination.offset = from + rows.length;
+      donePagination.hasMore = donePagination.offset < (donePagination.totalCount || 0);
+      doneLoadedOnce = true;
+
+      const today = getLocalDateString();
+      const { credit, todo } = TaskUtils.splitCreditTodo(rows);
+
+      appendDoneGroup(creditList, credit, { today, reset: from === 0, empty: "No completed credit calls" });
+      appendDoneGroup(todoList, todo, { today, reset: from === 0, empty: "No completed todos" });
+
+      if (infoEl) {
+        const shown = Math.min(donePagination.offset, donePagination.totalCount || 0);
+        infoEl.textContent =
+          donePagination.totalCount > 0 ? `Showing ${shown} of ${donePagination.totalCount}` : "";
+      }
+      if (loadMoreBtn) loadMoreBtn.classList.toggle("hidden", !donePagination.hasMore);
+    } catch (err) {
+      if (!isCancelledRequestError(err)) {
+        AppError.report(err, { context: "tasksLoadDone" });
+      }
+    } finally {
+      resetPaginationLoading(donePagination, loadMoreBtn);
     }
-
-    const rows = data || [];
-    donePagination.totalCount = count ?? donePagination.totalCount;
-    donePagination.offset = from + rows.length;
-    donePagination.hasMore = donePagination.offset < (donePagination.totalCount || 0);
-    doneLoadedOnce = true;
-
-    const today = getLocalDateString();
-    const { credit, todo } = TaskUtils.splitCreditTodo(rows);
-
-    appendDoneGroup(creditList, credit, { today, reset: from === 0, empty: "No completed credit calls" });
-    appendDoneGroup(todoList, todo, { today, reset: from === 0, empty: "No completed todos" });
-
-    if (infoEl) {
-      const shown = Math.min(donePagination.offset, donePagination.totalCount || 0);
-      infoEl.textContent =
-        donePagination.totalCount > 0 ? `Showing ${shown} of ${donePagination.totalCount}` : "";
-    }
-    if (loadMoreBtn) loadMoreBtn.classList.toggle("hidden", !donePagination.hasMore);
   }
 
   function appendDoneGroup(list, rows, { today, reset, empty }) {
@@ -1177,4 +1184,12 @@
       <p class="reminders-empty-copy muted">${copyHtml}</p>
     </div>`;
   }
+
+  bindAppResume(
+    () => {
+      resetPaginationLoading(donePagination, document.getElementById("reminders-done-load-more"));
+      if (isSettingsPanelActive("done")) void loadDoneTasks(true);
+    },
+    { match: () => document.body.classList.contains("reminders-page") }
+  );
 })();

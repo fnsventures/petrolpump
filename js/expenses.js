@@ -264,32 +264,36 @@ async function loadExpenses(reset = false) {
 
   try {
     if (reset) {
-      const { count, error: countError } = await applyNonSalaryExpenseFilter(
-        supabaseClient
-          .from("expenses")
-          .select("id", { count: "exact", head: true })
-          .gte("date", start)
-          .lte("date", end)
+      const { count, error: countError } = await runAppRequest("Expense count", () =>
+        applyNonSalaryExpenseFilter(
+          supabaseClient
+            .from("expenses")
+            .select("id", { count: "exact", head: true })
+            .gte("date", start)
+            .lte("date", end)
+        )
       );
       if (!countError) expensesPagination.totalCount = count || 0;
     }
 
-    const { data, error } = await applyNonSalaryExpenseFilter(
-      supabaseClient
-        .from("expenses")
-        .select("id, date, category, description, amount")
-        .gte("date", start)
-        .lte("date", end)
-        .order("date", { ascending: false })
-        .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1)
+    const { data, error } = await runAppRequest("Expenses", () =>
+      applyNonSalaryExpenseFilter(
+        supabaseClient
+          .from("expenses")
+          .select("id, date, category, description, amount")
+          .gte("date", start)
+          .lte("date", end)
+          .order("date", { ascending: false })
+          .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1)
+      )
     );
 
     if (error) {
       if (reset) {
-        tbody.innerHTML = `<tr><td colspan='${colCount}' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+        renderTableRetryRow(tbody, colCount, AppError.getUserMessage(error), () => loadExpenses(true));
       }
       AppError.report(error, { context: "loadExpenses" });
-      expensesPagination.isLoading = false;
+      resetPaginationLoading(expensesPagination, loadMoreBtn);
       updateExpensesPaginationUI();
       return;
     }
@@ -362,11 +366,13 @@ async function loadExpenses(reset = false) {
     }
 
   } catch (err) {
-    if (reset) {
+    if (reset && !isCancelledRequestError(err)) {
       const colCount = currentAuth?.role === "admin" ? 5 : 4;
-      tbody.innerHTML = `<tr><td colspan="${colCount}" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+      renderTableRetryRow(tbody, colCount, AppError.getUserMessage(err), () => loadExpenses(true));
     }
-    AppError.report(err, { context: "loadExpenses" });
+    if (!isCancelledRequestError(err)) {
+      AppError.report(err, { context: "loadExpenses" });
+    }
   } finally {
     expensesPagination.isLoading = false;
     updateExpensesPaginationUI();
@@ -426,3 +432,11 @@ function updateExpensesPaginationUI() {
     }
   }
 }
+
+bindAppResume(
+  () => {
+    resetPaginationLoading(expensesPagination, document.getElementById("expenses-load-more"));
+    if (isSettingsPanelActive("history")) void loadExpenses(true);
+  },
+  { match: () => Boolean(document.getElementById("expense-table-body")) }
+);

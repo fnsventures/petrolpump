@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, loadScript */
+/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation */
 
 const PAGE_SIZE = 25;
 
@@ -14,6 +14,28 @@ let creditPagination = {
 
 
 let isAdmin = false;
+
+function resetCreditLoadingState() {
+  resetPaginationLoading(creditPagination, document.getElementById("credit-load-more"));
+}
+
+async function runCreditRequest(label, fn) {
+  return runAppRequest(label, fn);
+}
+
+function renderCreditRetryRow(message, retryFn) {
+  renderTableRetryRow(document.getElementById("credit-table-body"), 5, message, retryFn);
+}
+
+function refreshCreditOnVisible() {
+  resetCreditLoadingState();
+  creditPagination.openCreditTotal = null;
+  if (isCustomerView()) {
+    void window.CreditCustomer?.refresh?.();
+    return;
+  }
+  refreshCreditPortfolioViews();
+}
 
 const creditState = {
   customerName: "",
@@ -287,16 +309,20 @@ async function fetchOpenCreditTotal(forceReload = false) {
   if (!forceReload && creditPagination.openCreditTotal != null) {
     return creditPagination.openCreditTotal;
   }
-  const { data, error } = await supabaseClient.rpc("get_open_credit_as_of", {
-    p_date: getLocalDateString(),
-  });
+  const { data, error } = await runCreditRequest("Outstanding total", () =>
+    supabaseClient.rpc("get_open_credit_as_of", {
+      p_date: getLocalDateString(),
+    })
+  );
   if (error) throw error;
   creditPagination.openCreditTotal = Number(data) || 0;
   return creditPagination.openCreditTotal;
 }
 
 async function fetchLedgerData() {
-  const { data: ledgerData, error } = await supabaseClient.rpc("get_credit_ledger_aggregated");
+  const { data: ledgerData, error } = await runCreditRequest("Credit ledger", () =>
+    supabaseClient.rpc("get_credit_ledger_aggregated")
+  );
   if (error) throw error;
   creditPagination.ledgerData = ledgerData ?? [];
 }
@@ -339,9 +365,11 @@ async function loadPortfolioSnapshot(forceReload = false) {
     await ensurePortfolioData(forceReload);
     refreshSummaryStats(getFilteredLedger());
   } catch (err) {
-    AppError.report(err, { context: "loadPortfolioSnapshot" });
+    if (err?.code !== "CANCELLED" && !isCancelledRequestError(err)) {
+      AppError.report(err, { context: "loadPortfolioSnapshot" });
+    }
   } finally {
-    creditPagination.isLoading = false;
+    resetCreditLoadingState();
   }
 }
 
@@ -442,7 +470,8 @@ async function loadCreditLedger(reset = false) {
       try {
         await ensurePortfolioData(reset);
       } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+        if (error?.code === "CANCELLED" || isCancelledRequestError(error)) return;
+        renderCreditRetryRow(AppError.getUserMessage(error), () => loadCreditLedger(true));
         AppError.report(error, { context: "loadCreditLedger" });
         return;
       }
@@ -451,14 +480,11 @@ async function loadCreditLedger(reset = false) {
     creditPagination.offset = reset ? 0 : creditPagination.offset;
     renderLedgerPage(true);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+    if (err?.code === "CANCELLED" || isCancelledRequestError(err)) return;
+    renderCreditRetryRow(AppError.getUserMessage(err), () => loadCreditLedger(true));
     AppError.report(err, { context: "loadCreditLedger" });
   } finally {
-    creditPagination.isLoading = false;
-    if (loadMoreBtn) {
-      loadMoreBtn.disabled = false;
-      loadMoreBtn.textContent = "Load more";
-    }
+    resetCreditLoadingState();
   }
 }
 
@@ -484,29 +510,32 @@ function updatePaginationUI(filtered = getFilteredLedger()) {
   }
 }
 
-const LIST_TAB_SCRIPTS = { overview: "js/creditOverview.js", record: "js/creditRecord.js" };
 const listTabReady = { overview: false, record: false, outstanding: false };
 
 async function ensureListTab(section) {
-  if (section === "outstanding") {
-    if (!listTabReady.outstanding) {
-      initOutstandingTab();
-      listTabReady.outstanding = true;
+  try {
+    if (section === "outstanding") {
+      if (!listTabReady.outstanding) {
+        initOutstandingTab();
+        listTabReady.outstanding = true;
+      }
+      return;
     }
-    return;
+    if (listTabReady[section]) {
+      if (section === "overview") void loadPortfolioSnapshot();
+      return;
+    }
+    if (section === "overview") {
+      window.CreditOverview?.init?.();
+      void loadPortfolioSnapshot();
+    }
+    if (section === "record") window.CreditRecord?.init?.();
+    listTabReady[section] = true;
+  } catch (err) {
+    resetCreditLoadingState();
+    AppError.report(err, { context: "ensureListTab", section });
+    AppError.showGlobalBanner(`${AppError.getUserMessage(err)} Refresh the page or try again.`);
   }
-  const src = LIST_TAB_SCRIPTS[section];
-  if (!src || listTabReady[section]) {
-    if (section === "overview") void loadPortfolioSnapshot();
-    return;
-  }
-  await loadScript(src);
-  if (section === "overview") {
-    window.CreditOverview?.init?.();
-    void loadPortfolioSnapshot();
-  }
-  if (section === "record") window.CreditRecord?.init?.();
-  listTabReady[section] = true;
 }
 
 function initOutstandingTab() {
@@ -523,9 +552,6 @@ function initOutstandingTab() {
 }
 
 async function ensureCreditCustomer() {
-  await loadScript("js/creditCustomerDetail.js");
-  await loadScript("js/printUtils.js?v=10");
-  await loadScript("js/creditCustomer.js");
   return window.CreditCustomer.init();
 }
 
@@ -562,10 +588,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   creditState.customerName = (params.get("name") || "").trim();
   creditState.customerId = params.get("id") || null;
 
-  if (isCustomerView()) {
-    await ensureCreditCustomer();
-    return;
-  }
+  try {
+    if (isCustomerView()) {
+      await ensureCreditCustomer();
+      return;
+    }
 
-  initListView();
+    initListView();
+  } catch (err) {
+    resetCreditLoadingState();
+    AppError.report(err, { context: "creditPageInit" });
+    AppError.showGlobalBanner(`${AppError.getUserMessage(err)} Pull down to refresh or reopen the page.`);
+  }
+});
+
+bindAppResume(refreshCreditOnVisible, {
+  match: () =>
+    document.body.classList.contains("credit-list-view") ||
+    document.body.classList.contains("credit-customer-view"),
 });

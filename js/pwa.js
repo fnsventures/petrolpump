@@ -294,12 +294,35 @@
     });
   }
 
+  function initAppResumeBroadcast() {
+    if (isPublicLandingPage()) return;
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        if (window.supabaseClient?.auth) {
+          void window.supabaseClient.auth.getSession().catch(() => {});
+        }
+        window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "visible" } }));
+      }
+    });
+
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        if (window.supabaseClient?.auth) {
+          void window.supabaseClient.auth.getSession().catch(() => {});
+        }
+        window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "bfcache" } }));
+      }
+    });
+  }
+
   function init() {
     try {
       injectAppMeta();
       initNetworkStatus();
       registerServiceWorker();
       initInstallPrompt();
+      initAppResumeBroadcast();
     } catch (error) {
       console.warn("[PWA] Init failed:", error);
     }
