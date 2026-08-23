@@ -42,7 +42,7 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 
    **Storage buckets** for profile and staff photos (`user-avatars`, `staff-photos`) are created by migrations `20260528300000_user_avatar.sql` and `20260528500000_employee_photo.sql`. If you applied schema manually without migrations, run those migrations too.
 
-4. **Service worker (optional):** The app registers `sw.js` for offline caching. During local dev, hard-refresh or unregister the worker if assets look stale after changes. Bump `CACHE_VERSION` in `sw.js` when shipping static asset updates.
+4. **Service worker / PWA:** `js/pwa.js` registers `sw.js` (installable app, offline shell). During local dev, hard-refresh or unregister the worker if assets look stale after changes. Bump `CACHE_VERSION` in `sw.js` when shipping static asset updates; users get a **Reload** banner for waiting workers.
 
 ### 1.3 Run a local server
 

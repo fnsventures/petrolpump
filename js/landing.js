@@ -157,7 +157,18 @@ function startRandomSlideshow(imageList) {
     }
   };
 
-  window.setInterval(showSlide, SLIDE_INTERVAL_MS);
+  let timerId = window.setInterval(showSlide, SLIDE_INTERVAL_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      clearInterval(timerId);
+      timerId = null;
+      return;
+    }
+    if (!timerId) {
+      timerId = window.setInterval(showSlide, SLIDE_INTERVAL_MS);
+    }
+  });
 }
 
 function initAboutPopupA11y() {

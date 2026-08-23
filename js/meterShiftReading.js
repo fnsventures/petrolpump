@@ -3,19 +3,20 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global supabaseClient, AppError, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms */
+/* global supabaseClient, AppError, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
   const PRODUCT_LABEL = { petrol: "MS", diesel: "HSD" };
 
   let isAdmin = false;
+  let currentUserId = null;
   let staffList = [];
   let loadGeneration = 0;
-  let cashByEmployee = new Map(); // employee_id -> { cash, phone_pay }
+  let cashByEmployee = new Map(); // employee_id -> { cash, phone_pay, credit, expense }
 
   function emptyCashEntry() {
-    return { cash: 0, phone_pay: 0 };
+    return { cash: 0, phone_pay: 0, credit: 0, expense: 0 };
   }
 
   function cashEntryFor(empId) {
@@ -24,6 +25,8 @@
     return {
       cash: Number(cur.cash) || 0,
       phone_pay: Number(cur.phone_pay) || 0,
+      credit: Number(cur.credit) || 0,
+      expense: Number(cur.expense) || 0,
     };
   }
 
@@ -32,6 +35,8 @@
     cashByEmployee.set(c.employee_id, {
       cash: Number(c.cash_collected) || 0,
       phone_pay: Number(c.phone_pay) || 0,
+      credit: Number(c.credit_amount) || 0,
+      expense: Number(c.expense_amount) || 0,
     });
   }
 
@@ -46,7 +51,9 @@
 
   function syncCashFromDom() {
     document
-      .querySelectorAll("#shift-meter-staff-body .shift-cash-collected, #shift-meter-staff-body .shift-phone-pay")
+      .querySelectorAll(
+        "#shift-meter-staff-body .shift-cash-collected, #shift-meter-staff-body .shift-phone-pay"
+      )
       .forEach((input) => {
         const empId = input.dataset.employeeId;
         if (!empId) return;
@@ -58,6 +65,58 @@
         }
         cashByEmployee.set(empId, cur);
       });
+  }
+
+  function applyLedgerTotals(totalsMap) {
+    const ids = new Set(cashByEmployee.keys());
+    if (totalsMap) {
+      totalsMap.forEach((_, empId) => ids.add(empId));
+    }
+    ids.forEach((empId) => {
+      const vals = totalsMap?.get(empId);
+      const cur = cashEntryFor(empId);
+      cur.credit = Number(vals?.credit) || 0;
+      cur.expense = Number(vals?.expense) || 0;
+      cashByEmployee.set(empId, cur);
+    });
+  }
+
+  async function refreshLedgerTotalsForCurrentShift() {
+    const date = el("shift-meter-date")?.value;
+    const shift = el("shift-meter-shift")?.value;
+    if (!date || !shift || typeof ShiftStaffLedger?.fetchTotalsByEmployee !== "function") {
+      return;
+    }
+    try {
+      const map = await ShiftStaffLedger.fetchTotalsByEmployee(date, shift);
+      applyLedgerTotals(map);
+      updateDerivedUi({ forceStaffRender: true });
+    } catch (err) {
+      AppError.report(err, { context: "MeterShiftReading.refreshLedgerTotals" });
+    }
+  }
+
+  function openStaffLedger(employeeId, employeeName, focusTab) {
+    const date = el("shift-meter-date")?.value;
+    const shift = el("shift-meter-shift")?.value;
+    if (!date || !shift || !employeeId || typeof ShiftStaffLedger?.open !== "function") return;
+    ShiftStaffLedger.open({
+      date,
+      shift,
+      employeeId,
+      employeeName,
+      readonly: supervisorReadonly,
+      isAdmin,
+      userId: currentUserId,
+      focusTab: focusTab === "expense" ? "expense" : "credit",
+      onChange: ({ employeeId: empId, credit, expense }) => {
+        const cur = cashEntryFor(empId);
+        cur.credit = Number(credit) || 0;
+        cur.expense = Number(expense) || 0;
+        cashByEmployee.set(empId, cur);
+        updateDerivedUi({ forceStaffRender: true });
+      },
+    });
   }
   let initialized = false;
   let supervisorReadonly = false;
@@ -442,6 +501,8 @@
     return {
       cash: Number(cur.cash) || 0,
       phone_pay: Number(cur.phone_pay) || 0,
+      credit: Number(cur.credit) || 0,
+      expense: Number(cur.expense) || 0,
     };
   }
 
@@ -511,9 +572,20 @@
       const entry = cashEntryFromMap(cashMap, agg.employee_id);
       const cash = entry.cash;
       const phonePay = entry.phone_pay;
-      const collected = cash + phonePay;
+      const credit = entry.credit;
+      const expense = entry.expense;
+      const collected = cash + phonePay + credit + expense;
       const short = expected != null ? expected - collected : null;
-      return { ...agg, expected, cash, phone_pay: phonePay, collected, short };
+      return {
+        ...agg,
+        expected,
+        cash,
+        phone_pay: phonePay,
+        credit,
+        expense,
+        collected,
+        short,
+      };
     });
   }
 
@@ -532,7 +604,9 @@
   function lockStaffCashInputs() {
     if (!supervisorReadonly) return;
     document
-      .querySelectorAll("#shift-meter-staff-body .shift-cash-collected, #shift-meter-staff-body .shift-phone-pay")
+      .querySelectorAll(
+        "#shift-meter-staff-body .shift-cash-collected, #shift-meter-staff-body .shift-phone-pay"
+      )
       .forEach((input) => {
         input.readOnly = true;
         input.disabled = true;
@@ -550,7 +624,7 @@
     const forceStaff = opts.forceStaffRender === true;
     const structureChanged = structureKey !== lastStaffStructureKey;
     const host = el("shift-meter-staff-body");
-    const hasTable = Boolean(host?.querySelector(".shift-staff-table"));
+    const hasTable = Boolean(host?.querySelector(".shift-staff-cards"));
 
     if (forceStaff || structureChanged || !hasTable) {
       lastStaffStructureKey = structureKey;
@@ -581,18 +655,64 @@
     return "";
   }
 
-  function staffMoneyCell(opts) {
+  function staffMoneyField(opts) {
     const { id, empId, name, kind, value, label } = opts;
     const cls = kind === "phone" ? "shift-phone-pay" : "shift-cash-collected";
-    return `<td class="num shift-staff-input-cell">
-      <label class="sr-only" for="${escapeHtml(id)}">${escapeHtml(label)} for ${escapeHtml(name)}</label>
+    return `<label class="shift-coll-field">
+      <span class="shift-coll-label">${escapeHtml(label)}</span>
       <input id="${escapeHtml(id)}" type="text" inputmode="decimal"
-        class="${cls} meter-reading"
+        class="${cls} meter-reading shift-money-input"
         data-employee-id="${escapeHtml(empId)}"
         value="${escapeHtml(moneyInputValue(value))}"
-        placeholder="0" maxlength="12" size="7"
+        placeholder="0" maxlength="14"
         aria-label="${escapeHtml(label)} for ${escapeHtml(name)}" />
-    </td>`;
+    </label>`;
+  }
+
+  function staffLedgerCombined(opts) {
+    const { empId, name, credit, expense } = opts;
+    const creditAmt = Number(credit) || 0;
+    const expenseAmt = Number(expense) || 0;
+    const hasAny = creditAmt > 0 || expenseAmt > 0;
+    const creditDisplay = creditAmt ? formatCurrency(creditAmt) : "—";
+    const expenseDisplay = expenseAmt ? formatCurrency(expenseAmt) : "—";
+    const btnText = supervisorReadonly ? "View" : hasAny ? "Edit" : "Add";
+    const title = supervisorReadonly
+      ? `View credit and expenses for ${name}`
+      : `${btnText} credit and expenses for ${name}`;
+    return `<div class="shift-coll-field shift-coll-field--ledger">
+      <span class="shift-coll-label">Credit / Exp</span>
+      <div class="shift-coll-ledger-box">
+        <div class="shift-coll-ledger-amounts">
+          <span class="shift-coll-ledger-pair">
+            <span class="shift-coll-ledger-tag">Cr</span>
+            <span class="shift-metric-credit shift-coll-ledger-amt">${creditDisplay}</span>
+          </span>
+          <span class="shift-coll-ledger-pair">
+            <span class="shift-coll-ledger-tag">Exp</span>
+            <span class="shift-metric-expense shift-coll-ledger-amt">${expenseDisplay}</span>
+          </span>
+        </div>
+        <button type="button"
+          class="shift-ledger-open shift-coll-add-btn"
+          data-employee-id="${escapeHtml(empId)}"
+          data-employee-name="${escapeHtml(name)}"
+          data-focus-tab="credit"
+          title="${escapeHtml(title)}"
+          aria-label="${escapeHtml(title)}">${escapeHtml(btnText)}</button>
+      </div>
+    </div>`;
+  }
+
+  function staffMoneyInputKind(el) {
+    if (!el?.classList) return null;
+    if (el.classList.contains("shift-phone-pay")) return "phone";
+    if (el.classList.contains("shift-cash-collected")) return "cash";
+    return null;
+  }
+
+  function staffMoneyInputClass(kind) {
+    return kind === "phone" ? "shift-phone-pay" : "shift-cash-collected";
   }
 
   function renderStaffSummary(summary, rates) {
@@ -600,80 +720,100 @@
     if (!host) return;
 
     const active = document.activeElement;
-    const activeIsCash = active?.classList?.contains("shift-cash-collected");
-    const activeIsPhone = active?.classList?.contains("shift-phone-pay");
-    const activeEmp = activeIsCash || activeIsPhone ? active.dataset.employeeId : null;
-    const activeKind = activeIsPhone ? "phone" : activeIsCash ? "cash" : null;
+    const activeKind = staffMoneyInputKind(active);
+    const activeEmp = activeKind ? active.dataset.employeeId : null;
     const selStart = activeEmp != null ? active.selectionStart : null;
     const selEnd = activeEmp != null ? active.selectionEnd : null;
 
     const hintHost = el("shift-meter-staff-hint");
-    if (hintHost) hintHost.innerHTML = renderRateHint(rates);
+    if (hintHost) {
+      const rateHint = renderRateHint(rates);
+      hintHost.innerHTML =
+        rateHint ||
+        '<p class="muted shift-rate-hint">Total = cash + phone + credit + expenses. Tap Add to enter credit or expenses.</p>';
+    }
 
     if (!summary.length) {
       host.innerHTML =
-        '<p class="muted shift-staff-empty">Assign staff to nozzles above to see cash rows.</p>';
+        '<p class="muted shift-staff-empty">Assign staff to nozzles above to see collections.</p>';
       return;
     }
 
-    const rows = summary
+    const cards = summary
       .map((s) => {
         const shortClass = shortClassFor(s.short);
         const shortText = s.short == null ? "—" : formatCurrency(s.short);
         const expectedText = s.expected == null ? "—" : formatCurrency(s.expected);
         const cashId = `shift-cash-${s.employee_id}`;
         const phoneId = `shift-phone-${s.employee_id}`;
-        return `<tr class="shift-staff-row" data-employee-id="${escapeHtml(s.employee_id)}">
-          <td class="shift-staff-name-cell">
-            <span class="shift-staff-name">${escapeHtml(s.name)}</span>
-            <span class="muted shift-meter-list">${escapeHtml(s.meters.join(" · "))}</span>
-          </td>
-          <td class="num"><span class="shift-metric-ms">${formatQuantity(s.petrol_litres)}</span></td>
-          <td class="num"><span class="shift-metric-hsd">${formatQuantity(s.diesel_litres)}</span></td>
-          <td class="num"><span class="calc-field shift-metric-expected">${expectedText}</span></td>
-          ${staffMoneyCell({
-            id: cashId,
-            empId: s.employee_id,
-            name: s.name,
-            kind: "cash",
-            value: s.cash,
-            label: "Cash",
-          })}
-          ${staffMoneyCell({
-            id: phoneId,
-            empId: s.employee_id,
-            name: s.name,
-            kind: "phone",
-            value: s.phone_pay,
-            label: "Phone pay",
-          })}
-          <td class="num"><strong class="calc-field shift-metric-total">${formatCurrency(s.collected || 0)}</strong></td>
-          <td class="num shift-staff-short ${shortClass}"><strong class="shift-metric-short">${shortText}</strong></td>
-        </tr>`;
+        const initial = (s.name || "?").trim().charAt(0).toUpperCase() || "?";
+        return `<article class="shift-staff-card shift-staff-row" data-employee-id="${escapeHtml(s.employee_id)}">
+          <div class="shift-coll-identity">
+            <span class="shift-coll-avatar" aria-hidden="true">${escapeHtml(initial)}</span>
+            <div class="shift-coll-who">
+              <div class="shift-coll-name-row">
+                <h4 class="shift-staff-name">${escapeHtml(s.name)}</h4>
+                <span class="shift-coll-due" title="Expected collection">
+                  <span class="shift-coll-due-label">Due</span>
+                  <strong class="shift-metric-expected">${expectedText}</strong>
+                </span>
+              </div>
+              <p class="muted shift-meter-list">${escapeHtml(s.meters.join(" · "))}</p>
+              <div class="shift-coll-meta">
+                <span><span class="muted">MS</span> <strong class="shift-metric-ms">${formatQuantity(s.petrol_litres)}</strong></span>
+                <span><span class="muted">HSD</span> <strong class="shift-metric-hsd">${formatQuantity(s.diesel_litres)}</strong></span>
+              </div>
+            </div>
+          </div>
+          <div class="shift-coll-money">
+            ${staffMoneyField({
+              id: cashId,
+              empId: s.employee_id,
+              name: s.name,
+              kind: "cash",
+              value: s.cash,
+              label: "Cash",
+            })}
+            ${staffMoneyField({
+              id: phoneId,
+              empId: s.employee_id,
+              name: s.name,
+              kind: "phone",
+              value: s.phone_pay,
+              label: "Phone",
+            })}
+            ${staffLedgerCombined({
+              empId: s.employee_id,
+              name: s.name,
+              credit: s.credit,
+              expense: s.expense,
+            })}
+          </div>
+          <div class="shift-coll-foot">
+            <div class="shift-coll-result">
+              <span class="muted">Total</span>
+              <strong class="shift-metric-total">${formatCurrency(s.collected || 0)}</strong>
+            </div>
+            <div class="shift-coll-result shift-staff-short ${shortClass}">
+              <span class="muted">Short</span>
+              <strong class="shift-metric-short">${shortText}</strong>
+            </div>
+          </div>
+        </article>`;
       })
       .join("");
 
-    host.innerHTML = `<div class="table-scroll shift-staff-scroll">
-      <table class="dsr-table shift-staff-table compact">
-        <thead>
-          <tr>
-            <th scope="col">Staff</th>
-            <th scope="col" class="num">MS (L)</th>
-            <th scope="col" class="num">HSD (L)</th>
-            <th scope="col" class="num">Expected</th>
-            <th scope="col" class="num">Cash</th>
-            <th scope="col" class="num">Phone</th>
-            <th scope="col" class="num">Total</th>
-            <th scope="col" class="num">Short</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+    host.innerHTML = `<div class="shift-staff-cards">${cards}</div>`;
+
+    host.querySelectorAll(".shift-ledger-open").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        openStaffLedger(btn.dataset.employeeId, btn.dataset.employeeName, btn.dataset.focusTab);
+      });
+    });
 
     if (activeEmp && activeKind) {
       const sel = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(activeEmp) : activeEmp;
-      const cls = activeKind === "phone" ? "shift-phone-pay" : "shift-cash-collected";
+      const cls = staffMoneyInputClass(activeKind);
       const restored = host.querySelector(`.${cls}[data-employee-id="${sel}"]`);
       if (restored) {
         restored.focus();
@@ -690,7 +830,12 @@
 
   function patchStaffSummary(summary, rates) {
     const hintHost = el("shift-meter-staff-hint");
-    if (hintHost) hintHost.innerHTML = renderRateHint(rates);
+    if (hintHost) {
+      const rateHint = renderRateHint(rates);
+      hintHost.innerHTML =
+        rateHint ||
+        '<p class="muted shift-rate-hint">Total = cash + phone + credit + expenses. Tap Add to enter credit or expenses.</p>';
+    }
 
     summary.forEach((s) => {
       const sel = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(s.employee_id) : s.employee_id;
@@ -706,11 +851,26 @@
       if (hsd) hsd.textContent = formatQuantity(s.diesel_litres);
       const expected = row.querySelector(".shift-metric-expected");
       if (expected) expected.textContent = s.expected == null ? "—" : formatCurrency(s.expected);
+      const credit = row.querySelector(".shift-metric-credit");
+      if (credit) {
+        const has = Number(s.credit) > 0;
+        credit.textContent = has ? formatCurrency(s.credit) : "—";
+      }
+      const expense = row.querySelector(".shift-metric-expense");
+      if (expense) {
+        const has = Number(s.expense) > 0;
+        expense.textContent = has ? formatCurrency(s.expense) : "—";
+      }
+      const ledgerBtn = row.querySelector(".shift-ledger-open");
+      if (ledgerBtn && !supervisorReadonly) {
+        const hasAny = Number(s.credit) > 0 || Number(s.expense) > 0;
+        ledgerBtn.textContent = hasAny ? "Edit" : "Add";
+      }
       const total = row.querySelector(".shift-metric-total");
       if (total) total.textContent = formatCurrency(s.collected || 0);
       const shortCell = row.querySelector(".shift-staff-short");
       if (shortCell) {
-        shortCell.className = `num shift-staff-short ${shortClassFor(s.short)}`;
+        shortCell.className = `shift-coll-result shift-staff-short ${shortClassFor(s.short)}`;
         const shortVal = shortCell.querySelector(".shift-metric-short");
         if (shortVal) shortVal.textContent = s.short == null ? "—" : formatCurrency(s.short);
       }
@@ -769,6 +929,8 @@
       (acc, s) => {
         acc.cash += Number(s.cash) || 0;
         acc.phone += Number(s.phone_pay) || 0;
+        acc.credit += Number(s.credit) || 0;
+        acc.expense += Number(s.expense) || 0;
         acc.collected += Number(s.collected) || 0;
         if (s.short != null) {
           acc.short += s.short;
@@ -776,7 +938,7 @@
         }
         return acc;
       },
-      { cash: 0, phone: 0, collected: 0, short: 0, hasShort: false }
+      { cash: 0, phone: 0, credit: 0, expense: 0, collected: 0, short: 0, hasShort: false }
     );
     const totalCash = totalCashHard.collected;
     const totalShort = totalCashHard.short;
@@ -789,15 +951,17 @@
           : "shift-short--balanced"
       : "";
 
+    const inParts = summary.length
+      ? `Cash ${formatCurrency(totalCashHard.cash)} · Phone ${formatCurrency(totalCashHard.phone)} · Credit ${formatCurrency(totalCashHard.credit)} · Exp ${formatCurrency(totalCashHard.expense)}`
+      : "";
+
     host.innerHTML = `
       <div class="shift-totals-strip">
         <span class="shift-strip-item shift-total--petrol">MS <strong>${formatQuantity(sales.petrol)} L</strong></span>
         <span class="shift-strip-item shift-total--diesel">HSD <strong>${formatQuantity(sales.diesel)} L</strong></span>
         <span class="shift-strip-item">Expected <strong>${expected != null ? formatCurrency(expected) : "—"}</strong></span>
-        <span class="shift-strip-item">In <strong>${summary.length ? formatCurrency(totalCash) : "—"}</strong>${
-          summary.length
-            ? ` <span class="muted">(${formatCurrency(totalCashHard.cash)} + ${formatCurrency(totalCashHard.phone)})</span>`
-            : ""
+        <span class="shift-strip-item">Total <strong>${summary.length ? formatCurrency(totalCash) : "—"}</strong>${
+          summary.length ? ` <span class="muted shift-strip-breakdown">${inParts}</span>` : ""
         }</span>
         <span class="shift-strip-item ${shortClass}">Short <strong>${hasShort ? formatCurrency(totalShort) : "—"}</strong></span>
       </div>`;
@@ -1151,6 +1315,16 @@
       (data?.cash || []).forEach(setCashFromRow);
       applyShiftRemarks(data?.cash);
 
+      try {
+        if (typeof ShiftStaffLedger?.fetchTotalsByEmployee === "function") {
+          const ledgerMap = await ShiftStaffLedger.fetchTotalsByEmployee(date, shift);
+          if (gen !== loadGeneration) return;
+          applyLedgerTotals(ledgerMap);
+        }
+      } catch (ledgerErr) {
+        AppError.report(ledgerErr, { context: "MeterShiftReading.loadShift.ledger" });
+      }
+
       const [appliedRates, resolved] = await Promise.all([
         applyShiftRates(data?.rates),
         resolveOpeningSuggestions(date, shift, data),
@@ -1314,6 +1488,7 @@
 
     const staffIds = new Set(nozzles.map((r) => r.employee_id));
     const remarks = (el("shift-meter-remarks")?.value || "").trim().slice(0, 500);
+    // credit/expense are ledger-owned; server ignores client values and re-syncs from ledger
     const cash = Array.from(staffIds).map((employee_id) => {
       const entry = cashEntryFor(employee_id);
       return {
@@ -1532,6 +1707,8 @@
       cashByEmp.set(c.employee_id, {
         cash: Number(c.cash_collected) || 0,
         phone_pay: Number(c.phone_pay) || 0,
+        credit: Number(c.credit_amount) || 0,
+        expense: Number(c.expense_amount) || 0,
       });
     });
 
@@ -1560,6 +1737,8 @@
     }
     const totalCashHard = summary.reduce((acc, s) => acc + (Number(s.cash) || 0), 0);
     const totalPhonePay = summary.reduce((acc, s) => acc + (Number(s.phone_pay) || 0), 0);
+    const totalCredit = summary.reduce((acc, s) => acc + (Number(s.credit) || 0), 0);
+    const totalExpense = summary.reduce((acc, s) => acc + (Number(s.expense) || 0), 0);
     const totalCash = summary.reduce((acc, s) => acc + (Number(s.collected) || 0), 0);
     const totalShort = summary.reduce((acc, s) => acc + (s.short != null ? s.short : 0), 0);
     const hasShort = summary.some((s) => s.short != null);
@@ -1575,6 +1754,8 @@
       expected,
       totalCashHard,
       totalPhonePay,
+      totalCredit,
+      totalExpense,
       totalCash,
       totalShort,
       hasShort,
@@ -1591,6 +1772,8 @@
       expected,
       totalCashHard,
       totalPhonePay,
+      totalCredit,
+      totalExpense,
       totalCash,
       totalShort,
       hasShort,
@@ -1621,7 +1804,7 @@
         <div class="shift-view-kpi">
           <span>Total in</span>
           <strong>${formatCurrency(totalCash)}</strong>
-          <em class="muted">${formatCurrency(totalCashHard)} cash · ${formatCurrency(totalPhonePay)} phone</em>
+          <em class="muted">${formatCurrency(totalCashHard)} cash · ${formatCurrency(totalPhonePay)} phone · ${formatCurrency(totalCredit)} credit · ${formatCurrency(totalExpense)} exp</em>
         </div>
         <div class="shift-view-kpi ${shortClass}">
           <span>Net short</span>
@@ -1696,6 +1879,8 @@
                 <div><span class="muted">Expected</span><strong>${s.expected == null ? "—" : formatCurrency(s.expected)}</strong></div>
                 <div><span class="muted">Cash</span><strong>${formatCurrency(s.cash || 0)}</strong></div>
                 <div><span class="muted">Phone pay</span><strong>${formatCurrency(s.phone_pay || 0)}</strong></div>
+                <div><span class="muted">Credit</span><strong>${formatCurrency(s.credit || 0)}</strong></div>
+                <div><span class="muted">Expenses</span><strong>${formatCurrency(s.expense || 0)}</strong></div>
                 <div><span class="muted">Total</span><strong>${formatCurrency(s.collected || 0)}</strong></div>
                 <div class="${shortClass}"><span class="muted">Short</span><strong>${s.short == null ? "—" : formatCurrency(s.short)}</strong></div>
               </div>
@@ -1828,7 +2013,7 @@
           .order("reading_date", { ascending: false }),
         supabaseClient
           .from("meter_shift_cash")
-          .select("reading_date, shift, employee_id, cash_collected, phone_pay")
+          .select("reading_date, shift, employee_id, cash_collected, phone_pay, credit_amount, expense_amount")
           .gte("reading_date", start)
           .lte("reading_date", end),
       ]);
@@ -1851,6 +2036,8 @@
             staff: new Set(),
             cash: 0,
             phone_pay: 0,
+            credit: 0,
+            expense: 0,
           };
           groups.set(key, g);
         }
@@ -1871,11 +2058,15 @@
             staff: new Set(),
             cash: 0,
             phone_pay: 0,
+            credit: 0,
+            expense: 0,
           };
           groups.set(key, g);
         }
         g.cash += Number(c.cash_collected) || 0;
         g.phone_pay += Number(c.phone_pay) || 0;
+        g.credit += Number(c.credit_amount) || 0;
+        g.expense += Number(c.expense_amount) || 0;
         if (c.employee_id) g.staff.add(c.employee_id);
       }
 
@@ -1907,7 +2098,11 @@
 
       tbody.innerHTML = rows
         .map((g) => {
-          const total = (Number(g.cash) || 0) + (Number(g.phone_pay) || 0);
+          const total =
+            (Number(g.cash) || 0) +
+            (Number(g.phone_pay) || 0) +
+            (Number(g.credit) || 0) +
+            (Number(g.expense) || 0);
           const deleteCell = isAdmin
             ? `<td class="table-actions">${AdminDelete.buttonHtml({
                 selector: "shift-history-delete",
@@ -1922,7 +2117,7 @@
             <td class="num">${formatQuantity(g.petrol)}</td>
             <td class="num">${formatQuantity(g.diesel)}</td>
             <td class="num">${g.staff.size}</td>
-            <td class="num" title="Cash ${formatCurrency(g.cash)} · Phone ${formatCurrency(g.phone_pay)}">${formatCurrency(total)}</td>
+            <td class="num" title="Cash ${formatCurrency(g.cash)} · Phone ${formatCurrency(g.phone_pay)} · Credit ${formatCurrency(g.credit)} · Exp ${formatCurrency(g.expense)}">${formatCurrency(total)}</td>
             <td class="table-actions">
               <button type="button" class="button-secondary shift-history-view"
                 data-date="${escapeHtml(g.date)}" data-shift="${escapeHtml(g.shift)}"
@@ -2029,6 +2224,7 @@
       return;
     }
     isAdmin = opts.isAdmin === true;
+    currentUserId = opts.userId || null;
     const clearBtn = el("shift-meter-clear");
     if (clearBtn) clearBtn.classList.toggle("hidden", !isAdmin);
 
@@ -2042,6 +2238,7 @@
     fillShiftSelect();
     applyUrlParams();
     bindEvents();
+    if (typeof ShiftStaffLedger?.init === "function") ShiftStaffLedger.init();
     await loadStaff();
     initialized = true;
     await loadShift();

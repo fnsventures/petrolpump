@@ -274,10 +274,18 @@ docs/
 
 **Analysis sections:** `setup` (date range), `metrics` (KPI cards), `charts` (sales, profit, fuel/revenue mix via Chart.js CDN), `insights` (text summaries). Printable P&amp;L is on **Reports** (`pl` report) and dashboard **P&amp;L** section — Analysis is a broader BI view.
 
-### 5.4 Caching and offline
+### 5.4 Caching and offline (PWA)
 
-- **`sw.js`:** Precaches HTML/CSS/JS/fonts (versioned `CACHE_VERSION`, currently `v102`) and applies network-first caching for Supabase REST/Functions URLs. Sensitive financial tables and RPCs are never cached. Works for prod root and `/staging/` scope.
-- **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` (role, reports, settings, etc.).
+- **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
+- **`sw.js` (`CACHE_VERSION` `v174`):** Lean app-shell precache + runtime LRU caches. Strategies:
+  - HTML navigations: **network-first** with a short timeout → cached page → `offline.html`
+  - Static JS/CSS/fonts/images: **cache-first** (version bump clears old caches)
+  - Supabase REST: network-only for sensitive/financial tables & RPCs; short TTL network-first for other reference GETs
+  - Updates stay in **waiting** until the user clicks Reload (`SKIP_WAITING`) so tabs never mix shell versions mid-session; first install activates immediately
+  - Navigation Preload enabled when the browser supports it
+- **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume`
+- **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` (role, reports, settings, etc.) — complementary to the SW, not a substitute for it
+- Scope works for prod root and `/staging/`
 
 ---
 

@@ -137,8 +137,12 @@
       petrolNet * (rates.petrol || 0) + dieselNet * (rates.diesel || 0);
     const cash = Number(r.cash_collected) || 0;
     const phonePay = Number(r.phone_pay) || 0;
+    const credit = Number(r.credit_amount) || 0;
+    const expense = Number(r.expense_amount) || 0;
     const collected =
-      r.total_collected != null ? Number(r.total_collected) || 0 : cash + phonePay;
+      r.total_collected != null
+        ? Number(r.total_collected) || 0
+        : cash + phonePay + credit + expense;
     const hasRates = Boolean(rates.petrol || rates.diesel);
     const short = hasRates ? expected - collected : null;
     let kind = "";
@@ -147,7 +151,7 @@
       else if (short < -0.5) kind = "surplus";
       else kind = "ok";
     }
-    return { cash, phonePay, collected, short, kind, hasRates };
+    return { cash, phonePay, credit, expense, collected, short, kind, hasRates };
   }
 
   function dailyPumpFallbackRows(dailyPump, skipKeys) {
@@ -363,6 +367,8 @@
     let sumHsd = 0;
     let sumCash = 0;
     let sumPhone = 0;
+    let sumCredit = 0;
+    let sumExpense = 0;
     let sumShort = 0;
     let shortCount = 0;
     let shortageRows = 0;
@@ -376,6 +382,8 @@
         sumHsd += hsd;
         sumCash += m.cash;
         sumPhone += m.phonePay;
+        sumCredit += m.credit;
+        sumExpense += m.expense;
         if (m.kind === "shortage") shortageRows += 1;
         if (m.short != null) {
           sumShort += m.short;
@@ -395,6 +403,8 @@
           <td class="num">${formatQuantity(hsd)}</td>
           <td class="num">${money(m.cash)}</td>
           <td class="num">${money(m.phonePay)}</td>
+          <td class="num">${money(m.credit)}</td>
+          <td class="num">${money(m.expense)}</td>
           <td class="num ${shortClass}">${m.short == null ? "—" : money(m.short)}</td>
         </tr>`;
       })
@@ -421,6 +431,8 @@
               <th class="num">HSD (L)</th>
               <th class="num">Cash ₹</th>
               <th class="num">Phone ₹</th>
+              <th class="num">Credit ₹</th>
+              <th class="num">Exp ₹</th>
               <th class="num">Short ₹</th>
             </tr>
           </thead>
@@ -432,6 +444,8 @@
               <td class="num">${formatQuantity(sumHsd)}</td>
               <td class="num">${money(sumCash)}</td>
               <td class="num">${money(sumPhone)}</td>
+              <td class="num">${money(sumCredit)}</td>
+              <td class="num">${money(sumExpense)}</td>
               <td class="num">${shortCount ? money(sumShort) : "—"}</td>
             </tr>
           </tfoot>

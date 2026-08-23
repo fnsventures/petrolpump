@@ -4,6 +4,7 @@
  */
 (function () {
   const CACHE_PREFIX = "bpf_cache_";
+  const AUTH_KEY_HINT = "bpf_sb_auth_key";
 
   function normalizeEmail(email) {
     return (email || "").toLowerCase().trim();
@@ -11,19 +12,40 @@
 
   let cachedAuthEmail;
 
+  function emailFromAuthRaw(raw) {
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const user = parsed?.user ?? parsed?.currentSession?.user;
+    return user?.email ? normalizeEmail(user.email) : null;
+  }
+
   function getSupabaseAuthEmail() {
     if (cachedAuthEmail !== undefined) return cachedAuthEmail;
     try {
+      // Prefer remembered key — avoids O(n) localStorage scan on every page.
+      const hinted = localStorage.getItem(AUTH_KEY_HINT);
+      if (hinted) {
+        try {
+          const email = emailFromAuthRaw(localStorage.getItem(hinted));
+          if (email) {
+            cachedAuthEmail = email;
+            return cachedAuthEmail;
+          }
+        } catch {
+          /* fall through to scan */
+        }
+      }
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (!key || !key.startsWith("sb-") || !key.endsWith("-auth-token")) continue;
-        const raw = localStorage.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
-        const user = parsed?.user ?? parsed?.currentSession?.user;
-        const email = user?.email;
+        const email = emailFromAuthRaw(localStorage.getItem(key));
         if (email) {
-          cachedAuthEmail = normalizeEmail(email);
+          try {
+            localStorage.setItem(AUTH_KEY_HINT, key);
+          } catch {
+            /* ignore */
+          }
+          cachedAuthEmail = email;
           return cachedAuthEmail;
         }
       }

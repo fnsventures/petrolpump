@@ -12,12 +12,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/base.css?v=3" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
     <link rel="stylesheet" href="css/app-core.css?v=16" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
-    <link rel="stylesheet" href="css/app-meter-reading.css?v=31" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=45" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -34,8 +34,9 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/staffEmployees.js?v=3"></script>
-    <script defer src="js/meterShiftReading.js?v=28"></script>
-    <script defer src="js/meterReading.js?v=30"></script>
+    <script defer src="js/shiftStaffLedger.js?v=4"></script>
+    <script defer src="js/meterShiftReading.js?v=40"></script>
+    <script defer src="js/meterReading.js?v=31"></script>
   </head>
   <body class="meter-reading-page">
     <header class="topbar" data-build-topbar>
@@ -1051,6 +1052,32 @@
         <div class="shift-view-actions">
           <button type="button" id="shift-view-open-editor" class="button-secondary">Open in editor</button>
           <button type="button" id="shift-view-dismiss">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="shift-ledger-overlay"
+      class="shift-view-overlay shift-ledger-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shift-ledger-title"
+    >
+      <div class="shift-view-backdrop" id="shift-ledger-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card shift-view-card shift-ledger-card">
+        <div class="shift-view-head">
+          <div>
+            <h2 id="shift-ledger-title">Staff</h2>
+            <p id="shift-ledger-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="shift-view-close" id="shift-ledger-close" aria-label="Close">×</button>
+        </div>
+        <div id="shift-ledger-body" class="shift-view-body shift-ledger-body">
+          <p class="muted">Loading…</p>
+        </div>
+        <div class="shift-view-actions">
+          <button type="button" id="shift-ledger-dismiss">Done</button>
         </div>
       </div>
     </div>
