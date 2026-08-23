@@ -1,13 +1,22 @@
 /**
- * PWA shell: manifest meta, service worker, install prompt, offline/update banners.
+ * Standard PWA client lifecycle for BPFuels.
+ * - Install prompt (beforeinstallprompt)
+ * - Controlled SW updates (waiting worker → user Reload → SKIP_WAITING → reload)
+ * - Offline / online status
+ * - Throttled app-resume for ops pages (desktop focus thrash safe)
  */
 (function () {
   const INSTALL_DISMISS_KEY = "bpf-pwa-install-dismissed";
   const THEME_COLOR = "#0070c0";
   const APP_NAME = "Bishnupriya Fuels";
   const SHORT_NAME = "BPFuels";
+  const UPDATE_CHECK_MIN_MS = 60 * 60 * 1000;
 
   let deferredInstallPrompt = null;
+  let registrationRef = null;
+  let pendingUpdateReload = false;
+  let refreshing = false;
+  let lastUpdateCheckAt = 0;
 
   function readStorage(key) {
     try {
@@ -36,7 +45,7 @@
 
   function isPublicLandingPage() {
     const file = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
-    return file === "index.html" || file === "about.html";
+    return file === "index.html" || file === "about.html" || file === "offline.html";
   }
 
   function ensureViewportMeta() {
@@ -86,6 +95,13 @@
       capable.name = "apple-mobile-web-app-capable";
       capable.content = "yes";
       document.head.appendChild(capable);
+    }
+
+    if (!document.querySelector('meta[name="mobile-web-app-capable"]')) {
+      const mobileCapable = document.createElement("meta");
+      mobileCapable.name = "mobile-web-app-capable";
+      mobileCapable.content = "yes";
+      document.head.appendChild(mobileCapable);
     }
 
     if (!document.querySelector('meta[name="apple-mobile-web-app-title"]')) {
@@ -141,6 +157,23 @@
 
     banner.append(text, reloadBtn, dismissBtn);
     document.body.insertBefore(banner, document.body.firstChild);
+  }
+
+  function promptWaitingWorker(worker) {
+    if (!worker) return;
+    showAppUpdateBanner(() => {
+      pendingUpdateReload = true;
+      worker.postMessage({ type: "SKIP_WAITING" });
+    });
+  }
+
+  function trackInstallingWorker(worker) {
+    if (!worker) return;
+    worker.addEventListener("statechange", () => {
+      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        promptWaitingWorker(worker);
+      }
+    });
   }
 
   function showInstallBanner() {
@@ -243,36 +276,55 @@
     update();
   }
 
+  async function checkForUpdates(force = false) {
+    if (!registrationRef) return;
+    const now = Date.now();
+    if (!force && now - lastUpdateCheckAt < UPDATE_CHECK_MIN_MS) return;
+    lastUpdateCheckAt = now;
+    try {
+      await registrationRef.update();
+    } catch {
+      /* offline or blocked */
+    }
+  }
+
   function registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return;
 
-    window.addEventListener("load", async () => {
+    const start = async () => {
       try {
         const swUrl = new URL("sw.js", window.location.href);
-        const registration = await navigator.serviceWorker.register(swUrl.href);
-        console.log("[PWA] Service Worker registered:", registration.scope);
+        const registration = await navigator.serviceWorker.register(swUrl.href, {
+          updateViaCache: "none",
+        });
+        registrationRef = registration;
+
+        // Update already waiting from a previous visit.
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          promptWaitingWorker(registration.waiting);
+        }
 
         registration.addEventListener("updatefound", () => {
-          const newWorker = registration.installing;
-          if (!newWorker) return;
-
-          newWorker.addEventListener("statechange", () => {
-            if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-              console.log("[PWA] New Service Worker available");
-              showAppUpdateBanner(() => {
-                newWorker.postMessage({ type: "SKIP_WAITING" });
-                window.location.reload();
-              });
-            }
-          });
+          trackInstallingWorker(registration.installing);
         });
+
+        void checkForUpdates(true);
       } catch (error) {
         console.warn("[PWA] Service Worker registration failed:", error);
       }
-    });
+    };
 
+    if (document.readyState === "complete") {
+      void start();
+    } else {
+      document.addEventListener("DOMContentLoaded", () => void start(), { once: true });
+    }
+
+    // Reload exactly once after the user accepts an update.
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      console.log("[PWA] Service Worker controller changed");
+      if (!pendingUpdateReload || refreshing) return;
+      refreshing = true;
+      window.location.reload();
     });
   }
 
@@ -297,22 +349,42 @@
   function initAppResumeBroadcast() {
     if (isPublicLandingPage()) return;
 
+    let lastResumeAt = 0;
+    const MIN_RESUME_GAP_MS = 5000;
+    let hiddenAt = 0;
+
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        if (window.supabaseClient?.auth) {
-          void window.supabaseClient.auth.getSession().catch(() => {});
-        }
-        window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "visible" } }));
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
       }
+      if (document.visibilityState !== "visible") return;
+
+      void checkForUpdates(false);
+
+      const now = Date.now();
+      const hiddenFor = hiddenAt ? now - hiddenAt : 0;
+      // Ignore brief focus flickers (desktop multi-monitor / Alt-Tab).
+      if (hiddenFor < 2000 || now - lastResumeAt < MIN_RESUME_GAP_MS) return;
+      lastResumeAt = now;
+
+      if (hiddenFor >= 30000 && window.supabaseClient?.auth) {
+        void window.supabaseClient.auth.getSession().catch(() => {});
+      }
+      window.dispatchEvent(
+        new CustomEvent("bpf:app-resume", {
+          detail: { reason: "visible", hiddenForMs: hiddenFor },
+        })
+      );
     });
 
     window.addEventListener("pageshow", (event) => {
-      if (event.persisted) {
-        if (window.supabaseClient?.auth) {
-          void window.supabaseClient.auth.getSession().catch(() => {});
-        }
-        window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "bfcache" } }));
+      if (!event.persisted) return;
+      lastResumeAt = Date.now();
+      if (window.supabaseClient?.auth) {
+        void window.supabaseClient.auth.getSession().catch(() => {});
       }
+      window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "bfcache" } }));
     });
   }
 
@@ -323,6 +395,9 @@
       registerServiceWorker();
       initInstallPrompt();
       initAppResumeBroadcast();
+      if (isStandalone()) {
+        document.documentElement.classList.add("bpf-standalone");
+      }
     } catch (error) {
       console.warn("[PWA] Init failed:", error);
     }
@@ -334,6 +409,7 @@
     canInstall: () => Boolean(deferredInstallPrompt),
     sendToServiceWorker,
     showAppUpdateBanner,
+    checkForUpdates: () => checkForUpdates(true),
   };
 
   if (document.readyState === "loading") {

@@ -364,7 +364,6 @@
   height: calc(var(--tank-level, 0) * 100%);
   min-height: 0;
   transition: height 1.4s cubic-bezier(0.34, 1.2, 0.64, 1);
-  will-change: height;
   overflow: hidden;
   z-index: 1;
   border-radius: 0 0 16% 16% / 0 0 8% 8%;
@@ -814,8 +813,7 @@
 .reminders-landing-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.48);
-  backdrop-filter: blur(3px);
+  background: rgba(15, 23, 42, 0.55);
 }
 
 .reminders-landing-card {

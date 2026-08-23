@@ -271,7 +271,7 @@ async function fetchCreditTodayDetails(dateStr) {
   const [entriesRes, legacyRes] = await Promise.all([
     supabaseClient
       .from("credit_entries")
-      .select("id, credit_customer_id, amount, fuel_type, quantity, transaction_date, credit_customers(customer_name)")
+      .select("id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, employees(name), credit_customers(customer_name)")
       .eq("transaction_date", dateStr)
       .order("created_at", { ascending: true }),
     supabaseClient
@@ -283,15 +283,20 @@ async function fetchCreditTodayDetails(dateStr) {
   if (entriesRes.error) throw entriesRes.error;
   if (legacyRes.error) throw legacyRes.error;
 
-  const entryRows = (entriesRes.data || []).map((row) => ({
-    id: row.id ?? null,
-    date: row.transaction_date || dateStr,
-    customer: row.credit_customers?.customer_name || "—",
-    fuel: row.fuel_type || "—",
-    quantity: Number(row.quantity ?? 0),
-    amount: Number(row.amount ?? 0),
-    legacy: false,
-  }));
+  const entryRows = (entriesRes.data || []).map((row) => {
+    const staff = row.employees?.name;
+    const shiftLabel = row.shift === "afternoon" ? "Afternoon" : row.shift === "morning" ? "Morning" : "";
+    const via = staff ? ` · Shift ${shiftLabel}: ${staff}` : "";
+    return {
+      id: row.id ?? null,
+      date: row.transaction_date || dateStr,
+      customer: (row.credit_customers?.customer_name || "—") + via,
+      fuel: row.fuel_type || "—",
+      quantity: Number(row.quantity ?? 0),
+      amount: Number(row.amount ?? 0),
+      legacy: false,
+    };
+  });
 
   const legacyCandidates = legacyRes.data || [];
   let legacyRows = [];
@@ -321,18 +326,23 @@ async function fetchExpensesDetails(dateStr) {
   const [expensesRes, labelMap] = await Promise.all([
     supabaseClient
       .from("expenses")
-      .select("category, description, amount")
+      .select("category, description, amount, shift, employee_id, employees(name)")
       .eq("date", dateStr)
       .order("created_at", { ascending: true }),
     loadExpenseCategoryLabels(),
   ]);
   if (expensesRes.error) throw expensesRes.error;
   const getCategoryLabel = (value) => labelMap[value] || DC_LEGACY_EXPENSE_LABELS[value] || value || "—";
-  return (expensesRes.data || []).map((row) => ({
-    category: getCategoryLabel(row.category),
-    description: row.description || "—",
-    amount: Number(row.amount ?? 0),
-  }));
+  return (expensesRes.data || []).map((row) => {
+    const staff = row.employees?.name;
+    const shiftLabel = row.shift === "afternoon" ? "Afternoon" : row.shift === "morning" ? "Morning" : "";
+    const via = staff ? ` · Shift ${shiftLabel}: ${staff}` : "";
+    return {
+      category: getCategoryLabel(row.category),
+      description: (row.description || "—") + via,
+      amount: Number(row.amount ?? 0),
+    };
+  });
 }
 
 const DC_DETAIL_FETCHERS = {
@@ -353,7 +363,10 @@ async function loadDayClosingDetail(kind, dateStr) {
   panel.innerHTML = '<p class="muted">Loading…</p>';
   try {
     const rows = await DC_DETAIL_FETCHERS[kind](dateStr);
-    const html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind);
+    let html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind);
+    if (kind === "credit" || kind === "expenses") {
+      html = renderShiftVsLedgerSummary(kind) + html;
+    }
     dcDetailsCache.date = dateStr;
     dcDetailsCache[kind] = html;
     panel.innerHTML = html;
@@ -361,6 +374,29 @@ async function loadDayClosingDetail(kind, dateStr) {
     AppError.report(err, { context: `loadDayClosingDetail:${kind}` });
     panel.innerHTML = `<p class="error">${escapeHtml(err?.message || "Failed to load details.")}</p>`;
   }
+}
+
+function renderShiftVsLedgerSummary(kind) {
+  const b = dayClosingBreakdown || {};
+  const isSnapshot = Boolean(b.snapshot);
+  if (kind === "credit") {
+    const other = Number(b.credit_ledger ?? 0);
+    const shift = Number(b.credit_shift ?? 0);
+    const total = Number(b.credit_today ?? 0);
+    if (!other && !shift && b.credit_ledger == null && b.credit_shift == null) return "";
+    if (isSnapshot && Math.abs(other + shift - total) > 0.02) {
+      return `<p class="muted dc-shift-ledger-summary">Locked total ${formatCurrency(total)} (live split: book ${formatCurrency(other)} · shift ${formatCurrency(shift)})</p>`;
+    }
+    return `<p class="muted dc-shift-ledger-summary">Credit book ${formatCurrency(other)} · Shift register ${formatCurrency(shift)}</p>`;
+  }
+  const other = Number(b.expenses_ledger ?? 0);
+  const shift = Number(b.expenses_shift ?? 0);
+  const total = Number(b.expenses_today ?? 0);
+  if (!other && !shift && b.expenses_ledger == null && b.expenses_shift == null) return "";
+  if (isSnapshot && Math.abs(other + shift - total) > 0.02) {
+    return `<p class="muted dc-shift-ledger-summary">Locked total ${formatCurrency(total)} (live split: book ${formatCurrency(other)} · shift ${formatCurrency(shift)})</p>`;
+  }
+  return `<p class="muted dc-shift-ledger-summary">Expense book ${formatCurrency(other)} · Shift register ${formatCurrency(shift)}</p>`;
 }
 
 async function toggleDayClosingDetail(kind) {

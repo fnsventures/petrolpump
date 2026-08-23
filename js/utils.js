@@ -1241,7 +1241,11 @@ function loadScript(src, options = {}) {
 let appLoadGeneration = 0;
 const _appResumeHandlers = new Map();
 let _appResumeDispatchTimer = null;
+let _appHiddenAt = 0;
 const APP_REQUEST_TIMEOUT_MS = 20000;
+/** Only cancel in-flight work after a real background stretch (desktop Alt-Tab is often <2s). */
+const APP_RESUME_CANCEL_AFTER_MS = 30000;
+const APP_RESUME_DEBOUNCE_MS = 400;
 
 function bumpAppLoadGeneration() {
   appLoadGeneration += 1;
@@ -1250,6 +1254,14 @@ function bumpAppLoadGeneration() {
 
 function getAppLoadGeneration() {
   return appLoadGeneration;
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      _appHiddenAt = Date.now();
+    }
+  });
 }
 
 function isCancelledRequestError(err) {
@@ -1309,10 +1321,16 @@ function renderTableRetryRow(tbody, colSpan, message, onRetry) {
   });
 }
 
-function onAppResumeEvent() {
+function onAppResumeEvent(event) {
   clearTimeout(_appResumeDispatchTimer);
   _appResumeDispatchTimer = setTimeout(() => {
-    bumpAppLoadGeneration();
+    const hiddenForMs = _appHiddenAt ? Date.now() - _appHiddenAt : 0;
+    const reason = event?.detail?.reason || "";
+    // Brief focus flickers must not cancel active fetches — that feels like a freeze.
+    if (hiddenForMs >= APP_RESUME_CANCEL_AFTER_MS || reason === "bfcache") {
+      bumpAppLoadGeneration();
+    }
+    _appHiddenAt = 0;
     for (const { handler, match } of _appResumeHandlers.values()) {
       try {
         if (typeof match === "function" && !match()) continue;
@@ -1321,7 +1339,7 @@ function onAppResumeEvent() {
         console.warn("[AppResume] handler failed:", err);
       }
     }
-  }, 250);
+  }, APP_RESUME_DEBOUNCE_MS);
 }
 
 function bindAppResume(handler, options = {}) {

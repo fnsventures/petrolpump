@@ -15,7 +15,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
 | [dsr_diesel](#dsr_diesel) | HSD meter readings — one row per date |
 | [meter_shift_readings](#meter_shift_readings) | Optional shift nozzle readings with staff (per date · shift · meter) |
-| [meter_shift_cash](#meter_shift_cash) | Optional staff cash + phone pay per shift (for short) |
+| [meter_shift_cash](#meter_shift_cash) | Optional staff cash + phone + cached credit/expenses per shift (for short) |
 | [dsr](#dsr-view) | **View:** union of petrol + diesel (SELECT only) |
 | [dsr_stock](#dsr_stock-view) | **View:** computed stock reconciliation |
 | [products](#products) | Product master for lube/accessory billing |
@@ -171,7 +171,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## meter_shift_cash
 
-**Purpose:** Cash handed over by staff for a shift. Stores **hard cash** and **phone pay** (UPI). **Total** = cash_collected + phone_pay. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total.
+**Purpose:** Cash handed over by staff for a shift. Stores **hard cash**, **phone pay** (UPI), and **cached** credit/expense totals. **Total** = cash_collected + phone_pay + credit_amount + expense_amount. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total. Credit/expense caches are synced from attributed `credit_entries` / `expenses` rows (day closing reads the ledger, not these caches).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -181,6 +181,8 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | employee_id | uuid | → employees |
 | cash_collected | numeric | Hard cash handed over (₹) |
 | phone_pay | numeric | PhonePe / UPI for the shift (₹) |
+| credit_amount | numeric | Cached sum of shift-attributed credit sales (₹) |
+| expense_amount | numeric | Cached sum of shift-attributed expenses (₹) |
 | remarks | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Audit |
