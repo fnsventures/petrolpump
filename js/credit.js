@@ -512,6 +512,13 @@ function updatePaginationUI(filtered = getFilteredLedger()) {
 
 const listTabReady = { overview: false, record: false, outstanding: false };
 
+async function loadCreditModule(src) {
+  if (typeof loadScript !== "function") {
+    throw new Error("loadScript is unavailable");
+  }
+  await loadScript(src);
+}
+
 async function ensureListTab(section) {
   try {
     if (section === "outstanding") {
@@ -526,10 +533,14 @@ async function ensureListTab(section) {
       return;
     }
     if (section === "overview") {
+      await loadCreditModule("js/creditOverview.js");
       window.CreditOverview?.init?.();
       void loadPortfolioSnapshot();
     }
-    if (section === "record") window.CreditRecord?.init?.();
+    if (section === "record") {
+      await loadCreditModule("js/creditRecord.js");
+      window.CreditRecord?.init?.();
+    }
     listTabReady[section] = true;
   } catch (err) {
     resetCreditLoadingState();
@@ -552,6 +563,8 @@ function initOutstandingTab() {
 }
 
 async function ensureCreditCustomer() {
+  await loadCreditModule("js/creditCustomerDetail.js");
+  await loadCreditModule("js/creditCustomer.js");
   return window.CreditCustomer.init();
 }
 

@@ -1,146 +1,77 @@
 /**
- * Service Worker for Bishnupriya Fuels Petrol Pump Application
- * Provides offline capability, network caching, and background sync
+ * Service Worker — Bishnupriya Fuels (standard PWA patterns)
+ *
+ * Strategies (performance-first for a financial ops MPA):
+ * - App shell: precache on install (lean; no full-site dump)
+ * - Static JS/CSS/fonts/images: cache-first + runtime LRU trim
+ * - HTML navigations: network-first with timeout → cache → offline.html
+ * - Supabase REST/Functions: network-only for sensitive tables; network-first+TTL otherwise
+ * - Updates: waiting worker until client sends SKIP_WAITING (no mid-session swap)
  */
 
-const CACHE_VERSION = "v172";
+const CACHE_VERSION = "v174";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
+/** Max entries for runtime caches (prevents unbounded growth on desktop). */
+const CACHE_LIMITS = {
+  dynamic: 40,
+  staticRuntime: 80,
+  api: 30,
+};
+
+/** Abort slow navigations so flaky networks fall back to cache instead of hanging. */
+const NAV_TIMEOUT_MS = 3500;
+const API_TIMEOUT_MS = 8000;
+
 /**
- * App shell + every page script/CSS precached on install for offline navigation.
- * env.js is generated per deploy and is never cached (see fetch handler).
+ * True app shell only. Page modules are runtime-cached on first visit.
+ * env.js is never cached (see fetch handler).
  */
 const STATIC_ASSET_PATHS = [
-  // HTML pages
+  "offline.html",
   "index.html",
-  "about.html",
   "login.html",
   "dashboard.html",
-  "dsr.html",
-  "meter-reading.html",
-  "expenses.html",
-  "credit.html",
-  "billing.html",
-  "reports.html",
-  "analysis.html",
-  "day-closing.html",
-  "attendance.html",
-  "salary.html",
-  "staff.html",
-  "settings.html",
-  "invoices.html",
-  "letterhead.html",
-  "reminders.html",
-  "e20-register.html",
-  "sales-daily.html",
-  "credit-customer.html",
-  "credit-overdue.html",
   "404.html",
   "manifest.json",
-  // CSS
   "css/base.css",
   "css/fonts.css",
   "css/landing.css",
   "css/login.css",
   "css/app-core.css",
   "css/app-dashboard.css",
-  "css/app-analysis.css",
-  "css/app-dsr.css",
-  "css/app-meter-reading.css",
-  "css/app-day-closing.css",
-  "css/app-credit.css",
-  "css/app-billing.css",
-  "css/app-reports.css",
-  "css/app-attendance.css",
-  "css/app-salary.css",
-  "css/app-staff.css",
-  "css/invoice-print.css",
-  "css/reports-print.css",
-  "css/salary-slip-print.css",
-  "css/credit-summary-print.css",
-  "css/staff-id-print.css",
-  "css/letterhead-print.css",
-  "css/app-letterhead.css",
-  "css/app-reminders.css",
-  "css/app-e20-register.css",
-  "css/e20-register-print.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
   "assets/icon-192.png",
   "assets/icon-512.png",
   "assets/logo-44.webp",
   "assets/logo-104.webp",
-  "assets/logo-print.webp",
-  "assets/landing-01.webp",
-  "assets/landing-01-800.webp",
-  "assets/landing-02.webp",
-  "assets/landing-02-800.webp",
-  "assets/landing-03.webp",
-  "assets/landing-03-800.webp",
-  "assets/landing-04.webp",
-  "assets/landing-04-800.webp",
-  // Self-hosted fonts
   "fonts/dm-sans-latin.woff2",
-  "fonts/dm-sans-latin-ext.woff2",
-  "fonts/dm-sans-italic-latin.woff2",
-  "fonts/dm-sans-italic-latin-ext.woff2",
   "fonts/source-serif-4-latin.woff2",
-  "fonts/source-serif-4-latin-ext.woff2",
-  "fonts/caveat-latin.woff2",
-  "fonts/caveat-latin-ext.woff2",
-  // Shared JS
   "js/vendor/supabase-login.min.js",
   "js/vendor/supabase.min.js",
   "js/roleBootstrap.js",
   "js/appNav.js",
-  "js/dsrSections.js",
-  "js/dsrLegacyRedirect.js",
-  "js/dsrFuelNav.js",
   "js/errorHandler.js",
   "js/pwa.js",
   "js/cache.js",
   "js/appConfig.js",
   "js/utils.js",
-  "js/printUtils.js",
   "js/pumpSettings.js",
   "js/supabase.js",
   "js/auth.js",
   "js/pageSections.js",
-  "js/dateRangeFilter.js",
-  "js/dsrQueries.js",
-  "js/buyingPriceEntry.js",
-  "js/purchaseTaxUtils.js",
-  "js/staffEmployees.js",
-  "js/creditCustomerDetail.js",
-  "js/creditOverview.js",
-  "js/creditRecord.js",
-  "js/creditCustomer.js",
-  "js/dsrSummary.js",
-  "js/landing.js",
-  // Page-specific JS
-  "js/dashboard.js",
-  "js/dsr.js",
-  "js/meterReading.js",
-  "js/expenses.js",
-  "js/credit.js",
-  "js/billing.js",
-  "js/reports.js",
-  "js/analysis.js",
-  "js/day-closing.js",
-  "js/attendance.js",
-  "js/salary.js",
-  "js/staff.js",
-  "js/settings.js",
-  "js/invoices.js",
-  "js/letterhead.js",
-  "js/taskUtils.js",
-  "js/reminders.js",
-  "js/e20Register.js",
 ];
 
 const CACHE_MATCH_OPTS = { ignoreSearch: true };
+
+const API_PATTERNS = [/\/rest\/v1\//, /\/functions\/v1\//];
+
+const CACHE_TTL = {
+  api: 2 * 60 * 1000,
+};
 
 function getScopeBase() {
   const scope = self.registration?.scope || new URL("./", self.location.href).href;
@@ -153,155 +84,138 @@ function resolveScopedUrl(path) {
   return new URL(clean, getScopeBase()).href;
 }
 
-// API endpoints to cache with network-first strategy
-const API_PATTERNS = [
-  /\/rest\/v1\//,
-  /\/functions\/v1\//,
-];
+async function trimCache(cacheName, maxEntries) {
+  if (!maxEntries || maxEntries < 1) return;
+  try {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    if (keys.length <= maxEntries) return;
+    const excess = keys.length - maxEntries;
+    await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+  } catch {
+    /* ignore */
+  }
+}
 
-// SW API cache TTL — only used for offline fallback on cacheable reference data.
-// Operational/financial tables are excluded (see isNoCacheApiRequest); AppCache owns those TTLs.
-const CACHE_TTL = {
-  api: 2 * 60 * 1000,
-  static: 24 * 60 * 60 * 1000,
-};
+async function putAndTrim(cacheName, request, response, maxEntries) {
+  const cache = await caches.open(cacheName);
+  await cache.put(request, response);
+  await trimCache(cacheName, maxEntries);
+}
 
-/**
- * Install event - cache static assets
- */
+function fetchWithTimeout(request, timeoutMs, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(request, { ...options, signal: controller.signal }).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 self.addEventListener("install", (event) => {
-  console.log("[SW] Installing service worker...");
-
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => {
-        console.log("[SW] Caching static assets...");
-        // Cache what we can, don't fail on individual asset failures
-        return Promise.allSettled(
-          STATIC_ASSET_PATHS.map((path) =>
+    (async () => {
+      const cache = await caches.open(STATIC_CACHE);
+      const CONCURRENCY = 6;
+      for (let i = 0; i < STATIC_ASSET_PATHS.length; i += CONCURRENCY) {
+        const slice = STATIC_ASSET_PATHS.slice(i, i + CONCURRENCY);
+        await Promise.allSettled(
+          slice.map((path) =>
             cache.add(resolveScopedUrl(path)).catch((err) => {
               console.warn(`[SW] Failed to cache: ${path}`, err);
             })
           )
         );
-      })
-      .then(() => {
-        console.log("[SW] Static assets cached");
-        return self.skipWaiting();
-      })
-      .catch((err) => {
-        console.error("[SW] Install failed:", err);
-      })
+      }
+      // First install: activate immediately. Updates: wait for SKIP_WAITING from the page.
+      if (!self.registration.active) {
+        await self.skipWaiting();
+      }
+    })()
   );
 });
 
-/**
- * Activate event - clean up old caches
- */
 self.addEventListener("activate", (event) => {
-  console.log("[SW] Activating service worker...");
-
   event.waitUntil(
-    caches
-      .keys()
-      .then((cacheNames) => {
-        return Promise.all(
-          cacheNames
-            .filter((name) => {
-              return (
-                name.startsWith("bpf-") &&
-                name !== STATIC_CACHE &&
-                name !== DYNAMIC_CACHE &&
-                name !== API_CACHE
-              );
-            })
-            .map((name) => {
-              console.log("[SW] Deleting old cache:", name);
-              return caches.delete(name);
-            })
-        );
-      })
-      .then(() => {
-        console.log("[SW] Service worker activated");
-        return self.clients.claim();
-      })
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter(
+            (name) =>
+              name.startsWith("bpf-") &&
+              name !== STATIC_CACHE &&
+              name !== DYNAMIC_CACHE &&
+              name !== API_CACHE
+          )
+          .map((name) => caches.delete(name))
+      );
+
+      if (self.registration.navigationPreload) {
+        try {
+          await self.registration.navigationPreload.enable();
+        } catch {
+          /* unsupported / denied */
+        }
+      }
+
+      await self.clients.claim();
+    })()
   );
 });
 
-/**
- * Fetch event - handle network requests with caching strategies
- */
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== "GET") {
-    return;
-  }
+  if (request.method !== "GET") return;
+  if (!url.protocol.startsWith("http")) return;
 
-  // Skip chrome-extension and other non-http(s) requests
-  if (!url.protocol.startsWith("http")) {
-    return;
-  }
+  // Same-origin only for HTML/static strategies; APIs are cross-origin by design.
+  const isSameOrigin = url.origin === self.location.origin;
 
-  // Runtime config is gitignored locally and generated per deploy — never cache
   if (url.pathname.endsWith("/js/env.js")) {
     event.respondWith(fetch(request));
     return;
   }
 
-  // Sensitive / financial data must always be fresh — never cache
-  if (isApiRequest(url) && isNoCacheApiRequest(url)) {
-    event.respondWith(fetch(request));
-    return;
-  }
-
-  // Handle other API requests with network-first strategy
   if (isApiRequest(url)) {
-    event.respondWith(networkFirstStrategy(request, API_CACHE));
+    if (isNoCacheApiRequest(url)) {
+      event.respondWith(fetch(request));
+      return;
+    }
+    event.respondWith(networkFirstApi(request));
     return;
   }
 
-  // Handle static assets with cache-first strategy
+  if (!isSameOrigin) {
+    return;
+  }
+
   if (isStaticAsset(url)) {
-    event.respondWith(cacheFirstStrategy(request, STATIC_CACHE));
+    event.respondWith(cacheFirstStatic(request));
     return;
   }
 
-  // HTML navigations: network-first so PWA resumes with a fresh shell when online.
-  // Cache is used only when offline or the network fails (avoids stale page lock-ups).
   if (isHtmlPage(url)) {
     if (request.mode === "navigate") {
-      event.respondWith(networkFirstHtmlStrategy(request, DYNAMIC_CACHE));
+      event.respondWith(networkFirstNavigate(event));
     } else {
-      event.respondWith(cacheFirstStrategy(request, DYNAMIC_CACHE));
+      event.respondWith(cacheFirstStatic(request, DYNAMIC_CACHE, CACHE_LIMITS.dynamic));
     }
     return;
   }
 
-  // Default: network with cache fallback
-  event.respondWith(networkWithCacheFallback(request, DYNAMIC_CACHE));
+  event.respondWith(networkWithCacheFallback(request));
 });
 
-/**
- * Check if request is an API call
- */
 function isApiRequest(url) {
   return API_PATTERNS.some((pattern) => pattern.test(url.pathname));
 }
 
-/**
- * API paths that must never be cached in the SW layer.
- * AppCache (localStorage) owns aggregated dashboard/reports TTLs; SW caching the same
- * underlying REST/edge responses would serve overlapping stale DSR/expense data.
- */
 function isNoCacheApiRequest(url) {
   const path = url.pathname;
   const table = url.searchParams?.get("table") ?? "";
   const noCacheTables = [
-    // Credit & staff (PII / financial)
     "credit_customers",
     "credit_entries",
     "credit_payments",
@@ -309,14 +223,12 @@ function isNoCacheApiRequest(url) {
     "users",
     "employee_attendance",
     "salary_payments",
-    // DSR, expenses, day closing — AppCache or live pages own freshness
     "dsr",
     "dsr_petrol",
     "dsr_diesel",
     "expenses",
     "day_closing",
     "night_cash_collections",
-    // Billing & settings cached in AppCache
     "invoices",
     "invoice_items",
     "invoice_documents",
@@ -328,25 +240,16 @@ function isNoCacheApiRequest(url) {
   return false;
 }
 
-/**
- * Check if request is for a static asset
- */
 function isStaticAsset(url) {
-  const staticExtensions = [".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2"];
-  return staticExtensions.some((ext) => url.pathname.endsWith(ext));
+  return [".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".woff", ".woff2"].some(
+    (ext) => url.pathname.endsWith(ext)
+  );
 }
 
-/**
- * Check if request is for an HTML page
- */
 function isHtmlPage(url) {
   return url.pathname.endsWith(".html") || url.pathname === "/" || !url.pathname.includes(".");
 }
 
-/**
- * Network-first strategy - try network, fall back to cache
- * Best for API requests where fresh data is preferred
- */
 function isApiCacheFresh(response) {
   const cachedAt = response.headers.get("sw-cached-at");
   if (!cachedAt) return true;
@@ -364,28 +267,22 @@ async function putApiCacheEntry(cache, request, response) {
     headers,
   });
   await cache.put(request, stamped);
+  await trimCache(API_CACHE, CACHE_LIMITS.api);
 }
 
-async function networkFirstStrategy(request, cacheName) {
+async function networkFirstApi(request) {
   try {
-    const networkResponse = await fetch(request);
-
-    // Only cache successful responses
+    const networkResponse = await fetchWithTimeout(request, API_TIMEOUT_MS);
     if (networkResponse.ok) {
-      const cache = await caches.open(cacheName);
+      const cache = await caches.open(API_CACHE);
       await putApiCacheEntry(cache, request, networkResponse);
     }
-
     return networkResponse;
-  } catch (error) {
-    console.log("[SW] Network failed, trying cache:", request.url);
+  } catch {
     const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
-
     if (cachedResponse && isApiCacheFresh(cachedResponse)) {
       return cachedResponse;
     }
-
-    // Return offline fallback for API requests
     return new Response(
       JSON.stringify({
         error: "offline",
@@ -400,156 +297,79 @@ async function networkFirstStrategy(request, cacheName) {
   }
 }
 
-async function networkFirstHtmlStrategy(request, cacheName) {
+async function networkFirstNavigate(event) {
+  const request = event.request;
+
+  try {
+    const preload = await event.preloadResponse;
+    if (preload && preload.ok) {
+      void putAndTrim(DYNAMIC_CACHE, request, preload.clone(), CACHE_LIMITS.dynamic);
+      return preload;
+    }
+  } catch {
+    /* preload unavailable */
+  }
+
+  try {
+    const networkResponse = await fetchWithTimeout(request, NAV_TIMEOUT_MS);
+    if (networkResponse.ok) {
+      void putAndTrim(DYNAMIC_CACHE, request, networkResponse.clone(), CACHE_LIMITS.dynamic);
+    }
+    return networkResponse;
+  } catch {
+    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+    if (cachedResponse) return cachedResponse;
+
+    const offline = await caches.match(resolveScopedUrl("offline.html"), CACHE_MATCH_OPTS);
+    if (offline) return offline;
+
+    return getOfflineFallback();
+  }
+}
+
+async function cacheFirstStatic(request, cacheName = STATIC_CACHE, maxEntries = CACHE_LIMITS.staticRuntime) {
+  const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+  if (cachedResponse) return cachedResponse;
+
   try {
     const networkResponse = await fetch(request);
-
     if (networkResponse.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
+      void putAndTrim(cacheName, request, networkResponse.clone(), maxEntries);
     }
-
     return networkResponse;
-  } catch (error) {
-    console.log("[SW] HTML network failed, trying cache:", request.url);
+  } catch {
+    return new Response("Resource not available offline", { status: 503 });
+  }
+}
+
+async function networkWithCacheFallback(request) {
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+      void putAndTrim(DYNAMIC_CACHE, request, networkResponse.clone(), CACHE_LIMITS.dynamic);
+    }
+    return networkResponse;
+  } catch {
     const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
     if (cachedResponse) return cachedResponse;
     return getOfflineFallback();
   }
 }
 
-/**
- * Cache-first strategy - try cache, fall back to network
- * Best for static assets that rarely change
- */
-async function cacheFirstStrategy(request, cacheName) {
-  const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
-
-  if (cachedResponse) {
-    // Serve from cache only — assets/pages are versioned via CACHE_VERSION and
-    // refreshed on SW activate. Background re-fetch on every hit doubled network
-    // work for ~20 scripts/CSS per page while online.
-    return cachedResponse;
-  }
-
-  try {
-    const networkResponse = await fetch(request);
-
-    if (networkResponse.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
-    }
-
-    return networkResponse;
-  } catch (error) {
-    console.error("[SW] Cache-first failed:", request.url, error);
-    return new Response("Resource not available offline", { status: 503 });
-  }
-}
-
-/**
- * Network with cache fallback
- */
-async function networkWithCacheFallback(request, cacheName) {
-  try {
-    const networkResponse = await fetch(request);
-
-    if (networkResponse.ok) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, networkResponse.clone());
-    }
-
-    return networkResponse;
-  } catch (error) {
-    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
-
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-
-    return getOfflineFallback();
-  }
-}
-
-/**
- * Get offline fallback response
- */
 async function getOfflineFallback() {
-  const cachedIndex = await caches.match(resolveScopedUrl("index.html"), CACHE_MATCH_OPTS);
-  if (cachedIndex) {
-    return cachedIndex;
-  }
+  const offline = await caches.match(resolveScopedUrl("offline.html"), CACHE_MATCH_OPTS);
+  if (offline) return offline;
 
-  // Return basic offline message
   return new Response(
-    `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Offline - Bishnupriya Fuels</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background: #f5f5f5;
-      color: #333;
-    }
-    .offline-container {
-      text-align: center;
-      padding: 2rem;
-      max-width: 400px;
-    }
-    .offline-icon {
-      font-size: 4rem;
-      margin-bottom: 1rem;
-    }
-    h1 {
-      font-size: 1.5rem;
-      margin-bottom: 0.5rem;
-    }
-    p {
-      color: #666;
-      margin-bottom: 1.5rem;
-    }
-    button {
-      background: #0070c0;
-      color: white;
-      border: none;
-      padding: 0.75rem 1.5rem;
-      border-radius: 0.5rem;
-      cursor: pointer;
-      font-size: 1rem;
-    }
-    button:hover {
-      background: #005a9c;
-    }
-  </style>
-</head>
-<body>
-  <div class="offline-container">
-    <div class="offline-icon">📡</div>
-    <h1>You're Offline</h1>
-    <p>Please check your internet connection and try again.</p>
-    <button onclick="window.location.reload()">Try Again</button>
-  </div>
-</body>
-</html>`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body style="font-family:system-ui;padding:2rem;text-align:center"><h1>You are offline</h1><p>Reconnect and try again.</p><button onclick="location.reload()">Try again</button></body></html>`,
     {
       status: 503,
       statusText: "Service Unavailable",
-      headers: { "Content-Type": "text/html" },
+      headers: { "Content-Type": "text/html; charset=utf-8" },
     }
   );
 }
 
-/**
- * Message handler for cache management from main thread
- */
 self.addEventListener("message", (event) => {
   const { type, payload } = event.data || {};
 
@@ -576,6 +396,10 @@ self.addEventListener("message", (event) => {
       });
       break;
 
+    case "GET_VERSION":
+      event.ports[0]?.postMessage({ version: CACHE_VERSION });
+      break;
+
     case "INVALIDATE_PATTERN":
       if (payload?.pattern) {
         invalidateCacheByPattern(payload.pattern).then(() => {
@@ -586,23 +410,16 @@ self.addEventListener("message", (event) => {
   }
 });
 
-/**
- * Clear all application caches
- */
 async function clearAllCaches() {
   const cacheNames = await caches.keys();
   await Promise.all(
-    cacheNames
-      .filter((name) => name.startsWith("bpf-"))
-      .map((name) => caches.delete(name))
+    cacheNames.filter((name) => name.startsWith("bpf-")).map((name) => caches.delete(name))
   );
 }
 
-/**
- * Get cache statistics
- */
 async function getCacheStats() {
   const stats = {
+    version: CACHE_VERSION,
     static: { entries: 0 },
     dynamic: { entries: 0 },
     api: { entries: 0 },
@@ -610,36 +427,26 @@ async function getCacheStats() {
 
   try {
     const staticCache = await caches.open(STATIC_CACHE);
-    const staticKeys = await staticCache.keys();
-    stats.static.entries = staticKeys.length;
-
+    stats.static.entries = (await staticCache.keys()).length;
     const dynamicCache = await caches.open(DYNAMIC_CACHE);
-    const dynamicKeys = await dynamicCache.keys();
-    stats.dynamic.entries = dynamicKeys.length;
-
+    stats.dynamic.entries = (await dynamicCache.keys()).length;
     const apiCache = await caches.open(API_CACHE);
-    const apiKeys = await apiCache.keys();
-    stats.api.entries = apiKeys.length;
+    stats.api.entries = (await apiCache.keys()).length;
   } catch {
-    // Ignore errors
+    /* ignore */
   }
 
   return stats;
 }
 
-/**
- * Invalidate cache entries matching a pattern
- */
 async function invalidateCacheByPattern(pattern) {
   const regex = new RegExp(pattern);
   const cacheNames = await caches.keys();
 
   for (const cacheName of cacheNames) {
     if (!cacheName.startsWith("bpf-")) continue;
-
     const cache = await caches.open(cacheName);
     const keys = await cache.keys();
-
     for (const request of keys) {
       if (regex.test(request.url)) {
         await cache.delete(request);
@@ -647,5 +454,3 @@ async function invalidateCacheByPattern(pattern) {
     }
   }
 }
-
-console.log("[SW] Service worker script loaded");

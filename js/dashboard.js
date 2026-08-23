@@ -653,56 +653,63 @@ function updateDashboardAlertsVisibility() {
 let snapshotDsrRows = [];
 
 let statFitRaf = null;
+let statFitResizeTimer = null;
 
-function fitTextToContainer(el, options = {}) {
-  if (!el) return;
-  const {
-    minFontPx = 12,
-    paddingPx = 2,
-  } = options;
-
-  const parent = el.parentElement;
-  if (!parent) return;
-
-  const maxFontPx =
-    Number(el.dataset.maxFontPx) ||
-    Number.parseFloat(window.getComputedStyle(el).fontSize) ||
-    16;
-  if (!el.dataset.maxFontPx) {
-    el.dataset.maxFontPx = String(maxFontPx);
-  }
-
-  // Measure at max size first.
-  el.style.fontSize = `${maxFontPx}px`;
-  // Force a reflow to update scrollWidth accurately in some browsers.
-  // eslint-disable-next-line no-unused-expressions
-  el.offsetWidth;
-
-  const available = Math.max(0, parent.getBoundingClientRect().width - paddingPx);
-  const needed = el.scrollWidth;
-  if (!available || !needed) return;
-
-  if (needed <= available) {
-    el.style.fontSize = `${maxFontPx}px`;
-    return;
-  }
-
-  const ratio = available / needed;
-  const next = Math.max(minFontPx, Math.floor(maxFontPx * ratio * 0.98));
-  el.style.fontSize = `${next}px`;
-}
-
+/**
+ * Batch write → read → write to avoid layout thrashing across many stat tiles.
+ */
 function autoFitStats(scope = document) {
-  const elements = scope.querySelectorAll(
-    ".metric-box .stat, .stat-tile .stat"
+  if (document.hidden) return;
+
+  const elements = Array.from(
+    scope.querySelectorAll(".metric-box .stat, .stat-tile .stat")
   );
-  elements.forEach((el) => {
-    const isSub = el.classList.contains("stat-sub");
-    fitTextToContainer(el, { minFontPx: isSub ? 10 : 12 });
+  if (!elements.length) return;
+
+  const jobs = [];
+  for (const el of elements) {
+    const parent = el.parentElement;
+    if (!parent) continue;
+    const maxFontPx =
+      Number(el.dataset.maxFontPx) ||
+      Number.parseFloat(window.getComputedStyle(el).fontSize) ||
+      16;
+    if (!el.dataset.maxFontPx) {
+      el.dataset.maxFontPx = String(maxFontPx);
+    }
+    const minFontPx = el.classList.contains("stat-sub") ? 10 : 12;
+    jobs.push({ el, parent, maxFontPx, minFontPx, paddingPx: 2 });
+  }
+
+  // Phase 1: reset all to max size (writes only).
+  for (const job of jobs) {
+    job.el.style.fontSize = `${job.maxFontPx}px`;
+  }
+
+  // Phase 2: measure all (reads only).
+  const sizes = jobs.map((job) => {
+    const available = Math.max(
+      0,
+      job.parent.getBoundingClientRect().width - job.paddingPx
+    );
+    const needed = job.el.scrollWidth;
+    return { ...job, available, needed };
   });
+
+  // Phase 3: apply fitted sizes (writes only).
+  for (const job of sizes) {
+    if (!job.available || !job.needed || job.needed <= job.available) {
+      job.el.style.fontSize = `${job.maxFontPx}px`;
+      continue;
+    }
+    const ratio = job.available / job.needed;
+    const next = Math.max(job.minFontPx, Math.floor(job.maxFontPx * ratio * 0.98));
+    job.el.style.fontSize = `${next}px`;
+  }
 }
 
 function scheduleAutoFitStats() {
+  if (document.hidden) return;
   if (statFitRaf) cancelAnimationFrame(statFitRaf);
   statFitRaf = requestAnimationFrame(() => {
     statFitRaf = null;
@@ -2801,7 +2808,8 @@ async function loadProfitLossSummary(range) {
 }
 
 window.addEventListener("resize", () => {
-  scheduleAutoFitStats();
+  clearTimeout(statFitResizeTimer);
+  statFitResizeTimer = setTimeout(() => scheduleAutoFitStats(), 200);
 });
 
 // Listen for credit / reminder updates from other pages/tabs

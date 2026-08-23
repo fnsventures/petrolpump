@@ -282,7 +282,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         void ensurePurchaseCostLoaded();
       }
       if (section === "shift-readings" && typeof MeterShiftReading !== "undefined") {
-        void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+        void MeterShiftReading.init({
+          isAdmin: currentUserRole === "admin",
+          userId: currentUserId,
+        });
       }
     },
   });
@@ -297,7 +300,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     landingHash === "sales" ||
     landingHash === "breakdown";
   if (typeof MeterShiftReading !== "undefined" && landsOnShift) {
-    void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+    void MeterShiftReading.init({ isAdmin: currentUserRole === "admin", userId: currentUserId });
   }
 
   PRODUCTS.forEach((product) => {
@@ -1293,7 +1296,6 @@ async function loadReadingHistory(product, reset = false) {
     if (!isCancelledRequestError(err)) {
       AppError.report(err, { context: "loadReadingHistory", product });
     }
-    AppError.report(err, { context: "loadReadingHistory", product });
   } finally {
     pagination.isLoading = false;
     updateDsrPaginationUI(product);
@@ -1599,7 +1601,7 @@ bindAppResume(
     });
     void Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
     if (typeof MeterShiftReading !== "undefined" && isSettingsPanelActive("shift-readings")) {
-      void MeterShiftReading.init({ isAdmin: currentUserRole === "admin" });
+      void MeterShiftReading.init({ isAdmin: currentUserRole === "admin", userId: currentUserId });
     }
     if (currentUserRole === "admin" && isSettingsPanelActive("purchase-cost")) {
       void ensurePurchaseCostLoaded();

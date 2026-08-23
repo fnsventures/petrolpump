@@ -9,7 +9,7 @@ Part of the [Petrol Pump documentation](README.md). For all tables and flows, se
 | **dsr_petrol** | Table | MS (petrol) meter readings — one row per date | Meter Reading form |
 | **dsr_diesel** | Table | HSD (diesel) meter readings — one row per date | Meter Reading form |
 | **meter_shift_readings** | Table | Optional shift nozzle + staff assignments | Meter Reading → Shift register |
-| **meter_shift_cash** | Table | Optional staff cash + phone pay (short) per shift | Meter Reading → Shift register |
+| **meter_shift_cash** | Table | Optional staff cash + phone + cached credit/expenses (short) per shift | Meter Reading → Shift register |
 | **dsr** | View | Union of both products (`product` = `petrol` \| `diesel`) for reads | — (SELECT only) |
 | **dsr_stock** | View | Stock reconciliation derived from meter rows | — (computed) |
 | **get_dsr_stock_range** | RPC | Same stock logic scoped to a date range | — |

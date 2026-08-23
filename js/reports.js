@@ -28,7 +28,7 @@ const REPORT_CATALOG = [
       {
         id: "salesman-sales",
         title: "Salesman sales",
-        description: "Per salesman litres, expected cash, cash + phone pay total, and short from shift register.",
+        description: "Per salesman litres, expected cash, cash + phone + credit + expenses, and short from shift register.",
       },
     ],
   },
@@ -2998,6 +2998,8 @@ function renderSalesmanSalesReport(data, range) {
   let totExpected = 0;
   let totCashHard = 0;
   let totPhonePay = 0;
+  let totCredit = 0;
+  let totExpense = 0;
   let totCash = 0;
   let totShort = 0;
   let hasExpected = false;
@@ -3012,8 +3014,12 @@ function renderSalesmanSalesReport(data, range) {
       const expected = petrolNet * (rates.petrol || 0) + dieselNet * (rates.diesel || 0);
       const cash = Number(r.cash_collected) || 0;
       const phonePay = Number(r.phone_pay) || 0;
+      const credit = Number(r.credit_amount) || 0;
+      const expense = Number(r.expense_amount) || 0;
       const collected =
-        r.total_collected != null ? Number(r.total_collected) || 0 : cash + phonePay;
+        r.total_collected != null
+          ? Number(r.total_collected) || 0
+          : cash + phonePay + credit + expense;
       const canExpect = rates.petrol || rates.diesel;
       if (canExpect) {
         hasExpected = true;
@@ -3023,6 +3029,8 @@ function renderSalesmanSalesReport(data, range) {
       totL += Number(r.total_litres) || 0;
       totCashHard += cash;
       totPhonePay += phonePay;
+      totCredit += credit;
+      totExpense += expense;
       totCash += collected;
       return `<tr>
         <td>${formatNumericDate(r.reading_date)}</td>
@@ -3034,6 +3042,8 @@ function renderSalesmanSalesReport(data, range) {
         <td class="num">${canExpect ? formatNumberPlain(expected) : "—"}</td>
         <td class="num">${formatNumberPlain(cash)}</td>
         <td class="num">${formatNumberPlain(phonePay)}</td>
+        <td class="num">${formatNumberPlain(credit)}</td>
+        <td class="num">${formatNumberPlain(expense)}</td>
         <td class="num">${formatNumberPlain(collected)}</td>
         <td class="num">${canExpect ? formatNumberPlain(expected - collected) : "—"}</td>
       </tr>`;
@@ -3042,7 +3052,7 @@ function renderSalesmanSalesReport(data, range) {
 
   return `
     ${reportHeader("Salesman sales", range.start, range.end)}
-    <p class="muted report-note">Short = expected − (cash + phone pay). Expected = net litres (sale − testing) × daily selling rates.</p>
+    <p class="muted report-note">Short = expected − (cash + phone + credit + expenses). Expected = net litres (sale − testing) × daily selling rates.</p>
     <table class="report-table">
       <thead>
         <tr>
@@ -3055,6 +3065,8 @@ function renderSalesmanSalesReport(data, range) {
           <th class="num">Expected ₹</th>
           <th class="num">Cash ₹</th>
           <th class="num">Phone ₹</th>
+          <th class="num">Credit ₹</th>
+          <th class="num">Exp ₹</th>
           <th class="num">Total ₹</th>
           <th class="num">Short ₹</th>
         </tr>
@@ -3067,6 +3079,8 @@ function renderSalesmanSalesReport(data, range) {
           <td class="num"><strong>${hasExpected ? formatNumberPlain(totExpected) : "—"}</strong></td>
           <td class="num"><strong>${formatNumberPlain(totCashHard)}</strong></td>
           <td class="num"><strong>${formatNumberPlain(totPhonePay)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totCredit)}</strong></td>
+          <td class="num"><strong>${formatNumberPlain(totExpense)}</strong></td>
           <td class="num"><strong>${formatNumberPlain(totCash)}</strong></td>
           <td class="num"><strong>${hasExpected ? formatNumberPlain(totShort) : "—"}</strong></td>
         </tr>
