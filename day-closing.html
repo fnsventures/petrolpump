@@ -53,7 +53,7 @@
         <div class="panel-head dc-close-head">
           <div>
             <h2 class="dashboard-section-title">Day closing &amp; short</h2>
-              <p class="muted panel-lead dc-close-lead">Enter night cash and PhonePe/UPI totals, then save. An admin acknowledges the statement after the supervisor saves.</p>
+              <p class="muted panel-lead dc-close-lead">Night cash and PhonePe/UPI fill from both shifts. Review, then save. An admin acknowledges the statement after the supervisor saves.</p>
           </div>
           <div class="form-field dc-date-field">
             <label for="day-closing-date">Date</label>
@@ -128,14 +128,14 @@
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
                     <span class="dc-row-label">Night cash <span class="dc-input-badge">Enter</span></span>
-                    <span class="dc-field-hint muted">Hard cash counted at close</span>
+                    <span class="dc-field-hint muted" id="dc-night-cash-hint">Hard cash from morning + afternoon shift register</span>
                   </dt>
                   <dd><input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" /></dd>
                 </div>
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
                     <span class="dc-row-label">Phone pay <span class="dc-input-badge">Enter</span></span>
-                    <span class="dc-field-hint muted">PhonePe / UPI received today</span>
+                    <span class="dc-field-hint muted" id="dc-phone-pay-hint">PhonePe / UPI from morning + afternoon shift register</span>
                   </dt>
                   <dd><input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" /></dd>
                 </div>
