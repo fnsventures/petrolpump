@@ -103,6 +103,7 @@ A typical daily sequence:
    → Upsert dsr_petrol and/or dsr_diesel for today
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → Optional: Shift register — staff per nozzle, shift meters, cash + phone pay, short (₹)
+   → Supervisors may re-save a shift with updates until day closing is saved (then admin only)
    → Admin: if receipts > 0, enter pre-VAT ₹/KL under Purchase cost
    → dsr_stock view recalculates opening/closing/variation automatically
    → Optional: open dsr.html for listing / stock summary
@@ -117,14 +118,16 @@ A typical daily sequence:
 
 4. Day closing (day-closing.html)
    → get_day_closing_breakdown(date) — live components or saved snapshot
-   → Enter night_cash, phone_pay, remarks
-   → save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
+   → night_cash / phone_pay prefilled from sum of both shifts (meter_shift_cash)
+   → Review/adjust, then save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
    → short_today becomes next day’s short_previous
-   → Supervisor: may edit until certified or night cash is collected
+   → Supervisor: may edit day closing until certified or night cash is collected
+   → After day closing is saved: supervisors cannot change that day’s shifts (admin can)
    → Admin: can_overwrite when allowed → re-save (clears certification); recascades short forward
    → Admin: set_day_closing_certified(date, true) to acknowledge after supervisor save
    → After certify: supervisors cannot edit; print statement shows certifier name/time
    → Admin register tab: delete_day_closing (latest date only) to reopen a day
+     (also unlocks shift re-save for supervisors)
 
 5. Night-cash collection (day-closing.html — collection UI)
    → get_night_cash_available / preview_night_cash_collection(from, to)
@@ -140,6 +143,7 @@ A typical daily sequence:
 - **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
+- **Night cash / Phone pay:** Sum of `meter_shift_cash.cash_collected` / `phone_pay` for both shifts (prefilled until locked).
 - **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save).
 - **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---

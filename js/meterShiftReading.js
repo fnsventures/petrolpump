@@ -127,10 +127,12 @@
   let shiftViewCurrent = { date: "", shift: "" };
   let shiftViewGeneration = 0;
 
-  const MSG_PAST_CLOSED =
-    "This shift is already saved. Only an admin can change it.";
+  const MSG_DAY_CLOSING_SAVED =
+    "Day closing is saved for this date. Only an admin can change shifts.";
   const MSG_DAY_LOCKED =
     "Day closing is certified or night cash is collected. Only an admin can change meters.";
+  const MSG_LOCK_UNAVAILABLE =
+    "Unable to verify shift lock. Refresh and try again.";
 
   function getShiftConfig() {
     return PumpSettings.getShiftConfig();
@@ -312,26 +314,26 @@
     }
   }
 
-  function lockFromInfo(lockInfo, { hasSavedNozzles = false } = {}) {
+  function lockFromInfo(lockInfo) {
     if (isAdmin) return { locked: false, reason: "" };
     if (lockInfo?.supervisor_readonly) {
       return {
         locked: true,
         reason:
           lockInfo.lock_reason ||
-          (lockInfo.day_locked ? MSG_DAY_LOCKED : MSG_PAST_CLOSED),
+          (lockInfo.day_locked ? MSG_DAY_LOCKED : MSG_DAY_CLOSING_SAVED),
       };
     }
-    // Fail closed when lock RPC is unavailable but this shift already has rows.
-    if (lockInfo == null && hasSavedNozzles) {
-      return { locked: true, reason: MSG_PAST_CLOSED };
+    // Fail closed when lock RPC is unavailable.
+    if (lockInfo == null) {
+      return { locked: true, reason: MSG_LOCK_UNAVAILABLE };
     }
     return { locked: false, reason: "" };
   }
 
-  async function resolveSupervisorLock(date, shift, { hasSavedNozzles = false } = {}) {
+  async function resolveSupervisorLock(date, shift) {
     if (isAdmin) return { locked: false, reason: "" };
-    return lockFromInfo(await fetchLockInfo(date, shift), { hasSavedNozzles });
+    return lockFromInfo(await fetchLockInfo(date, shift));
   }
 
   function applyOpeningFieldAccess() {
@@ -371,13 +373,15 @@
     }`;
 
     if (supervisorReadonly) {
-      statusEl.textContent = "Saved · locked";
+      statusEl.textContent = "Locked";
       statusEl.className = "shift-status-badge shift-status-badge--locked";
-      statusEl.title = lockReason || MSG_PAST_CLOSED;
+      statusEl.title = lockReason || MSG_DAY_CLOSING_SAVED;
     } else if (opts.hasSaved ?? shiftHasSavedRows) {
-      statusEl.textContent = isAdmin ? "Saved · editable" : "In progress";
+      statusEl.textContent = "Saved · can update";
       statusEl.className = "shift-status-badge shift-status-badge--saved";
-      statusEl.title = "";
+      statusEl.title = isAdmin
+        ? ""
+        : "You can save again with updated values until day closing is saved";
     } else {
       statusEl.textContent = "Not saved yet";
       statusEl.className = "shift-status-badge shift-status-badge--draft";
@@ -387,7 +391,7 @@
 
   function applySupervisorLockUi(locked, reason) {
     supervisorReadonly = Boolean(locked) && !isAdmin;
-    lockReason = supervisorReadonly ? reason || MSG_PAST_CLOSED : "";
+    lockReason = supervisorReadonly ? reason || MSG_DAY_CLOSING_SAVED : "";
 
     const panel = el("shift-readings") || document.querySelector('[data-panel="shift-readings"]');
     panel?.classList.toggle("shift-register-supervisor-locked", supervisorReadonly);
@@ -1307,9 +1311,9 @@
 
       const data = readingsRes.data;
       const savedNozzles = data?.nozzles || [];
-      const resolvedLock = lockFromInfo(lockInfo, {
-        hasSavedNozzles: savedNozzles.length > 0,
-      });
+      const resolvedLock = isAdmin
+        ? { locked: false, reason: "" }
+        : lockFromInfo(lockInfo);
 
       cashByEmployee = new Map();
       (data?.cash || []).forEach(setCashFromRow);
@@ -1423,7 +1427,7 @@
     }
 
     if (supervisorReadonly && !isAdmin) {
-      showMsg(lockReason || MSG_PAST_CLOSED, true);
+      showMsg(lockReason || MSG_DAY_CLOSING_SAVED, true);
       return;
     }
 
@@ -1486,6 +1490,39 @@
       }
     }
 
+    // Morning re-save: afternoon openings are cascaded server-side; block if any
+    // afternoon closing would fall below the new morning closing.
+    if (shift === "morning") {
+      try {
+        const { data: afternoonRows, error: aftErr } = await supabaseClient
+          .from("meter_shift_readings")
+          .select("product, pump_no, nozzle_no, closing_meter")
+          .eq("reading_date", date)
+          .eq("shift", "afternoon");
+        if (aftErr) throw aftErr;
+        const afternoonByKey = new Map();
+        (afternoonRows || []).forEach((r) => {
+          afternoonByKey.set(nozzleKey(r.product, r.pump_no, r.nozzle_no), Number(r.closing_meter));
+        });
+        if (afternoonByKey.size) {
+          for (const r of nozzles) {
+            const key = nozzleKey(r.product, r.pump_no, r.nozzle_no);
+            if (!afternoonByKey.has(key)) continue;
+            const aftClose = afternoonByKey.get(key);
+            if (aftClose < r.closing_meter - 0.001) {
+              showMsg(
+                `Cannot update morning: afternoon closing for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no} (${aftClose}) is below the new morning closing (${r.closing_meter}). Fix afternoon first.`,
+                true
+              );
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        AppError.report(err, { context: "MeterShiftReading.morningHandoffCheck" });
+      }
+    }
+
     const staffIds = new Set(nozzles.map((r) => r.employee_id));
     const remarks = (el("shift-meter-remarks")?.value || "").trim().slice(0, 500);
     // credit/expense are ledger-owned; server ignores client values and re-syncs from ledger
@@ -1536,6 +1573,7 @@
         }
         if (typeof CacheInvalidation !== "undefined") {
           CacheInvalidation.invalidate("dsr");
+          CacheInvalidation.invalidate("operational");
         }
         if (typeof DsrSalesBreakdown !== "undefined") {
           DsrSalesBreakdown.invalidate?.();
@@ -1549,6 +1587,12 @@
             context: "MeterShiftReading.refreshDailyForms",
           });
         }
+      }
+
+      try {
+        localStorage.setItem("shift-updated", String(Date.now()));
+      } catch (_) {
+        /* ignore quota / private mode */
       }
 
       cashByEmployee = new Map();
@@ -1568,7 +1612,7 @@
         btn.textContent = "Save shift";
         if (supervisorReadonly && !isAdmin) {
           btn.disabled = true;
-          btn.title = lockReason || MSG_PAST_CLOSED;
+          btn.title = lockReason || MSG_DAY_CLOSING_SAVED;
         } else {
           btn.disabled = false;
           btn.title = "";
@@ -1583,7 +1627,7 @@
     if (!date || !shift) return;
 
     if (supervisorReadonly && !isAdmin) {
-      showMsg(lockReason || MSG_PAST_CLOSED, true);
+      showMsg(lockReason || MSG_DAY_CLOSING_SAVED, true);
       return;
     }
 
@@ -1967,10 +2011,8 @@
 
       if (subtitle) {
         subtitle.textContent = lock.locked
-          ? "Saved · locked for supervisors"
-          : isAdmin
-            ? "Saved shift · open in editor to change"
-            : "Saved shift";
+          ? "Saved · locked after day closing"
+          : "Saved · can update until day closing";
       }
 
       body.innerHTML = renderShiftViewBody(buildShiftViewModel(data));

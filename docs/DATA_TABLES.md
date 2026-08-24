@@ -163,7 +163,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Ownership:** Shift save writes `meter_shift_*` (via RPC; clients have SELECT only) and refreshes meter columns on existing `dsr_*` rows via `apply_shift_aggregate_to_dsr` (never inserts stubs). Daily MS/HSD save writes dip/stock/rate on `dsr_*`. Shift meters also prefill the meter sheet via `get_shift_aggregated_daily_meters`. Daily layout is fixed **2 pumps × 2 nozzles** (matches `dsr_*` columns).
 
-**Lock:** Supervisors cannot re-edit a shift once it has nozzle rows; empty other shift stays writable. Certified day / night-cash collected locks both shifts.
+**Lock:** Supervisors can re-save a shift with updated values until day closing is saved for that date; afterwards only an admin can change shifts. Certified day / night-cash collected also locks meter sync for supervisors.
 
 **UI:** Meter Reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
 
@@ -171,7 +171,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## meter_shift_cash
 
-**Purpose:** Cash handed over by staff for a shift. Stores **hard cash**, **phone pay** (UPI), and **cached** credit/expense totals. **Total** = cash_collected + phone_pay + credit_amount + expense_amount. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total. Credit/expense caches are synced from attributed `credit_entries` / `expenses` rows (day closing reads the ledger, not these caches).
+**Purpose:** Cash handed over by staff for a shift. Stores **hard cash**, **phone pay** (UPI), and **cached** credit/expense totals. **Total** = cash_collected + phone_pay + credit_amount + expense_amount. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total. Credit/expense caches are synced from attributed `credit_entries` / `expenses` rows (day closing reads the ledger for credit/expense). Day closing **night_cash** / **phone_pay** are prefilled from the sum of `cash_collected` / `phone_pay` across both shifts.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -581,8 +581,8 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 |--------|------|-------------|
 | id | uuid | Primary key |
 | date | date | Unique closing date |
-| night_cash | numeric | Hard cash at day end |
-| phone_pay | numeric | UPI/PhonePe |
+| night_cash | numeric | Hard cash at day end (prefilled from sum of shift `cash_collected`) |
+| phone_pay | numeric | UPI/PhonePe (prefilled from sum of shift `phone_pay`) |
 | short_today | numeric | Computed short (stored for next day’s short_previous) |
 | total_sale | numeric | Snapshot at closing |
 | collection | numeric | Snapshot at closing |
@@ -605,7 +605,7 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 
 | RPC | Behaviour |
 |-----|-----------|
-| `get_day_closing_breakdown(date)` | Components + `already_saved`, `can_overwrite`, `night_cash_collected`, `certified`, `can_certify` |
+| `get_day_closing_breakdown(date)` | Components + `already_saved`, `can_overwrite`, `shift_cash_total`, `shift_phone_pay_total`, `night_cash_collected`, `certified`, `can_certify` |
 | `save_day_closing(date, night_cash, phone_pay, remarks?)` | Insert or overwrite; clears certification; recascades short |
 | `set_day_closing_certified(date, certified)` | Admin-only acknowledge / remove certification |
 | `delete_day_closing(id)` | Admin only, **latest date only** |
