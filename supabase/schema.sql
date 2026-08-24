@@ -2613,6 +2613,8 @@ declare
   v_credit_shift numeric := 0;
   v_expenses_ledger numeric := 0;
   v_expenses_shift numeric := 0;
+  v_shift_cash numeric := 0;
+  v_shift_phone numeric := 0;
 begin
   perform public.require_staff_access();
 
@@ -2660,6 +2662,13 @@ begin
   from public.expenses
   where date = p_date and employee_id is not null and shift is not null;
 
+  select
+    coalesce(sum(cash_collected), 0),
+    coalesce(sum(phone_pay), 0)
+  into v_shift_cash, v_shift_phone
+  from public.meter_shift_cash
+  where reading_date = p_date;
+
   return jsonb_build_object(
     'total_sale', coalesce(v_total_sale, 0),
     'collection', coalesce(v_collection, 0),
@@ -2669,13 +2678,15 @@ begin
     'credit_ledger', coalesce(v_credit_ledger, 0) - coalesce(v_credit_shift, 0),
     'credit_shift', coalesce(v_credit_shift, 0),
     'expenses_ledger', coalesce(v_expenses_ledger, 0) - coalesce(v_expenses_shift, 0),
-    'expenses_shift', coalesce(v_expenses_shift, 0)
+    'expenses_shift', coalesce(v_expenses_shift, 0),
+    'shift_cash_total', coalesce(v_shift_cash, 0),
+    'shift_phone_pay_total', coalesce(v_shift_phone, 0)
   );
 end;
 $$;
 
 comment on function public.compute_day_closing_components(date) is
-  'Day-closing totals from DSR/ledger. Shift-attributed credit/expense are part of ledger (not double-counted).';
+  'Day-closing totals from DSR/ledger plus live shift cash/phone sums (both shifts).';
 
 
 create or replace function public.recascade_day_closing_short_from(p_from_date date)
@@ -2743,6 +2754,8 @@ declare
   v_collection numeric := 0;
   v_short_previous numeric := 0;
   v_credit_today numeric := 0;
+  v_shift_cash numeric := 0;
+  v_shift_phone numeric := 0;
 begin
   perform public.require_staff_access();
 
@@ -2767,6 +2780,8 @@ begin
   v_use_snapshot := v_already_saved and v_existing.total_sale is not null and not v_can_overwrite;
 
   v_components := public.compute_day_closing_components(p_date);
+  v_shift_cash := coalesce((v_components->>'shift_cash_total')::numeric, 0);
+  v_shift_phone := coalesce((v_components->>'shift_phone_pay_total')::numeric, 0);
 
   if v_use_snapshot then
     v_total_sale := coalesce(v_existing.total_sale, 0);
@@ -2793,9 +2808,19 @@ begin
     'credit_shift', coalesce((v_components->>'credit_shift')::numeric, 0),
     'expenses_ledger', coalesce((v_components->>'expenses_ledger')::numeric, 0),
     'expenses_shift', coalesce((v_components->>'expenses_shift')::numeric, 0),
+    'shift_cash_total', v_shift_cash,
+    'shift_phone_pay_total', v_shift_phone,
     'snapshot', v_use_snapshot,
-    'night_cash', case when v_already_saved then coalesce(v_existing.night_cash, 0) else null end,
-    'phone_pay', case when v_already_saved then coalesce(v_existing.phone_pay, 0) else null end,
+    -- New closing: live morning+afternoon totals. After save (incl. overwrite): stored values.
+    -- Live shift sums always returned as shift_cash_total / shift_phone_pay_total for hints.
+    'night_cash', case
+      when v_already_saved then coalesce(v_existing.night_cash, 0)
+      else v_shift_cash
+    end,
+    'phone_pay', case
+      when v_already_saved then coalesce(v_existing.phone_pay, 0)
+      else v_shift_phone
+    end,
     'short_today', case when v_already_saved then coalesce(v_existing.short_today, 0) else null end,
     'closing_reference', case when v_already_saved then v_existing.closing_reference else null end,
     'remarks', case when v_already_saved then v_existing.remarks else null end,
@@ -2811,7 +2836,7 @@ begin
 end;
 $$;
 comment on function public.get_day_closing_breakdown(date) is
-  'Day closing components. When locked (certified/night cash), headline totals use the saved snapshot including expenses_today.';
+  'Day closing components with live shift cash/phone. Locked days use saved night_cash/phone_pay snapshot.';
 
 -- RPC: Available (uncollected) night cash summary
 create or replace function public.get_night_cash_available()
@@ -5109,6 +5134,47 @@ begin
       (r.product || ':' || r.pump_no::text || ':' || r.nozzle_no::text) = any (v_keys)
     );
 
+  -- Morning re-save: keep afternoon openings in handoff with morning closings.
+  if v_shift = 'morning' then
+    if exists (
+      select 1
+      from public.meter_shift_readings m
+      join public.meter_shift_readings a
+        on a.reading_date = m.reading_date
+       and a.product = m.product
+       and a.pump_no = m.pump_no
+       and a.nozzle_no = m.nozzle_no
+       and a.shift = 'afternoon'
+      where m.reading_date = p_date
+        and m.shift = 'morning'
+        and a.closing_meter < m.closing_meter - 0.001
+    ) then
+      raise exception
+        'Cannot update morning: afternoon closing is below the new morning closing on one or more nozzles. Fix afternoon first.';
+    end if;
+
+    update public.meter_shift_readings a
+    set
+      opening_meter = m.closing_meter,
+      testing_litres = least(
+        a.testing_litres,
+        greatest(a.closing_meter - m.closing_meter, 0)
+      ),
+      updated_at = timezone('utc'::text, now())
+    from public.meter_shift_readings m
+    where m.reading_date = p_date
+      and m.shift = 'morning'
+      and a.reading_date = m.reading_date
+      and a.shift = 'afternoon'
+      and a.product = m.product
+      and a.pump_no = m.pump_no
+      and a.nozzle_no = m.nozzle_no
+      and (
+        abs(a.opening_meter - m.closing_meter) > 0.001
+        or a.testing_litres > greatest(a.closing_meter - m.closing_meter, 0) + 0.001
+      );
+  end if;
+
   for v_row in
     select value from jsonb_array_elements(p_cash)
   loop
@@ -5409,6 +5475,23 @@ comment on function public.meter_day_is_locked(date) is
 
 grant execute on function public.meter_day_is_locked(date) to authenticated;
 
+create or replace function public.meter_day_has_closing(p_date date)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.day_closing dc where dc.date = p_date
+  );
+$$;
+
+comment on function public.meter_day_has_closing(date) is
+  'True when a day closing statement exists for the date (blocks supervisor shift edits).';
+
+grant execute on function public.meter_day_has_closing(date) to authenticated;
+
 create or replace function public.meter_station_today()
 returns date
 language sql
@@ -5456,9 +5539,9 @@ grant execute on function public.meter_day_has_daily_entry(date) to authenticate
 
 drop function if exists public.meter_shift_lock_info(date);
 
--- Per-shift lock: saving morning must not lock an empty afternoon.
--- Supervisors cannot re-edit a shift once it has nozzle rows; admins can.
--- Sync / daily push only checks day-closing lock (certified / night cash).
+-- Per-shift lock: supervisors may re-save until day closing is saved;
+-- certified / night-cash collected also locks. Sync / daily push only checks
+-- day-closing lock (certified / night cash).
 
 create or replace function public.meter_shift_has_readings(p_date date, p_shift text)
 returns boolean
@@ -5492,6 +5575,7 @@ set search_path = public
 as $$
 declare
   v_day_locked boolean := false;
+  v_closing_saved boolean := false;
   v_shift_saved boolean := false;
   v_shift text;
   v_today date := public.meter_station_today();
@@ -5510,6 +5594,7 @@ begin
   end if;
 
   v_day_locked := public.meter_day_is_locked(p_date);
+  v_closing_saved := public.meter_day_has_closing(p_date);
 
   if v_shift is not null then
     v_shift_saved := public.meter_shift_has_readings(p_date, v_shift);
@@ -5519,11 +5604,10 @@ begin
     v_readonly := true;
     v_reason :=
       'Day closing is certified or night cash is collected. Only an admin can change meters.';
-  elsif v_shift_saved and not public.is_admin() then
-    -- Once a shift has rows, supervisors cannot re-edit; empty other shift stays open.
+  elsif v_closing_saved and not public.is_admin() then
     v_readonly := true;
     v_reason :=
-      'This shift is already saved. Only an admin can change it.';
+      'Day closing is saved for this date. Only an admin can change shifts.';
   end if;
 
   return jsonb_build_object(
@@ -5531,6 +5615,7 @@ begin
     'shift', v_shift,
     'today', v_today,
     'day_locked', v_day_locked,
+    'day_closing_saved', v_closing_saved,
     'past_closed', p_date < v_today and public.meter_day_has_daily_entry(p_date),
     'shift_has_data', v_shift_saved,
     'has_daily_entry', public.meter_day_has_daily_entry(p_date),
@@ -5542,7 +5627,7 @@ end;
 $$;
 
 comment on function public.meter_shift_lock_info(date, text) is
-  'Shift register lock: certified day, or any shift that already has saved rows (supervisors).';
+  'Shift register lock for supervisors: day closing saved, or day certified / night cash collected.';
 
 grant execute on function public.meter_shift_lock_info(date, text) to authenticated;
 
@@ -5569,7 +5654,7 @@ $$;
 comment on function public.require_meter_day_writable(date) is
   'Non-admins blocked when day closing is certified or night cash is collected.';
 
--- Shift save: block supervisors from re-editing a shift that already has rows.
+-- Shift save: supervisors may re-save until day closing exists; admins always can.
 create or replace function public.require_meter_shift_writable(p_date date, p_shift text)
 returns void
 language plpgsql
@@ -5590,16 +5675,16 @@ begin
     raise exception 'Shift must be morning or afternoon';
   end if;
 
-  if public.meter_shift_has_readings(p_date, v_shift) then
+  if public.meter_day_has_closing(p_date) then
     raise exception
-      'Shift % for % is already saved. Only an admin can change it.',
-      v_shift, p_date;
+      'Day closing is saved for %. Only an admin can change shift %.',
+      p_date, v_shift;
   end if;
 end;
 $$;
 
 comment on function public.require_meter_shift_writable(date, text) is
-  'Supervisors cannot re-edit a shift once it has saved nozzle rows; admins can.';
+  'Supervisors can re-save a shift until day closing is saved; admins always can.';
 
 grant execute on function public.require_meter_shift_writable(date, text) to authenticated;
 

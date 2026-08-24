@@ -52,6 +52,8 @@ function cacheDayClosingDom() {
     refreshBtn: document.getElementById("day-closing-refresh"),
     nightCashInput: document.getElementById("dc-night-cash"),
     phonePayInput: document.getElementById("dc-phone-pay"),
+    nightCashHint: document.getElementById("dc-night-cash-hint"),
+    phonePayHint: document.getElementById("dc-phone-pay-hint"),
     remarksInput: document.getElementById("dc-remarks"),
     saveBtn: document.getElementById("day-closing-save"),
     referenceLine: document.getElementById("dc-reference-line"),
@@ -467,11 +469,19 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (dcDom.creditTodayEl) dcDom.creditTodayEl.textContent = formatCurrency(creditToday);
   if (dcDom.expensesTodayEl) dcDom.expensesTodayEl.textContent = formatCurrency(expensesToday);
 
-  for (const [input, key] of [[dcDom.nightCashInput, "night_cash"], [dcDom.phonePayInput, "phone_pay"]]) {
+  for (const [input, key, shiftKey] of [
+    [dcDom.nightCashInput, "night_cash", "shift_cash_total"],
+    [dcDom.phonePayInput, "phone_pay", "shift_phone_pay_total"],
+  ]) {
     if (!input) continue;
-    const v = b[key];
+    let v = b[key];
+    // Prefill from live shift totals before first save (also covers older RPC without night_cash prefill).
+    if (!b.already_saved && (v == null || v === "") && b[shiftKey] != null && b[shiftKey] !== "") {
+      v = b[shiftKey];
+    }
     input.value = v != null && v !== "" ? Number(v) : "";
   }
+  syncDayClosingShiftCashHints(b);
 
   const alreadySaved = !!b.already_saved;
   const canOverwrite = canOverwriteDayClosing(b);
@@ -507,6 +517,50 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
 
 function canOverwriteDayClosing(breakdown) {
   return !!breakdown?.can_overwrite;
+}
+
+function syncDayClosingShiftCashHints(breakdown) {
+  const b = breakdown || {};
+  const shiftCash = Number(b.shift_cash_total ?? 0);
+  const shiftPhone = Number(b.shift_phone_pay_total ?? 0);
+  const alreadySaved = !!b.already_saved;
+  const canOverwrite = canOverwriteDayClosing(b);
+  const nightCash = Number(b.night_cash ?? 0);
+  const phonePay = Number(b.phone_pay ?? 0);
+  const cashDiffers = alreadySaved && Math.abs(shiftCash - nightCash) > 0.005;
+  const phoneDiffers = alreadySaved && Math.abs(shiftPhone - phonePay) > 0.005;
+
+  const cashHint = dcDom?.nightCashHint;
+  if (cashHint) {
+    if (!alreadySaved) {
+      cashHint.textContent =
+        shiftCash > 0
+          ? `From shift register (morning + afternoon): ${formatCurrency(shiftCash)}`
+          : "Hard cash from morning + afternoon shift register";
+    } else if (cashDiffers && canOverwrite) {
+      cashHint.textContent = `Saved ${formatCurrency(nightCash)} · shift register now ${formatCurrency(shiftCash)} (edit to match if needed)`;
+    } else if (cashDiffers) {
+      cashHint.textContent = `Saved closing ${formatCurrency(nightCash)} · shift register now ${formatCurrency(shiftCash)}`;
+    } else {
+      cashHint.textContent = `Shift register (morning + afternoon): ${formatCurrency(shiftCash)}`;
+    }
+  }
+
+  const phoneHint = dcDom?.phonePayHint;
+  if (phoneHint) {
+    if (!alreadySaved) {
+      phoneHint.textContent =
+        shiftPhone > 0
+          ? `From shift register (morning + afternoon): ${formatCurrency(shiftPhone)}`
+          : "PhonePe / UPI from morning + afternoon shift register";
+    } else if (phoneDiffers && canOverwrite) {
+      phoneHint.textContent = `Saved ${formatCurrency(phonePay)} · shift register now ${formatCurrency(shiftPhone)} (edit to match if needed)`;
+    } else if (phoneDiffers) {
+      phoneHint.textContent = `Saved closing ${formatCurrency(phonePay)} · shift register now ${formatCurrency(shiftPhone)}`;
+    } else {
+      phoneHint.textContent = `Shift register (morning + afternoon): ${formatCurrency(shiftPhone)}`;
+    }
+  }
 }
 
 function formatCertifiedWhen(iso) {
@@ -1083,7 +1137,7 @@ async function initializeDayClosing() {
   initDayClosingCreditDeleteHandlers();
 
   window.addEventListener("storage", (e) => {
-    if (e.key !== "credit-updated" && e.key !== "expenses-updated") return;
+    if (e.key !== "credit-updated" && e.key !== "expenses-updated" && e.key !== "shift-updated") return;
     const dateStr = dateInput.value?.trim();
     if (!dateStr) return;
     dcDetailsCache = { date: dateStr, collection: null, credit: null, expenses: null };
