@@ -601,22 +601,17 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (dcDom.expensesTodayEl) dcDom.expensesTodayEl.textContent = formatCurrency(expensesToday);
 
   const canOverwrite = canOverwriteDayClosing(b);
-  const editable = !b.already_saved || canOverwrite;
-  const suggestedCash = Number(b.suggested_night_cash ?? b.night_cash ?? 0);
-  const suggestedPhone = Number(b.suggested_phone_pay ?? b.phone_pay ?? 0);
-
-  if (dcDom.nightCashInput) {
-    // Editable: always show shift + Cash settlements. Locked: keep saved value.
-    const v = editable ? suggestedCash : Number(b.night_cash ?? 0);
-    dcDom.nightCashInput.value = Number.isFinite(v) ? String(v) : "";
-  }
-  if (dcDom.phonePayInput) {
-    const v = editable ? suggestedPhone : Number(b.phone_pay ?? 0);
-    dcDom.phonePayInput.value = Number.isFinite(v) ? String(v) : "";
-  }
-  syncDayClosingShiftCashHints(b);
-
   const alreadySaved = !!b.already_saved;
+  // Already saved: keep registered amounts. Suggestions are hints only.
+  setDayClosingMoneyInput(
+    dcDom.nightCashInput,
+    alreadySaved ? b.saved_night_cash ?? b.night_cash : b.suggested_night_cash ?? b.night_cash
+  );
+  setDayClosingMoneyInput(
+    dcDom.phonePayInput,
+    alreadySaved ? b.saved_phone_pay ?? b.phone_pay : b.suggested_phone_pay ?? b.phone_pay
+  );
+  syncDayClosingShiftCashHints(b);
   syncDayClosingSaveButton(dcDom.saveBtn);
   syncDayClosingAlreadySavedNotice(b);
   syncDayClosingCertifyPanel(b);
@@ -651,14 +646,26 @@ function canOverwriteDayClosing(breakdown) {
   return !!breakdown?.can_overwrite;
 }
 
+function dcMoney(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function setDayClosingMoneyInput(el, value) {
+  if (!el) return;
+  const n = Number(value);
+  el.value = Number.isFinite(n) ? String(n) : "";
+}
+
 /**
  * Ensure night cash / phone pay suggestions = shift till + Cash/UPI settlements.
  * Uses RPC settle_* when present; otherwise one shared payments fetch via settle maps cache.
+ * When already saved, night_cash / phone_pay always reflect registered amounts (not suggestions).
  */
 async function enrichDayClosingSettleSuggestions(breakdown, dateStr) {
   const b = { ...(breakdown || {}) };
-  const shiftCash = Number(b.shift_cash_total ?? 0) || 0;
-  const shiftPhone = Number(b.shift_phone_pay_total ?? 0) || 0;
+  const shiftCash = dcMoney(b.shift_cash_total);
+  const shiftPhone = dcMoney(b.shift_phone_pay_total);
 
   let settleCash = b.settle_cash_total;
   let settleUpi = b.settle_upi_total;
@@ -667,84 +674,113 @@ async function enrichDayClosingSettleSuggestions(breakdown, dateStr) {
     settleCash = maps.settleCash;
     settleUpi = maps.settleUpi;
   }
-  settleCash = Number(settleCash) || 0;
-  settleUpi = Number(settleUpi) || 0;
-
-  const suggestedCash = shiftCash + settleCash;
-  const suggestedPhone = shiftPhone + settleUpi;
-
-  if (b.already_saved) {
-    if (b.saved_night_cash == null) b.saved_night_cash = Number(b.night_cash ?? 0) || 0;
-    if (b.saved_phone_pay == null) b.saved_phone_pay = Number(b.phone_pay ?? 0) || 0;
-  }
+  settleCash = dcMoney(settleCash);
+  settleUpi = dcMoney(settleUpi);
 
   b.settle_cash_total = settleCash;
   b.settle_upi_total = settleUpi;
-  b.suggested_night_cash = suggestedCash;
-  b.suggested_phone_pay = suggestedPhone;
+  b.suggested_night_cash = shiftCash + settleCash;
+  b.suggested_phone_pay = shiftPhone + settleUpi;
+
+  if (b.already_saved) {
+    // Prefer saved_* from RPC; fall back to night_cash/phone_pay only when saved_* missing.
+    b.saved_night_cash = dcMoney(b.saved_night_cash ?? b.night_cash);
+    b.saved_phone_pay = dcMoney(b.saved_phone_pay ?? b.phone_pay);
+    b.night_cash = b.saved_night_cash;
+    b.phone_pay = b.saved_phone_pay;
+  }
   return b;
+}
+
+/** Settle fragment: " + same-day cash ₹10,000" or " + cash ₹10,000 (₹3,000 same-day)" */
+function dayClosingSettleNote(settleAmt, sameAmt, channel) {
+  if (settleAmt <= 0.005) return "";
+  const allSameDay = sameAmt > 0.005 && Math.abs(sameAmt - settleAmt) < 0.005;
+  if (allSameDay) return ` + same-day ${channel} ${formatCurrency(settleAmt)}`;
+  if (sameAmt > 0.005) {
+    return ` + ${channel} ${formatCurrency(settleAmt)} (${formatCurrency(sameAmt)} same-day)`;
+  }
+  return ` + ${channel} settle ${formatCurrency(settleAmt)}`;
+}
+
+/**
+ * Hint copy for night cash / PhonePe.
+ * Recalculated vs saved is only shown when that channel has shift till data —
+ * older days with settle scraps alone produce misleading "suggestions".
+ */
+function dayClosingChannelHint({
+  alreadySaved,
+  canOverwrite,
+  saved,
+  suggested,
+  shift,
+  settle,
+  sameDay,
+  channel,
+  emptyLabel,
+}) {
+  const hasShift = shift > 0.005;
+  if (!alreadySaved) {
+    if (suggested <= 0.005) return emptyLabel;
+    return `Suggested ${formatCurrency(suggested)} = shift ${formatCurrency(shift)}${dayClosingSettleNote(settle, sameDay, channel)}`;
+  }
+  const savedAmt = Number.isFinite(saved) ? saved : 0;
+  const differs = hasShift && Math.abs(suggested - savedAmt) > 0.005;
+  if (differs) {
+    return canOverwrite
+      ? `Keeping saved ${formatCurrency(savedAmt)} · recalculated ${formatCurrency(suggested)} (change only if correcting)`
+      : `Saved closing ${formatCurrency(savedAmt)} · recalculated ${formatCurrency(suggested)}`;
+  }
+  return `Registered ${formatCurrency(savedAmt)}`;
 }
 
 function syncDayClosingShiftCashHints(breakdown) {
   const b = breakdown || {};
-  const shiftCash = Number(b.shift_cash_total ?? 0) || 0;
-  const shiftPhone = Number(b.shift_phone_pay_total ?? 0) || 0;
-  const settleCash = Number(b.settle_cash_total ?? 0) || 0;
-  const settleUpi = Number(b.settle_upi_total ?? 0) || 0;
-  const sameCash = Number(b.same_day_settle_cash ?? 0) || 0;
-  const sameUpi = Number(b.same_day_settle_upi ?? 0) || 0;
-  const sameBank = Number(b.same_day_settle_bank ?? 0) || 0;
-  const suggestedCash = Number(b.suggested_night_cash ?? shiftCash + settleCash) || 0;
-  const suggestedPhone = Number(b.suggested_phone_pay ?? shiftPhone + settleUpi) || 0;
+  const shiftCash = dcMoney(b.shift_cash_total);
+  const shiftPhone = dcMoney(b.shift_phone_pay_total);
+  const settleCash = dcMoney(b.settle_cash_total);
+  const settleUpi = dcMoney(b.settle_upi_total);
+  const sameCash = dcMoney(b.same_day_settle_cash);
+  const sameUpi = dcMoney(b.same_day_settle_upi);
+  const sameBank = dcMoney(b.same_day_settle_bank);
+  const suggestedCash = dcMoney(b.suggested_night_cash ?? shiftCash + settleCash);
+  const suggestedPhone = dcMoney(b.suggested_phone_pay ?? shiftPhone + settleUpi);
   const alreadySaved = !!b.already_saved;
   const canOverwrite = canOverwriteDayClosing(b);
-  const savedCash = Number(b.saved_night_cash ?? (alreadySaved ? b.night_cash : null));
-  const savedPhone = Number(b.saved_phone_pay ?? (alreadySaved ? b.phone_pay : null));
-  const cashDiffers =
-    alreadySaved && Number.isFinite(savedCash) && Math.abs(suggestedCash - savedCash) > 0.005;
-  const phoneDiffers =
-    alreadySaved && Number.isFinite(savedPhone) && Math.abs(suggestedPhone - savedPhone) > 0.005;
-
-  const settleNote = (settleAmt, sameAmt, label) => {
-    if (settleAmt <= 0.005) return "";
-    const sameBit = sameAmt > 0.005 ? ` incl. same-day ${formatCurrency(sameAmt)}` : "";
-    return ` · + ${label} settles ${formatCurrency(settleAmt)}${sameBit}`;
-  };
+  const savedCash = alreadySaved ? dcMoney(b.saved_night_cash ?? b.night_cash) : NaN;
+  const savedPhone = alreadySaved ? dcMoney(b.saved_phone_pay ?? b.phone_pay) : NaN;
 
   const cashHint = dcDom?.nightCashHint;
   if (cashHint) {
-    if (!alreadySaved) {
-      cashHint.textContent =
-        suggestedCash > 0
-          ? `Suggested ${formatCurrency(suggestedCash)} (shift ${formatCurrency(shiftCash)}${settleNote(settleCash, sameCash, "Cash")})`
-          : "Hard cash from shift register + Cash credit settlements";
-    } else if (cashDiffers && canOverwrite) {
-      cashHint.textContent = `Saved ${formatCurrency(savedCash)} · suggested now ${formatCurrency(suggestedCash)} (edit to match if needed)`;
-    } else if (cashDiffers) {
-      cashHint.textContent = `Saved closing ${formatCurrency(savedCash)} · suggested now ${formatCurrency(suggestedCash)}`;
-    } else {
-      cashHint.textContent = `Shift + Cash settles: ${formatCurrency(suggestedCash)}`;
+    cashHint.textContent = dayClosingChannelHint({
+      alreadySaved,
+      canOverwrite,
+      saved: savedCash,
+      suggested: suggestedCash,
+      shift: shiftCash,
+      settle: settleCash,
+      sameDay: sameCash,
+      channel: "cash",
+      emptyLabel: "Hard cash from shift register + Cash credit settlements",
+    });
+    if (!alreadySaved && sameBank > 0.005) {
+      cashHint.textContent += ` · bank ${formatCurrency(sameBank)} not included`;
     }
   }
 
   const phoneHint = dcDom?.phonePayHint;
   if (phoneHint) {
-    if (!alreadySaved) {
-      phoneHint.textContent =
-        suggestedPhone > 0
-          ? `Suggested ${formatCurrency(suggestedPhone)} (shift ${formatCurrency(shiftPhone)}${settleNote(settleUpi, sameUpi, "UPI")})`
-          : "PhonePe / UPI from shift register + UPI credit settlements";
-    } else if (phoneDiffers && canOverwrite) {
-      phoneHint.textContent = `Saved ${formatCurrency(savedPhone)} · suggested now ${formatCurrency(suggestedPhone)} (edit to match if needed)`;
-    } else if (phoneDiffers) {
-      phoneHint.textContent = `Saved closing ${formatCurrency(savedPhone)} · suggested now ${formatCurrency(suggestedPhone)}`;
-    } else {
-      phoneHint.textContent = `Shift + UPI settles: ${formatCurrency(suggestedPhone)}`;
-    }
-  }
-
-  if (sameBank > 0.005 && cashHint && !alreadySaved) {
-    cashHint.textContent += ` · Bank settles ${formatCurrency(sameBank)} not auto-added`;
+    phoneHint.textContent = dayClosingChannelHint({
+      alreadySaved,
+      canOverwrite,
+      saved: savedPhone,
+      suggested: suggestedPhone,
+      shift: shiftPhone,
+      settle: settleUpi,
+      sameDay: sameUpi,
+      channel: "UPI",
+      emptyLabel: "PhonePe / UPI from shift register + UPI credit settlements",
+    });
   }
 }
 

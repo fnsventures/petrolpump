@@ -2879,7 +2879,7 @@ revoke all on function public.recascade_day_closing_short_from(date) from authen
 -- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
 create or replace function public.get_day_closing_breakdown(p_date date)
 returns jsonb
-language plpgsql security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
 declare
@@ -2979,13 +2979,13 @@ begin
     'saved_night_cash', v_saved_cash,
     'saved_phone_pay', v_saved_phone,
     'snapshot', v_use_snapshot,
-    -- Prefill value for the form: suggested when editable, saved when locked
+    -- Already saved: always return registered amounts. Suggestions stay in suggested_*.
     'night_cash', case
-      when v_already_saved and not v_can_overwrite then v_saved_cash
+      when v_already_saved then v_saved_cash
       else v_suggested_cash
     end,
     'phone_pay', case
-      when v_already_saved and not v_can_overwrite then v_saved_phone
+      when v_already_saved then v_saved_phone
       else v_suggested_phone
     end,
     'short_today', case when v_already_saved then coalesce(v_existing.short_today, 0) else null end,
@@ -3004,7 +3004,7 @@ end;
 $$;
 
 comment on function public.get_day_closing_breakdown(date) is
-  'Day closing breakdown. suggested_* = shift + Cash/UPI settles; night_cash/phone_pay prefill suggested when editable.';
+  'Day closing breakdown. suggested_* = shift + Cash/UPI settles; night_cash/phone_pay = saved when already registered, else suggested.';
 
 
 -- RPC: Available (uncollected) night cash summary
