@@ -5,11 +5,12 @@
  */
 (function (global) {
   const DSR_SELECT_FULL =
-    "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
+    "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl";
   const DSR_SELECT_PL =
-    "date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
+    "date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl";
   const DSR_SELECT_SUMMARY = "date, product, total_sales, testing, stock, petrol_rate, diesel_rate";
-  const DSR_SELECT_RECEIPT = "date, product, receipts, buying_price_per_litre";
+  const DSR_SELECT_RECEIPT =
+    "date, product, receipts, buying_price_per_litre, purchase_delivery_per_kl, purchase_lfr_per_kl";
   const RECEIPT_LOOKBACK_PRODUCTS = ["petrol", "diesel"];
 
   function filterDsrByRange(rows, startDate, endDate) {
@@ -122,9 +123,8 @@
   const MISSING_BUYING_CACHE_KEY = "missing_buying_price";
 
   /**
-   * Receipt days with fuel received but no usable buying price (receipt history window).
-   * Matches the P&L todo banner count and buying-price entry list on Meter Reading → Purchase cost.
-   * @param {{ force?: boolean }} [options] - force=true starts a fresh request (use after saves).
+   * Receipt days needing purchase cost: missing pre-VAT rate and/or delivery/LFR.
+   * Matches the Purchase cost list on Meter Reading.
    */
   async function fetchMissingBuyingPriceRows(options = {}) {
     const force = Boolean(options.force);
@@ -153,11 +153,13 @@
     const req = (async () => {
       const { data, error } = await supabaseClient
         .from("dsr")
-        .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id")
+        .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
         .gte("date", startStr)
         .lte("date", endStr)
         .gt("receipts", 0)
-        .or("buying_price_per_litre.is.null,buying_price_per_litre.lte.0")
+        .or(
+          "buying_price_per_litre.is.null,buying_price_per_litre.lte.0,purchase_delivery_per_kl.is.null,purchase_lfr_per_kl.is.null"
+        )
         .order("date", { ascending: false });
 
       const rows = data ?? [];

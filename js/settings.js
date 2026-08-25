@@ -158,14 +158,6 @@ function bindBillingDefaultsForm(auth) {
   const r = PumpSettings.getCachedSync().reports || {};
   set("bill-petrol-vat", r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct);
   set("bill-diesel-vat", r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct);
-  set("bill-delivery-per-kl", r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl);
-  const inclEl = document.getElementById("bill-purchase-tax-inclusive");
-  if (inclEl) {
-    inclEl.checked =
-      typeof r.purchaseTaxInclusive === "boolean"
-        ? r.purchaseTaxInclusive
-        : AppConfig.DEFAULT_REPORTS.purchaseTaxInclusive === true;
-  }
   const gstReportsEl = document.getElementById("bill-include-in-gst-reports");
   if (gstReportsEl) {
     const fromBilling = b.includeInGstReports;
@@ -187,8 +179,12 @@ function bindBillingDefaultsForm(auth) {
     const errorEl = document.getElementById("billing-defaults-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
+    if (successEl) successEl.textContent = "Billing defaults saved.";
     const btn = form.querySelector('button[type="submit"]');
-    if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+    }
     try {
       const fuelGst = parseOptionalNumber(
         document.getElementById("bill-fuel-gst")?.value,
@@ -197,44 +193,43 @@ function bindBillingDefaultsForm(auth) {
       const includeInGstReports = Boolean(
         document.getElementById("bill-include-in-gst-reports")?.checked
       );
-      await PumpSettings.savePumpSettings({
-        billing: {
-          invoicePrefix: document.getElementById("bill-invoice-prefix")?.value?.trim(),
-          defaultPartyName: document.getElementById("bill-default-party")?.value?.trim(),
-          defaultFuelGstPct: fuelGst,
-          receiptHistoryStart: document.getElementById("bill-receipt-start")?.value,
-          includeInGstReports,
+      await PumpSettings.savePumpSettings(
+        {
+          billing: {
+            invoicePrefix: document.getElementById("bill-invoice-prefix")?.value?.trim(),
+            defaultPartyName: document.getElementById("bill-default-party")?.value?.trim(),
+            defaultFuelGstPct: fuelGst,
+            receiptHistoryStart: document.getElementById("bill-receipt-start")?.value,
+            includeInGstReports,
+          },
+          reports: {
+            fuelGstPct: fuelGst,
+            petrolPurchaseVatPct: parseOptionalNumber(
+              document.getElementById("bill-petrol-vat")?.value,
+              r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct
+            ),
+            dieselPurchaseVatPct: parseOptionalNumber(
+              document.getElementById("bill-diesel-vat")?.value,
+              r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
+            ),
+            includeBillingInGst: includeInGstReports,
+            fuelSupplierLabel:
+              document.getElementById("bill-fuel-supplier-label")?.value?.trim() ||
+              AppConfig.DEFAULT_REPORTS.fuelSupplierLabel,
+            fuelSupplierGstin:
+              document.getElementById("bill-fuel-supplier-gstin")?.value?.trim().toUpperCase() || "",
+          },
         },
-        reports: {
-          fuelGstPct: fuelGst,
-          petrolPurchaseVatPct: parseOptionalNumber(
-            document.getElementById("bill-petrol-vat")?.value,
-            r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct
-          ),
-          dieselPurchaseVatPct: parseOptionalNumber(
-            document.getElementById("bill-diesel-vat")?.value,
-            r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
-          ),
-          purchaseDeliveryPerKl: parseOptionalNumber(
-            document.getElementById("bill-delivery-per-kl")?.value,
-            r.purchaseDeliveryPerKl ?? AppConfig.DEFAULT_REPORTS.purchaseDeliveryPerKl
-          ),
-          purchaseTaxInclusive: Boolean(
-            document.getElementById("bill-purchase-tax-inclusive")?.checked
-          ),
-          includeBillingInGst: includeInGstReports,
-          fuelSupplierLabel:
-            document.getElementById("bill-fuel-supplier-label")?.value?.trim() ||
-            AppConfig.DEFAULT_REPORTS.fuelSupplierLabel,
-          fuelSupplierGstin:
-            document.getElementById("bill-fuel-supplier-gstin")?.value?.trim().toUpperCase() || "",
-        },
-      }, auth.session?.user?.id);
+        auth.session?.user?.id
+      );
       successEl?.classList.remove("hidden");
     } catch (err) {
       AppError.handle(err, { target: errorEl });
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = "Save billing defaults"; }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Save billing defaults";
+      }
     }
   });
 }

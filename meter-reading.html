@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="css/base.css?v=3" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=16" />
+    <link rel="stylesheet" href="css/app-core.css?v=17" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <link rel="stylesheet" href="css/app-meter-reading.css?v=45" />
     <script defer src="js/vendor/supabase.min.js"></script>
@@ -24,12 +24,12 @@
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/purchaseTaxUtils.js?v=3"></script>
-    <script defer src="js/utils.js?v=12"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=7"></script>
+    <script defer src="js/utils.js?v=14"></script>
     <script defer src="js/pwa.js"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/dsrQueries.js"></script>
-    <script defer src="js/buyingPriceEntry.js?v=1"></script>
+    <script defer src="js/dsrQueries.js?v=2"></script>
+    <script defer src="js/buyingPriceEntry.js?v=4"></script>
     <script defer src="js/dsrFuelNav.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
@@ -1007,21 +1007,21 @@
           <div class="panel-head">
             <h2 class="dashboard-section-title">Purchase cost</h2>
             <p class="muted panel-lead">
-              Enter pre-VAT ₹/KL for receipt days so Analysis and Reports can calculate Nett Profit.
-              Optional invoice no and supplier GSTIN feed the purchase GST register.
+              Enter amounts exactly as on the BPCL invoices for that receipt day. The app calculates delivery ₹/KL, LFR ₹/KL, and landed buying price.
+              Each save applies from that receipt onward only — earlier days stay as they were.
             </p>
           </div>
           <p id="purchase-cost-error" class="error hidden" role="alert"></p>
           <p id="purchase-cost-hint" class="muted"></p>
           <div id="purchase-cost-alert" class="pl-buying-price-alert hidden">
             <p class="pl-alert-message">
-              Receipt days need a purchase rate to calculate profit. Enter pre-VAT ₹/KL below (per 1000 L, as on the BPCL invoice).
-              VAT/LST and delivery are applied in P&amp;L. Each rate applies until the next receipt day. Selling rates come from the meter forms.
+              <strong>Fuel invoice:</strong> Rate per Unit, DLY/TAXABLE CHARGE, Quantity (KL).<br />
+              <strong>LFR invoice:</strong> TAXABLE AMT and total KL for the load (MS+HSD). GST on LFR is applied automatically.
             </p>
             <ul id="purchase-cost-missing-list" class="pl-missing-buying-list"></ul>
           </div>
           <p id="purchase-cost-empty" class="muted hidden" role="status">
-            All receipt days in the lookback window have a buying price. Full P&amp;L is on
+            All receipt days in the lookback window have rate, delivery, and LFR. Full P&amp;L is on
             <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a>
             and <a href="analysis.html">Analysis</a>.
           </p>

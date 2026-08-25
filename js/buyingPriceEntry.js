@@ -1,14 +1,10 @@
-/* global supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPlBuyingPricePlaceholder, DsrQueries */
+/* global supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
 
 /**
- * Shared admin UI for entering pre-VAT fuel buying price on receipt days.
- * Used from Meter Reading → Purchase cost (ops home for this input).
+ * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.
+ * Meter Reading → Purchase cost.
  */
 (function (global) {
-  /**
-   * Match a vault purchase PDF by invoice title (and optional receipt date).
-   * @returns {Promise<string|null>} invoice_documents.id
-   */
   async function findVaultDocumentIdForInvoice(invoiceNo, receiptDate) {
     const title = String(invoiceNo || "").trim();
     if (!title) return null;
@@ -69,6 +65,92 @@
     errorEl?.classList.add("hidden");
   }
 
+  function formatMoney(n) {
+    if (!Number.isFinite(n)) return "—";
+    return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  }
+
+  function groupRowsByDate(rows) {
+    const map = new Map();
+    (rows ?? []).forEach((row) => {
+      if (!map.has(row.date)) map.set(row.date, []);
+      map.get(row.date).push(row);
+    });
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }
+
+  function defaultDeliveryQtyKl(row) {
+    const fromRow = Number(row.purchase_delivery_qty_kl);
+    if (Number.isFinite(fromRow) && fromRow > 0) return fromRow;
+    return litresToKl(row.receipts) ?? "";
+  }
+
+  function defaultLfrQtyKl(dayRows) {
+    const fromRow = dayRows.map((r) => Number(r.purchase_lfr_qty_kl)).find((n) => Number.isFinite(n) && n > 0);
+    if (fromRow) return fromRow;
+    const sumL = dayRows.reduce((s, r) => s + (Number(r.receipts) || 0), 0);
+    return litresToKl(sumL) ?? "";
+  }
+
+  function defaultLfrTotal(dayRows) {
+    const fromRow = dayRows.map((r) => Number(r.purchase_lfr_total)).find((n) => Number.isFinite(n) && n > 0);
+    return fromRow ?? "";
+  }
+
+  function readNum(el) {
+    if (!el) return NaN;
+    const v = Number.parseFloat(String(el.value ?? "").trim());
+    return v;
+  }
+
+  function updateDayComputed(dayEl) {
+    if (!dayEl) return;
+    const date = dayEl.dataset.date;
+    const lfrTotal = readNum(dayEl.querySelector(".pl-lfr-total"));
+    const lfrQty = readNum(dayEl.querySelector(".pl-lfr-qty"));
+    const lfrGst = getPurchaseLfrGstPct();
+    const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, lfrGst);
+    const lfrOut = dayEl.querySelector(".pl-lfr-per-kl");
+    if (lfrOut) {
+      lfrOut.textContent = lfrPerKl != null ? `₹${formatMoney(lfrPerKl)}/KL incl. GST` : "—";
+    }
+
+    dayEl.querySelectorAll(".pl-product-block").forEach((block) => {
+      const product = block.dataset.product;
+      const rateKl = readNum(block.querySelector(".pl-buying-input"));
+      const delTotal = readNum(block.querySelector(".pl-del-total"));
+      const delQty = readNum(block.querySelector(".pl-del-qty"));
+      const delPerKl = ratePerKlFromTotalAndQty(delTotal, delQty);
+      const delOut = block.querySelector(".pl-del-per-kl");
+      if (delOut) {
+        delOut.textContent = delPerKl != null ? `₹${formatMoney(delPerKl)}/KL` : "—";
+      }
+      const preview = block.querySelector(".pl-landed-preview");
+      const parsed = validateBuyingRateKlInput(rateKl);
+      if (!parsed.ok || delPerKl == null || lfrPerKl == null) {
+        if (preview) preview.textContent = "Buying price (landed): —";
+        return;
+      }
+      const landed = landedBuyingRatePerLitre(parsed.valuePerLitre, product, date, {
+        deliveryPerKl: delPerKl,
+        lfrPerKl,
+      });
+      if (preview) {
+        preview.textContent =
+          landed != null
+            ? `Buying price (landed) ≈ ₹${formatMoney(landed)}/L · ₹${formatMoney(landed * 1000)}/KL`
+            : "Buying price (landed): —";
+      }
+    });
+  }
+
+  function bindDayComputed(dayEl) {
+    dayEl.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("input", () => updateDayComputed(dayEl));
+    });
+    updateDayComputed(dayEl);
+  }
+
   /**
    * @param {object} opts
    * @param {HTMLElement} opts.listEl
@@ -97,44 +179,116 @@
       PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
       AppConfig.DEFAULT_REPORTS.fuelSupplierGstin ||
       "";
+    const lfrGst = getPurchaseLfrGstPct();
+    const groups = groupRowsByDate(rows);
 
-    listEl.innerHTML = rows
-      .map((row) => {
-        const productLabel = normalizeProduct(row.product) === "petrol" ? "Petrol" : "Diesel";
-        const rowId = row.id;
-        const invVal = escapeHtml(row.supplier_invoice_no || "");
-        const gstinVal = escapeHtml(row.supplier_gstin || defaultGstin || "");
+    listEl.innerHTML = groups
+      .map(([date, dayRows]) => {
+        const lfrQtyDefault = defaultLfrQtyKl(dayRows);
+        const lfrTotalDefault = defaultLfrTotal(dayRows);
+        const productBlocks = dayRows
+          .map((row) => {
+            const product = normalizeProduct(row.product);
+            const productLabel = product === "petrol" ? "Petrol (MS)" : "Diesel (HSD)";
+            const rowId = row.id;
+            const invVal = escapeHtml(row.supplier_invoice_no || "");
+            const gstinVal = escapeHtml(row.supplier_gstin || defaultGstin || "");
+            const delTotal =
+              Number(row.purchase_delivery_total) > 0 ? row.purchase_delivery_total : "";
+            const delQty = defaultDeliveryQtyKl(row);
+            const receiptsL = Number(row.receipts) || 0;
+            const existingRateL = Number(row.buying_price_per_litre);
+            const existingRateKl =
+              Number.isFinite(existingRateL) && existingRateL > 0
+                ? Math.round(existingRateL * 1000 * 100) / 100
+                : "";
+            return `
+            <div class="pl-product-block" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">
+              <div class="pl-product-head">
+                <strong>${escapeHtml(productLabel)}</strong>
+                <span class="muted">${formatMoney(receiptsL)} L · from fuel invoice</span>
+              </div>
+              <div class="pl-field-grid">
+                <label class="pl-field">
+                  <span>Rate per Unit (₹/KL)</span>
+                  <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" />
+                </label>
+                <label class="pl-field">
+                  <span>DLY/TAXABLE CHARGE (₹)</span>
+                  <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" />
+                </label>
+                <label class="pl-field">
+                  <span>Quantity (KL)</span>
+                  <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" />
+                </label>
+                <div class="pl-field pl-computed">
+                  <span>Delivery ₹/KL</span>
+                  <strong class="pl-del-per-kl">—</strong>
+                </div>
+                <label class="pl-field">
+                  <span>Invoice No.</span>
+                  <input id="pl-inv-${rowId}" type="text" maxlength="40" placeholder="e.g. 1202801092" class="pl-inv-input" value="${invVal}" data-dsr-id="${escapeHtml(rowId)}" />
+                </label>
+                <label class="pl-field">
+                  <span>Supplier GSTIN</span>
+                  <input id="pl-gstin-${rowId}" type="text" maxlength="15" placeholder="GSTIN" class="pl-gstin-input" value="${gstinVal}" data-dsr-id="${escapeHtml(rowId)}" />
+                </label>
+              </div>
+              <p class="pl-landed-preview muted">Buying price (landed): —</p>
+              <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">Save ${escapeHtml(productLabel)}</button>
+            </div>`;
+          })
+          .join("");
+
         return `
-        <li class="pl-missing-item" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}" data-date="${escapeHtml(row.date)}">
-          <span class="pl-missing-label">${escapeHtml(row.date)} · ${productLabel}</span>
-          <label for="pl-buying-${rowId}" class="sr-only">${escapeHtml(getPlBuyingPriceFieldLabel())}</label>
-          <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escapeHtml(getPlBuyingPricePlaceholder())}" class="pl-buying-input" data-dsr-id="${escapeHtml(rowId)}" />
-          <label for="pl-inv-${rowId}" class="sr-only">Supplier invoice no</label>
-          <input id="pl-inv-${rowId}" type="text" maxlength="40" placeholder="BPCL invoice no" class="pl-inv-input" value="${invVal}" data-dsr-id="${escapeHtml(rowId)}" />
-          <label for="pl-gstin-${rowId}" class="sr-only">Supplier GSTIN</label>
-          <input id="pl-gstin-${rowId}" type="text" maxlength="15" placeholder="Supplier GSTIN" class="pl-gstin-input" value="${gstinVal}" data-dsr-id="${escapeHtml(rowId)}" />
-          <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(normalizeProduct(row.product))}">Save</button>
+        <li class="pl-day-card" data-date="${escapeHtml(date)}">
+          <div class="pl-day-head">
+            <h3 class="pl-day-title">${escapeHtml(date)}</h3>
+            <p class="muted pl-day-sub">Copy amounts from that day’s fuel invoice and LFR tax invoice. Saved values apply from this receipt onward only.</p>
+          </div>
+          <div class="pl-lfr-block">
+            <div class="pl-product-head">
+              <strong>LFR FOR DC (MS / HSD)</strong>
+              <span class="muted">LFR tax invoice · TAXABLE AMT · CGST+SGST ${escapeHtml(String(lfrGst))}%</span>
+            </div>
+            <div class="pl-field-grid">
+              <label class="pl-field">
+                <span>TAXABLE AMT (₹)</span>
+                <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" />
+              </label>
+              <label class="pl-field">
+                <span>Total quantity (KL)</span>
+                <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" />
+              </label>
+              <div class="pl-field pl-computed">
+                <span>LFR ₹/KL (incl. GST)</span>
+                <strong class="pl-lfr-per-kl">—</strong>
+              </div>
+            </div>
+          </div>
+          ${productBlocks}
         </li>`;
       })
       .join("");
 
+    listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => bindDayComputed(dayEl));
     listEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
-      btn.addEventListener("click", () =>
-        handleSaveBuyingPrice(btn.dataset.dsrId, opts)
-      );
+      btn.addEventListener("click", () => handleSaveBuyingPrice(btn.dataset.dsrId, opts));
     });
   }
 
   async function handleSaveBuyingPrice(dsrId, opts) {
     const { listEl, errorEl, onSaved } = opts;
+    const block = listEl?.querySelector(`.pl-product-block[data-dsr-id="${dsrId}"]`);
+    const dayEl = block?.closest(".pl-day-card");
     const input = document.getElementById(`pl-buying-${dsrId}`);
     const invInput = document.getElementById(`pl-inv-${dsrId}`);
     const gstinInput = document.getElementById(`pl-gstin-${dsrId}`);
     const saveBtn = listEl?.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
-    const itemEl = listEl?.querySelector(`.pl-missing-item[data-dsr-id="${dsrId}"]`);
-    const product = saveBtn?.dataset?.product || itemEl?.dataset?.product;
-    const receiptDate = itemEl?.dataset?.date || null;
-    const valueKl = Number.parseFloat((input?.value ?? "").trim());
+    const product = saveBtn?.dataset?.product || block?.dataset?.product;
+    const receiptDate = dayEl?.dataset?.date || null;
+
+    const valueKl = readNum(input);
     const parsed = validateBuyingRateKlInput(valueKl);
     if (!parsed.ok) {
       showError(
@@ -148,6 +302,29 @@
       showError(errorEl, `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
       return;
     }
+
+    const delTotal = readNum(block?.querySelector(".pl-del-total"));
+    const delQty = readNum(block?.querySelector(".pl-del-qty"));
+    const delPerKl = ratePerKlFromTotalAndQty(delTotal, delQty);
+    if (delPerKl == null) {
+      showError(
+        errorEl,
+        "Enter DLY/TAXABLE CHARGE (₹) and Quantity (KL) from the fuel invoice product line."
+      );
+      return;
+    }
+
+    const lfrTotal = readNum(dayEl?.querySelector(".pl-lfr-total"));
+    const lfrQty = readNum(dayEl?.querySelector(".pl-lfr-qty"));
+    const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, getPurchaseLfrGstPct());
+    if (lfrPerKl == null) {
+      showError(
+        errorEl,
+        "Enter LFR TAXABLE AMT (₹) and total KL from the LFR invoice (covers MS + HSD on this load)."
+      );
+      return;
+    }
+
     const supplierInvoiceNo = (invInput?.value ?? "").trim();
     let supplierGstin = (gstinInput?.value ?? "").trim().toUpperCase();
     if (!supplierGstin) {
@@ -169,7 +346,7 @@
     const resetBtn = () => {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = "Save";
+        btn.textContent = btn.dataset.product === "petrol" ? "Save Petrol (MS)" : "Save Diesel (HSD)";
         btn.classList.remove("pl-save-success");
       }
     };
@@ -196,6 +373,12 @@
       p_supplier_invoice_no: supplierInvoiceNo || null,
       p_supplier_gstin: supplierGstin || null,
       p_invoice_document_id: vaultDocId,
+      p_purchase_delivery_per_kl: delPerKl,
+      p_purchase_lfr_per_kl: lfrPerKl,
+      p_purchase_delivery_total: delTotal,
+      p_purchase_delivery_qty_kl: delQty,
+      p_purchase_lfr_total: lfrTotal,
+      p_purchase_lfr_qty_kl: lfrQty,
     });
     if (rpc.error) {
       AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
@@ -215,15 +398,8 @@
     }
     if (typeof onSaved === "function") await onSaved();
     else await refresh({ ...opts, force: true });
-    resetBtn();
   }
 
-  /**
-   * Fetch missing rows and render the entry list.
-   * @param {object} opts
-   * @param {boolean} [opts.force] - bypass in-flight dedupe (use after saves)
-   * @returns {Promise<object[]>}
-   */
   async function refresh(opts = {}) {
     const { force = false, listEl, alertEl, emptyEl, errorEl, onSaved } = opts;
     const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows({ force });
