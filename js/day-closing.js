@@ -1,11 +1,13 @@
 /* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
+// Same-day credit + same-day settlement is excluded from Collection/Credit and entered via Night cash / Phone pay.
 let dayClosingBreakdown = null;
 let isAdmin = false;
 let dcBreakdownRequestId = 0;
 let dcCertifyInFlight = false;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
+let dcSettleMapsCache = { date: null, data: null, promise: null };
 let expenseCategoryLabels = null;
 let dcDom = null;
 let dcRegisterPrintRows = [];
@@ -220,6 +222,12 @@ async function loadExpenseCategoryLabels() {
 
 function renderDayClosingDetailTable(rows, columns, kind) {
   if (!rows.length) {
+    if (kind === "collection") {
+      return '<p class="muted">No prior-day settlements. Same-day credit settlements are entered in Night cash / Phone pay.</p>';
+    }
+    if (kind === "credit") {
+      return '<p class="muted">No open credit for this date (same-day settled sales are in Night cash / Phone pay).</p>';
+    }
     return '<p class="muted">No entries for this date.</p>';
   }
   const showActions = isAdmin && (kind === "collection" || kind === "credit");
@@ -235,13 +243,21 @@ function renderDayClosingDetailTable(rows, columns, kind) {
       if (kind === "collection" && row.id) {
         actions = `<td class="table-actions">${AdminDelete.buttonHtml({
           selector: "dc-delete-payment",
-          data: { paymentId: row.id, amount: String(row.amount ?? ""), date: row.date || "" },
+          data: {
+            paymentId: row.id,
+            amount: String(row.paymentAmount ?? row.amount ?? ""),
+            date: row.date || "",
+          },
           title: "Delete settlement (admin)",
         })}</td>`;
       } else if (kind === "credit" && row.id && !row.legacy) {
         actions = `<td class="table-actions">${AdminDelete.buttonHtml({
           selector: "dc-delete-credit",
-          data: { entryId: row.id, amount: String(row.amount ?? ""), date: row.date || "" },
+          data: {
+            entryId: row.id,
+            amount: String(row.entryAmount ?? row.amount ?? ""),
+            date: row.date || "",
+          },
           title: "Delete credit sale (admin)",
         })}</td>`;
       } else {
@@ -253,63 +269,167 @@ function renderDayClosingDetailTable(rows, columns, kind) {
   return `<table class="dc-breakdown-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+/**
+ * Load same-day credit/payment totals for a date (cached per date).
+ * LIFO: sameDay = min(payToday, creditToday) per customer.
+ */
+async function loadDayCreditSettleMaps(dateStr) {
+  if (dcSettleMapsCache.date === dateStr && dcSettleMapsCache.data) {
+    return dcSettleMapsCache.data;
+  }
+  if (dcSettleMapsCache.date === dateStr && dcSettleMapsCache.promise) {
+    return dcSettleMapsCache.promise;
+  }
+
+  const promise = (async () => {
+    const [entriesRes, paysRes] = await Promise.all([
+      supabaseClient
+        .from("credit_entries")
+        .select(
+          "id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, created_at, employees(name), credit_customers(customer_name)"
+        )
+        .eq("transaction_date", dateStr)
+        .order("created_at", { ascending: false }),
+      supabaseClient
+        .from("credit_payments")
+        .select("id, amount, payment_mode, date, credit_customer_id, created_at, credit_customers(customer_name)")
+        .eq("date", dateStr)
+        .order("created_at", { ascending: true }),
+    ]);
+    if (entriesRes.error) throw entriesRes.error;
+    if (paysRes.error) throw paysRes.error;
+
+    const entries = entriesRes.data || [];
+    const payments = paysRes.data || [];
+    const byId = new Map();
+    let settleCash = 0;
+    let settleUpi = 0;
+
+    const ensure = (id) => {
+      if (!byId.has(id)) byId.set(id, { creditToday: 0, payToday: 0, sameDay: 0 });
+      return byId.get(id);
+    };
+
+    for (const row of entries) {
+      ensure(row.credit_customer_id).creditToday += Number(row.amount ?? 0);
+    }
+    for (const row of payments) {
+      const amt = Number(row.amount ?? 0);
+      ensure(row.credit_customer_id).payToday += amt;
+      const mode = String(row.payment_mode || "Cash").trim().toLowerCase();
+      if (mode === "upi") settleUpi += amt;
+      else if (mode !== "bank") settleCash += amt;
+    }
+    for (const cur of byId.values()) {
+      cur.sameDay = Math.min(cur.payToday, cur.creditToday);
+    }
+
+    const data = { entries, payments, byId, settleCash, settleUpi };
+    dcSettleMapsCache = { date: dateStr, data, promise: null };
+    return data;
+  })();
+
+  dcSettleMapsCache = { date: dateStr, data: null, promise };
+  try {
+    return await promise;
+  } catch (err) {
+    if (dcSettleMapsCache.promise === promise) {
+      dcSettleMapsCache = { date: null, data: null, promise: null };
+    }
+    throw err;
+  }
+}
+
+function invalidateDcSettleMapsCache(dateStr) {
+  if (!dateStr || dcSettleMapsCache.date === dateStr) {
+    dcSettleMapsCache = { date: null, data: null, promise: null };
+  }
+}
+
 async function fetchCollectionDetails(dateStr) {
-  const { data, error } = await supabaseClient
-    .from("credit_payments")
-    .select("id, amount, payment_mode, date, credit_customers(customer_name)")
-    .eq("date", dateStr)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return (data || []).map((row) => ({
-    id: row.id ?? null,
-    date: row.date || dateStr,
-    customer: row.credit_customers?.customer_name || "—",
-    mode: row.payment_mode || "—",
-    amount: Number(row.amount ?? 0),
-  }));
+  const { payments, byId } = await loadDayCreditSettleMaps(dateStr);
+
+  // LIFO: cover today's credit first; only excess is Collection (prior debt).
+  const sameDayLeft = new Map();
+  for (const [id, c] of byId) sameDayLeft.set(id, c.sameDay);
+
+  const rows = [];
+  for (const row of payments) {
+    const cid = row.credit_customer_id;
+    const amt = Number(row.amount ?? 0);
+    let sameLeft = sameDayLeft.get(cid) || 0;
+    const toSame = Math.min(amt, sameLeft);
+    sameDayLeft.set(cid, sameLeft - toSame);
+    const collectionAmt = amt - toSame;
+    if (collectionAmt <= 0.005) continue;
+    rows.push({
+      id: row.id ?? null,
+      date: row.date || dateStr,
+      customer: row.credit_customers?.customer_name || "—",
+      mode: row.payment_mode || "—",
+      amount: collectionAmt,
+      paymentAmount: amt, // full payment for admin delete confirm
+    });
+  }
+  return rows;
 }
 
 async function fetchCreditTodayDetails(dateStr) {
-  const [entriesRes, legacyRes] = await Promise.all([
-    supabaseClient
-      .from("credit_entries")
-      .select("id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, employees(name), credit_customers(customer_name)")
-      .eq("transaction_date", dateStr)
-      .order("created_at", { ascending: true }),
+  const [{ entries, byId }, legacyRes] = await Promise.all([
+    loadDayCreditSettleMaps(dateStr),
     supabaseClient
       .from("credit_customers")
       .select("id, customer_name, amount_due")
       .eq("date", dateStr)
       .gt("amount_due", 0),
   ]);
-  if (entriesRes.error) throw entriesRes.error;
   if (legacyRes.error) throw legacyRes.error;
 
-  const entryRows = (entriesRes.data || []).map((row) => {
+  const sameDayLeft = new Map();
+  for (const [id, c] of byId) sameDayLeft.set(id, c.sameDay);
+
+  // Entries already newest-first; settle newest first (LIFO within the day).
+  const entryRows = [];
+  for (const row of entries) {
+    const cid = row.credit_customer_id;
+    const amt = Number(row.amount ?? 0);
+    let sameLeft = sameDayLeft.get(cid) || 0;
+    const settle = Math.min(amt, sameLeft);
+    sameDayLeft.set(cid, sameLeft - settle);
+    const remain = amt - settle;
+    if (remain <= 0.005) continue;
     const staff = row.employees?.name;
     const shiftLabel = row.shift === "afternoon" ? "Afternoon" : row.shift === "morning" ? "Morning" : "";
     const via = staff ? ` · Shift ${shiftLabel}: ${staff}` : "";
-    return {
+    const qty = Number(row.quantity ?? 0);
+    const qtyRemain = amt > 0 && qty > 0 ? (qty * remain) / amt : qty;
+    entryRows.push({
       id: row.id ?? null,
       date: row.transaction_date || dateStr,
       customer: (row.credit_customers?.customer_name || "—") + via,
       fuel: row.fuel_type || "—",
-      quantity: Number(row.quantity ?? 0),
-      amount: Number(row.amount ?? 0),
+      quantity: qtyRemain,
+      amount: remain,
+      entryAmount: amt,
       legacy: false,
-    };
-  });
+    });
+  }
 
   const legacyCandidates = legacyRes.data || [];
   let legacyRows = [];
   if (legacyCandidates.length) {
     const ids = legacyCandidates.map((row) => row.id);
-    const { data: withEntries, error: entryCheckError } = await supabaseClient
-      .from("credit_entries")
-      .select("credit_customer_id")
-      .in("credit_customer_id", ids);
-    if (entryCheckError) throw entryCheckError;
-    const hasEntry = new Set((withEntries || []).map((row) => row.credit_customer_id));
+    const hasEntry = new Set(entries.map((e) => e.credit_customer_id));
+    // Also exclude any legacy ids that have entries (even if not in today's entry list)
+    const missing = ids.filter((id) => !hasEntry.has(id));
+    if (missing.length) {
+      const { data: withEntries, error: entryCheckError } = await supabaseClient
+        .from("credit_entries")
+        .select("credit_customer_id")
+        .in("credit_customer_id", missing);
+      if (entryCheckError) throw entryCheckError;
+      for (const row of withEntries || []) hasEntry.add(row.credit_customer_id);
+    }
     legacyRows = legacyCandidates
       .filter((row) => !hasEntry.has(row.id))
       .map((row) => ({
@@ -424,6 +544,9 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (!dateStr || !dcDom?.dateInput) return;
 
   if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
+  if (dcSettleMapsCache.date && dcSettleMapsCache.date !== dateStr) {
+    invalidateDcSettleMapsCache(dcSettleMapsCache.date);
+  }
 
   const requestId = ++dcBreakdownRequestId;
   refreshDayClosingDetailsState(dateStr).catch((err) => {
@@ -454,7 +577,15 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
 
   if (requestId !== dcBreakdownRequestId) return;
 
-  const b = dayClosingBreakdown || {};
+  let b = dayClosingBreakdown || {};
+  try {
+    b = await enrichDayClosingSettleSuggestions(b, dateStr);
+    dayClosingBreakdown = b;
+  } catch (err) {
+    AppError.report(err, { context: "enrichDayClosingSettleSuggestions" });
+  }
+  if (requestId !== dcBreakdownRequestId) return;
+
   const totalSale = Number(b.total_sale ?? 0);
   const collection = Number(b.collection ?? 0);
   const shortPrevious = Number(b.short_previous ?? 0);
@@ -469,22 +600,23 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (dcDom.creditTodayEl) dcDom.creditTodayEl.textContent = formatCurrency(creditToday);
   if (dcDom.expensesTodayEl) dcDom.expensesTodayEl.textContent = formatCurrency(expensesToday);
 
-  for (const [input, key, shiftKey] of [
-    [dcDom.nightCashInput, "night_cash", "shift_cash_total"],
-    [dcDom.phonePayInput, "phone_pay", "shift_phone_pay_total"],
-  ]) {
-    if (!input) continue;
-    let v = b[key];
-    // Prefill from live shift totals before first save (also covers older RPC without night_cash prefill).
-    if (!b.already_saved && (v == null || v === "") && b[shiftKey] != null && b[shiftKey] !== "") {
-      v = b[shiftKey];
-    }
-    input.value = v != null && v !== "" ? Number(v) : "";
+  const canOverwrite = canOverwriteDayClosing(b);
+  const editable = !b.already_saved || canOverwrite;
+  const suggestedCash = Number(b.suggested_night_cash ?? b.night_cash ?? 0);
+  const suggestedPhone = Number(b.suggested_phone_pay ?? b.phone_pay ?? 0);
+
+  if (dcDom.nightCashInput) {
+    // Editable: always show shift + Cash settlements. Locked: keep saved value.
+    const v = editable ? suggestedCash : Number(b.night_cash ?? 0);
+    dcDom.nightCashInput.value = Number.isFinite(v) ? String(v) : "";
+  }
+  if (dcDom.phonePayInput) {
+    const v = editable ? suggestedPhone : Number(b.phone_pay ?? 0);
+    dcDom.phonePayInput.value = Number.isFinite(v) ? String(v) : "";
   }
   syncDayClosingShiftCashHints(b);
 
   const alreadySaved = !!b.already_saved;
-  const canOverwrite = canOverwriteDayClosing(b);
   syncDayClosingSaveButton(dcDom.saveBtn);
   syncDayClosingAlreadySavedNotice(b);
   syncDayClosingCertifyPanel(b);
@@ -519,30 +651,79 @@ function canOverwriteDayClosing(breakdown) {
   return !!breakdown?.can_overwrite;
 }
 
+/**
+ * Ensure night cash / phone pay suggestions = shift till + Cash/UPI settlements.
+ * Uses RPC settle_* when present; otherwise one shared payments fetch via settle maps cache.
+ */
+async function enrichDayClosingSettleSuggestions(breakdown, dateStr) {
+  const b = { ...(breakdown || {}) };
+  const shiftCash = Number(b.shift_cash_total ?? 0) || 0;
+  const shiftPhone = Number(b.shift_phone_pay_total ?? 0) || 0;
+
+  let settleCash = b.settle_cash_total;
+  let settleUpi = b.settle_upi_total;
+  if (settleCash == null || settleUpi == null) {
+    const maps = await loadDayCreditSettleMaps(dateStr);
+    settleCash = maps.settleCash;
+    settleUpi = maps.settleUpi;
+  }
+  settleCash = Number(settleCash) || 0;
+  settleUpi = Number(settleUpi) || 0;
+
+  const suggestedCash = shiftCash + settleCash;
+  const suggestedPhone = shiftPhone + settleUpi;
+
+  if (b.already_saved) {
+    if (b.saved_night_cash == null) b.saved_night_cash = Number(b.night_cash ?? 0) || 0;
+    if (b.saved_phone_pay == null) b.saved_phone_pay = Number(b.phone_pay ?? 0) || 0;
+  }
+
+  b.settle_cash_total = settleCash;
+  b.settle_upi_total = settleUpi;
+  b.suggested_night_cash = suggestedCash;
+  b.suggested_phone_pay = suggestedPhone;
+  return b;
+}
+
 function syncDayClosingShiftCashHints(breakdown) {
   const b = breakdown || {};
-  const shiftCash = Number(b.shift_cash_total ?? 0);
-  const shiftPhone = Number(b.shift_phone_pay_total ?? 0);
+  const shiftCash = Number(b.shift_cash_total ?? 0) || 0;
+  const shiftPhone = Number(b.shift_phone_pay_total ?? 0) || 0;
+  const settleCash = Number(b.settle_cash_total ?? 0) || 0;
+  const settleUpi = Number(b.settle_upi_total ?? 0) || 0;
+  const sameCash = Number(b.same_day_settle_cash ?? 0) || 0;
+  const sameUpi = Number(b.same_day_settle_upi ?? 0) || 0;
+  const sameBank = Number(b.same_day_settle_bank ?? 0) || 0;
+  const suggestedCash = Number(b.suggested_night_cash ?? shiftCash + settleCash) || 0;
+  const suggestedPhone = Number(b.suggested_phone_pay ?? shiftPhone + settleUpi) || 0;
   const alreadySaved = !!b.already_saved;
   const canOverwrite = canOverwriteDayClosing(b);
-  const nightCash = Number(b.night_cash ?? 0);
-  const phonePay = Number(b.phone_pay ?? 0);
-  const cashDiffers = alreadySaved && Math.abs(shiftCash - nightCash) > 0.005;
-  const phoneDiffers = alreadySaved && Math.abs(shiftPhone - phonePay) > 0.005;
+  const savedCash = Number(b.saved_night_cash ?? (alreadySaved ? b.night_cash : null));
+  const savedPhone = Number(b.saved_phone_pay ?? (alreadySaved ? b.phone_pay : null));
+  const cashDiffers =
+    alreadySaved && Number.isFinite(savedCash) && Math.abs(suggestedCash - savedCash) > 0.005;
+  const phoneDiffers =
+    alreadySaved && Number.isFinite(savedPhone) && Math.abs(suggestedPhone - savedPhone) > 0.005;
+
+  const settleNote = (settleAmt, sameAmt, label) => {
+    if (settleAmt <= 0.005) return "";
+    const sameBit = sameAmt > 0.005 ? ` incl. same-day ${formatCurrency(sameAmt)}` : "";
+    return ` · + ${label} settles ${formatCurrency(settleAmt)}${sameBit}`;
+  };
 
   const cashHint = dcDom?.nightCashHint;
   if (cashHint) {
     if (!alreadySaved) {
       cashHint.textContent =
-        shiftCash > 0
-          ? `From shift register (morning + afternoon): ${formatCurrency(shiftCash)}`
-          : "Hard cash from morning + afternoon shift register";
+        suggestedCash > 0
+          ? `Suggested ${formatCurrency(suggestedCash)} (shift ${formatCurrency(shiftCash)}${settleNote(settleCash, sameCash, "Cash")})`
+          : "Hard cash from shift register + Cash credit settlements";
     } else if (cashDiffers && canOverwrite) {
-      cashHint.textContent = `Saved ${formatCurrency(nightCash)} · shift register now ${formatCurrency(shiftCash)} (edit to match if needed)`;
+      cashHint.textContent = `Saved ${formatCurrency(savedCash)} · suggested now ${formatCurrency(suggestedCash)} (edit to match if needed)`;
     } else if (cashDiffers) {
-      cashHint.textContent = `Saved closing ${formatCurrency(nightCash)} · shift register now ${formatCurrency(shiftCash)}`;
+      cashHint.textContent = `Saved closing ${formatCurrency(savedCash)} · suggested now ${formatCurrency(suggestedCash)}`;
     } else {
-      cashHint.textContent = `Shift register (morning + afternoon): ${formatCurrency(shiftCash)}`;
+      cashHint.textContent = `Shift + Cash settles: ${formatCurrency(suggestedCash)}`;
     }
   }
 
@@ -550,16 +731,20 @@ function syncDayClosingShiftCashHints(breakdown) {
   if (phoneHint) {
     if (!alreadySaved) {
       phoneHint.textContent =
-        shiftPhone > 0
-          ? `From shift register (morning + afternoon): ${formatCurrency(shiftPhone)}`
-          : "PhonePe / UPI from morning + afternoon shift register";
+        suggestedPhone > 0
+          ? `Suggested ${formatCurrency(suggestedPhone)} (shift ${formatCurrency(shiftPhone)}${settleNote(settleUpi, sameUpi, "UPI")})`
+          : "PhonePe / UPI from shift register + UPI credit settlements";
     } else if (phoneDiffers && canOverwrite) {
-      phoneHint.textContent = `Saved ${formatCurrency(phonePay)} · shift register now ${formatCurrency(shiftPhone)} (edit to match if needed)`;
+      phoneHint.textContent = `Saved ${formatCurrency(savedPhone)} · suggested now ${formatCurrency(suggestedPhone)} (edit to match if needed)`;
     } else if (phoneDiffers) {
-      phoneHint.textContent = `Saved closing ${formatCurrency(phonePay)} · shift register now ${formatCurrency(shiftPhone)}`;
+      phoneHint.textContent = `Saved closing ${formatCurrency(savedPhone)} · suggested now ${formatCurrency(suggestedPhone)}`;
     } else {
-      phoneHint.textContent = `Shift register (morning + afternoon): ${formatCurrency(shiftPhone)}`;
+      phoneHint.textContent = `Shift + UPI settles: ${formatCurrency(suggestedPhone)}`;
     }
+  }
+
+  if (sameBank > 0.005 && cashHint && !alreadySaved) {
+    cashHint.textContent += ` · Bank settles ${formatCurrency(sameBank)} not auto-added`;
   }
 }
 
@@ -1141,6 +1326,7 @@ async function initializeDayClosing() {
     const dateStr = dateInput.value?.trim();
     if (!dateStr) return;
     dcDetailsCache = { date: dateStr, collection: null, credit: null, expenses: null };
+    invalidateDcSettleMapsCache(dateStr);
     loadDayClosingBreakdown(dateStr).catch((err) => {
       AppError.report(err, { context: "operationalUpdatedRefreshDayClosing" });
     });
@@ -1197,6 +1383,7 @@ async function afterDcCreditRelatedDelete(detailKind, dateStr) {
   broadcastCreditUpdated();
   dcDetailsCache.collection = null;
   dcDetailsCache.credit = null;
+  invalidateDcSettleMapsCache(dateStr);
   if (!dateStr) return;
   await loadDayClosingBreakdown(dateStr);
   const { toggle } = getDcDetailElements(detailKind);
