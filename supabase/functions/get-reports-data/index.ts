@@ -11,9 +11,10 @@ const corsHeaders = {
 };
 
 const DSR_SELECT_FULL =
-  "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id";
+  "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl";
 /** History-only rows for buying-rate context — keep payload small. */
-const DSR_SELECT_RECEIPT = "date, product, receipts, buying_price_per_litre";
+const DSR_SELECT_RECEIPT =
+  "date, product, receipts, buying_price_per_litre, purchase_delivery_per_kl, purchase_lfr_per_kl";
 const RECEIPT_LOOKBACK_PRODUCTS = ["petrol", "diesel"];
 const DEFAULT_RECEIPT_HISTORY_START = "2000-01-01";
 

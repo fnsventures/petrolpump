@@ -2220,7 +2220,7 @@ async function fetchProfitLossData(range) {
       const [dsrResult, expenseResult, lubeResult, vaultResult, categoryResult] = await Promise.all([
         DsrQueries.fetchDsrRows(range.start, range.end, {
           select:
-            "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id",
+            "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl",
         }),
         DsrQueries.fetchExpenses(range.start, range.end),
         DsrQueries.fetchLubeSales(range.start, range.end),

@@ -77,7 +77,13 @@ create or replace function public.update_dsr_buying_price(
   p_value numeric,
   p_supplier_invoice_no text default null,
   p_supplier_gstin text default null,
-  p_invoice_document_id uuid default null
+  p_invoice_document_id uuid default null,
+  p_purchase_delivery_per_kl numeric default null,
+  p_purchase_lfr_per_kl numeric default null,
+  p_purchase_delivery_total numeric default null,
+  p_purchase_delivery_qty_kl numeric default null,
+  p_purchase_lfr_total numeric default null,
+  p_purchase_lfr_qty_kl numeric default null
 )
 returns void
 language plpgsql
@@ -88,6 +94,8 @@ declare
   v_meta boolean := p_supplier_invoice_no is not null
     or p_supplier_gstin is not null
     or p_invoice_document_id is not null;
+  v_date date;
+  v_table text;
 begin
   if not public.is_admin() then
     raise exception 'Admin access required to set buying price';
@@ -107,33 +115,70 @@ begin
     invoice_document_id = case
       when not v_meta then invoice_document_id
       else p_invoice_document_id
-    end
-  where id = p_dsr_id;
-  if found then return; end if;
+    end,
+    purchase_delivery_per_kl = coalesce(p_purchase_delivery_per_kl, purchase_delivery_per_kl),
+    purchase_lfr_per_kl = coalesce(p_purchase_lfr_per_kl, purchase_lfr_per_kl),
+    purchase_delivery_total = coalesce(p_purchase_delivery_total, purchase_delivery_total),
+    purchase_delivery_qty_kl = coalesce(p_purchase_delivery_qty_kl, purchase_delivery_qty_kl),
+    purchase_lfr_total = coalesce(p_purchase_lfr_total, purchase_lfr_total),
+    purchase_lfr_qty_kl = coalesce(p_purchase_lfr_qty_kl, purchase_lfr_qty_kl)
+  where id = p_dsr_id
+  returning date into v_date;
+  if found then
+    v_table := 'petrol';
+  else
+    update public.dsr_diesel
+    set
+      buying_price_per_litre = p_value,
+      supplier_invoice_no = case
+        when not v_meta then supplier_invoice_no
+        else nullif(trim(p_supplier_invoice_no), '')
+      end,
+      supplier_gstin = case
+        when not v_meta then supplier_gstin
+        else nullif(upper(trim(p_supplier_gstin)), '')
+      end,
+      invoice_document_id = case
+        when not v_meta then invoice_document_id
+        else p_invoice_document_id
+      end,
+      purchase_delivery_per_kl = coalesce(p_purchase_delivery_per_kl, purchase_delivery_per_kl),
+      purchase_lfr_per_kl = coalesce(p_purchase_lfr_per_kl, purchase_lfr_per_kl),
+      purchase_delivery_total = coalesce(p_purchase_delivery_total, purchase_delivery_total),
+      purchase_delivery_qty_kl = coalesce(p_purchase_delivery_qty_kl, purchase_delivery_qty_kl),
+      purchase_lfr_total = coalesce(p_purchase_lfr_total, purchase_lfr_total),
+      purchase_lfr_qty_kl = coalesce(p_purchase_lfr_qty_kl, purchase_lfr_qty_kl)
+    where id = p_dsr_id
+    returning date into v_date;
+    if not found then
+      raise exception 'DSR record not found';
+    end if;
+    v_table := 'diesel';
+  end if;
 
-  update public.dsr_diesel
-  set
-    buying_price_per_litre = p_value,
-    supplier_invoice_no = case
-      when not v_meta then supplier_invoice_no
-      else nullif(trim(p_supplier_invoice_no), '')
-    end,
-    supplier_gstin = case
-      when not v_meta then supplier_gstin
-      else nullif(upper(trim(p_supplier_gstin)), '')
-    end,
-    invoice_document_id = case
-      when not v_meta then invoice_document_id
-      else p_invoice_document_id
-    end
-  where id = p_dsr_id;
-  if not found then
-    raise exception 'DSR record not found';
+  if p_purchase_lfr_per_kl is not null and v_date is not null then
+    if v_table = 'petrol' then
+      update public.dsr_diesel
+      set
+        purchase_lfr_per_kl = p_purchase_lfr_per_kl,
+        purchase_lfr_total = coalesce(p_purchase_lfr_total, purchase_lfr_total),
+        purchase_lfr_qty_kl = coalesce(p_purchase_lfr_qty_kl, purchase_lfr_qty_kl)
+      where date = v_date and receipts > 0;
+    else
+      update public.dsr_petrol
+      set
+        purchase_lfr_per_kl = p_purchase_lfr_per_kl,
+        purchase_lfr_total = coalesce(p_purchase_lfr_total, purchase_lfr_total),
+        purchase_lfr_qty_kl = coalesce(p_purchase_lfr_qty_kl, purchase_lfr_qty_kl)
+      where date = v_date and receipts > 0;
+    end if;
   end if;
 end;
 $$;
-comment on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid) is
-  'Admin-only: set buying price and optional supplier invoice / GSTIN / vault document link.';
+comment on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid, numeric, numeric, numeric, numeric, numeric, numeric) is
+  'Admin-only: set pre-VAT buying price, optional supplier invoice link, and per-receipt delivery/LFR. Null charge args leave existing values. Shared LFR syncs to the other product on the same date.';
+
+grant execute on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid, numeric, numeric, numeric, numeric, numeric, numeric) to authenticated;
 
 
 -- Helper function to check if current user is supervisor or admin
@@ -366,6 +411,12 @@ create table if not exists public.dsr_petrol (
   supplier_invoice_no text,
   supplier_gstin text,
   invoice_document_id uuid,
+  purchase_delivery_per_kl numeric(12, 4),
+  purchase_lfr_per_kl numeric(12, 4),
+  purchase_delivery_total numeric(14, 2),
+  purchase_delivery_qty_kl numeric(12, 4),
+  purchase_lfr_total numeric(14, 2),
+  purchase_lfr_qty_kl numeric(12, 4),
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
@@ -450,6 +501,12 @@ create table if not exists public.dsr_diesel (
   supplier_invoice_no text,
   supplier_gstin text,
   invoice_document_id uuid,
+  purchase_delivery_per_kl numeric(12, 4),
+  purchase_lfr_per_kl numeric(12, 4),
+  purchase_delivery_total numeric(14, 2),
+  purchase_delivery_qty_kl numeric(12, 4),
+  purchase_lfr_total numeric(14, 2),
+  purchase_lfr_qty_kl numeric(12, 4),
   remarks text,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
@@ -546,7 +603,10 @@ with (security_invoker = true) as
     dip_reading, stock, receipts,
     petrol_rate, diesel_rate, buying_price_per_litre,
     supplier_invoice_no, supplier_gstin, invoice_document_id,
-    remarks, created_by, created_at
+    remarks, created_by, created_at,
+    purchase_delivery_per_kl, purchase_lfr_per_kl,
+    purchase_delivery_total, purchase_delivery_qty_kl,
+    purchase_lfr_total, purchase_lfr_qty_kl
   from (
     select distinct on (date) *
     from public.dsr_petrol
@@ -562,7 +622,10 @@ with (security_invoker = true) as
     dip_reading, stock, receipts,
     petrol_rate, diesel_rate, buying_price_per_litre,
     supplier_invoice_no, supplier_gstin, invoice_document_id,
-    remarks, created_by, created_at
+    remarks, created_by, created_at,
+    purchase_delivery_per_kl, purchase_lfr_per_kl,
+    purchase_delivery_total, purchase_delivery_qty_kl,
+    purchase_lfr_total, purchase_lfr_qty_kl
   from (
     select distinct on (date) *
     from public.dsr_diesel
@@ -4423,7 +4486,7 @@ grant insert, update on public.pump_settings to authenticated;
 -- RPC execute grants for authenticated clients
 grant execute on function public.require_staff_access() to authenticated;
 grant execute on function public.check_page_access(text) to authenticated;
-grant execute on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid) to authenticated;
+grant execute on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid, numeric, numeric, numeric, numeric, numeric, numeric) to authenticated;
 grant execute on function public.get_day_closing_breakdown(date) to authenticated;
 grant execute on function public.get_night_cash_available() to authenticated;
 grant execute on function public.preview_night_cash_collection(date, date) to authenticated;

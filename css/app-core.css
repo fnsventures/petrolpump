@@ -1186,6 +1186,66 @@ tr.is-editing .expense-cat-drag-handle {
   grid-column: 1 / -1;
 }
 
+.settings-schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.settings-schedule-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 6px;
+  background: var(--surface-muted, #f6f8fa);
+}
+
+.settings-schedule-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.settings-schedule-delete {
+  border: none;
+  background: none;
+  color: var(--danger, #b42318);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.settings-charge-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.settings-charge-calc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+}
+
+.settings-charge-calc-row > span {
+  min-width: 6.5rem;
+  font-size: 0.85rem;
+}
+
+.settings-charge-calc-row input {
+  width: 7.5rem;
+  padding: 0.35rem 0.5rem;
+}
+
 @media (max-width: 768px) {
   .settings-layout {
     grid-template-columns: 1fr;
@@ -1580,7 +1640,85 @@ tr.is-editing .expense-cat-drag-handle {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
+}
+
+.pl-day-card {
+  list-style: none;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 10px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.pl-day-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.pl-day-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.pl-day-sub {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.pl-lfr-block,
+.pl-product-block {
+  padding: 0.75rem;
+  border-radius: 8px;
+  background: var(--surface-muted, #f6f8fa);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.pl-product-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.pl-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.5rem 0.65rem;
+}
+
+.pl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.pl-field span {
+  color: var(--muted, #656d76);
+}
+
+.pl-field input {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.pl-computed strong {
+  font-size: 0.95rem;
+  padding: 0.35rem 0;
+}
+
+.pl-landed-preview {
+  margin: 0;
+  font-size: 0.9rem;
 }
 
 .pl-missing-item {
@@ -1595,26 +1733,19 @@ tr.is-editing .expense-cat-drag-handle {
   font-size: 0.9rem;
 }
 
-.pl-buying-input {
-  width: 6rem;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.9rem;
-}
-
-.pl-inv-input {
-  width: 9rem;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.9rem;
-}
-
-.pl-gstin-input {
-  width: 10rem;
-  padding: 0.35rem 0.5rem;
-  font-size: 0.9rem;
+.pl-buying-input,
+.pl-inv-input,
+.pl-gstin-input,
+.pl-del-total,
+.pl-del-qty,
+.pl-lfr-total,
+.pl-lfr-qty {
+  min-width: 0;
 }
 
 .pl-buying-save {
-  padding: 0.35rem 0.75rem;
+  align-self: flex-start;
+  padding: 0.4rem 0.85rem;
   font-size: 0.9rem;
 }
 

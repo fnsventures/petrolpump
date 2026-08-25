@@ -762,7 +762,7 @@ function renderFuelIncome(data, range) {
       </tfoot>
     </table>
     ${missingNote}
-    <p class="report-note muted">P.Income = net litres (meter − testing) × (selling rate − landed buying rate incl. VAT + delivery). Same fuel-margin basis as Analysis and Reports P&amp;L.</p>`;
+    <p class="report-note muted">P.Income = net litres (meter − testing) × (selling rate − landed buying rate incl. VAT + delivery + LFR). Same fuel-margin basis as Analysis and Reports P&amp;L.</p>`;
 }
 
 function reportHeader(title, start, end) {
@@ -1475,7 +1475,8 @@ function renderGstSalesDetail(data, range) {
 
 /**
  * Collect fuel receipt lines in range with a resolvable pre-VAT buying rate.
- * GST inward reports apply VAT + delivery via calcPurchaseLineTax (gross = landed cost).
+ * GST inward reports apply VAT + delivery via calcPurchaseLineTax.
+ * P&L landed cost also adds LFR (separate GST invoice; not in fuel VAT lines).
  * Margin/P&amp;L/trading use getEffectiveBuyingRate instead (landed rate directly).
  */
 function collectFuelPurchaseLines(data, range, getStored) {
@@ -1518,6 +1519,7 @@ function collectFuelPurchaseLines(data, range, getStored) {
       product,
       litres: l,
       rate: rt,
+      deliveryPerKl: meta.deliveryPerKl ?? null,
       supplierInvoiceNo: meta.supplierInvoiceNo || vault?.title || "",
       supplierGstin: meta.supplierGstin || "",
       invoiceDocumentId: meta.invoiceDocumentId || vault?.id || null,
@@ -1530,6 +1532,7 @@ function collectFuelPurchaseLines(data, range, getStored) {
       supplierInvoiceNo: r.supplier_invoice_no,
       supplierGstin: r.supplier_gstin,
       invoiceDocumentId: r.invoice_document_id,
+      deliveryPerKl: r.purchase_delivery_per_kl,
     });
   });
 
@@ -1543,6 +1546,7 @@ function collectFuelPurchaseLines(data, range, getStored) {
       supplierInvoiceNo: r.supplier_invoice_no,
       supplierGstin: r.supplier_gstin,
       invoiceDocumentId: r.invoice_document_id,
+      deliveryPerKl: r.purchase_delivery_per_kl,
     });
   });
 
@@ -1575,6 +1579,7 @@ function buildFuelPurchaseRows(data, range) {
       product,
       litres,
       rate,
+      deliveryPerKl,
       supplierInvoiceNo,
       supplierGstin,
       invoiceDocumentId,
@@ -1582,7 +1587,11 @@ function buildFuelPurchaseRows(data, range) {
     }) => {
     const taxPct = getPurchaseTaxPct(product);
     const slabKey = classifyGstSlab(taxPct);
-    const { taxable, tax, gross, cgst, sgst } = calcPurchaseLineTax(litres, rate, taxPct);
+    const { taxable, tax, gross, cgst, sgst } = calcPurchaseLineTax(litres, rate, taxPct, {
+      product,
+      date,
+      deliveryPerKl,
+    });
     const gstin = resolveSupplierGstin(supplierGstin);
     const interstate = isInterstatePartyGstin(gstin);
     const target = interstate ? outsideSlabs : insideSlabs;
