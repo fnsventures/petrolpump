@@ -285,6 +285,10 @@
               <label for="shift-ledger-expense-amount">Amount</label>
               <input id="shift-ledger-expense-amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
             </div>
+            <div class="shift-ledger-field shift-ledger-field--full">
+              <label for="shift-ledger-expense-desc">Description</label>
+              <input id="shift-ledger-expense-desc" name="description" type="text" maxlength="500" placeholder="Optional note" autocomplete="off" />
+            </div>
             <div class="shift-ledger-field shift-ledger-field--action">
               <label class="sr-only" for="shift-ledger-expense-submit">Save</label>
               <button id="shift-ledger-expense-submit" type="submit">Add</button>
@@ -432,6 +436,7 @@
     const fd = new FormData(form);
     const category = String(fd.get("category") || "").trim();
     const amount = Number(fd.get("amount") || 0);
+    const description = String(fd.get("description") || "").trim();
     if (!category || amount <= 0) {
       setMsg("Category and amount are required.", true);
       return;
@@ -448,6 +453,7 @@
         p_employee_id: context.employeeId,
         p_category: category,
         p_amount: amount,
+        p_description: description || null,
       });
       if (error) throw error;
       form.reset();

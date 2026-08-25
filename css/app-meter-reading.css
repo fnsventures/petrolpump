@@ -1785,6 +1785,11 @@ body.meter-reading-page .shift-ledger-field--grow {
   min-width: 8rem;
 }
 
+body.meter-reading-page .shift-ledger-field--full {
+  flex: 1 1 100%;
+  min-width: 100%;
+}
+
 body.meter-reading-page .shift-ledger-field--action {
   min-width: 4.25rem;
 }
@@ -1894,7 +1899,8 @@ body.meter-reading-page #shift-ledger-dismiss {
     grid-template-columns: 1fr 1fr;
   }
 
-  body.meter-reading-page .shift-ledger-field--grow {
+  body.meter-reading-page .shift-ledger-field--grow,
+  body.meter-reading-page .shift-ledger-field--full {
     grid-column: 1 / -1;
   }
 
