@@ -34,25 +34,25 @@ const MSG_SUPERVISOR_METER_DAY_LOCKED =
 
 /** Hint when shift register meters are prefilled on the daily sheet. */
 const MSG_SHIFT_PREFILL_HINT =
-  "Nozzle meters are filled from the shift register and locked. Enter dip reading, dip stock (L), receipts, and selling rate here, then save.";
+  "Nozzle meters are filled from the shift register and locked. Enter testing, dip reading, dip stock (L), receipts, and selling rate here, then save.";
 
 function shiftPrefillHint(agg) {
   if (!agg?.has_shifts) return MSG_SHIFT_PREFILL_HINT;
   if (agg.has_morning && agg.has_afternoon) {
-    return "Full day from shift register (morning + afternoon). Meters are locked — enter dip, stock, receipts, and rate here, then save.";
+    return "Full day from shift register (morning + afternoon). Meters are locked — enter testing, dip, stock, receipts, and rate here, then save.";
   }
   if (agg.has_morning) {
-    return "Morning shift only — meters locked. Prefer finishing the afternoon shift before saving this sheet; afternoon save will refresh meters if the sheet already exists. Enter dip, stock, and rate here.";
+    return "Morning shift only — meters locked. Prefer finishing the afternoon shift before saving this sheet; afternoon save will refresh meters if the sheet already exists. Enter testing, dip, stock, and rate here.";
   }
   if (agg.has_afternoon) {
-    return "Afternoon shift only — meters locked from the shift register. Enter dip, stock, receipts, and rate here, then save.";
+    return "Afternoon shift only — meters locked from the shift register. Enter testing, dip, stock, receipts, and rate here, then save.";
   }
   return MSG_SHIFT_PREFILL_HINT;
 }
 
 /** Field names owned by the shift register (readonly for supervisors on prefill). */
 const SHIFT_PREFILL_METER_FIELD_RE =
-  /^(opening_pump\d+_nozzle\d+|closing_pump\d+_nozzle\d+|sales_pump\d+|total_sales|testing)$/;
+  /^(opening_pump\d+_nozzle\d+|closing_pump\d+_nozzle\d+|sales_pump\d+|total_sales)$/;
 
 /**
  * True when the daily sheet was finished: selling rate + dip or stock.
@@ -79,10 +79,10 @@ function isShiftPrefillRow(row) {
 }
 
 /**
- * Blank zero dip/stock/receipts so supervisors enter real values on the meter sheet.
+ * Blank zero testing/dip/stock/receipts so supervisors enter real values on the meter sheet.
  */
 function blankUnsetStockFields(form) {
-  for (const name of ["dip_reading", "stock", "receipts"]) {
+  for (const name of ["testing", "dip_reading", "stock", "receipts"]) {
     const input = form.querySelector(`[name="${name}"]`);
     if (!input) continue;
     const v = Number(input.value);
@@ -119,12 +119,12 @@ function invalidateShiftAggregateCache(dateStr) {
 }
 
 /**
- * Apply dip/stock/receipts/rate/remarks from an incomplete DSR row onto a
+ * Apply testing/dip/stock/receipts/rate/remarks from an incomplete DSR row onto a
  * shift-prefilled form so partial meter-sheet progress is not wiped.
  */
 function applyEditableStockFieldsFromRow(form, row, product) {
   if (!form || !row) return;
-  for (const name of ["dip_reading", "stock", "receipts", "remarks"]) {
+  for (const name of ["testing", "dip_reading", "stock", "receipts", "remarks"]) {
     const input =
       name === "remarks"
         ? form.querySelector(`[name="${name}"]`)
@@ -171,7 +171,8 @@ function shiftAggregateToVirtualRow(product, dateStr, aggregate) {
     sales_pump1: block.sales_pump1,
     sales_pump2: block.sales_pump2,
     total_sales: block.total_sales,
-    testing: block.testing,
+    // Testing is entered on the daily MS/HSD sheet, not from the shift register.
+    testing: null,
     dip_reading: null,
     stock: null,
     receipts: null,
@@ -594,8 +595,8 @@ function setMeterFormSupervisorLocked(form, locked, { hint = null } = {}) {
 }
 
 /**
- * Lock nozzle open/close (+ derived sales/testing) for supervisors after shift sync.
- * Dip stock, receipts, selling rate, and remarks stay editable until the day is finished.
+ * Lock nozzle open/close (+ derived sales) for supervisors after shift sync.
+ * Testing, dip stock, receipts, selling rate, and remarks stay editable until the day is finished.
  */
 function setMeterFormShiftMetersLocked(form, locked, { hint = null } = {}) {
   const suffix = form.id?.replace("dsr-form-", "") || "";
@@ -663,7 +664,7 @@ function applyMeterDayLockState(product, form, row) {
     return;
   }
 
-  // Shift rollup prefill: lock meters; leave dip/stock/rate editable.
+  // Shift rollup prefill: lock meters; leave testing/dip/stock/rate editable.
   if (isShiftPrefillRow(row)) {
     const hint = row._shiftHint || MSG_SHIFT_PREFILL_HINT;
     setMeterFormShiftMetersLocked(form, true, { hint });
