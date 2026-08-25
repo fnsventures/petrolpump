@@ -112,8 +112,27 @@
     /** BPCL-style VAT/LST on fuel purchases (MS / HSD). */
     petrolPurchaseVatPct: 28,
     dieselPurchaseVatPct: 24,
-    /** Transport / delivery on inward fuel (₹ per kilolitre). */
+    /** Transport / delivery on inward fuel (₹ per kilolitre). Matches invoice DLY/TAXABLE CHARGE ÷ KL. */
     purchaseDeliveryPerKl: 600,
+    /** Optional per-product delivery override (₹/KL); falls back to purchaseDeliveryPerKl. */
+    petrolPurchaseDeliveryPerKl: 609,
+    dieselPurchaseDeliveryPerKl: 600,
+    /**
+     * Licence Fee Recovery (LFR) ₹/KL including GST — from the separate BPCL LFR invoice
+     * (e.g. FIIN… “LFR FOR DC”). Added to landed buying rate; not part of fuel VAT/LST.
+     * Defaults match a typical Odisha site split of the LFR invoice.
+     */
+    petrolPurchaseLfrPerKl: 236,
+    dieselPurchaseLfrPerKl: 197,
+    /** GST % on LFR invoice (CGST+SGST); applied to taxable LFR total on Purchase cost. */
+    purchaseLfrGstPct: 18,
+    /**
+     * Date-effective delivery + LFR schedule.
+     * Each row applies from effectiveFrom (inclusive) until the next row.
+     * Flat delivery/LFR fields above mirror the latest row for display/compat.
+     * Empty → synthesized from flat fields at epoch (2000-01-01).
+     */
+    purchaseDeliveryLfrSchedule: [],
     /** false = rate is pre-tax (BPCL invoice); true = rate includes tax. */
     purchaseTaxInclusive: false,
     fuelSupplierLabel: "BPCL / Fuel supplier",

@@ -23,12 +23,12 @@
     <script defer src="js/cache.js"></script>
     <script defer src="js/appConfig.js"></script>
     <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/purchaseTaxUtils.js?v=1"></script>
-    <script defer src="js/utils.js?v=12"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=7"></script>
+    <script defer src="js/utils.js?v=14"></script>
     <script defer src="js/dateRangeFilter.js?v=10"></script>
     <script defer src="js/pwa.js"></script>
     <script defer src="js/supabase.js"></script>
-    <script defer src="js/dsrQueries.js"></script>
+    <script defer src="js/dsrQueries.js?v=2"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/analysis.js?v=9"></script>
@@ -220,7 +220,7 @@
                   <div class="reports-about-nested">
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Fuel purchase cost</span><span class="reports-about-summary-desc muted">Cost of fuel sold</span></span></summary>
-                      <div class="reports-about-item-body"><p>Net litres sold × landed buying rate (pre-VAT ₹/KL + delivery + VAT/LST per litre) for each sale day.</p></div>
+                      <div class="reports-about-item-body"><p>Net litres sold × landed buying rate (pre-VAT ₹/KL + delivery + VAT/LST + LFR per litre) for each sale day.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Gross profit</span><span class="reports-about-summary-desc muted">Before operating expenses</span></span></summary>
@@ -247,8 +247,8 @@
                       <div class="reports-about-item-body"><p>Average selling rate per litre for petrol (MS) or diesel (HSD): net sale ₹ ÷ net litres for that product in the period.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
-                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Buying price per litre (MS / HSD)</span><span class="reports-about-summary-desc muted">Landed cost incl. VAT + delivery</span></span></summary>
-                      <div class="reports-about-item-body"><p>Volume-weighted landed buying rate per litre for each product (pre-VAT ₹/KL + delivery + VAT/LST applied per sale day). Requires complete buying prices.</p></div>
+                      <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Buying price per litre (MS / HSD)</span><span class="reports-about-summary-desc muted">Landed cost incl. VAT + delivery + LFR</span></span></summary>
+                      <div class="reports-about-item-body"><p>Volume-weighted landed buying rate per litre for each product (pre-VAT ₹/KL + delivery + VAT/LST + LFR applied per sale day). Requires complete buying prices.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Gross margin per litre</span><span class="reports-about-summary-desc muted">Gross profit ÷ litres</span></span></summary>
@@ -256,7 +256,7 @@
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Petrol / diesel gross margin per litre</span><span class="reports-about-summary-desc muted">Fuel gross profit ÷ product litres</span></span></summary>
-                      <div class="reports-about-item-body"><p>Per-product fuel gross margin: net litres × (selling − landed buying incl. VAT + delivery), divided by petrol or diesel litres sold. Lube/billing is excluded from these product-specific figures.</p></div>
+                      <div class="reports-about-item-body"><p>Per-product fuel gross margin: net litres × (selling − landed buying incl. VAT + delivery + LFR), divided by petrol or diesel litres sold. Lube/billing is excluded from these product-specific figures.</p></div>
                     </details>
                     <details class="reports-about-item reports-about-item--nested">
                       <summary><span class="reports-about-summary-text"><span class="reports-about-summary-title">Profit per litre</span><span class="reports-about-summary-desc muted">Net profit ÷ litres</span></span></summary>
@@ -383,7 +383,7 @@
             <div class="analysis-metrics-intro__copy">
               <p class="analysis-eyebrow">Live intelligence</p>
               <h2 class="analysis-section-title">Period metrics</h2>
-              <p class="analysis-section-desc">Core financials for the selected range. Same P&amp;L engine as Reports and Dashboard Net profit — landed buying cost incl. VAT + delivery.</p>
+              <p class="analysis-section-desc">Core financials for the selected range. Same P&amp;L engine as Reports and Dashboard Net profit — landed buying cost incl. VAT + delivery + LFR.</p>
             </div>
           </header>
 
@@ -456,7 +456,7 @@
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Fuel purchase cost</h3>
               <p class="stat" id="analysis-fuel-cost">—</p>
-              <small>Landed cost incl. VAT + delivery</small>
+              <small>Landed cost incl. VAT + delivery + LFR</small>
             </article>
             <article class="analysis-kpi analysis-kpi--compact">
               <h3>Gross profit</h3>
@@ -503,13 +503,13 @@
               <span class="analysis-kpi-tag">MS</span>
               <h3>Buying price/L</h3>
               <p class="stat" id="analysis-petrol-buying-per-litre">—</p>
-              <small>Landed incl. VAT + delivery</small>
+              <small>Landed incl. VAT + delivery + LFR</small>
             </article>
             <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-diesel">
               <span class="analysis-kpi-tag">HSD</span>
               <h3>Buying price/L</h3>
               <p class="stat" id="analysis-diesel-buying-per-litre">—</p>
-              <small>Landed incl. VAT + delivery</small>
+              <small>Landed incl. VAT + delivery + LFR</small>
             </article>
             <article class="analysis-kpi analysis-kpi--compact analysis-kpi--fuel-petrol">
               <span class="analysis-kpi-tag">MS</span>

@@ -764,7 +764,8 @@ function calculateDsrSaleRupees(rows, { includeTesting = false } = {}) {
 /**
  * Receipt-rate lookup + landed-rate cache for P&L, analysis, and trading account.
  * Builds receipt indexes once; memoizes stored and landed rates per product/date.
- * @param {Array<{ date: string, product: string, buying_price_per_litre: number }>} receiptRows
+ * Per-receipt delivery/LFR (from Purchase cost) ride with the carried pre-VAT rate.
+ * @param {Array<{ date: string, product: string, buying_price_per_litre: number, purchase_delivery_per_kl?: number, purchase_lfr_per_kl?: number }>} receiptRows
  */
 function createBuyingRateContext(receiptRows) {
   const byProduct = new Map();
@@ -774,22 +775,24 @@ function createBuyingRateContext(receiptRows) {
     byProduct.get(p).push({
       date: row.date,
       buying_price_per_litre: Number(row.buying_price_per_litre),
+      purchase_delivery_per_kl: row.purchase_delivery_per_kl,
+      purchase_lfr_per_kl: row.purchase_lfr_per_kl,
     });
   });
   byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
 
   const storedCache = new Map();
+  const receiptCache = new Map();
   const landedCache = new Map();
 
-  function getStored(product, date) {
+  function findReceipt(product, date) {
     const p = normalizeProduct(product);
     const cacheKey = `${p}\0${date}`;
-    if (storedCache.has(cacheKey)) return storedCache.get(cacheKey);
+    if (receiptCache.has(cacheKey)) return receiptCache.get(cacheKey);
 
     const list = byProduct.get(p);
-    let stored = null;
+    let found = null;
     if (list?.length) {
-      // list is sorted newest→oldest; binary-search first date <= target
       let lo = 0;
       let hi = list.length - 1;
       let foundIdx = -1;
@@ -797,37 +800,78 @@ function createBuyingRateContext(receiptRows) {
         const mid = (lo + hi) >> 1;
         if (list[mid].date <= date) {
           foundIdx = mid;
-          hi = mid - 1; // seek newer (smaller index) that still qualifies
+          hi = mid - 1;
         } else {
           lo = mid + 1;
         }
       }
-      const found = foundIdx >= 0 ? list[foundIdx] : null;
-      if (found != null && Number.isFinite(found.buying_price_per_litre) && found.buying_price_per_litre > 0) {
-        stored = found.buying_price_per_litre;
+      const candidate = foundIdx >= 0 ? list[foundIdx] : null;
+      if (
+        candidate != null &&
+        Number.isFinite(candidate.buying_price_per_litre) &&
+        candidate.buying_price_per_litre > 0
+      ) {
+        found = candidate;
       }
     }
+    receiptCache.set(cacheKey, found);
+    return found;
+  }
+
+  function getStored(product, date) {
+    const p = normalizeProduct(product);
+    const cacheKey = `${p}\0${date}`;
+    if (storedCache.has(cacheKey)) return storedCache.get(cacheKey);
+    const found = findReceipt(product, date);
+    const stored = found?.buying_price_per_litre ?? null;
     storedCache.set(cacheKey, stored);
     return stored;
   }
 
-  function getLanded(stored, product) {
+  function chargeOverridesFromReceipt(receipt) {
+    if (!receipt) return { deliveryPerKl: 0, lfrPerKl: 0 };
+    const deliveryPerKl = Number(receipt.purchase_delivery_per_kl);
+    const lfrPerKl = Number(receipt.purchase_lfr_per_kl);
+    return {
+      deliveryPerKl: Number.isFinite(deliveryPerKl) && deliveryPerKl >= 0 ? deliveryPerKl : 0,
+      lfrPerKl: Number.isFinite(lfrPerKl) && lfrPerKl >= 0 ? lfrPerKl : 0,
+    };
+  }
+
+  function getLanded(stored, product, date, overrides) {
     if (stored == null || !Number.isFinite(stored) || stored <= 0) return null;
     const p = normalizeProduct(product);
-    const cacheKey = `${p}\0${stored}`;
+    const day = date ? String(date).slice(0, 10) : "";
+    const dOv = overrides?.deliveryPerKl;
+    const lOv = overrides?.lfrPerKl;
+    const cacheKey = `${p}\0${stored}\0${day}\0${dOv ?? ""}\0${lOv ?? ""}`;
     if (landedCache.has(cacheKey)) return landedCache.get(cacheKey);
-    const landed = toLandedBuyingRatePerLitre(stored, p);
+    const landed = toLandedBuyingRatePerLitre(stored, p, day || null, overrides);
     landedCache.set(cacheKey, landed);
     return landed;
   }
 
   function getLandedForRow(row) {
+    const date = row?.date;
+    const receipt = findReceipt(row?.product, date);
     const stored = resolveStoredBuyingRate(row, getStored);
-    return getLanded(stored, row?.product);
+    const overrides = chargeOverridesFromReceipt(
+      receipt || {
+        purchase_delivery_per_kl: row?.purchase_delivery_per_kl,
+        purchase_lfr_per_kl: row?.purchase_lfr_per_kl,
+      }
+    );
+    return getLanded(stored, row?.product, date, overrides);
   }
 
   function getLandedForDate(product, date) {
-    return getLanded(getStored(product, date), product);
+    const receipt = findReceipt(product, date);
+    return getLanded(
+      getStored(product, date),
+      product,
+      date,
+      chargeOverridesFromReceipt(receipt)
+    );
   }
 
   return { getStored, getLandedForRow, getLandedForDate, getBuying: getStored };
@@ -849,28 +893,30 @@ function resolveStoredBuyingRate(row, getBuying) {
 }
 
 /**
- * Landed buying rate (₹/L) for margin/cost: pre-VAT + delivery + VAT/LST.
+ * Landed buying rate (₹/L) for margin/cost: pre-VAT + delivery + VAT/LST + LFR.
+ * Delivery/LFR come from the receipt that owns the pre-VAT rate (Purchase cost).
+ * Missing receipt delivery/LFR → 0 (does not use Settings).
  * Never returns the raw stored pre-VAT rate — purchaseTaxUtils.js is required.
  */
-function toLandedBuyingRatePerLitre(storedRatePerLitre, product) {
+function toLandedBuyingRatePerLitre(storedRatePerLitre, product, date, chargeOverrides) {
   const stored = Number(storedRatePerLitre);
   if (!Number.isFinite(stored) || stored <= 0) return null;
   if (typeof storedToLandedBuyingRatePerLitre !== "function") return null;
-  return storedToLandedBuyingRatePerLitre(stored, product);
+  return storedToLandedBuyingRatePerLitre(stored, product, date, chargeOverrides);
 }
 
 /** Landed rate from latest receipt on or before a date (opening/closing stock, trading account). */
 function getLandedBuyingRateForDate(product, date, getBuyingOrCtx) {
   if (getBuyingOrCtx?.getLandedForDate) return getBuyingOrCtx.getLandedForDate(product, date);
   const stored = getBuyingOrCtx?.(product, date);
-  return toLandedBuyingRatePerLitre(stored, product);
+  return toLandedBuyingRatePerLitre(stored, product, date);
 }
 
 function getEffectiveBuyingRate(row, getBuyingOrCtx) {
   if (getBuyingOrCtx?.getLandedForRow) return getBuyingOrCtx.getLandedForRow(row);
   const stored = resolveStoredBuyingRate(row, getBuyingOrCtx);
   if (stored == null) return null;
-  return toLandedBuyingRatePerLitre(stored, row?.product);
+  return toLandedBuyingRatePerLitre(stored, row?.product, row?.date);
 }
 
 /** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
@@ -1033,7 +1079,7 @@ function findUnresolvedBuyingRateRows(dsrRows, getBuyingOrCtx) {
 
 /**
  * Unified P&L for dashboard, reports, and analysis.
- * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%).
+ * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%) + LFR/L.
  * Missing receipt-day rates fall back to the previous receipt rate for calculation;
  * missingBuyingPrice lists rows that still need an entered rate (warning only).
  * Net profit = fuel gross profit + lube sales − lube COGS − operating expenses
