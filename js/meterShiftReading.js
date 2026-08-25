@@ -485,7 +485,6 @@
       const employee_id = tr.querySelector(".shift-staff")?.value || "";
       const opening_meter = parseNum(tr.querySelector(".shift-opening")?.value);
       const closing_meter = parseNum(tr.querySelector(".shift-closing")?.value);
-      const testing_litres = parseNum(tr.querySelector(".shift-testing")?.value);
       rows.push({
         product,
         pump_no,
@@ -493,7 +492,8 @@
         employee_id,
         opening_meter,
         closing_meter,
-        testing_litres,
+        // Testing is entered on the daily MS/HSD sheet, not per-nozzle on shift register
+        testing_litres: 0,
       });
     });
     return rows;
@@ -1093,7 +1093,6 @@
               closing = formatMeterInput(suggestClose[key]);
             }
           }
-          const testing = saved && saved.testing_litres ? formatMeterInput(saved.testing_litres) : "";
           const openingReadonly = !isAdmin ? " readonly" : "";
           const openingClass = !isAdmin
             ? "shift-opening meter-reading shift-opening--locked"
@@ -1104,7 +1103,6 @@
             <td><input type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" aria-label="Opening for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
             <td><input type="text" inputmode="numeric" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" aria-label="Closing for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
             <td><input type="text" readonly class="shift-sale calc-field" tabindex="-1" aria-label="Sale litres" /></td>
-            <td><input type="text" inputmode="decimal" class="shift-testing meter-reading" value="${escapeHtml(testing)}" placeholder="0" aria-label="Testing litres" /></td>
           </tr>`;
         })
         .join("");
@@ -1123,7 +1121,6 @@
                 <th>Opening</th>
                 <th class="shift-th-focus">Closing</th>
                 <th>Sale</th>
-                <th>Test</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -1457,13 +1454,6 @@
       if (r.closing_meter < r.opening_meter) {
         showMsg(
           `Closing must be ≥ opening for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no}.`,
-          true
-        );
-        return;
-      }
-      if (r.testing_litres > Math.max(r.closing_meter - r.opening_meter, 0)) {
-        showMsg(
-          `Testing cannot exceed sale for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no}.`,
           true
         );
         return;
@@ -1880,7 +1870,6 @@
             <td class="num">${formatQuantity(r.opening_meter)}</td>
             <td class="num">${formatQuantity(r.closing_meter)}</td>
             <td class="num">${formatQuantity(sale)}</td>
-            <td class="num">${r.testing_litres ? formatQuantity(r.testing_litres) : "—"}</td>
           </tr>`;
         })
         .join("");
@@ -1895,7 +1884,6 @@
                 <th>Opening</th>
                 <th>Closing</th>
                 <th>Sale (L)</th>
-                <th>Testing</th>
               </tr>
             </thead>
             <tbody>${body}</tbody>
@@ -2211,7 +2199,7 @@
       if (supervisorReadonly && !isAdmin) return;
       if (
         e.target.matches?.(
-          ".shift-opening, .shift-closing, .shift-testing, .shift-cash-collected, .shift-phone-pay, #shift-meter-rate-petrol, #shift-meter-rate-diesel"
+          ".shift-opening, .shift-closing, .shift-cash-collected, .shift-phone-pay, #shift-meter-rate-petrol, #shift-meter-rate-diesel"
         )
       ) {
         debouncedDerived();

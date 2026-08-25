@@ -2611,14 +2611,23 @@ declare
   v_short_previous numeric := 0;
   v_credit_ledger numeric := 0;
   v_credit_shift numeric := 0;
+  v_credit_shift_gross numeric := 0;
   v_expenses_ledger numeric := 0;
   v_expenses_shift numeric := 0;
   v_shift_cash numeric := 0;
   v_shift_phone numeric := 0;
+  v_same_day_settle numeric := 0;
+  v_same_day_cash numeric := 0;
+  v_same_day_upi numeric := 0;
+  v_same_day_bank numeric := 0;
+  v_payments_raw numeric := 0;
+  v_credit_entries numeric := 0;
+  v_credit_legacy numeric := 0;
+  v_pay_cash numeric := 0;
+  v_pay_upi numeric := 0;
 begin
   perform public.require_staff_access();
 
-  -- Total sale: gross litres × rate; DISTINCT ON product guards against duplicate dates
   select coalesce(sum(
     coalesce(v_row.total_sales, 0)
     * case
@@ -2635,25 +2644,86 @@ begin
     order by product, created_at desc nulls last, id desc
   ) v_row;
 
-  select coalesce(sum(amount), 0) into v_collection
-  from public.credit_payments where date = p_date;
+  with pay as (
+    select
+      credit_customer_id,
+      sum(amount) as pay_today,
+      sum(amount) filter (
+        where lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash'
+      ) as pay_cash,
+      sum(amount) filter (
+        where lower(trim(coalesce(payment_mode, ''))) = 'upi'
+      ) as pay_upi,
+      sum(amount) filter (
+        where lower(trim(coalesce(payment_mode, ''))) = 'bank'
+      ) as pay_bank
+    from public.credit_payments
+    where date = p_date
+    group by credit_customer_id
+  ),
+  cred as (
+    select
+      credit_customer_id,
+      sum(amount) as credit_today,
+      sum(amount) filter (
+        where employee_id is not null and shift is not null
+      ) as credit_shift
+    from public.credit_entries
+    where transaction_date = p_date
+    group by credit_customer_id
+  ),
+  split as (
+    select
+      coalesce(p.pay_today, 0) as pay_today,
+      coalesce(p.pay_cash, 0) as pay_cash,
+      coalesce(p.pay_upi, 0) as pay_upi,
+      coalesce(p.pay_bank, 0) as pay_bank,
+      coalesce(c.credit_today, 0) as credit_today,
+      coalesce(c.credit_shift, 0) as credit_shift,
+      least(coalesce(p.pay_today, 0), coalesce(c.credit_today, 0)) as same_day
+    from pay p
+    full outer join cred c using (credit_customer_id)
+  )
+  select
+    coalesce(sum(pay_today), 0),
+    coalesce(sum(pay_cash), 0),
+    coalesce(sum(pay_upi), 0),
+    coalesce(sum(credit_today), 0),
+    coalesce(sum(credit_shift), 0),
+    coalesce(sum(same_day), 0),
+    coalesce(sum(
+      case when pay_today > 0 then round(same_day * pay_cash / pay_today, 2) else 0 end
+    ), 0),
+    coalesce(sum(
+      case when pay_today > 0 then round(same_day * pay_upi / pay_today, 2) else 0 end
+    ), 0),
+    coalesce(sum(
+      case when pay_today > 0 then round(same_day * pay_bank / pay_today, 2) else 0 end
+    ), 0)
+  into
+    v_payments_raw, v_pay_cash, v_pay_upi,
+    v_credit_entries, v_credit_shift_gross, v_same_day_settle,
+    v_same_day_cash, v_same_day_upi, v_same_day_bank
+  from split;
+
+  select coalesce(sum(c.amount_due), 0) into v_credit_legacy
+  from public.credit_customers c
+  where c.date = p_date
+    and not exists (
+      select 1 from public.credit_entries e where e.credit_customer_id = c.id
+    );
+
+  v_collection := greatest(v_payments_raw - v_same_day_settle, 0);
+  v_credit_ledger := greatest(v_credit_entries - v_same_day_settle, 0) + v_credit_legacy;
 
   select short_today into v_short_previous
   from public.day_closing where date = p_date - interval '1 day' limit 1;
   v_short_previous := coalesce(v_short_previous, 0);
 
-  select coalesce(sum(amount), 0) into v_credit_ledger
-  from public.credit_entries where transaction_date = p_date;
-  select v_credit_ledger + coalesce((
-    select sum(c.amount_due) from public.credit_customers c
-    where c.date = p_date
-      and not exists (select 1 from public.credit_entries e where e.credit_customer_id = c.id)
-  ), 0) into v_credit_ledger;
-
-  -- Attribution breakdown only (already included in ledger — do not add meter_shift_cash)
-  select coalesce(sum(amount), 0) into v_credit_shift
-  from public.credit_entries
-  where transaction_date = p_date and employee_id is not null and shift is not null;
+  v_credit_shift := least(
+    v_credit_shift_gross,
+    greatest(v_credit_entries - v_same_day_settle, 0)
+  );
 
   select coalesce(sum(amount), 0) into v_expenses_ledger
   from public.expenses where date = p_date;
@@ -2680,13 +2750,22 @@ begin
     'expenses_ledger', coalesce(v_expenses_ledger, 0) - coalesce(v_expenses_shift, 0),
     'expenses_shift', coalesce(v_expenses_shift, 0),
     'shift_cash_total', coalesce(v_shift_cash, 0),
-    'shift_phone_pay_total', coalesce(v_shift_phone, 0)
+    'shift_phone_pay_total', coalesce(v_shift_phone, 0),
+    'same_day_settle', coalesce(v_same_day_settle, 0),
+    'same_day_settle_cash', coalesce(v_same_day_cash, 0),
+    'same_day_settle_upi', coalesce(v_same_day_upi, 0),
+    'same_day_settle_bank', coalesce(v_same_day_bank, 0),
+    'settle_cash_total', coalesce(v_pay_cash, 0),
+    'settle_upi_total', coalesce(v_pay_upi, 0),
+    'suggested_night_cash', coalesce(v_shift_cash, 0) + coalesce(v_pay_cash, 0),
+    'suggested_phone_pay', coalesce(v_shift_phone, 0) + coalesce(v_pay_upi, 0)
   );
 end;
 $$;
 
 comment on function public.compute_day_closing_components(date) is
-  'Day-closing totals from DSR/ledger plus live shift cash/phone sums (both shifts).';
+  'Day-closing totals. LIFO same-day settle; Collection = pay excess over today credit; night/phone suggest shift+settles.';
+
 
 
 create or replace function public.recascade_day_closing_short_from(p_from_date date)
@@ -2756,6 +2835,12 @@ declare
   v_credit_today numeric := 0;
   v_shift_cash numeric := 0;
   v_shift_phone numeric := 0;
+  v_settle_cash numeric := 0;
+  v_settle_upi numeric := 0;
+  v_suggested_cash numeric := 0;
+  v_suggested_phone numeric := 0;
+  v_saved_cash numeric := null;
+  v_saved_phone numeric := null;
 begin
   perform public.require_staff_access();
 
@@ -2782,6 +2867,16 @@ begin
   v_components := public.compute_day_closing_components(p_date);
   v_shift_cash := coalesce((v_components->>'shift_cash_total')::numeric, 0);
   v_shift_phone := coalesce((v_components->>'shift_phone_pay_total')::numeric, 0);
+  v_settle_cash := coalesce((v_components->>'settle_cash_total')::numeric, 0);
+  v_settle_upi := coalesce((v_components->>'settle_upi_total')::numeric, 0);
+  -- Authoritative suggestion: always shift + settles (ignore stale keys)
+  v_suggested_cash := v_shift_cash + v_settle_cash;
+  v_suggested_phone := v_shift_phone + v_settle_upi;
+
+  if v_already_saved then
+    v_saved_cash := coalesce(v_existing.night_cash, 0);
+    v_saved_phone := coalesce(v_existing.phone_pay, 0);
+  end if;
 
   if v_use_snapshot then
     v_total_sale := coalesce(v_existing.total_sale, 0);
@@ -2810,16 +2905,25 @@ begin
     'expenses_shift', coalesce((v_components->>'expenses_shift')::numeric, 0),
     'shift_cash_total', v_shift_cash,
     'shift_phone_pay_total', v_shift_phone,
+    'same_day_settle', coalesce((v_components->>'same_day_settle')::numeric, 0),
+    'same_day_settle_cash', coalesce((v_components->>'same_day_settle_cash')::numeric, 0),
+    'same_day_settle_upi', coalesce((v_components->>'same_day_settle_upi')::numeric, 0),
+    'same_day_settle_bank', coalesce((v_components->>'same_day_settle_bank')::numeric, 0),
+    'settle_cash_total', v_settle_cash,
+    'settle_upi_total', v_settle_upi,
+    'suggested_night_cash', v_suggested_cash,
+    'suggested_phone_pay', v_suggested_phone,
+    'saved_night_cash', v_saved_cash,
+    'saved_phone_pay', v_saved_phone,
     'snapshot', v_use_snapshot,
-    -- New closing: live morning+afternoon totals. After save (incl. overwrite): stored values.
-    -- Live shift sums always returned as shift_cash_total / shift_phone_pay_total for hints.
+    -- Prefill value for the form: suggested when editable, saved when locked
     'night_cash', case
-      when v_already_saved then coalesce(v_existing.night_cash, 0)
-      else v_shift_cash
+      when v_already_saved and not v_can_overwrite then v_saved_cash
+      else v_suggested_cash
     end,
     'phone_pay', case
-      when v_already_saved then coalesce(v_existing.phone_pay, 0)
-      else v_shift_phone
+      when v_already_saved and not v_can_overwrite then v_saved_phone
+      else v_suggested_phone
     end,
     'short_today', case when v_already_saved then coalesce(v_existing.short_today, 0) else null end,
     'closing_reference', case when v_already_saved then v_existing.closing_reference else null end,
@@ -2835,8 +2939,10 @@ begin
   );
 end;
 $$;
+
 comment on function public.get_day_closing_breakdown(date) is
-  'Day closing components with live shift cash/phone. Locked days use saved night_cash/phone_pay snapshot.';
+  'Day closing breakdown. suggested_* = shift + Cash/UPI settles; night_cash/phone_pay prefill suggested when editable.';
+
 
 -- RPC: Available (uncollected) night cash summary
 create or replace function public.get_night_cash_available()
@@ -3340,7 +3446,7 @@ begin
         from public.credit_entries
         where credit_customer_id = v_customer_id
           and amount_settled < amount
-        order by transaction_date asc, id asc
+        order by transaction_date desc, id desc
         for update
       loop
         exit when v_remaining <= 0;
@@ -3384,6 +3490,7 @@ create or replace function public.record_credit_payment(
 )
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_remaining numeric := p_amount;
@@ -3416,7 +3523,8 @@ begin
       from public.credit_entries
       where credit_customer_id = p_credit_customer_id
         and amount_settled < amount
-      order by transaction_date asc, id asc
+        and transaction_date <= p_date
+      order by transaction_date desc, id desc
       for update
     loop
       exit when v_remaining <= 0;
@@ -3428,7 +3536,14 @@ begin
     end loop;
 
     insert into public.credit_payments (credit_customer_id, date, amount, note, payment_mode, created_by)
-    values (p_credit_customer_id, p_date, p_amount, nullif(trim(p_note), ''), coalesce(p_payment_mode, 'Cash'), auth.uid());
+    values (
+      p_credit_customer_id,
+      p_date,
+      p_amount,
+      nullif(trim(p_note), ''),
+      coalesce(p_payment_mode, 'Cash'),
+      auth.uid()
+    );
 
     perform public.sync_credit_customer_balances(p_credit_customer_id);
 
@@ -3457,7 +3572,10 @@ begin
   );
 end;
 $$;
-comment on function public.record_credit_payment(uuid, date, numeric, text, text) is 'Record payment; allocate to entries FIFO. Overpayment is stored as prepaid_balance.';
+
+comment on function public.record_credit_payment(uuid, date, numeric, text, text) is
+  'Record payment; LIFO within entries dated on/before payment date. Overpay → prepaid_balance.';
+
 
 -- Batch settlement across multiple credit customer rows (one payment, one round trip)
 create or replace function public.batch_record_credit_settlements(
@@ -3547,13 +3665,12 @@ begin
 end;
 $$;
 comment on function public.batch_record_credit_settlements(uuid[], uuid, date, numeric, text, text) is
-  'Record one payment split across multiple credit customer rows (FIFO per row). Overpayment goes to primary customer as prepaid.';
+  'Record one payment split across multiple credit customer rows (LIFO per row). Overpayment goes to primary customer as prepaid.';
 
--- Re-apply FIFO settlements after a payment is removed (admin delete)
+-- Re-apply LIFO settlements after a payment is removed (admin delete)
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
 returns void
-language plpgsql
-security definer
+language plpgsql security definer
 set search_path = public
 as $$
 declare
@@ -3570,7 +3687,7 @@ begin
     where credit_customer_id = p_credit_customer_id;
 
     for v_pay in
-      select id, amount
+      select id, amount, date
       from public.credit_payments
       where credit_customer_id = p_credit_customer_id
       order by date asc, created_at asc, id asc
@@ -3581,7 +3698,8 @@ begin
         from public.credit_entries
         where credit_customer_id = p_credit_customer_id
           and amount_settled < amount
-        order by transaction_date asc, id asc
+          and transaction_date <= v_pay.date
+        order by transaction_date desc, id desc
         for update
       loop
         exit when v_remaining <= 0;
@@ -3605,7 +3723,11 @@ end;
 $$;
 
 comment on function public.reallocate_credit_settlements(uuid) is
-  'Reset amount_settled on all entries for a customer, then re-apply remaining payments FIFO.';
+  'Reset amount_settled; re-apply each payment LIFO to entries on/before that payment date.';
+
+
+comment on function public.reallocate_credit_settlements(uuid) is
+  'Reset amount_settled, then re-apply payments with LIFO (newest credit first).';
 
 revoke all on function public.reallocate_credit_settlements(uuid) from public;
 revoke all on function public.reallocate_credit_settlements(uuid) from authenticated;
