@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=17" />
+    <link rel="stylesheet" href="css/app-core.css?v=18" />
     <link rel="stylesheet" href="css/app-day-closing.css?v=11" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/printUtils.js?v=11"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/day-closing.js?v=18"></script>
+    <script defer src="js/day-closing.js?v=19"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -99,13 +99,10 @@
                 <div class="dc-breakdown-group" data-breakdown="collection">
                   <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
-                          <span>Collection</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Prior-debt settlements · <a href="credit.html#settle">Record payment</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
+                        <span>Collection</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
                     <dd id="dc-collection" class="dc-expandable-amount">—</dd>
                   </div>
@@ -132,7 +129,7 @@
                   <dd class="dc-input-cell">
                     <div class="dc-input-wrap">
                       <input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" />
-                      <button type="button" id="dc-use-suggested-cash" class="button-secondary dc-use-suggested hidden">Use suggested</button>
+                      <button type="button" id="dc-use-suggested-cash" class="dc-use-suggested hidden">Use suggested</button>
                     </div>
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-night-cash-hint" aria-live="polite"></div>
@@ -144,37 +141,30 @@
                   <dd class="dc-input-cell">
                     <div class="dc-input-wrap">
                       <input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" />
-                      <button type="button" id="dc-use-suggested-phone" class="button-secondary dc-use-suggested hidden">Use suggested</button>
+                      <button type="button" id="dc-use-suggested-phone" class="dc-use-suggested hidden">Use suggested</button>
                     </div>
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-phone-pay-hint" aria-live="polite"></div>
                 </div>
                 <div class="dc-breakdown-group" data-breakdown="credit">
-                  <div class="dsr-summary-row dc-expandable-row dc-row--expandable dc-credit-summary-row">
+                  <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
-                          <span>Credit today</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Shift credit minus same-day settlement · <a href="credit.html#record">Record sale</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
+                        <span>Credit today</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
                     <dd id="dc-credit-today" class="dc-expandable-amount">—</dd>
                   </div>
-                  <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-credit-today-hint" aria-live="polite"></div>
                   <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
                 </div>
                 <div class="dc-breakdown-group" data-breakdown="expenses">
                   <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
-                          <span>Expenses today</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Expense book + shift · <a href="expenses.html">Add or edit</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
+                        <span>Expenses today</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
                     <dd id="dc-expenses-today" class="dc-expandable-amount">—</dd>
                   </div>
