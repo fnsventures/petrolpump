@@ -521,6 +521,20 @@ tbody tr:hover {
   white-space: nowrap;
   text-align: right;
 }
+.dc-channel-line.dc-channel-line--total {
+  margin-top: 0.08rem;
+  padding-top: 0.12rem;
+  border-top: 1px dashed rgba(100, 116, 139, 0.3);
+  font-weight: 600;
+  color: #334155;
+}
+.dc-channel-line.dc-channel-line--total span:last-child {
+  color: #334155;
+  font-weight: 600;
+}
+.dc-channel-line.dc-channel-line--total .dc-channel-op {
+  color: #334155;
+}
 .dc-channel-line.dc-channel-suggested {
   margin-top: 0.08rem;
   padding-top: 0.12rem;
@@ -530,7 +544,7 @@ tbody tr:hover {
 }
 .dc-channel-line.dc-channel-suggested span:last-child {
   color: #334155;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
 }
 .dc-channel-line.dc-channel-suggested .dc-channel-op {
@@ -662,23 +676,37 @@ tbody tr:hover {
   box-sizing: border-box;
 }
 .dc-use-suggested {
-  align-self: stretch;
-  font-size: 0.68rem;
+  align-self: flex-end;
+  font-size: 0.72rem;
+  font-weight: 500;
   line-height: 1.2;
-  padding: 0.15rem 0.35rem;
+  padding: 0.22rem 0.55rem;
   white-space: nowrap;
-  text-align: center;
-  background: transparent;
-  border: 0;
-  color: var(--color-primary, #2563eb);
-  text-decoration: underline;
+  color: #475569;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.35rem;
+  text-decoration: none;
   cursor: pointer;
+  box-shadow: none;
 }
 .dc-use-suggested:hover {
-  color: #1d4ed8;
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #334155;
+}
+.dc-use-suggested:focus-visible {
+  outline: 2px solid rgba(100, 116, 139, 0.35);
+  outline-offset: 1px;
 }
 .dc-use-suggested.hidden {
   display: none;
+}
+.dc-channel-summary-line {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: #64748b;
 }
 .dc-suggested-amount {
   font-weight: 600;
