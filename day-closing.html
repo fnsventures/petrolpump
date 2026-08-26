@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=19" />
+    <link rel="stylesheet" href="css/app-core.css?v=20" />
     <link rel="stylesheet" href="css/app-day-closing.css?v=11" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/printUtils.js?v=11"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/day-closing.js?v=20"></script>
+    <script defer src="js/day-closing.js?v=21"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -127,10 +127,7 @@
                     <span class="dc-row-label">Night cash <span class="dc-input-badge">Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
-                    <div class="dc-input-wrap">
-                      <input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" />
-                      <button type="button" id="dc-use-suggested-cash" class="dc-use-suggested hidden">Use suggested</button>
-                    </div>
+                    <input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" />
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-night-cash-hint" aria-live="polite"></div>
                 </div>
@@ -139,10 +136,7 @@
                     <span class="dc-row-label">Phone pay <span class="dc-input-badge">Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
-                    <div class="dc-input-wrap">
-                      <input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" />
-                      <button type="button" id="dc-use-suggested-phone" class="dc-use-suggested hidden">Use suggested</button>
-                    </div>
+                    <input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" />
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-phone-pay-hint" aria-live="polite"></div>
                 </div>
@@ -156,6 +150,7 @@
                     </dt>
                     <dd id="dc-credit-today" class="dc-expandable-amount">—</dd>
                   </div>
+                  <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-credit-today-hint" aria-live="polite"></div>
                   <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
                 </div>
                 <div class="dc-breakdown-group" data-breakdown="expenses">
