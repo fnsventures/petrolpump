@@ -220,10 +220,17 @@ async function loadExpenseCategoryLabels() {
   return expenseCategoryLabels;
 }
 
-function renderDayClosingDetailTable(rows, columns, kind) {
+function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } = {}) {
+  let note = "";
+  if (kind === "collection" && sameDayRouted > 0.005) {
+    note = `<p class="muted dc-same-day-note"><span class="dc-same-day-tag">Same day settlement</span> ${formatCurrency(sameDayRouted)} routed to Night cash / Phone pay (not listed below).</p>`;
+  }
   if (!rows.length) {
     if (kind === "collection") {
-      return '<p class="muted">No prior-day settlements. Same-day credit settlements are entered in Night cash / Phone pay.</p>';
+      return (
+        note ||
+        '<p class="muted">No prior-debt settlements. Same-day credit settlements are entered in Night cash / Phone pay.</p>'
+      );
     }
     if (kind === "credit") {
       return '<p class="muted">No open credit for this date (same-day settled sales are in Night cash / Phone pay).</p>';
@@ -266,7 +273,7 @@ function renderDayClosingDetailTable(rows, columns, kind) {
     }
     return `<tr>${cells}${actions}</tr>`;
   }).join("");
-  return `<table class="dc-breakdown-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  return `${note}<table class="dc-breakdown-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 /**
@@ -350,7 +357,9 @@ async function fetchCollectionDetails(dateStr) {
   const { payments, byId } = await loadDayCreditSettleMaps(dateStr);
 
   // LIFO: cover today's credit first; only excess is Collection (prior debt).
+  // Same-day portion is tagged out of Collection and counted in Night cash / Phone pay.
   const sameDayLeft = new Map();
+  let sameDayRouted = 0;
   for (const [id, c] of byId) sameDayLeft.set(id, c.sameDay);
 
   const rows = [];
@@ -360,6 +369,7 @@ async function fetchCollectionDetails(dateStr) {
     let sameLeft = sameDayLeft.get(cid) || 0;
     const toSame = Math.min(amt, sameLeft);
     sameDayLeft.set(cid, sameLeft - toSame);
+    sameDayRouted += toSame;
     const collectionAmt = amt - toSame;
     if (collectionAmt <= 0.005) continue;
     rows.push({
@@ -371,7 +381,7 @@ async function fetchCollectionDetails(dateStr) {
       paymentAmount: amt, // full payment for admin delete confirm
     });
   }
-  return rows;
+  return { rows, sameDayRouted };
 }
 
 async function fetchCreditTodayDetails(dateStr) {
@@ -484,8 +494,10 @@ async function loadDayClosingDetail(kind, dateStr) {
 
   panel.innerHTML = '<p class="muted">Loading…</p>';
   try {
-    const rows = await DC_DETAIL_FETCHERS[kind](dateStr);
-    let html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind);
+    const fetched = await DC_DETAIL_FETCHERS[kind](dateStr);
+    const rows = Array.isArray(fetched) ? fetched : fetched.rows;
+    const sameDayRouted = Array.isArray(fetched) ? 0 : Number(fetched.sameDayRouted || 0);
+    let html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind, { sameDayRouted });
     if (kind === "credit" || kind === "expenses") {
       html = renderShiftVsLedgerSummary(kind) + html;
     }
@@ -528,6 +540,9 @@ async function toggleDayClosingDetail(kind) {
   const { toggle, panel } = getDcDetailElements(kind);
   if (!toggle || !panel) return;
 
+  // Ignore re-entrant clicks while a load is in flight for this panel.
+  if (toggle.dataset.dcToggleBusy === "1") return;
+
   const isOpen = toggle.getAttribute("aria-expanded") === "true";
   if (isOpen) {
     toggle.setAttribute("aria-expanded", "false");
@@ -537,16 +552,20 @@ async function toggleDayClosingDetail(kind) {
 
   toggle.setAttribute("aria-expanded", "true");
   panel.hidden = false;
-  await loadDayClosingDetail(kind, dateStr);
+  toggle.dataset.dcToggleBusy = "1";
+  try {
+    await loadDayClosingDetail(kind, dateStr);
+  } finally {
+    delete toggle.dataset.dcToggleBusy;
+  }
 }
 
 async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}) {
   if (!dateStr || !dcDom?.dateInput) return;
 
   if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
-  if (dcSettleMapsCache.date && dcSettleMapsCache.date !== dateStr) {
-    invalidateDcSettleMapsCache(dcSettleMapsCache.date);
-  }
+  // Always refresh settle maps on reload so Collection / Night cash stay in sync.
+  invalidateDcSettleMapsCache(dateStr);
 
   const requestId = ++dcBreakdownRequestId;
   refreshDayClosingDetailsState(dateStr).catch((err) => {
@@ -692,46 +711,63 @@ async function enrichDayClosingSettleSuggestions(breakdown, dateStr) {
   return b;
 }
 
-/** Settle fragment: " + same-day cash ₹10,000" or " + cash ₹10,000 (₹3,000 same-day)" */
-function dayClosingSettleNote(settleAmt, sameAmt, channel) {
-  if (settleAmt <= 0.005) return "";
+/** Settle fragment line label for night cash / phone pay breakdown. */
+function dayClosingSettleBreakdownLabel(settleAmt, sameAmt, channelLabel) {
+  if (settleAmt <= 0.005) return null;
   const allSameDay = sameAmt > 0.005 && Math.abs(sameAmt - settleAmt) < 0.005;
-  if (allSameDay) return ` + same-day ${channel} ${formatCurrency(settleAmt)}`;
-  if (sameAmt > 0.005) {
-    return ` + ${channel} ${formatCurrency(settleAmt)} (${formatCurrency(sameAmt)} same-day)`;
+  if (allSameDay) {
+    return {
+      label: `${channelLabel} settlement`,
+      tag: "Same day settlement",
+      amount: settleAmt,
+    };
   }
-  return ` + ${channel} settle ${formatCurrency(settleAmt)}`;
+  if (sameAmt > 0.005) {
+    return {
+      label: `${channelLabel} settlement`,
+      tag: `Same day ${formatCurrency(sameAmt)}`,
+      amount: settleAmt,
+    };
+  }
+  return {
+    label: `${channelLabel} collection`,
+    tag: null,
+    amount: settleAmt,
+  };
 }
 
 /**
- * Hint copy for night cash / PhonePe.
- * Recalculated vs saved is only shown when that channel has shift till data —
- * older days with settle scraps alone produce misleading "suggestions".
+ * Night cash / Phone pay: show shift + settlement breakdown and suggested total only.
  */
-function dayClosingChannelHint({
-  alreadySaved,
-  canOverwrite,
-  saved,
-  suggested,
+function renderDayClosingChannelBreakdown({
   shift,
   settle,
   sameDay,
-  channel,
+  suggested,
+  settleLabel,
   emptyLabel,
 }) {
-  const hasShift = shift > 0.005;
-  if (!alreadySaved) {
-    if (suggested <= 0.005) return emptyLabel;
-    return `Suggested ${formatCurrency(suggested)} = shift ${formatCurrency(shift)}${dayClosingSettleNote(settle, sameDay, channel)}`;
+  if (suggested <= 0.005) {
+    return `<p class="dc-channel-empty muted">${escapeHtml(emptyLabel)}</p>`;
   }
-  const savedAmt = Number.isFinite(saved) ? saved : 0;
-  const differs = hasShift && Math.abs(suggested - savedAmt) > 0.005;
-  if (differs) {
-    return canOverwrite
-      ? `Keeping saved ${formatCurrency(savedAmt)} · recalculated ${formatCurrency(suggested)} (change only if correcting)`
-      : `Saved closing ${formatCurrency(savedAmt)} · recalculated ${formatCurrency(suggested)}`;
+
+  const lines = [];
+  lines.push(`<div class="dc-channel-line"><span>Shift register</span><span>${formatCurrency(shift)}</span></div>`);
+
+  const settleLine = dayClosingSettleBreakdownLabel(settle, sameDay, settleLabel);
+  if (settleLine) {
+    const tag = settleLine.tag
+      ? ` <span class="dc-same-day-tag">${escapeHtml(settleLine.tag)}</span>`
+      : "";
+    lines.push(
+      `<div class="dc-channel-line"><span>${escapeHtml(settleLine.label)}${tag}</span><span>${formatCurrency(settleLine.amount)}</span></div>`
+    );
   }
-  return `Registered ${formatCurrency(savedAmt)}`;
+
+  lines.push(
+    `<div class="dc-channel-line dc-channel-suggested"><span>Suggested</span><span>${formatCurrency(suggested)}</span></div>`
+  );
+  return lines.join("");
 }
 
 function syncDayClosingShiftCashHints(breakdown) {
@@ -745,41 +781,32 @@ function syncDayClosingShiftCashHints(breakdown) {
   const sameBank = dcMoney(b.same_day_settle_bank);
   const suggestedCash = dcMoney(b.suggested_night_cash ?? shiftCash + settleCash);
   const suggestedPhone = dcMoney(b.suggested_phone_pay ?? shiftPhone + settleUpi);
-  const alreadySaved = !!b.already_saved;
-  const canOverwrite = canOverwriteDayClosing(b);
-  const savedCash = alreadySaved ? dcMoney(b.saved_night_cash ?? b.night_cash) : NaN;
-  const savedPhone = alreadySaved ? dcMoney(b.saved_phone_pay ?? b.phone_pay) : NaN;
 
   const cashHint = dcDom?.nightCashHint;
   if (cashHint) {
-    cashHint.textContent = dayClosingChannelHint({
-      alreadySaved,
-      canOverwrite,
-      saved: savedCash,
-      suggested: suggestedCash,
+    let html = renderDayClosingChannelBreakdown({
       shift: shiftCash,
       settle: settleCash,
       sameDay: sameCash,
-      channel: "cash",
-      emptyLabel: "Hard cash from shift register + Cash credit settlements",
+      suggested: suggestedCash,
+      settleLabel: "Cash",
+      emptyLabel: "No shift cash or cash settlements for this date.",
     });
-    if (!alreadySaved && sameBank > 0.005) {
-      cashHint.textContent += ` · bank ${formatCurrency(sameBank)} not included`;
+    if (suggestedCash > 0.005 && sameBank > 0.005) {
+      html += `<p class="dc-channel-note muted">Bank ${formatCurrency(sameBank)} not included</p>`;
     }
+    cashHint.innerHTML = html;
   }
 
   const phoneHint = dcDom?.phonePayHint;
   if (phoneHint) {
-    phoneHint.textContent = dayClosingChannelHint({
-      alreadySaved,
-      canOverwrite,
-      saved: savedPhone,
-      suggested: suggestedPhone,
+    phoneHint.innerHTML = renderDayClosingChannelBreakdown({
       shift: shiftPhone,
       settle: settleUpi,
       sameDay: sameUpi,
-      channel: "UPI",
-      emptyLabel: "PhonePe / UPI from shift register + UPI credit settlements",
+      suggested: suggestedPhone,
+      settleLabel: "UPI",
+      emptyLabel: "No shift PhonePe/UPI or UPI settlements for this date.",
     });
   }
 }
@@ -1347,10 +1374,17 @@ async function initializeDayClosing() {
   dcDom.uncertifyBtn?.addEventListener("click", () => setDayClosingCertified(false));
 
   document.querySelector(".day-closing-breakdown")?.addEventListener("click", (event) => {
-    const toggle = event.target.closest(".dc-breakdown-toggle");
-    if (!toggle) return;
-    const kind = toggle.closest("[data-breakdown]")?.dataset.breakdown;
+    // Links / buttons inside details (delete, record payment) must not toggle.
+    if (event.target.closest("a, input, textarea, select, .dc-breakdown-details button, .admin-delete-btn, .dc-delete-payment, .dc-delete-credit")) {
+      return;
+    }
+    const group = event.target.closest(".dc-breakdown-group[data-breakdown]");
+    if (!group) return;
+    // Toggle from the header row (label, chevron, or amount) — not from the open details panel.
+    if (event.target.closest(".dc-breakdown-details")) return;
+    const kind = group.dataset.breakdown;
     if (kind && DC_DETAIL_KINDS.includes(kind)) {
+      event.preventDefault();
       toggleDayClosingDetail(kind);
     }
   });
