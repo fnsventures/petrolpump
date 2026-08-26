@@ -9,7 +9,7 @@
  * - Updates: waiting worker until client sends SKIP_WAITING (no mid-session swap)
  */
 
-const CACHE_VERSION = "v182";
+const CACHE_VERSION = "v183";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
