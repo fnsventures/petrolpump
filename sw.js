@@ -9,7 +9,7 @@
  * - Updates: waiting worker until client sends SKIP_WAITING (no mid-session swap)
  */
 
-const CACHE_VERSION = "v175";
+const CACHE_VERSION = "v176";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -122,10 +122,9 @@ self.addEventListener("install", (event) => {
           )
         );
       }
-      // First install: activate immediately. Updates: wait for SKIP_WAITING from the page.
-      if (!self.registration.active) {
-        await self.skipWaiting();
-      }
+      // Activate immediately so cache-busting / API network-only fixes reach users
+      // without requiring a manual “Update” click.
+      await self.skipWaiting();
     })()
   );
 });

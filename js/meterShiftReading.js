@@ -249,13 +249,10 @@
   }
 
   /**
-   * Prefer same-day daily rates; otherwise last entered selling rate so expected ₹ shows by default.
+   * Resolve selling rates without touching the DOM (safe under concurrent loadShift).
+   * Prefer same-day daily rates; otherwise last entered selling rate.
    */
-  async function applyShiftRates(rpcRates) {
-    const ratePetrol = el("shift-meter-rate-petrol");
-    const rateDiesel = el("shift-meter-rate-diesel");
-    if (!ratePetrol && !rateDiesel) return { petrol: null, diesel: null, fromFallback: false };
-
+  async function resolveShiftRates(rpcRates) {
     let petrol = parseRateValue(rpcRates?.petrol);
     let diesel = parseRateValue(rpcRates?.diesel);
     let fromFallback = false;
@@ -277,10 +274,27 @@
       }
     }
 
-    if (ratePetrol) ratePetrol.value = petrol != null ? formatMeterInput(petrol) : "";
-    if (rateDiesel) rateDiesel.value = diesel != null ? formatMeterInput(diesel) : "";
-
     return { petrol, diesel, fromFallback };
+  }
+
+  function writeShiftRatesToDom(resolved) {
+    const ratePetrol = el("shift-meter-rate-petrol");
+    const rateDiesel = el("shift-meter-rate-diesel");
+    if (ratePetrol) {
+      ratePetrol.value =
+        resolved?.petrol != null ? formatMeterInput(resolved.petrol) : "";
+    }
+    if (rateDiesel) {
+      rateDiesel.value =
+        resolved?.diesel != null ? formatMeterInput(resolved.diesel) : "";
+    }
+  }
+
+  /** @deprecated use resolveShiftRates + writeShiftRatesToDom */
+  async function applyShiftRates(rpcRates) {
+    const resolved = await resolveShiftRates(rpcRates);
+    writeShiftRatesToDom(resolved);
+    return resolved;
   }
 
   function showMsg(text, isError) {
@@ -872,6 +886,14 @@
       }
       const total = row.querySelector(".shift-metric-total");
       if (total) total.textContent = formatCurrency(s.collected || 0);
+      const cashInput = row.querySelector(".shift-cash-collected");
+      if (cashInput && document.activeElement !== cashInput) {
+        cashInput.value = moneyInputValue(s.cash);
+      }
+      const phoneInput = row.querySelector(".shift-phone-pay");
+      if (phoneInput && document.activeElement !== phoneInput) {
+        phoneInput.value = moneyInputValue(s.phone_pay);
+      }
       const shortCell = row.querySelector(".shift-staff-short");
       if (shortCell) {
         shortCell.className = `shift-coll-result shift-staff-short ${shortClassFor(s.short)}`;
@@ -1285,9 +1307,15 @@
   }
 
   function beginShiftLoadUi(date, shift) {
+    if (typeof debouncedDerived?.cancel === "function") debouncedDerived.cancel();
     cashByEmployee = new Map();
     shiftHasSavedRows = false;
     lastStaffStructureKey = "";
+
+    const ratePetrol = el("shift-meter-rate-petrol");
+    const rateDiesel = el("shift-meter-rate-diesel");
+    if (ratePetrol) ratePetrol.value = "";
+    if (rateDiesel) rateDiesel.value = "";
 
     const nozzleHost = el("shift-meter-nozzle-tables");
     if (nozzleHost) {
@@ -1297,6 +1325,8 @@
     if (staffBody) staffBody.innerHTML = "";
     const staffHint = el("shift-meter-staff-hint");
     if (staffHint) staffHint.innerHTML = "";
+    const totals = el("shift-meter-totals");
+    if (totals) totals.innerHTML = "";
     const remarksEl = el("shift-meter-remarks");
     if (remarksEl) remarksEl.value = "";
     const attNote = el("shift-meter-attendance-note");
@@ -1312,6 +1342,7 @@
       reconcile.dataset.hasDiesel = "0";
       reconcile.dataset.rateFallback = "0";
       reconcile.dataset.syncNote = "";
+      reconcile.innerHTML = "";
     }
     updateShiftContext({ date, shift, hasSaved: false });
     applySupervisorLockUi(false, "");
@@ -1319,7 +1350,8 @@
 
   async function loadStaff() {
     try {
-      staffList = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: true });
+      // Always fetch a fresh roster on shift page — stale staff list is confusing mid-shift
+      staffList = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: false });
     } catch (error) {
       AppError.report(error, { context: "MeterShiftReading.loadStaff" });
       staffList = [];
@@ -1371,11 +1403,14 @@
       applyShiftRemarks(data?.cash);
       if (ledgerMap) applyLedgerTotals(ledgerMap);
 
+      // Resolve rates/openings without writing DOM — older in-flight loads must not clobber newer ones
       const [appliedRates, resolved] = await Promise.all([
-        applyShiftRates(data?.rates),
+        resolveShiftRates(data?.rates),
         resolveOpeningSuggestions(date, shift, data),
       ]);
       if (gen !== loadGeneration) return;
+
+      writeShiftRatesToDom(appliedRates);
 
       const reconcile = el("shift-meter-reconcile");
       if (reconcile) {
@@ -1449,6 +1484,7 @@
         }
       }
     } catch (error) {
+      if (gen !== loadGeneration) return;
       AppError.report(error, { context: "MeterShiftReading.loadShift" });
       showMsg(error.message || "Could not load shift register.", true);
       applySupervisorLockUi(false, "");
