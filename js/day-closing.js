@@ -534,6 +534,15 @@ async function loadDayClosingDetail(kind, dateStr) {
   }
 }
 
+function computeOpenShiftCredit(shiftGross, sameDay, fallback = 0) {
+  const gross = dcMoney(shiftGross);
+  const same = dcMoney(sameDay);
+  if (gross > 0.005 || same > 0.005) {
+    return Math.max(0, gross - same);
+  }
+  return dcMoney(fallback);
+}
+
 function syncDayClosingCreditHint(breakdown) {
   const b = breakdown || {};
   const hint = dcDom?.creditTodayHint;
@@ -541,7 +550,7 @@ function syncDayClosingCreditHint(breakdown) {
 
   const shiftGross = dcMoney(b.credit_shift_gross);
   const sameDay = dcMoney(b.same_day_settle);
-  const openShift = dcMoney(b.credit_shift);
+  const openShift = computeOpenShiftCredit(shiftGross, sameDay, b.credit_shift);
 
   if (shiftGross <= 0.005 && sameDay <= 0.005 && openShift <= 0.005) {
     hint.innerHTML = "";
@@ -841,9 +850,7 @@ function dcShiftChannelLabels() {
 }
 
 /**
- * Credit today breakdown for expanded detail panel.
- * Shift credit − same day = open shift credit (credit_shift from server).
- * Non-shift credit book is shown separately when present.
+ * Credit today breakdown: shift credit − same day settlement = open credit.
  */
 function renderDayClosingCreditBreakdown({
   shiftGross,
@@ -855,7 +862,7 @@ function renderDayClosingCreditBreakdown({
 }) {
   const gross = dcMoney(shiftGross);
   const same = dcMoney(sameDay);
-  const shiftOpen = dcMoney(openShift);
+  const shiftOpen = computeOpenShiftCredit(gross, same, openShift);
   const book = dcMoney(creditBook);
   const total = dcMoney(creditToday);
   const hasParts = gross > 0.005 || same > 0.005 || book > 0.005;
