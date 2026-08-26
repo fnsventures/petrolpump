@@ -58,8 +58,7 @@ function cacheDayClosingDom() {
     phonePayInput: document.getElementById("dc-phone-pay"),
     nightCashHint: document.getElementById("dc-night-cash-hint"),
     phonePayHint: document.getElementById("dc-phone-pay-hint"),
-    useSuggestedCashBtn: document.getElementById("dc-use-suggested-cash"),
-    useSuggestedPhoneBtn: document.getElementById("dc-use-suggested-phone"),
+    creditTodayHint: document.getElementById("dc-credit-today-hint"),
     remarksInput: document.getElementById("dc-remarks"),
     saveBtn: document.getElementById("day-closing-save"),
     referenceLine: document.getElementById("dc-reference-line"),
@@ -216,6 +215,7 @@ async function refreshDayClosingDetailsState(dateStr) {
 function clearDayClosingChannelHints() {
   if (dcDom?.nightCashHint) dcDom.nightCashHint.innerHTML = "";
   if (dcDom?.phonePayHint) dcDom.phonePayHint.innerHTML = "";
+  if (dcDom?.creditTodayHint) dcDom.creditTodayHint.innerHTML = "";
 }
 
 async function loadExpenseCategoryLabels() {
@@ -522,9 +522,7 @@ async function loadDayClosingDetail(kind, dateStr) {
     const rows = Array.isArray(fetched) ? fetched : fetched.rows;
     const sameDayRouted = Array.isArray(fetched) ? 0 : Number(fetched.sameDayRouted || 0);
     let html = renderDayClosingDetailTable(rows, DC_DETAIL_COLUMNS[kind], kind, { sameDayRouted });
-    if (kind === "credit") {
-      html = renderDayClosingCreditDetailIntro() + html;
-    } else if (kind === "expenses") {
+    if (kind === "expenses") {
       html = renderExpensesDetailIntro() + html;
     }
     dcDetailsCache.date = dateStr;
@@ -536,21 +534,27 @@ async function loadDayClosingDetail(kind, dateStr) {
   }
 }
 
-function renderDayClosingCreditDetailIntro() {
-  const b = dayClosingBreakdown || {};
+function syncDayClosingCreditHint(breakdown) {
+  const b = breakdown || {};
+  const hint = dcDom?.creditTodayHint;
+  if (!hint) return;
+
   const shiftGross = dcMoney(b.credit_shift_gross);
   const sameDay = dcMoney(b.same_day_settle);
   const openShift = dcMoney(b.credit_shift);
-  const creditBook = dcMoney(b.credit_ledger);
-  const creditToday = dcMoney(b.credit_today);
-  if (creditToday <= 0.005 && shiftGross <= 0.005 && sameDay <= 0.005) return "";
-  return renderDayClosingCreditBreakdown({
+
+  if (shiftGross <= 0.005 && sameDay <= 0.005 && openShift <= 0.005) {
+    hint.innerHTML = "";
+    return;
+  }
+
+  hint.innerHTML = renderDayClosingCreditBreakdown({
     shiftGross,
     sameDay,
     openShift,
-    creditBook,
-    creditToday,
-    emptyLabel: "No open credit for this date.",
+    creditBook: 0,
+    creditToday: 0,
+    emptyLabel: "No shift credit for this date.",
   });
 }
 
@@ -605,7 +609,6 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   dcDom.errorEl?.classList.add("hidden");
   setBreakdownAmounts(DC_LOADING);
   clearDayClosingChannelHints();
-  syncDayClosingUseSuggestedButtons(null);
 
   try {
     const { data, error } = await supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
@@ -671,7 +674,7 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
     alreadySaved ? b.saved_phone_pay ?? b.phone_pay : b.suggested_phone_pay ?? b.phone_pay
   );
   syncDayClosingShiftCashHints(b);
-  syncDayClosingUseSuggestedButtons(b);
+  syncDayClosingCreditHint(b);
   syncDayClosingSaveButton(dcDom.saveBtn);
   syncDayClosingAlreadySavedNotice(b);
   syncDayClosingCertifyPanel(b);
@@ -701,46 +704,6 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
   } else {
     updateDayClosingShortLive();
   }
-}
-
-function syncDayClosingUseSuggestedButtons(breakdown) {
-  const b = breakdown || {};
-  const editable = !b.already_saved || canOverwriteDayClosing(b);
-  const cashBtn = dcDom?.useSuggestedCashBtn;
-  const phoneBtn = dcDom?.useSuggestedPhoneBtn;
-  if (!cashBtn && !phoneBtn) return;
-
-  const suggestedCash = dcMoney(b.suggested_night_cash);
-  const suggestedPhone = dcMoney(b.suggested_phone_pay);
-  const currentCash = dcMoney(dcDom?.nightCashInput?.value);
-  const currentPhone = dcMoney(dcDom?.phonePayInput?.value);
-
-  if (cashBtn) {
-    const show = editable && suggestedCash > 0.005 && Math.abs(suggestedCash - currentCash) > 0.005;
-    cashBtn.classList.toggle("hidden", !show);
-    cashBtn.disabled = !show;
-  }
-  if (phoneBtn) {
-    const show = editable && suggestedPhone > 0.005 && Math.abs(suggestedPhone - currentPhone) > 0.005;
-    phoneBtn.classList.toggle("hidden", !show);
-    phoneBtn.disabled = !show;
-  }
-}
-
-function applySuggestedNightCash() {
-  const suggested = dcMoney(dayClosingBreakdown?.suggested_night_cash);
-  if (!dcDom?.nightCashInput || suggested <= 0) return;
-  setDayClosingMoneyInput(dcDom.nightCashInput, suggested);
-  updateDayClosingShortLive();
-  syncDayClosingUseSuggestedButtons(dayClosingBreakdown);
-}
-
-function applySuggestedPhonePay() {
-  const suggested = dcMoney(dayClosingBreakdown?.suggested_phone_pay);
-  if (!dcDom?.phonePayInput || suggested <= 0) return;
-  setDayClosingMoneyInput(dcDom.phonePayInput, suggested);
-  updateDayClosingShortLive();
-  syncDayClosingUseSuggestedButtons(dayClosingBreakdown);
 }
 
 function canOverwriteDayClosing(breakdown) {
@@ -1483,27 +1446,15 @@ async function initializeDayClosing() {
     onChange: (value) => loadDayClosingBreakdown(value),
   });
 
-  const debouncedShortUpdate = debounce(() => {
-    updateDayClosingShortLive();
-    syncDayClosingUseSuggestedButtons(dayClosingBreakdown);
-  }, 120);
+  const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
   if (nightCashInput) {
     nightCashInput.addEventListener("input", debouncedShortUpdate);
-    nightCashInput.addEventListener("change", () => {
-      updateDayClosingShortLive();
-      syncDayClosingUseSuggestedButtons(dayClosingBreakdown);
-    });
+    nightCashInput.addEventListener("change", updateDayClosingShortLive);
   }
   if (phonePayInput) {
     phonePayInput.addEventListener("input", debouncedShortUpdate);
-    phonePayInput.addEventListener("change", () => {
-      updateDayClosingShortLive();
-      syncDayClosingUseSuggestedButtons(dayClosingBreakdown);
-    });
+    phonePayInput.addEventListener("change", updateDayClosingShortLive);
   }
-
-  dcDom.useSuggestedCashBtn?.addEventListener("click", applySuggestedNightCash);
-  dcDom.useSuggestedPhoneBtn?.addEventListener("click", applySuggestedPhonePay);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
