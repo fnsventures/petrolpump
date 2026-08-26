@@ -514,13 +514,32 @@ function renderShiftVsLedgerSummary(kind) {
   const isSnapshot = Boolean(b.snapshot);
   if (kind === "credit") {
     const other = Number(b.credit_ledger ?? 0);
-    const shift = Number(b.credit_shift ?? 0);
+    const shiftOpen = Number(b.credit_shift ?? 0);
+    const shiftGross = Number(b.credit_shift_gross ?? b.credit_shift ?? 0);
     const total = Number(b.credit_today ?? 0);
-    if (!other && !shift && b.credit_ledger == null && b.credit_shift == null) return "";
-    if (isSnapshot && Math.abs(other + shift - total) > 0.02) {
-      return `<p class="muted dc-shift-ledger-summary">Locked total ${formatCurrency(total)} (live split: book ${formatCurrency(other)} · shift ${formatCurrency(shift)})</p>`;
+    const sameDay = Number(b.same_day_settle ?? 0);
+    const parts = [];
+    if (sameDay > 0.005) {
+      parts.push(
+        `<span class="dc-same-day-tag">Same day settlement</span> ${formatCurrency(sameDay)} → Night cash / Phone pay (not in Credit today)`
+      );
     }
-    return `<p class="muted dc-shift-ledger-summary">Credit book ${formatCurrency(other)} · Shift register ${formatCurrency(shift)}</p>`;
+    if (total > 0.005 || (other === 0 && shiftOpen === 0 && sameDay <= 0.005)) {
+      if (isSnapshot && Math.abs(other + shiftOpen - total) > 0.02) {
+        parts.push(
+          `Open credit ${formatCurrency(total)} (live split: book ${formatCurrency(other)} · shift ${formatCurrency(shiftOpen)})`
+        );
+      } else if (other || shiftOpen || b.credit_ledger != null || b.credit_shift != null) {
+        parts.push(`Open: credit book ${formatCurrency(other)} · shift ${formatCurrency(shiftOpen)}`);
+      }
+    }
+    if (shiftGross > 0.005 && Math.abs(shiftGross - shiftOpen) > 0.005) {
+      parts.push(
+        `Shift register still ${formatCurrency(shiftGross)} for shift short (unchanged)`
+      );
+    }
+    if (!parts.length) return "";
+    return `<p class="muted dc-shift-ledger-summary">${parts.join(" · ")}</p>`;
   }
   const other = Number(b.expenses_ledger ?? 0);
   const shift = Number(b.expenses_shift ?? 0);
