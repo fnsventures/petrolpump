@@ -1232,6 +1232,7 @@
 
   /**
    * Opening suggestions: prior RPC + morning handoff for afternoon.
+   * Prefer payload from get_meter_shift_readings to avoid extra round-trips.
    */
   async function resolveOpeningSuggestions(date, shift, data) {
     const map = {};
@@ -1253,8 +1254,17 @@
     });
 
     if (shift === "afternoon") {
-      const morning = await fetchMorningShiftClosings(date);
-      Object.keys(morning).forEach((k) => offerOpening(map, k, morning[k]));
+      const hasFromPrior = (prior?.from_shift || []).length > 0;
+      const sug = data?.suggested_openings;
+      const hasSug =
+        sug &&
+        typeof sug === "object" &&
+        Object.keys(sug).some((k) => sug[k] != null && sug[k] !== "");
+      // Only hit the table when the main RPC did not already supply openings
+      if (!hasFromPrior && !hasSug) {
+        const morning = await fetchMorningShiftClosings(date);
+        Object.keys(morning).forEach((k) => offerOpening(map, k, morning[k]));
+      }
     }
 
     if (shift === "morning") {
@@ -1272,6 +1282,39 @@
 
   function countMeaningfulSuggestions(map) {
     return Object.values(map || {}).filter((v) => v != null && Number(v) !== 0).length;
+  }
+
+  function beginShiftLoadUi(date, shift) {
+    cashByEmployee = new Map();
+    shiftHasSavedRows = false;
+    lastStaffStructureKey = "";
+
+    const nozzleHost = el("shift-meter-nozzle-tables");
+    if (nozzleHost) {
+      nozzleHost.innerHTML = `<p class="muted">Loading meters for ${escapeHtml(shiftLabel(shift))}…</p>`;
+    }
+    const staffBody = el("shift-meter-staff-body");
+    if (staffBody) staffBody.innerHTML = "";
+    const staffHint = el("shift-meter-staff-hint");
+    if (staffHint) staffHint.innerHTML = "";
+    const remarksEl = el("shift-meter-remarks");
+    if (remarksEl) remarksEl.value = "";
+    const attNote = el("shift-meter-attendance-note");
+    if (attNote) {
+      attNote.textContent = "";
+      attNote.classList.add("hidden");
+    }
+    const reconcile = el("shift-meter-reconcile");
+    if (reconcile) {
+      reconcile.dataset.dailyPetrol = "";
+      reconcile.dataset.dailyDiesel = "";
+      reconcile.dataset.hasPetrol = "0";
+      reconcile.dataset.hasDiesel = "0";
+      reconcile.dataset.rateFallback = "0";
+      reconcile.dataset.syncNote = "";
+    }
+    updateShiftContext({ date, shift, hasSaved: false });
+    applySupervisorLockUi(false, "");
   }
 
   async function loadStaff() {
@@ -1292,16 +1335,27 @@
     showMsg("", false);
     const loading = el("shift-meter-loading");
     if (loading) loading.classList.remove("hidden");
+    beginShiftLoadUi(date, shift);
 
-    const historyPromise = loadRecentHistory();
+    // History is independent — do not block the register UI on it
+    void loadRecentHistory();
 
     try {
-      const [readingsRes, lockInfo] = await Promise.all([
+      const ledgerPromise =
+        typeof ShiftStaffLedger?.fetchTotalsByEmployee === "function"
+          ? ShiftStaffLedger.fetchTotalsByEmployee(date, shift).catch((ledgerErr) => {
+              AppError.report(ledgerErr, { context: "MeterShiftReading.loadShift.ledger" });
+              return null;
+            })
+          : Promise.resolve(null);
+
+      const [readingsRes, lockInfo, ledgerMap] = await Promise.all([
         supabaseClient.rpc("get_meter_shift_readings", {
           p_date: date,
           p_shift: shift,
         }),
         isAdmin ? Promise.resolve(null) : fetchLockInfo(date, shift),
+        ledgerPromise,
       ]);
       if (readingsRes.error) throw readingsRes.error;
       if (gen !== loadGeneration) return;
@@ -1315,16 +1369,7 @@
       cashByEmployee = new Map();
       (data?.cash || []).forEach(setCashFromRow);
       applyShiftRemarks(data?.cash);
-
-      try {
-        if (typeof ShiftStaffLedger?.fetchTotalsByEmployee === "function") {
-          const ledgerMap = await ShiftStaffLedger.fetchTotalsByEmployee(date, shift);
-          if (gen !== loadGeneration) return;
-          applyLedgerTotals(ledgerMap);
-        }
-      } catch (ledgerErr) {
-        AppError.report(ledgerErr, { context: "MeterShiftReading.loadShift.ledger" });
-      }
+      if (ledgerMap) applyLedgerTotals(ledgerMap);
 
       const [appliedRates, resolved] = await Promise.all([
         applyShiftRates(data?.rates),
@@ -1403,15 +1448,12 @@
           showMsg("", false);
         }
       }
-
-      await historyPromise;
     } catch (error) {
       AppError.report(error, { context: "MeterShiftReading.loadShift" });
       showMsg(error.message || "Could not load shift register.", true);
       applySupervisorLockUi(false, "");
-      await historyPromise.catch(() => {});
     } finally {
-      if (loading) loading.classList.add("hidden");
+      if (gen === loadGeneration && loading) loading.classList.add("hidden");
     }
   }
 

@@ -15,24 +15,22 @@ const AppCache = (function () {
     staff_role: { ttl: 60 * 60 * 1000, staleTtl: 24 * 60 * 60 * 1000 }, // 1 hour, 24h stale
     staff_list: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 }, // 10 min, 1h stale
 
-    // Frequently accessed data - short TTL with stale-while-revalidate
-    dashboard_data: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
-    credit_summary: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
-    credit_overview: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
-    today_sales: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
-    recent_activity: { ttl: 1 * 60 * 1000, staleTtl: 5 * 60 * 1000 }, // 1 min, 5min stale
-    missing_buying_price: { ttl: 2 * 60 * 1000, staleTtl: 10 * 60 * 1000 }, // 2 min, 10min stale
+    // Ops data — short TTL; keep stale window tight so SWR cannot linger
+    dashboard_data: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    credit_summary: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    credit_overview: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    today_sales: { ttl: 30 * 1000, staleTtl: 90 * 1000 },
+    recent_activity: { ttl: 30 * 1000, staleTtl: 90 * 1000 },
+    missing_buying_price: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
 
-    // DSR summary data - moderate TTL
-    dsr_summary: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 }, // 3 min, 15min stale
-    profit_loss: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 }, // 3 min, 15min stale
+    dsr_summary: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    profit_loss: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
 
     // Settings & auth — longer TTL, revalidated on save
     pump_settings: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 },
     user_role: { ttl: 30 * 60 * 1000, staleTtl: 2 * 60 * 60 * 1000 },
 
-    // Reports page aggregate fetch
-    reports_data: { ttl: 3 * 60 * 1000, staleTtl: 15 * 60 * 1000 },
+    reports_data: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
   };
 
   /** Memoized — probing localStorage on every get/set was a hot-path cost. */
@@ -122,14 +120,15 @@ const AppCache = (function () {
       const entry = JSON.parse(raw);
       const now = Date.now();
 
-      // Check if completely stale (beyond stale window)
+      // Beyond stale window — treat as miss so callers never keep showing dead data
       if (now > entry.staleAt) {
-        return { data: entry.data, isStale: true, isExpired: true, isMiss: false };
+        localStorage.removeItem(getCacheKey(key));
+        return { data: null, isStale: false, isExpired: true, isMiss: true };
       }
 
-      // Check if expired but within stale window
+      // Expired but within stale window (SWR may return this while revalidating)
       if (now > entry.expiresAt) {
-        return { data: entry.data, isStale: true, isExpired: false, isMiss: false };
+        return { data: entry.data, isStale: true, isExpired: true, isMiss: false };
       }
 
       // Fresh data
