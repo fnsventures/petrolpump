@@ -1,7 +1,7 @@
 /* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
-// Same-day credit + same-day settlement is excluded from Collection/Credit and entered via Night cash / Phone pay.
+// Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
 let dayClosingBreakdown = null;
 let isAdmin = false;
 let dcBreakdownRequestId = 0;
@@ -229,7 +229,7 @@ function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } 
     if (kind === "collection") {
       return (
         note ||
-        '<p class="muted">No prior-debt settlements. Same-day credit settlements are entered in Night cash / Phone pay.</p>'
+        '<p class="muted">No prior-debt settlements. Check “Same day settlement” on payment to route today’s credit pays to Night cash / Phone pay.</p>'
       );
     }
     if (kind === "credit") {
@@ -277,8 +277,8 @@ function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } 
 }
 
 /**
- * Load same-day credit/payment totals for a date (cached per date).
- * LIFO: sameDay = min(payToday, creditToday) per customer.
+ * Load credit/payment totals for a date (cached per date).
+ * Same-day pool comes from payments flagged same_day_settlement.
  */
 async function loadDayCreditSettleMaps(dateStr) {
   if (dcSettleMapsCache.date === dateStr && dcSettleMapsCache.data) {
@@ -299,7 +299,9 @@ async function loadDayCreditSettleMaps(dateStr) {
         .order("created_at", { ascending: false }),
       supabaseClient
         .from("credit_payments")
-        .select("id, amount, payment_mode, date, credit_customer_id, created_at, credit_customers(customer_name)")
+        .select(
+          "id, amount, payment_mode, date, credit_customer_id, created_at, same_day_settlement, credit_customers(customer_name)"
+        )
         .eq("date", dateStr)
         .order("created_at", { ascending: true }),
     ]);
@@ -322,13 +324,16 @@ async function loadDayCreditSettleMaps(dateStr) {
     }
     for (const row of payments) {
       const amt = Number(row.amount ?? 0);
-      ensure(row.credit_customer_id).payToday += amt;
+      const cur = ensure(row.credit_customer_id);
+      cur.payToday += amt;
+      if (row.same_day_settlement) cur.sameDay += amt;
       const mode = String(row.payment_mode || "Cash").trim().toLowerCase();
       if (mode === "upi") settleUpi += amt;
       else if (mode !== "bank") settleCash += amt;
     }
+    // Cap same-day credit netting at today's credit (matches server).
     for (const cur of byId.values()) {
-      cur.sameDay = Math.min(cur.payToday, cur.creditToday);
+      cur.sameDay = Math.min(cur.sameDay, cur.creditToday);
     }
 
     const data = { entries, payments, byId, settleCash, settleUpi };
@@ -354,31 +359,25 @@ function invalidateDcSettleMapsCache(dateStr) {
 }
 
 async function fetchCollectionDetails(dateStr) {
-  const { payments, byId } = await loadDayCreditSettleMaps(dateStr);
+  const { payments } = await loadDayCreditSettleMaps(dateStr);
 
-  // LIFO: cover today's credit first; only excess is Collection (prior debt).
-  // Same-day portion is tagged out of Collection and counted in Night cash / Phone pay.
-  const sameDayLeft = new Map();
+  // Explicit flag: same-day settlements are omitted from Collection.
   let sameDayRouted = 0;
-  for (const [id, c] of byId) sameDayLeft.set(id, c.sameDay);
-
   const rows = [];
   for (const row of payments) {
-    const cid = row.credit_customer_id;
     const amt = Number(row.amount ?? 0);
-    let sameLeft = sameDayLeft.get(cid) || 0;
-    const toSame = Math.min(amt, sameLeft);
-    sameDayLeft.set(cid, sameLeft - toSame);
-    sameDayRouted += toSame;
-    const collectionAmt = amt - toSame;
-    if (collectionAmt <= 0.005) continue;
+    if (row.same_day_settlement) {
+      sameDayRouted += amt;
+      continue;
+    }
+    if (amt <= 0.005) continue;
     rows.push({
       id: row.id ?? null,
       date: row.date || dateStr,
       customer: row.credit_customers?.customer_name || "—",
       mode: row.payment_mode || "—",
-      amount: collectionAmt,
-      paymentAmount: amt, // full payment for admin delete confirm
+      amount: amt,
+      paymentAmount: amt,
     });
   }
   return { rows, sameDayRouted };
