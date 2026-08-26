@@ -910,12 +910,14 @@ function renderDayClosingCreditBreakdown({ shiftGross, sameDay, suggested, ledge
     );
   }
 
-  lines.push(
-    `<div class="dc-channel-line dc-channel-line--total dc-channel-suggested">
-      <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">=</span> Suggested</span>
-      <span>${formatCurrency(total)}</span>
-    </div>`
-  );
+  if (total > 0.005 || gross > 0.005 || same > 0.005 || ledger > 0.005) {
+    lines.push(
+      `<div class="dc-channel-line dc-channel-line--credit-suggested">
+        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">=</span> Suggested</span>
+        <span>${formatCurrency(total)}</span>
+      </div>`
+    );
+  }
 
   return `<div class="dc-channel-formula">${lines.join("")}</div>`;
 }
@@ -923,30 +925,35 @@ function renderDayClosingCreditBreakdown({ shiftGross, sameDay, suggested, ledge
 function syncDayClosingCreditHint(breakdown) {
   const b = breakdown || {};
   const shiftGross = dcMoney(b.credit_shift_gross);
-  const shiftOpen = dcMoney(b.credit_shift);
-  const suggested = dcMoney(b.credit_today);
+  const realCredit = dcMoney(b.credit_today);
   const ledger = dcMoney(b.credit_ledger);
-  const sameDayPayment = dcMoney(b.same_day_settle);
-  const sameDay = Math.max(0, shiftGross - shiftOpen);
+  const sameDay = dcMoney(b.same_day_settle);
+  const sameDayNetted = Math.max(0, shiftGross - dcMoney(b.credit_shift));
+  // Suggested = shift register credit minus full same-day settlement (+ non-shift credit).
+  const suggested =
+    shiftGross > 0.005 || sameDay > 0.005
+      ? Math.max(0, shiftGross - sameDay) + ledger
+      : realCredit;
   const hint = dcDom?.creditTodayHint;
   if (!hint) return;
 
   let html = renderDayClosingCreditBreakdown({
     shiftGross,
-    sameDay: sameDay > 0.005 ? sameDay : sameDayPayment,
+    sameDay,
     suggested,
     ledgerCredit: ledger,
     emptyLabel: "No shift credit or same-day settlements for this date.",
   });
 
-  if (sameDayPayment > sameDay + 0.01) {
-    html += `<p class="dc-channel-note muted">${formatCurrency(sameDayPayment - sameDay)} same-day on prior debt → Night cash / Phone pay</p>`;
+  if (sameDay > sameDayNetted + 0.01) {
+    html += `<p class="dc-channel-note muted">${formatCurrency(sameDay - sameDayNetted)} same-day on prior debt → Night cash / Phone pay</p>`;
   }
 
   hint.innerHTML = html;
 
   if (dcDom.creditTodayEl) {
-    dcDom.creditTodayEl.classList.toggle("dc-suggested-amount", suggested > 0.005);
+    dcDom.creditTodayEl.textContent = formatCurrency(realCredit);
+    dcDom.creditTodayEl.classList.remove("dc-suggested-amount");
   }
 }
 
