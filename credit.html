@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-credit.css?v=11" />
+    <link rel="stylesheet" href="css/app-core.css?v=14" />
+    <link rel="stylesheet" href="css/app-credit.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
     <script defer src="js/printUtils.js?v=10"></script>
-    <script defer src="js/credit.js?v=8"></script>
+    <script defer src="js/credit.js?v=9"></script>
   </head>
   <body class="credit-list-view">
     <header class="topbar" data-build-topbar>
@@ -321,6 +321,13 @@
               <label for="quick-settle-amount">Amount (₹)</label>
               <input type="number" min="0" step="0.01" id="quick-settle-amount" class="settle-amount" placeholder="Amount" inputmode="decimal" />
             </div>
+            <div class="form-field form-field-checkbox credit-same-day-field">
+              <label class="checkbox-label" for="quick-settle-same-day">
+                <input type="checkbox" id="quick-settle-same-day" class="settle-same-day" />
+                <span>Same day settlement</span>
+              </label>
+              <p class="muted text-sm credit-same-day-hint">Check when paying today’s credit sale — goes to Night cash / Phone pay, not Collection.</p>
+            </div>
             <div class="form-field credit-quick-payment-actions">
               <span class="form-field-spacer" aria-hidden="true"></span>
               <button type="button" id="quick-settle-fill-full" class="button-secondary button-small">Pay full balance</button>
@@ -523,7 +530,7 @@
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
           <h2>Record payment</h2>
-          <p class="muted">Record a settlement against this customer&rsquo;s outstanding balance. Payments are allocated oldest-first (FIFO).</p>
+          <p class="muted">Record a settlement against this customer&rsquo;s outstanding balance. Check <strong>Same day settlement</strong> when paying today&rsquo;s credit sale so it goes to Night cash / Phone pay instead of Collection.</p>
 
           <div class="credit-settle-balance-banner" aria-live="polite">
             <div class="credit-settle-balance-text">
@@ -559,6 +566,13 @@
                   inputmode="decimal"
                 />
               </div>
+            </div>
+            <div class="form-field form-field-checkbox credit-same-day-field">
+              <label class="checkbox-label" for="settle-same-day">
+                <input type="checkbox" id="settle-same-day" class="settle-same-day" />
+                <span>Same day settlement</span>
+              </label>
+              <p class="muted text-sm credit-same-day-hint">Check when paying today’s credit sale — goes to Night cash / Phone pay, not Collection.</p>
             </div>
             <button type="submit" class="settle-confirm" id="settle-btn">Record payment</button>
             <p id="settle-msg" class="muted" aria-live="polite"></p>

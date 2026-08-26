@@ -607,6 +607,19 @@
   margin-top: 0.65rem;
 }
 
+.credit-same-day-field {
+  margin: 0.35rem 0 0.75rem;
+}
+
+.credit-same-day-hint {
+  margin: 0.25rem 0 0 1.5rem;
+  line-height: 1.35;
+}
+
+.credit-quick-payment-form .credit-same-day-field {
+  grid-column: 1 / -1;
+}
+
 .settle-inline-page {
   flex-wrap: wrap;
   margin-top: 0.5rem;

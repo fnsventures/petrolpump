@@ -1030,6 +1030,7 @@ async function loadCustomerDetail() {
       amount: e.amount,
       payment_mode: e.payment_mode ?? null,
       note: e.note ?? null,
+      same_day_settlement: Boolean(e.same_day_settlement),
     }));
 
     const periodCredit = Number(periodSummary.credit_taken) || 0;
@@ -1088,6 +1089,7 @@ async function handleSettle() {
   const settlementDate =
     document.getElementById("settle-date")?.value?.trim() || getLocalDateString();
   const paymentMode = document.getElementById("settle-mode")?.value || "Cash";
+  const sameDaySettlement = Boolean(document.getElementById("settle-same-day")?.checked);
   const todayStr = getLocalDateString();
 
   if (!amount || amount <= 0) {
@@ -1118,6 +1120,7 @@ async function handleSettle() {
       p_amount: amount,
       p_note: null,
       p_payment_mode: paymentMode,
+      p_same_day_settlement: sameDaySettlement,
     });
 
     if (btn) finishSettleSubmit();
@@ -1139,6 +1142,7 @@ async function handleSettle() {
       p_total_amount: amount,
       p_note: null,
       p_payment_mode: paymentMode,
+      p_same_day_settlement: sameDaySettlement,
     });
 
     finishSettleSubmit();
@@ -1155,6 +1159,8 @@ async function handleSettle() {
 
   const settleAmountInput = document.getElementById("settle-amount");
   if (settleAmountInput) settleAmountInput.value = "";
+  const sameDayInput = document.getElementById("settle-same-day");
+  if (sameDayInput) sameDayInput.checked = false;
   savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
   page().invalidateCreditCaches();
   await resolveCustomerIds();

@@ -85,7 +85,11 @@
           return `<tr>
               <td>${escapeHtml(formatDisplayDate(e.date || e.entry_date))}</td>
               <td>${formatCurrency(e.amount)}</td>
-              <td>${escapeHtml(e.payment_mode || "—")}</td>
+              <td>${escapeHtml(e.payment_mode || "—")}${
+                e.same_day_settlement
+                  ? ' <span class="dc-same-day-tag">Same day settlement</span>'
+                  : ""
+              }</td>
               <td>${escapeHtml(e.note || "—")}</td>
               ${actions}
             </tr>`;

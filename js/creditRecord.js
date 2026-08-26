@@ -100,6 +100,7 @@ async function handleQuickPayment() {
   const settlementDate =
     document.getElementById("quick-settle-date")?.value?.trim() || getLocalDateString();
   const paymentMode = document.getElementById("quick-settle-mode")?.value || "Cash";
+  const sameDaySettlement = Boolean(document.getElementById("quick-settle-same-day")?.checked);
   const todayStr = getLocalDateString();
   const submitBtn = document.querySelector("#credit-quick-payment-form button[type='submit']");
 
@@ -126,6 +127,7 @@ async function handleQuickPayment() {
     p_amount: amount,
     p_note: null,
     p_payment_mode: paymentMode,
+    p_same_day_settlement: sameDaySettlement,
   });
 
   if (submitBtn) submitBtn.disabled = false;
@@ -145,6 +147,8 @@ async function handleQuickPayment() {
 
   const amountInput = document.getElementById("quick-settle-amount");
   if (amountInput) amountInput.value = "";
+  const sameDayInput = document.getElementById("quick-settle-same-day");
+  if (sameDayInput) sameDayInput.checked = false;
   savePersistedDate(RECORD_DATE_KEYS.creditQuickSettle, settlementDate);
   await loadCustomerNames();
   page().invalidateAndRefreshCreditPortfolio();
