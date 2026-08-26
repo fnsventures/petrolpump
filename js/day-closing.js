@@ -540,15 +540,16 @@ function renderDayClosingCreditDetailIntro() {
   const b = dayClosingBreakdown || {};
   const shiftGross = dcMoney(b.credit_shift_gross);
   const sameDay = dcMoney(b.same_day_settle);
+  const openShift = dcMoney(b.credit_shift);
+  const creditBook = dcMoney(b.credit_ledger);
   const creditToday = dcMoney(b.credit_today);
-  const openShift = Math.max(0, shiftGross - sameDay);
-  const ledger = dcMoney(b.credit_ledger ?? Math.max(0, creditToday - openShift));
   if (creditToday <= 0.005 && shiftGross <= 0.005 && sameDay <= 0.005) return "";
   return renderDayClosingCreditBreakdown({
     shiftGross,
     sameDay,
+    openShift,
+    creditBook,
     creditToday,
-    ledgerCredit: ledger,
     emptyLabel: "No open credit for this date.",
   });
 }
@@ -878,13 +879,23 @@ function dcShiftChannelLabels() {
 
 /**
  * Credit today breakdown for expanded detail panel.
+ * Shift credit − same day = open shift credit (credit_shift from server).
+ * Non-shift credit book is shown separately when present.
  */
-function renderDayClosingCreditBreakdown({ shiftGross, sameDay, creditToday, ledgerCredit, emptyLabel }) {
+function renderDayClosingCreditBreakdown({
+  shiftGross,
+  sameDay,
+  openShift,
+  creditBook,
+  creditToday,
+  emptyLabel,
+}) {
   const gross = dcMoney(shiftGross);
   const same = dcMoney(sameDay);
+  const shiftOpen = dcMoney(openShift);
+  const book = dcMoney(creditBook);
   const total = dcMoney(creditToday);
-  const ledger = dcMoney(ledgerCredit);
-  const hasParts = gross > 0.005 || same > 0.005 || ledger > 0.005;
+  const hasParts = gross > 0.005 || same > 0.005 || book > 0.005;
 
   if (!hasParts && total <= 0.005) {
     return `<p class="dc-channel-empty muted">${escapeHtml(emptyLabel)}</p>`;
@@ -907,17 +918,28 @@ function renderDayClosingCreditBreakdown({ shiftGross, sameDay, creditToday, led
       </div>`
     );
   }
-  if (ledger > 0.005) {
+  if (gross > 0.005 || same > 0.005) {
     lines.push(
-      `<div class="dc-channel-line dc-channel-line--part">
-        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">+</span> Credit book</span>
-        <span>${formatCurrency(ledger)}</span>
+      `<div class="dc-channel-line dc-channel-line--total">
+        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">=</span> Open credit</span>
+        <span>${formatCurrency(shiftOpen)}</span>
       </div>`
     );
   }
-  if (total > 0.005 || lines.length) {
+  if (book > 0.005) {
     lines.push(
-      `<div class="dc-channel-line dc-channel-line--total dc-channel-suggested">
+      `<div class="dc-channel-line dc-channel-line--part">
+        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">+</span> Credit book</span>
+        <span>${formatCurrency(book)}</span>
+      </div>`,
+      `<div class="dc-channel-line dc-channel-line--total">
+        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">=</span> Credit today</span>
+        <span>${formatCurrency(total)}</span>
+      </div>`
+    );
+  } else if (total > 0.005 && shiftOpen <= 0.005) {
+    lines.push(
+      `<div class="dc-channel-line dc-channel-line--total">
         <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">=</span> Open credit</span>
         <span>${formatCurrency(total)}</span>
       </div>`
@@ -955,7 +977,7 @@ function renderDayClosingChannelBreakdown({
   }
 
   if (!rows.length) {
-    return `<p class="dc-channel-summary muted">Suggested ${formatCurrency(total)}</p>`;
+    return `<p class="dc-channel-summary-line muted">Suggested amount ${formatCurrency(total)}</p>`;
   }
 
   const partLines = rows.map((row, index) => {
@@ -968,7 +990,7 @@ function renderDayClosingChannelBreakdown({
 
   return `<details class="dc-channel-details">
     <summary class="dc-channel-summary">
-      <span class="dc-channel-summary-label">Suggested</span>
+      <span class="dc-channel-summary-label">Suggested amount</span>
       <span class="dc-channel-summary-amount">${formatCurrency(total)}</span>
     </summary>
     <div class="dc-channel-formula">${partLines.join("")}</div>
