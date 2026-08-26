@@ -419,11 +419,16 @@ tbody tr:hover {
 .dc-channel-breakdown {
   display: flex;
   flex-direction: column;
-  gap: 0.12rem;
+  gap: 0.2rem;
   margin-top: 0.35rem;
   min-width: 0;
   width: 100%;
-  max-width: 22rem;
+  max-width: 24rem;
+}
+.dc-channel-formula {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 .dc-channel-line {
   display: grid;
@@ -433,6 +438,23 @@ tbody tr:hover {
   font-size: 0.78rem;
   font-weight: 400;
   line-height: 1.35;
+  color: #64748b;
+}
+.dc-channel-line-label {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.dc-channel-op {
+  display: inline-block;
+  min-width: 0.85rem;
+  font-weight: 700;
+  color: #94a3b8;
+  text-align: center;
+}
+.dc-channel-line--part .dc-channel-op {
   color: #64748b;
 }
 .dc-channel-line span:last-child {
@@ -451,6 +473,9 @@ tbody tr:hover {
 .dc-channel-line.dc-channel-suggested span:last-child {
   color: #0f172a;
   font-size: 0.85rem;
+}
+.dc-channel-line.dc-channel-suggested .dc-channel-op {
+  color: #0f172a;
 }
 .dc-channel-empty,
 .dc-channel-note {
@@ -533,6 +558,45 @@ tbody tr:hover {
   padding: 0;
   min-width: 0;
   padding-top: 0.1rem;
+}
+.day-closing-breakdown .dc-input-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.dc-input-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.dc-input-wrap input {
+  width: 100%;
+  min-width: 0;
+}
+.dc-use-suggested {
+  align-self: flex-end;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  white-space: nowrap;
+}
+@media (min-width: 480px) {
+  .dc-input-wrap {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+  .dc-input-wrap input {
+    width: auto;
+    flex: 1 1 6rem;
+    max-width: 9rem;
+  }
+}
+.dc-suggested-amount {
+  font-weight: 600;
 }
 .day-closing-breakdown .dsr-summary-row.dc-subtotal {
   grid-column: 1 / -1;
