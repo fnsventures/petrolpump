@@ -2091,15 +2091,21 @@ create table if not exists public.credit_payments (
   amount numeric(14,2) not null check (amount > 0),
   note text check (char_length(note) <= 200),
   payment_mode text check (payment_mode in ('Cash', 'UPI', 'Bank')),
+  same_day_settlement boolean not null default false,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now())
 );
 
 create index if not exists credit_payments_date_idx on public.credit_payments (date desc);
 create index if not exists credit_payments_customer_idx on public.credit_payments (credit_customer_id, date desc);
+create index if not exists credit_payments_same_day_date_idx
+  on public.credit_payments (date)
+  where same_day_settlement;
 
 comment on table public.credit_payments is 'Payments received from credit customers. Sum by date = collection for day closing.';
 comment on column public.credit_payments.payment_mode is 'Mode of payment (Cash/UPI/Bank). Settlement date = date column.';
+comment on column public.credit_payments.same_day_settlement is
+  'When true, payment settles same-day credit: excluded from Collection, counted in Night cash / Phone pay.';
 
 alter table public.credit_payments enable row level security;
 
@@ -2688,6 +2694,8 @@ declare
   v_credit_legacy numeric := 0;
   v_pay_cash numeric := 0;
   v_pay_upi numeric := 0;
+  v_same_day_credit_reduce numeric := 0;
+  v_open_credit numeric := 0;
 begin
   perform public.require_staff_access();
 
@@ -2711,6 +2719,8 @@ begin
     select
       credit_customer_id,
       sum(amount) as pay_today,
+      sum(amount) filter (where coalesce(same_day_settlement, false)) as same_day_pay,
+      sum(amount) filter (where not coalesce(same_day_settlement, false)) as collection_pay,
       sum(amount) filter (
         where lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash'
       ) as pay_cash,
@@ -2718,8 +2728,17 @@ begin
         where lower(trim(coalesce(payment_mode, ''))) = 'upi'
       ) as pay_upi,
       sum(amount) filter (
-        where lower(trim(coalesce(payment_mode, ''))) = 'bank'
-      ) as pay_bank
+        where coalesce(same_day_settlement, false)
+          and lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash'
+      ) as same_day_cash,
+      sum(amount) filter (
+        where coalesce(same_day_settlement, false)
+          and lower(trim(coalesce(payment_mode, ''))) = 'upi'
+      ) as same_day_upi,
+      sum(amount) filter (
+        where coalesce(same_day_settlement, false)
+          and lower(trim(coalesce(payment_mode, ''))) = 'bank'
+      ) as same_day_bank
     from public.credit_payments
     where date = p_date
     group by credit_customer_id
@@ -2738,35 +2757,37 @@ begin
   split as (
     select
       coalesce(p.pay_today, 0) as pay_today,
+      coalesce(p.collection_pay, 0) as collection_pay,
+      coalesce(p.same_day_pay, 0) as same_day_pay,
       coalesce(p.pay_cash, 0) as pay_cash,
       coalesce(p.pay_upi, 0) as pay_upi,
-      coalesce(p.pay_bank, 0) as pay_bank,
+      coalesce(p.same_day_cash, 0) as same_day_cash,
+      coalesce(p.same_day_upi, 0) as same_day_upi,
+      coalesce(p.same_day_bank, 0) as same_day_bank,
       coalesce(c.credit_today, 0) as credit_today,
       coalesce(c.credit_shift, 0) as credit_shift,
-      least(coalesce(p.pay_today, 0), coalesce(c.credit_today, 0)) as same_day
+      least(coalesce(p.same_day_pay, 0), coalesce(c.credit_today, 0)) as same_day_credit_reduce
     from pay p
     full outer join cred c using (credit_customer_id)
   )
   select
     coalesce(sum(pay_today), 0),
+    coalesce(sum(collection_pay), 0),
     coalesce(sum(pay_cash), 0),
     coalesce(sum(pay_upi), 0),
     coalesce(sum(credit_today), 0),
     coalesce(sum(credit_shift), 0),
-    coalesce(sum(same_day), 0),
-    coalesce(sum(
-      case when pay_today > 0 then round(same_day * pay_cash / pay_today, 2) else 0 end
-    ), 0),
-    coalesce(sum(
-      case when pay_today > 0 then round(same_day * pay_upi / pay_today, 2) else 0 end
-    ), 0),
-    coalesce(sum(
-      case when pay_today > 0 then round(same_day * pay_bank / pay_today, 2) else 0 end
-    ), 0)
+    coalesce(sum(same_day_pay), 0),
+    coalesce(sum(same_day_cash), 0),
+    coalesce(sum(same_day_upi), 0),
+    coalesce(sum(same_day_bank), 0),
+    coalesce(sum(same_day_credit_reduce), 0)
   into
-    v_payments_raw, v_pay_cash, v_pay_upi,
-    v_credit_entries, v_credit_shift_gross, v_same_day_settle,
-    v_same_day_cash, v_same_day_upi, v_same_day_bank
+    v_payments_raw, v_collection,
+    v_pay_cash, v_pay_upi,
+    v_credit_entries, v_credit_shift_gross,
+    v_same_day_settle, v_same_day_cash, v_same_day_upi, v_same_day_bank,
+    v_same_day_credit_reduce
   from split;
 
   select coalesce(sum(c.amount_due), 0) into v_credit_legacy
@@ -2776,17 +2797,17 @@ begin
       select 1 from public.credit_entries e where e.credit_customer_id = c.id
     );
 
-  v_collection := greatest(v_payments_raw - v_same_day_settle, 0);
-  v_credit_ledger := greatest(v_credit_entries - v_same_day_settle, 0) + v_credit_legacy;
+  -- Day closing Credit today = open credit only (same-day settled removed).
+  v_open_credit := greatest(v_credit_entries - v_same_day_credit_reduce, 0);
+  v_credit_ledger := v_open_credit + v_credit_legacy;
 
   select short_today into v_short_previous
   from public.day_closing where date = p_date - interval '1 day' limit 1;
   v_short_previous := coalesce(v_short_previous, 0);
 
-  v_credit_shift := least(
-    v_credit_shift_gross,
-    greatest(v_credit_entries - v_same_day_settle, 0)
-  );
+  -- Open shift-attributed credit only (for Credit today breakdown).
+  -- Gross shift credit stays on meter_shift_cash for shift short.
+  v_credit_shift := least(v_credit_shift_gross, v_open_credit);
 
   select coalesce(sum(amount), 0) into v_expenses_ledger
   from public.expenses where date = p_date;
@@ -2810,6 +2831,7 @@ begin
     'expenses_today', coalesce(v_expenses_ledger, 0),
     'credit_ledger', coalesce(v_credit_ledger, 0) - coalesce(v_credit_shift, 0),
     'credit_shift', coalesce(v_credit_shift, 0),
+    'credit_shift_gross', coalesce(v_credit_shift_gross, 0),
     'expenses_ledger', coalesce(v_expenses_ledger, 0) - coalesce(v_expenses_shift, 0),
     'expenses_shift', coalesce(v_expenses_shift, 0),
     'shift_cash_total', coalesce(v_shift_cash, 0),
@@ -2827,7 +2849,7 @@ end;
 $$;
 
 comment on function public.compute_day_closing_components(date) is
-  'Day-closing totals. LIFO same-day settle; Collection = pay excess over today credit; night/phone suggest shift+settles.';
+  'Day closing: credit_today = open credit (same-day settled excluded). credit_shift_gross = shift register credit for shift short.';
 
 
 
@@ -2964,6 +2986,7 @@ begin
     'expenses_today', v_expenses_today,
     'credit_ledger', coalesce((v_components->>'credit_ledger')::numeric, 0),
     'credit_shift', coalesce((v_components->>'credit_shift')::numeric, 0),
+    'credit_shift_gross', coalesce((v_components->>'credit_shift_gross')::numeric, 0),
     'expenses_ledger', coalesce((v_components->>'expenses_ledger')::numeric, 0),
     'expenses_shift', coalesce((v_components->>'expenses_shift')::numeric, 0),
     'shift_cash_total', v_shift_cash,
@@ -3543,13 +3566,109 @@ $$;
 comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text, uuid, text) is
   'Add a credit sale. Optional p_employee_id + p_shift attribute to shift register. Rejects future dates.';
 
--- RPC: Record credit payment (FIFO allocation; Settlement Date; payment_mode)
+create or replace function public.apply_credit_payment_to_day_closing(
+  p_date date,
+  p_same_day_settlement boolean default false,
+  p_payment_mode text default 'Cash',
+  p_amount numeric default 0
+)
+returns void
+language plpgsql security definer
+set search_path = public
+as $$
+declare
+  v_row record;
+  v_components jsonb;
+  v_total_sale numeric;
+  v_collection numeric;
+  v_short_previous numeric;
+  v_credit_today numeric;
+  v_expenses_today numeric;
+  v_night_cash numeric;
+  v_phone_pay numeric;
+  v_short_today numeric;
+  v_mode text;
+  v_locked boolean := false;
+begin
+  if p_date is null then
+    return;
+  end if;
+
+  select
+    night_cash, phone_pay, total_sale, collection, short_previous, credit_today,
+    expenses_today, short_today, night_cash_collection_id, certified
+  into v_row
+  from public.day_closing
+  where date = p_date
+  limit 1;
+
+  if not found then
+    return;
+  end if;
+
+  v_locked := (v_row.night_cash_collection_id is not null) or coalesce(v_row.certified, false);
+  if v_locked and not public.is_admin() then
+    return;
+  end if;
+
+  v_components := public.compute_day_closing_components(p_date);
+  v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
+  v_collection := coalesce((v_components->>'collection')::numeric, 0);
+  v_short_previous := coalesce((v_components->>'short_previous')::numeric, 0);
+  v_credit_today := coalesce((v_components->>'credit_today')::numeric, 0);
+  v_expenses_today := coalesce((v_components->>'expenses_today')::numeric, 0);
+
+  v_night_cash := coalesce(v_row.night_cash, 0);
+  v_phone_pay := coalesce(v_row.phone_pay, 0);
+
+  if coalesce(p_same_day_settlement, false) and coalesce(p_amount, 0) > 0
+     and v_row.night_cash_collection_id is null then
+    v_mode := lower(trim(coalesce(p_payment_mode, 'Cash')));
+    if v_mode = 'upi' then
+      v_phone_pay := v_phone_pay + p_amount;
+    elsif v_mode = 'bank' then
+      null;
+    else
+      v_night_cash := v_night_cash + p_amount;
+    end if;
+  end if;
+
+  v_short_today := (v_total_sale + v_collection + v_short_previous)
+    - (v_night_cash + v_phone_pay + v_credit_today + v_expenses_today);
+
+  update public.day_closing set
+    total_sale = v_total_sale,
+    collection = v_collection,
+    short_previous = v_short_previous,
+    credit_today = v_credit_today,
+    expenses_today = v_expenses_today,
+    night_cash = v_night_cash,
+    phone_pay = v_phone_pay,
+    short_today = v_short_today,
+    certified = false,
+    certified_at = null,
+    certified_by = null,
+    certified_by_name = null
+  where date = p_date;
+
+  perform public.recascade_day_closing_short_from(p_date);
+end;
+$$;
+
+comment on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) is
+  'After a credit payment: refresh day_closing open credit; same-day Cash/UPI bumps night_cash/phone_pay.';
+
+revoke all on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) from public;
+revoke all on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) from authenticated;
+
+-- RPC: Record credit payment (LIFO allocation; Settlement Date; payment_mode; same-day flag)
 create or replace function public.record_credit_payment(
   p_credit_customer_id uuid,
   p_date date,
   p_amount numeric,
   p_note text default null,
-  p_payment_mode text default 'Cash'
+  p_payment_mode text default 'Cash',
+  p_same_day_settlement boolean default false
 )
 returns jsonb
 language plpgsql security definer
@@ -3598,13 +3717,16 @@ begin
       v_remaining := v_remaining - v_alloc;
     end loop;
 
-    insert into public.credit_payments (credit_customer_id, date, amount, note, payment_mode, created_by)
+    insert into public.credit_payments (
+      credit_customer_id, date, amount, note, payment_mode, same_day_settlement, created_by
+    )
     values (
       p_credit_customer_id,
       p_date,
       p_amount,
       nullif(trim(p_note), ''),
       coalesce(p_payment_mode, 'Cash'),
+      coalesce(p_same_day_settlement, false),
       auth.uid()
     );
 
@@ -3621,6 +3743,13 @@ begin
 
   perform set_config('app.skip_credit_sync', '', true);
 
+  perform public.apply_credit_payment_to_day_closing(
+    p_date,
+    coalesce(p_same_day_settlement, false),
+    coalesce(p_payment_mode, 'Cash'),
+    p_amount
+  );
+
   select amount_due, prepaid_balance into v_new_due, v_prepaid
   from public.credit_customers
   where id = p_credit_customer_id;
@@ -3629,6 +3758,7 @@ begin
     'credit_customer_id', p_credit_customer_id,
     'date', p_date,
     'amount', p_amount,
+    'same_day_settlement', coalesce(p_same_day_settlement, false),
     'new_due', v_new_due,
     'prepaid_balance', v_prepaid,
     'net_balance', v_new_due - v_prepaid
@@ -3636,8 +3766,8 @@ begin
 end;
 $$;
 
-comment on function public.record_credit_payment(uuid, date, numeric, text, text) is
-  'Record payment; LIFO within entries dated on/before payment date. Overpay → prepaid_balance.';
+comment on function public.record_credit_payment(uuid, date, numeric, text, text, boolean) is
+  'Record payment. Same-day flag excludes from Collection and nets Credit today; syncs day closing.';
 
 
 -- Batch settlement across multiple credit customer rows (one payment, one round trip)
@@ -3647,7 +3777,8 @@ create or replace function public.batch_record_credit_settlements(
   p_date date,
   p_total_amount numeric,
   p_note text default null,
-  p_payment_mode text default 'Cash'
+  p_payment_mode text default 'Cash',
+  p_same_day_settlement boolean default false
 )
 returns jsonb
 language plpgsql
@@ -3707,7 +3838,7 @@ begin
 
     v_pay_amount := least(v_remaining, v_due);
     v_result := public.record_credit_payment(
-      v_cust_id, p_date, v_pay_amount, p_note, p_payment_mode
+      v_cust_id, p_date, v_pay_amount, p_note, p_payment_mode, coalesce(p_same_day_settlement, false)
     );
     v_settlements := v_settlements || jsonb_build_array(v_result);
     v_remaining := v_remaining - v_pay_amount;
@@ -3715,7 +3846,7 @@ begin
 
   if v_remaining > 0 then
     v_result := public.record_credit_payment(
-      p_primary_customer_id, p_date, v_remaining, p_note, p_payment_mode
+      p_primary_customer_id, p_date, v_remaining, p_note, p_payment_mode, coalesce(p_same_day_settlement, false)
     );
     v_settlements := v_settlements || jsonb_build_array(v_result);
   end if;
@@ -3723,12 +3854,13 @@ begin
   return jsonb_build_object(
     'date', p_date,
     'total_amount', p_total_amount,
+    'same_day_settlement', coalesce(p_same_day_settlement, false),
     'settlements', v_settlements
   );
 end;
 $$;
-comment on function public.batch_record_credit_settlements(uuid[], uuid, date, numeric, text, text) is
-  'Record one payment split across multiple credit customer rows (LIFO per row). Overpayment goes to primary customer as prepaid.';
+comment on function public.batch_record_credit_settlements(uuid[], uuid, date, numeric, text, text, boolean) is
+  'Record one payment split across credit customer rows. Optional same-day settlement flag.';
 
 -- Re-apply LIFO settlements after a payment is removed (admin delete)
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
@@ -4315,7 +4447,8 @@ begin
           'entry_date', p.date,
           'amount', p.amount,
           'payment_mode', p.payment_mode,
-          'note', p.note
+          'note', p.note,
+          'same_day_settlement', coalesce(p.same_day_settlement, false)
         ) order by p.date desc
       )
        from public.credit_payments p
@@ -4618,8 +4751,8 @@ grant execute on function public.set_day_closing_certified(date, boolean) to aut
 grant execute on function public.save_e20_testing_register(date, text, text, jsonb, jsonb, boolean, timestamptz, text, text) to authenticated;
 grant execute on function public.e20_parse_yes_no(text) to authenticated;
 grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text, uuid, text) to authenticated;
-grant execute on function public.record_credit_payment(uuid, date, numeric, text, text) to authenticated;
-grant execute on function public.batch_record_credit_settlements(uuid[], uuid, date, numeric, text, text) to authenticated;
+grant execute on function public.record_credit_payment(uuid, date, numeric, text, text, boolean) to authenticated;
+grant execute on function public.batch_record_credit_settlements(uuid[], uuid, date, numeric, text, text, boolean) to authenticated;
 grant execute on function public.delete_credit_payment(uuid) to authenticated;
 grant execute on function public.delete_credit_entry(uuid) to authenticated;
 grant execute on function public.delete_day_closing(uuid) to authenticated;

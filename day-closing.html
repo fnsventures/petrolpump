@@ -15,8 +15,8 @@
     <link rel="stylesheet" href="css/base.css" />
     <script src="js/roleBootstrap.js"></script>
     <script src="js/appNav.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=13" />
-    <link rel="stylesheet" href="css/app-day-closing.css?v=10" />
+    <link rel="stylesheet" href="css/app-core.css?v=20" />
+    <link rel="stylesheet" href="css/app-day-closing.css?v=11" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/printUtils.js?v=11"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js"></script>
-    <script defer src="js/day-closing.js?v=13"></script>
+    <script defer src="js/day-closing.js?v=22"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -53,7 +53,7 @@
         <div class="panel-head dc-close-head">
           <div>
             <h2 class="dashboard-section-title">Day closing &amp; short</h2>
-              <p class="muted panel-lead dc-close-lead">Night cash and PhonePe/UPI fill from both shifts. Review, then save. An admin acknowledges the statement after the supervisor saves.</p>
+              <p class="muted panel-lead dc-close-lead">Enter night cash and PhonePe/UPI totals, review the breakdown, then save.</p>
           </div>
           <div class="form-field dc-date-field">
             <label for="day-closing-date">Date</label>
@@ -99,15 +99,12 @@
                 <div class="dc-breakdown-group" data-breakdown="collection">
                   <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
-                          <span>Collection</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Prior settlements only (LIFO: same-day credit+pay → Night cash / Phone pay) · <a href="credit.html#settle">Record payment</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-collection-toggle" aria-expanded="false" aria-controls="dc-collection-details">
+                        <span>Collection</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
-                    <dd id="dc-collection">—</dd>
+                    <dd id="dc-collection" class="dc-expandable-amount">—</dd>
                   </div>
                   <div id="dc-collection-details" class="dc-breakdown-details" hidden></div>
                 </div>
@@ -128,44 +125,43 @@
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
                     <span class="dc-row-label">Night cash <span class="dc-input-badge">Enter</span></span>
-                    <span class="dc-field-hint muted" id="dc-night-cash-hint">Hard cash from morning + afternoon shift register</span>
                   </dt>
-                  <dd><input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" /></dd>
+                  <dd class="dc-input-cell">
+                    <input id="dc-night-cash" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Night cash — hard cash counted at close" />
+                  </dd>
+                  <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-night-cash-hint" aria-live="polite"></div>
                 </div>
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
                     <span class="dc-row-label">Phone pay <span class="dc-input-badge">Enter</span></span>
-                    <span class="dc-field-hint muted" id="dc-phone-pay-hint">PhonePe / UPI from morning + afternoon shift register</span>
                   </dt>
-                  <dd><input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" /></dd>
+                  <dd class="dc-input-cell">
+                    <input id="dc-phone-pay" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" aria-label="Phone pay — PhonePe and UPI collections" />
+                  </dd>
+                  <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-phone-pay-hint" aria-live="polite"></div>
                 </div>
                 <div class="dc-breakdown-group" data-breakdown="credit">
                   <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
-                          <span>Credit today</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Open credit only · same-day settled → Night cash / Phone pay · <a href="credit.html#record">Record sale</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-credit-toggle" aria-expanded="false" aria-controls="dc-credit-details">
+                        <span>Credit today</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
-                    <dd id="dc-credit-today">—</dd>
+                    <dd id="dc-credit-today" class="dc-expandable-amount">—</dd>
                   </div>
+                  <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-credit-today-hint" aria-live="polite"></div>
                   <div id="dc-credit-details" class="dc-breakdown-details" hidden></div>
                 </div>
                 <div class="dc-breakdown-group" data-breakdown="expenses">
                   <div class="dsr-summary-row dc-expandable-row dc-row--expandable">
                     <dt>
-                      <span class="dc-breakdown-label">
-                        <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
-                          <span>Expenses today</span>
-                          <span class="dc-breakdown-chevron" aria-hidden="true"></span>
-                        </button>
-                        <span class="dc-breakdown-inline muted">Expense book + shift till · <a href="expenses.html">Add or edit</a></span>
-                      </span>
+                      <button type="button" class="dc-breakdown-toggle" id="dc-expenses-toggle" aria-expanded="false" aria-controls="dc-expenses-details">
+                        <span>Expenses today</span>
+                        <span class="dc-breakdown-chevron" aria-hidden="true"></span>
+                      </button>
                     </dt>
-                    <dd id="dc-expenses-today">—</dd>
+                    <dd id="dc-expenses-today" class="dc-expandable-amount">—</dd>
                   </div>
                   <div id="dc-expenses-details" class="dc-breakdown-details" hidden></div>
                 </div>

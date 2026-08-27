@@ -3,13 +3,13 @@
  *
  * Strategies (performance-first for a financial ops MPA):
  * - App shell: precache on install (lean; no full-site dump)
- * - Static JS/CSS/fonts/images: cache-first + runtime LRU trim
+ * - Static JS/CSS/fonts/images: cache-first (exact URL — respects ?v= busting)
  * - HTML navigations: network-first with timeout → cache → offline.html
- * - Supabase REST/Functions: network-only for sensitive tables; network-first+TTL otherwise
+ * - Supabase REST/Functions: always network-only (ops data must never be stale)
  * - Updates: waiting worker until client sends SKIP_WAITING (no mid-session swap)
  */
 
-const CACHE_VERSION = "v174";
+const CACHE_VERSION = "v186";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 const API_CACHE = `bpf-api-${CACHE_VERSION}`;
@@ -23,7 +23,6 @@ const CACHE_LIMITS = {
 
 /** Abort slow navigations so flaky networks fall back to cache instead of hanging. */
 const NAV_TIMEOUT_MS = 3500;
-const API_TIMEOUT_MS = 8000;
 
 /**
  * True app shell only. Page modules are runtime-cached on first visit.
@@ -65,13 +64,10 @@ const STATIC_ASSET_PATHS = [
   "js/pageSections.js",
 ];
 
-const CACHE_MATCH_OPTS = { ignoreSearch: true };
+/** Only for offline.html / shell fallbacks — never for versioned JS/CSS or API. */
+const OFFLINE_MATCH_OPTS = { ignoreSearch: true };
 
 const API_PATTERNS = [/\/rest\/v1\//, /\/functions\/v1\//];
-
-const CACHE_TTL = {
-  api: 2 * 60 * 1000,
-};
 
 function getScopeBase() {
   const scope = self.registration?.scope || new URL("./", self.location.href).href;
@@ -126,10 +122,9 @@ self.addEventListener("install", (event) => {
           )
         );
       }
-      // First install: activate immediately. Updates: wait for SKIP_WAITING from the page.
-      if (!self.registration.active) {
-        await self.skipWaiting();
-      }
+      // Activate immediately so cache-busting / API network-only fixes reach users
+      // without requiring a manual “Update” click.
+      await self.skipWaiting();
     })()
   );
 });
@@ -144,10 +139,13 @@ self.addEventListener("activate", (event) => {
             (name) =>
               name.startsWith("bpf-") &&
               name !== STATIC_CACHE &&
-              name !== DYNAMIC_CACHE &&
-              name !== API_CACHE
+              name !== DYNAMIC_CACHE
           )
           .map((name) => caches.delete(name))
+      );
+      // API responses are network-only now — drop any leftover API cache buckets
+      await Promise.all(
+        names.filter((name) => name.startsWith("bpf-api-")).map((name) => caches.delete(name))
       );
 
       if (self.registration.navigationPreload) {
@@ -178,12 +176,10 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Supabase REST / Edge Functions: always network-only.
+  // Caching API responses (esp. with ignoreSearch) caused stale shift/date data.
   if (isApiRequest(url)) {
-    if (isNoCacheApiRequest(url)) {
-      event.respondWith(fetch(request));
-      return;
-    }
-    event.respondWith(networkFirstApi(request));
+    event.respondWith(fetch(request));
     return;
   }
 
@@ -212,34 +208,6 @@ function isApiRequest(url) {
   return API_PATTERNS.some((pattern) => pattern.test(url.pathname));
 }
 
-function isNoCacheApiRequest(url) {
-  const path = url.pathname;
-  const table = url.searchParams?.get("table") ?? "";
-  const noCacheTables = [
-    "credit_customers",
-    "credit_entries",
-    "credit_payments",
-    "employees",
-    "users",
-    "employee_attendance",
-    "salary_payments",
-    "dsr",
-    "dsr_petrol",
-    "dsr_diesel",
-    "expenses",
-    "day_closing",
-    "night_cash_collections",
-    "invoices",
-    "invoice_items",
-    "invoice_documents",
-    "pump_settings",
-  ];
-  if (noCacheTables.some((t) => path.includes(t) || table === t)) return true;
-  if (path.includes("/rpc/")) return true;
-  if (path.includes("/functions/v1/")) return true;
-  return false;
-}
-
 function isStaticAsset(url) {
   return [".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".woff", ".woff2"].some(
     (ext) => url.pathname.endsWith(ext)
@@ -248,53 +216,6 @@ function isStaticAsset(url) {
 
 function isHtmlPage(url) {
   return url.pathname.endsWith(".html") || url.pathname === "/" || !url.pathname.includes(".");
-}
-
-function isApiCacheFresh(response) {
-  const cachedAt = response.headers.get("sw-cached-at");
-  if (!cachedAt) return true;
-  const age = Date.now() - Number(cachedAt);
-  return Number.isFinite(age) && age < CACHE_TTL.api;
-}
-
-async function putApiCacheEntry(cache, request, response) {
-  const headers = new Headers(response.headers);
-  headers.set("sw-cached-at", String(Date.now()));
-  const body = await response.clone().blob();
-  const stamped = new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-  await cache.put(request, stamped);
-  await trimCache(API_CACHE, CACHE_LIMITS.api);
-}
-
-async function networkFirstApi(request) {
-  try {
-    const networkResponse = await fetchWithTimeout(request, API_TIMEOUT_MS);
-    if (networkResponse.ok) {
-      const cache = await caches.open(API_CACHE);
-      await putApiCacheEntry(cache, request, networkResponse);
-    }
-    return networkResponse;
-  } catch {
-    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
-    if (cachedResponse && isApiCacheFresh(cachedResponse)) {
-      return cachedResponse;
-    }
-    return new Response(
-      JSON.stringify({
-        error: "offline",
-        message: "You are offline. Please check your connection.",
-      }),
-      {
-        status: 503,
-        statusText: "Service Unavailable",
-        headers: { "Content-Type": "application/json" },
-      }
-    );
-  }
 }
 
 async function networkFirstNavigate(event) {
@@ -317,18 +238,20 @@ async function networkFirstNavigate(event) {
     }
     return networkResponse;
   } catch {
-    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+    // Exact URL first so we don't serve the wrong page for query variants
+    const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
-
-    const offline = await caches.match(resolveScopedUrl("offline.html"), CACHE_MATCH_OPTS);
-    if (offline) return offline;
 
     return getOfflineFallback();
   }
 }
 
+/**
+ * Cache-first with exact URL match so ?v= query busting works.
+ * Previous ignoreSearch matching left users on stale JS until they cleared SW cache.
+ */
 async function cacheFirstStatic(request, cacheName = STATIC_CACHE, maxEntries = CACHE_LIMITS.staticRuntime) {
-  const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+  const cachedResponse = await caches.match(request);
   if (cachedResponse) return cachedResponse;
 
   try {
@@ -350,14 +273,14 @@ async function networkWithCacheFallback(request) {
     }
     return networkResponse;
   } catch {
-    const cachedResponse = await caches.match(request, CACHE_MATCH_OPTS);
+    const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
     return getOfflineFallback();
   }
 }
 
 async function getOfflineFallback() {
-  const offline = await caches.match(resolveScopedUrl("offline.html"), CACHE_MATCH_OPTS);
+  const offline = await caches.match(resolveScopedUrl("offline.html"), OFFLINE_MATCH_OPTS);
   if (offline) return offline;
 
   return new Response(

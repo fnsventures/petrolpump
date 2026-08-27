@@ -161,10 +161,9 @@
 
   function promptWaitingWorker(worker) {
     if (!worker) return;
-    showAppUpdateBanner(() => {
-      pendingUpdateReload = true;
-      worker.postMessage({ type: "SKIP_WAITING" });
-    });
+    // Auto-apply updates — stale SW caches caused shift register to show old data.
+    pendingUpdateReload = true;
+    worker.postMessage({ type: "SKIP_WAITING" });
   }
 
   function trackInstallingWorker(worker) {
@@ -320,9 +319,9 @@
       document.addEventListener("DOMContentLoaded", () => void start(), { once: true });
     }
 
-    // Reload exactly once after the user accepts an update.
+    // Reload once when a new service worker takes control (auto-update path).
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!pendingUpdateReload || refreshing) return;
+      if (refreshing) return;
       refreshing = true;
       window.location.reload();
     });

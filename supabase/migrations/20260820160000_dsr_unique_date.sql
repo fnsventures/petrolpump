@@ -155,6 +155,10 @@ comment on constraint dsr_diesel_date_unique on public.dsr_diesel is
   'One HSD meter row per business date (prevents day-closing / stock double-count).';
 
 -- ─── 4) Harden views: DISTINCT ON (date) ───────────────────────────────────
+-- DROP first: CREATE OR REPLACE cannot remove columns if staging was bootstrapped
+-- from a newer schema.sql that already includes purchase/LFR fields on dsr.
+
+drop view if exists public.dsr;
 
 create or replace view public.dsr
 with (security_invoker = true) as
@@ -192,6 +196,8 @@ with (security_invoker = true) as
 
 comment on view public.dsr is
   'Backward-compatible union view (one row per product per date). SELECT only; writes go to dsr_petrol / dsr_diesel.';
+
+drop view if exists public.dsr_stock;
 
 create or replace view public.dsr_stock
 with (security_invoker = true) as

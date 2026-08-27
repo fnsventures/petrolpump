@@ -33,10 +33,15 @@ function normCustomerName(s) {
  */
 function debounce(fn, waitMs = 150) {
   let timer = null;
-  return function debounced(...args) {
+  function debounced(...args) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), waitMs);
+  }
+  debounced.cancel = function cancel() {
+    clearTimeout(timer);
+    timer = null;
   };
+  return debounced;
 }
 
 /**
