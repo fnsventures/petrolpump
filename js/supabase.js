@@ -171,9 +171,9 @@ async function clearAllCaches() {
 async function clearApiCaches() {
   if (typeof CacheInvalidation !== "undefined") {
     CacheInvalidation.invalidate("all_api");
+  } else if (window.AppCache?.invalidateOperational) {
+    window.AppCache.invalidateOperational();
   }
-
-  await sendToServiceWorker("CLEAR_API_CACHE");
 
   console.log("[App] API caches cleared");
 }

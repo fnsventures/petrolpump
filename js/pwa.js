@@ -1,8 +1,8 @@
 /**
  * Standard PWA client lifecycle for BPFuels.
  * - Install prompt (beforeinstallprompt)
- * - Controlled SW updates (waiting worker → user Reload → SKIP_WAITING → reload)
- * - Offline / online status
+ * - Controlled SW updates (banner → safe apply → reload)
+ * - Offline / online status with cache invalidation on reconnect
  * - Throttled app-resume for ops pages (desktop focus thrash safe)
  */
 (function () {
@@ -10,13 +10,18 @@
   const THEME_COLOR = "#0070c0";
   const APP_NAME = "Bishnupriya Fuels";
   const SHORT_NAME = "BPFuels";
-  const UPDATE_CHECK_MIN_MS = 60 * 60 * 1000;
+  const UPDATE_CHECK_MIN_MS = 15 * 60 * 1000;
+  const SAFE_UPDATE_HIDDEN_MS = 5000;
+  const MIN_RESUME_GAP_MS = 5000;
+  const MIN_HIDDEN_FOR_RESUME_MS = 2000;
 
   let deferredInstallPrompt = null;
   let registrationRef = null;
-  let pendingUpdateReload = false;
+  let waitingWorkerRef = null;
   let refreshing = false;
   let lastUpdateCheckAt = 0;
+  let hiddenSince = 0;
+  let safeUpdateTimer = null;
 
   function readStorage(key) {
     try {
@@ -46,6 +51,14 @@
   function isPublicLandingPage() {
     const file = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
     return file === "index.html" || file === "about.html" || file === "offline.html";
+  }
+
+  function isUserActivelyEditing() {
+    const el = document.activeElement;
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return el.isContentEditable === true;
   }
 
   function ensureViewportMeta() {
@@ -159,19 +172,46 @@
     document.body.insertBefore(banner, document.body.firstChild);
   }
 
+  function applyWaitingWorker(worker) {
+    if (!worker) return;
+    worker.postMessage({ type: "SKIP_WAITING" });
+  }
+
+  function trySafeAutoUpdate() {
+    if (!waitingWorkerRef) return;
+    if (document.visibilityState !== "hidden") return;
+    if (!hiddenSince) return;
+    if (Date.now() - hiddenSince < SAFE_UPDATE_HIDDEN_MS) return;
+    if (isUserActivelyEditing()) return;
+    applyWaitingWorker(waitingWorkerRef);
+  }
+
+  function scheduleSafeAutoUpdate() {
+    clearTimeout(safeUpdateTimer);
+    safeUpdateTimer = setTimeout(trySafeAutoUpdate, SAFE_UPDATE_HIDDEN_MS + 100);
+  }
+
   function promptWaitingWorker(worker) {
     if (!worker) return;
-    // Auto-apply updates — stale SW caches caused shift register to show old data.
-    pendingUpdateReload = true;
-    worker.postMessage({ type: "SKIP_WAITING" });
+    waitingWorkerRef = worker;
+    showAppUpdateBanner(() => applyWaitingWorker(worker));
+    scheduleSafeAutoUpdate();
+  }
+
+  function handleInstalledWorker(worker) {
+    if (!worker || worker.state !== "installed") return;
+    // First visit — no controller yet; activate immediately so SW takes effect.
+    if (!navigator.serviceWorker.controller) {
+      applyWaitingWorker(worker);
+      return;
+    }
+    promptWaitingWorker(worker);
   }
 
   function trackInstallingWorker(worker) {
     if (!worker) return;
     worker.addEventListener("statechange", () => {
-      if (worker.state === "installed" && navigator.serviceWorker.controller) {
-        promptWaitingWorker(worker);
-      }
+      handleInstalledWorker(worker);
     });
   }
 
@@ -248,6 +288,10 @@
     });
   }
 
+  function dispatchAppResume(detail) {
+    window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail }));
+  }
+
   function initNetworkStatus() {
     if (typeof document === "undefined" || !document.body) return;
 
@@ -261,18 +305,20 @@
       document.body.appendChild(status);
     }
 
-    const update = () => {
-      if (!navigator.onLine) {
+    const update = (online) => {
+      if (!online) {
         status.textContent = "You are offline. Data may be outdated until connection returns.";
         status.classList.remove("hidden");
-      } else {
-        status.classList.add("hidden");
+        return;
       }
+      status.classList.add("hidden");
+      void checkForUpdates(true);
+      dispatchAppResume({ reason: "online" });
     };
 
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    update();
+    window.addEventListener("online", () => update(true));
+    window.addEventListener("offline", () => update(false));
+    update(navigator.onLine);
   }
 
   async function checkForUpdates(force = false) {
@@ -298,9 +344,8 @@
         });
         registrationRef = registration;
 
-        // Update already waiting from a previous visit.
-        if (registration.waiting && navigator.serviceWorker.controller) {
-          promptWaitingWorker(registration.waiting);
+        if (registration.waiting) {
+          handleInstalledWorker(registration.waiting);
         }
 
         registration.addEventListener("updatefound", () => {
@@ -313,16 +358,25 @@
       }
     };
 
+    const deferStart = () => {
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(() => void start(), { timeout: 2500 });
+      } else {
+        setTimeout(() => void start(), 0);
+      }
+    };
+
     if (document.readyState === "complete") {
-      void start();
+      deferStart();
     } else {
-      document.addEventListener("DOMContentLoaded", () => void start(), { once: true });
+      window.addEventListener("load", deferStart, { once: true });
     }
 
-    // Reload once when a new service worker takes control (auto-update path).
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
       refreshing = true;
+      waitingWorkerRef = null;
+      document.getElementById("app-update-banner")?.remove();
       window.location.reload();
     });
   }
@@ -349,32 +403,30 @@
     if (isPublicLandingPage()) return;
 
     let lastResumeAt = 0;
-    const MIN_RESUME_GAP_MS = 5000;
     let hiddenAt = 0;
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
+        hiddenSince = hiddenAt;
+        scheduleSafeAutoUpdate();
         return;
       }
+      hiddenSince = 0;
+      clearTimeout(safeUpdateTimer);
       if (document.visibilityState !== "visible") return;
 
       void checkForUpdates(false);
 
       const now = Date.now();
       const hiddenFor = hiddenAt ? now - hiddenAt : 0;
-      // Ignore brief focus flickers (desktop multi-monitor / Alt-Tab).
-      if (hiddenFor < 2000 || now - lastResumeAt < MIN_RESUME_GAP_MS) return;
+      if (hiddenFor < MIN_HIDDEN_FOR_RESUME_MS || now - lastResumeAt < MIN_RESUME_GAP_MS) return;
       lastResumeAt = now;
 
       if (hiddenFor >= 30000 && window.supabaseClient?.auth) {
         void window.supabaseClient.auth.getSession().catch(() => {});
       }
-      window.dispatchEvent(
-        new CustomEvent("bpf:app-resume", {
-          detail: { reason: "visible", hiddenForMs: hiddenFor },
-        })
-      );
+      dispatchAppResume({ reason: "visible", hiddenForMs: hiddenFor });
     });
 
     window.addEventListener("pageshow", (event) => {
@@ -383,7 +435,7 @@
       if (window.supabaseClient?.auth) {
         void window.supabaseClient.auth.getSession().catch(() => {});
       }
-      window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail: { reason: "bfcache" } }));
+      dispatchAppResume({ reason: "bfcache", hiddenForMs: MIN_RESUME_GAP_MS });
     });
   }
 

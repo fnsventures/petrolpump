@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initAnalysisPage();
 });
 
-bindAppResume(() => {
+bindLiveRefresh(() => {
   const range = analysisFilterApi?.getRange?.();
   if (range && document.getElementById("analysis-range")) {
     void loadAndRender(range);

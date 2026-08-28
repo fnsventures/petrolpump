@@ -36,5 +36,6 @@ const excludes = [
 ].map((name) => `--exclude=${name}`);
 
 await run("rsync", ["-a", "--delete", ...excludes, `${REPO_ROOT}/`, `${SITE_DIR}/`]);
+await run("node", ["scripts/sync-asset-versions.mjs"]);
 await run("node", ["scripts/build-html.mjs", SITE_DIR]);
 console.log(`Built preview site at ${SITE_DIR}`);

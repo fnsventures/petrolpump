@@ -3,26 +3,25 @@
  *
  * Strategies (performance-first for a financial ops MPA):
  * - App shell: precache on install (lean; no full-site dump)
- * - Static JS/CSS/fonts/images: cache-first (exact URL — respects ?v= busting)
- * - HTML navigations: network-first with timeout → cache → offline.html
+ * - Static JS/CSS/fonts/images: stale-while-revalidate (fast + fresh)
+ * - HTML navigations: network-first (no timeout fallback to stale HTML)
  * - Supabase REST/Functions: always network-only (ops data must never be stale)
- * - Updates: waiting worker until client sends SKIP_WAITING (no mid-session swap)
+ * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v186";
+const CACHE_VERSION = "v189";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
-const API_CACHE = `bpf-api-${CACHE_VERSION}`;
 
 /** Max entries for runtime caches (prevents unbounded growth on desktop). */
 const CACHE_LIMITS = {
-  dynamic: 40,
-  staticRuntime: 80,
-  api: 30,
+  dynamic: 30,
+  staticRuntime: 60,
 };
 
-/** Abort slow navigations so flaky networks fall back to cache instead of hanging. */
-const NAV_TIMEOUT_MS = 3500;
+/** Min gap between background revalidations for the same URL (reduces network churn). */
+const REVALIDATE_MS = 30 * 1000;
+const revalidateAt = new Map();
 
 /**
  * True app shell only. Page modules are runtime-cached on first visit.
@@ -39,7 +38,7 @@ const STATIC_ASSET_PATHS = [
   "css/fonts.css",
   "css/landing.css",
   "css/login.css",
-  "css/app-core.css",
+  "css/app-core.css?v=17",
   "css/app-dashboard.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
@@ -51,16 +50,16 @@ const STATIC_ASSET_PATHS = [
   "fonts/source-serif-4-latin.woff2",
   "js/vendor/supabase-login.min.js",
   "js/vendor/supabase.min.js",
-  "js/roleBootstrap.js",
-  "js/appNav.js",
+  "js/roleBootstrap.js?v=17",
+  "js/appNav.js?v=17",
   "js/errorHandler.js",
-  "js/pwa.js",
-  "js/cache.js",
+  "js/pwa.js?v=17",
+  "js/cache.js?v=17",
   "js/appConfig.js",
-  "js/utils.js",
+  "js/utils.js?v=17",
   "js/pumpSettings.js",
-  "js/supabase.js",
-  "js/auth.js",
+  "js/supabase.js?v=17",
+  "js/auth.js?v=17",
   "js/pageSections.js",
 ];
 
@@ -80,10 +79,10 @@ function resolveScopedUrl(path) {
   return new URL(clean, getScopeBase()).href;
 }
 
-async function trimCache(cacheName, maxEntries) {
+async function trimCache(cacheName, maxEntries, cacheInstance) {
   if (!maxEntries || maxEntries < 1) return;
   try {
-    const cache = await caches.open(cacheName);
+    const cache = cacheInstance || (await caches.open(cacheName));
     const keys = await cache.keys();
     if (keys.length <= maxEntries) return;
     const excess = keys.length - maxEntries;
@@ -93,18 +92,10 @@ async function trimCache(cacheName, maxEntries) {
   }
 }
 
-async function putAndTrim(cacheName, request, response, maxEntries) {
-  const cache = await caches.open(cacheName);
+async function putAndTrim(cacheName, request, response, maxEntries, cacheInstance) {
+  const cache = cacheInstance || (await caches.open(cacheName));
   await cache.put(request, response);
-  await trimCache(cacheName, maxEntries);
-}
-
-function fetchWithTimeout(request, timeoutMs, options = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(request, { ...options, signal: controller.signal }).finally(() => {
-    clearTimeout(timer);
-  });
+  await trimCache(cacheName, maxEntries, cache);
 }
 
 self.addEventListener("install", (event) => {
@@ -122,9 +113,7 @@ self.addEventListener("install", (event) => {
           )
         );
       }
-      // Activate immediately so cache-busting / API network-only fixes reach users
-      // without requiring a manual “Update” click.
-      await self.skipWaiting();
+      // Wait for client SKIP_WAITING so active tabs are not force-reloaded mid-session.
     })()
   );
 });
@@ -142,10 +131,6 @@ self.addEventListener("activate", (event) => {
               name !== DYNAMIC_CACHE
           )
           .map((name) => caches.delete(name))
-      );
-      // API responses are network-only now — drop any leftover API cache buckets
-      await Promise.all(
-        names.filter((name) => name.startsWith("bpf-api-")).map((name) => caches.delete(name))
       );
 
       if (self.registration.navigationPreload) {
@@ -188,7 +173,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isStaticAsset(url)) {
-    event.respondWith(cacheFirstStatic(request));
+    event.respondWith(staleWhileRevalidateStatic(request));
     return;
   }
 
@@ -196,7 +181,7 @@ self.addEventListener("fetch", (event) => {
     if (request.mode === "navigate") {
       event.respondWith(networkFirstNavigate(event));
     } else {
-      event.respondWith(cacheFirstStatic(request, DYNAMIC_CACHE, CACHE_LIMITS.dynamic));
+      event.respondWith(staleWhileRevalidateStatic(request, DYNAMIC_CACHE, CACHE_LIMITS.dynamic));
     }
     return;
   }
@@ -231,14 +216,14 @@ async function networkFirstNavigate(event) {
     /* preload unavailable */
   }
 
+  // Network-only while online — no timeout fallback to stale HTML (that caused old UI).
   try {
-    const networkResponse = await fetchWithTimeout(request, NAV_TIMEOUT_MS);
+    const networkResponse = await fetch(request);
     if (networkResponse.ok) {
       void putAndTrim(DYNAMIC_CACHE, request, networkResponse.clone(), CACHE_LIMITS.dynamic);
     }
     return networkResponse;
   } catch {
-    // Exact URL first so we don't serve the wrong page for query variants
     const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
 
@@ -247,22 +232,45 @@ async function networkFirstNavigate(event) {
 }
 
 /**
- * Cache-first with exact URL match so ?v= query busting works.
- * Previous ignoreSearch matching left users on stale JS until they cleared SW cache.
+ * Stale-while-revalidate: serve cache immediately for speed, refresh in background.
+ * Exact URL match so ?v= query busting works.
  */
-async function cacheFirstStatic(request, cacheName = STATIC_CACHE, maxEntries = CACHE_LIMITS.staticRuntime) {
-  const cachedResponse = await caches.match(request);
-  if (cachedResponse) return cachedResponse;
+async function staleWhileRevalidateStatic(
+  request,
+  cacheName = STATIC_CACHE,
+  maxEntries = CACHE_LIMITS.staticRuntime
+) {
+  const cache = await caches.open(cacheName);
+  const cachedResponse = await cache.match(request);
+  const now = Date.now();
+  const lastAt = revalidateAt.get(request.url) || 0;
+  const shouldRevalidate = !cachedResponse || now - lastAt >= REVALIDATE_MS;
 
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      void putAndTrim(cacheName, request, networkResponse.clone(), maxEntries);
-    }
-    return networkResponse;
-  } catch {
-    return new Response("Resource not available offline", { status: 503 });
+  if (!shouldRevalidate) {
+    return cachedResponse || fetch(request);
   }
+
+  revalidateAt.set(request.url, now);
+
+  const networkPromise = fetch(request)
+    .then(async (networkResponse) => {
+      if (networkResponse.ok) {
+        await cache.put(request, networkResponse.clone());
+        void trimCache(cacheName, maxEntries, cache);
+      }
+      return networkResponse;
+    })
+    .catch(() => null);
+
+  if (cachedResponse) {
+    void networkPromise;
+    return cachedResponse;
+  }
+
+  const networkResponse = await networkPromise;
+  if (networkResponse) return networkResponse;
+
+  return new Response("Resource not available offline", { status: 503 });
 }
 
 async function networkWithCacheFallback(request) {
@@ -307,12 +315,6 @@ self.addEventListener("message", (event) => {
       });
       break;
 
-    case "CLEAR_API_CACHE":
-      caches.delete(API_CACHE).then(() => {
-        event.ports[0]?.postMessage({ success: true });
-      });
-      break;
-
     case "GET_CACHE_STATS":
       getCacheStats().then((stats) => {
         event.ports[0]?.postMessage(stats);
@@ -345,7 +347,6 @@ async function getCacheStats() {
     version: CACHE_VERSION,
     static: { entries: 0 },
     dynamic: { entries: 0 },
-    api: { entries: 0 },
   };
 
   try {
@@ -353,8 +354,6 @@ async function getCacheStats() {
     stats.static.entries = (await staticCache.keys()).length;
     const dynamicCache = await caches.open(DYNAMIC_CACHE);
     stats.dynamic.entries = (await dynamicCache.keys()).length;
-    const apiCache = await caches.open(API_CACHE);
-    stats.api.entries = (await apiCache.keys()).length;
   } catch {
     /* ignore */
   }

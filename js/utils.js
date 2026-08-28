@@ -609,6 +609,10 @@ function formatCurrency(value) {
  * Show global top progress bar during API calls.
  * Call hideProgress() when done (e.g. in finally).
  */
+let _progressDepth = 0;
+let _progressWatchdog = null;
+const PROGRESS_WATCHDOG_MS = 25000;
+
 function showProgress() {
   let bar = document.getElementById("top-progress-bar");
   if (!bar) {
@@ -617,15 +621,50 @@ function showProgress() {
     bar.setAttribute("aria-hidden", "true");
     document.body.appendChild(bar);
   }
+  _progressDepth += 1;
   bar.classList.add("loading");
+
+  clearTimeout(_progressWatchdog);
+  _progressWatchdog = setTimeout(() => {
+    if (_progressDepth > 0) {
+      console.warn("[Progress] Watchdog cleared stuck loading indicator.");
+      _progressDepth = 0;
+      bar.classList.remove("loading");
+    }
+  }, PROGRESS_WATCHDOG_MS);
 }
 
 /**
  * Hide global top progress bar.
  */
 function hideProgress() {
+  _progressDepth = Math.max(0, _progressDepth - 1);
+  if (_progressDepth > 0) return;
+  clearTimeout(_progressWatchdog);
+  _progressWatchdog = null;
   const bar = document.getElementById("top-progress-bar");
   if (bar) bar.classList.remove("loading");
+}
+
+/** Recover from stuck UI after background/freeze (PWA resume hook). */
+function recoverStuckUi() {
+  _progressDepth = 0;
+  clearTimeout(_progressWatchdog);
+  _progressWatchdog = null;
+  hideProgress();
+  document.querySelectorAll(".loading").forEach((el) => el.classList.remove("loading"));
+  document.querySelectorAll("[aria-busy='true']").forEach((el) => el.removeAttribute("aria-busy"));
+  document.querySelectorAll("button[disabled], input[disabled]").forEach((el) => {
+    if (el.dataset.stuckDisabled === "1") {
+      el.disabled = false;
+      delete el.dataset.stuckDisabled;
+    }
+    if (el.dataset.paginationLoading === "true" || el.classList.contains("load-more-btn")) {
+      el.disabled = false;
+      if (el.dataset.loadMoreLabel) el.textContent = el.dataset.loadMoreLabel;
+    }
+  });
+  document.getElementById("snapshot-card")?.classList.remove("loading");
 }
 
 /**
@@ -640,6 +679,23 @@ async function withProgress(fn) {
   } finally {
     hideProgress();
   }
+}
+
+/**
+ * Per-module request guard — discard stale async results after rapid filter/resume changes.
+ * @returns {{ next: () => number, isCurrent: (id: number) => boolean }}
+ */
+function createRequestGuard() {
+  let current = 0;
+  return {
+    next() {
+      current += 1;
+      return current;
+    },
+    isCurrent(id) {
+      return id === current;
+    },
+  };
 }
 
 window.escapeHtml = escapeHtml;
@@ -695,6 +751,8 @@ window.resetFormKeepingFields = resetFormKeepingFields;
 window.finishRecordFormSave = finishRecordFormSave;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
+window.recoverStuckUi = recoverStuckUi;
+window.createRequestGuard = createRequestGuard;
 window.withProgress = withProgress;
 
 /**
@@ -1294,6 +1352,8 @@ const _appResumeHandlers = new Map();
 let _appResumeDispatchTimer = null;
 let _appHiddenAt = 0;
 const APP_REQUEST_TIMEOUT_MS = 20000;
+/** Invalidate live data after this much background time, or immediately on online/bfcache. */
+const APP_RESUME_INVALIDATE_MS = 5000;
 /** Only cancel in-flight work after a real background stretch (desktop Alt-Tab is often <2s). */
 const APP_RESUME_CANCEL_AFTER_MS = 30000;
 const APP_RESUME_DEBOUNCE_MS = 400;
@@ -1375,12 +1435,36 @@ function renderTableRetryRow(tbody, colSpan, message, onRetry) {
 function onAppResumeEvent(event) {
   clearTimeout(_appResumeDispatchTimer);
   _appResumeDispatchTimer = setTimeout(() => {
-    const hiddenForMs = _appHiddenAt ? Date.now() - _appHiddenAt : 0;
     const reason = event?.detail?.reason || "";
-    // Brief focus flickers must not cancel active fetches — that feels like a freeze.
-    if (hiddenForMs >= APP_RESUME_CANCEL_AFTER_MS || reason === "bfcache") {
+    const hiddenForMs =
+      typeof event?.detail?.hiddenForMs === "number"
+        ? event.detail.hiddenForMs
+        : _appHiddenAt
+          ? Date.now() - _appHiddenAt
+          : 0;
+
+    recoverStuckUi();
+
+    const shouldInvalidate =
+      reason === "online" ||
+      reason === "bfcache" ||
+      hiddenForMs >= APP_RESUME_INVALIDATE_MS;
+    if (shouldInvalidate && typeof AppCache !== "undefined" && AppCache?.invalidateOperational) {
+      AppCache.invalidateOperational();
+    }
+
+    if (reason === "online" && window.PWA?.sendToServiceWorker) {
+      void window.PWA.sendToServiceWorker("INVALIDATE_PATTERN", { pattern: "\\.(js|css)(\\?|$)" });
+    }
+
+    if (
+      hiddenForMs >= APP_RESUME_CANCEL_AFTER_MS ||
+      reason === "bfcache" ||
+      reason === "online"
+    ) {
       bumpAppLoadGeneration();
     }
+
     _appHiddenAt = 0;
     for (const { handler, match } of _appResumeHandlers.values()) {
       try {
@@ -1405,12 +1489,45 @@ function bindAppResume(handler, options = {}) {
   }
 }
 
+const _cacheInvalidateHandlers = new Map();
+
+function onCacheInvalidateEvent(event) {
+  for (const { handler, match } of _cacheInvalidateHandlers.values()) {
+    try {
+      if (typeof match === "function" && !match()) continue;
+      handler(event);
+    } catch (err) {
+      console.warn("[CacheInvalidate] handler failed:", err);
+    }
+  }
+}
+
+function bindCacheInvalidate(handler, options = {}) {
+  if (typeof handler !== "function") return;
+  const key = options.key || handler;
+  _cacheInvalidateHandlers.set(key, {
+    handler,
+    match: options.match,
+  });
+  if (_cacheInvalidateHandlers.size === 1) {
+    window.addEventListener("bpf:cache-invalidate", onCacheInvalidateEvent);
+  }
+}
+
+/** Register a handler for app resume and cross-tab cache invalidation (same match rules). */
+function bindLiveRefresh(handler, options = {}) {
+  bindAppResume(handler, options);
+  bindCacheInvalidate(handler, options);
+}
+
 window.loadScript = loadScript;
 window.withRequestTimeout = withRequestTimeout;
 window.runAppRequest = runAppRequest;
 window.resetPaginationLoading = resetPaginationLoading;
 window.renderTableRetryRow = renderTableRetryRow;
 window.bindAppResume = bindAppResume;
+window.bindCacheInvalidate = bindCacheInvalidate;
+window.bindLiveRefresh = bindLiveRefresh;
 window.bumpAppLoadGeneration = bumpAppLoadGeneration;
 window.getAppLoadGeneration = getAppLoadGeneration;
 window.isCancelledRequestError = isCancelledRequestError;

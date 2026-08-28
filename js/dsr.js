@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     urlDateParam: DS?.getUrlDateParam?.() ?? null,
   });
 
-  bindAppResume(() => {
+  bindLiveRefresh(() => {
     void window.DsrSummary?.refreshIfNeeded?.(true);
   }, { match: () => document.body.classList.contains("dsr-page") });
 });
