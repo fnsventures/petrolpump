@@ -1595,7 +1595,7 @@ window.MeterReadingForms = {
   refreshForShiftDate: refreshMeterFormsForShiftDate,
 };
 
-bindAppResume(
+bindLiveRefresh(
   () => {
     PRODUCTS.forEach((product) => {
       resetPaginationLoading(dsrPagination[product], document.getElementById(`dsr-load-more-${product}`));

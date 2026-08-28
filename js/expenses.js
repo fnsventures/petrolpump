@@ -433,7 +433,7 @@ function updateExpensesPaginationUI() {
   }
 }
 
-bindAppResume(
+bindLiveRefresh(
   () => {
     resetPaginationLoading(expensesPagination, document.getElementById("expenses-load-more"));
     if (isSettingsPanelActive("history")) void loadExpenses(true);

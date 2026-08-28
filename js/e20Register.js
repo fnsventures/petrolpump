@@ -1284,7 +1284,7 @@
     }
   }
 
-  bindAppResume(
+  bindLiveRefresh(
     () => {
       historyLoading = false;
       historySeq += 1;

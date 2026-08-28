@@ -6,6 +6,7 @@
     "build:vendor": "node scripts/build-vendor.mjs",
     "build:images": "node scripts/optimize-images.mjs",
     "build:html": "node scripts/build-html.mjs",
+    "sync:assets": "node scripts/sync-asset-versions.mjs",
     "dev": "node scripts/dev-server.mjs",
     "build:site": "node scripts/build-site.mjs",
     "build:fonts": "node scripts/download-fonts.mjs",

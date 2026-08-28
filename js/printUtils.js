@@ -204,8 +204,17 @@
   /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
   const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=8";
 
+  /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
+  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=3";
+
+  const CSS_IMPORT_RE =
+    /@import\s+(?:url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])\s*[^;]*;/gi;
+
   let reportPrintCssCache = null;
   let reportPrintCssInflight = null;
+  let creditSummaryPrintCssCache = null;
+  let creditSummaryPrintCssInflight = null;
+  let activePrintTeardown = null;
 
   /** Fallback when fetch() is blocked or fails (e.g. offline file quirks). */
   function fetchReportPrintCssViaLink(url) {
@@ -262,9 +271,47 @@
     return reportPrintCssInflight;
   }
 
-  /** Warm the print CSS cache (fire-and-forget). */
+  /** Warm the report print CSS cache (fire-and-forget). */
   function preloadReportPrintCss() {
     getReportPrintCssText().catch(() => {});
+  }
+
+  /**
+   * Cached credit summary print CSS (reports letterhead + credit rules, @import resolved).
+   * @returns {Promise<string>}
+   */
+  async function getCreditSummaryPrintCssText() {
+    if (creditSummaryPrintCssCache) return creditSummaryPrintCssCache;
+    if (creditSummaryPrintCssInflight) return creditSummaryPrintCssInflight;
+
+    creditSummaryPrintCssInflight = (async () => {
+      try {
+        const [reportCss, creditRes] = await Promise.all([
+          getReportPrintCssText(),
+          fetch(resolveAssetUrl(CREDIT_SUMMARY_PRINT_CSS_HREF), { cache: "default" }),
+        ]);
+        if (!creditRes.ok) throw new Error("Could not load credit summary print styles.");
+        const creditCss = (await creditRes.text()).replace(CSS_IMPORT_RE, "");
+        creditSummaryPrintCssCache = `${reportCss}\n${creditCss}`;
+        return creditSummaryPrintCssCache;
+      } finally {
+        creditSummaryPrintCssInflight = null;
+      }
+    })();
+    return creditSummaryPrintCssInflight;
+  }
+
+  /** Warm credit + report print CSS caches (fire-and-forget). */
+  function preloadCreditSummaryPrintCss() {
+    preloadReportPrintCss();
+    getCreditSummaryPrintCssText().catch(() => {});
+  }
+
+  function abortActivePrint() {
+    if (typeof activePrintTeardown === "function") {
+      activePrintTeardown();
+      activePrintTeardown = null;
+    }
   }
 
   /**
@@ -351,9 +398,54 @@
     if (doc?.body) void doc.body.offsetHeight;
   }
 
+  /** True when every stylesheet (incl. @import chain) is parsed and readable. */
+  function documentStylesheetsReady(doc) {
+    const sheets = Array.from(doc?.styleSheets || []);
+    if (!sheets.length) return true;
+
+    for (const sheet of sheets) {
+      try {
+        const rules = sheet.cssRules;
+        for (const rule of rules) {
+          if (rule.type === CSSRule.IMPORT_RULE) {
+            try {
+              void rule.styleSheet?.cssRules;
+            } catch {
+              return false;
+            }
+          }
+        }
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Wait for linked stylesheets and any @import chains before printing.
+   * @param {Document} doc
+   * @param {number} [timeoutMs]
+   */
+  async function waitForDocumentStylesheets(doc, timeoutMs = 4000) {
+    if (!doc) return;
+
+    const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"]'));
+    if (links.length) {
+      await Promise.all(links.map((link) => waitForStylesheet(link, timeoutMs)));
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (documentStylesheetsReady(doc)) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 40));
+    }
+  }
+
   async function waitForPrintReady(doc, win, options = {}) {
     const { imageSelectors = [], waitForLoad = true, timeoutMs = 2500 } = options;
     if (waitForLoad && win) await waitForFrameLoad(win);
+    await waitForDocumentStylesheets(doc, Math.max(timeoutMs, 4000));
     if (imageSelectors.length) await waitForImages(doc, imageSelectors, timeoutMs);
     await waitForPaint(doc);
   }
@@ -434,12 +526,56 @@
     if (pending.length) await Promise.all(pending);
   }
 
+  /**
+   * Fetch one stylesheet and inline any @import rules (avoids async import races in print).
+   * @param {string} href
+   * @param {Set<string>} [visited]
+   * @returns {Promise<string>}
+   */
+  async function resolveCssHrefWithImports(href, visited = new Set()) {
+    const url = resolveAssetUrl(href);
+    if (visited.has(url)) return "";
+    visited.add(url);
+
+    const res = await fetch(url, { cache: "default" });
+    if (!res.ok) throw new Error("Could not load print stylesheet.");
+    let text = await res.text();
+
+    const imports = [];
+    let match;
+    const importRe = new RegExp(CSS_IMPORT_RE.source, "gi");
+    while ((match = importRe.exec(text)) !== null) {
+      imports.push({ full: match[0], path: match[1] || match[2] });
+    }
+
+    for (const imp of imports) {
+      const importHref = new URL(imp.path, url).href;
+      const importedCss = await resolveCssHrefWithImports(importHref, visited);
+      text = text.replace(imp.full, importedCss);
+    }
+    return text;
+  }
+
   async function resolvePrintCssText(cssText, cssHref) {
     if (cssText) return String(cssText);
     if (!cssHref) return "";
-    const res = await fetch(resolveAssetUrl(cssHref), { cache: "default" });
-    if (!res.ok) throw new Error("Could not load print stylesheet.");
-    return await res.text();
+    if (String(cssHref).includes("credit-summary-print")) {
+      return getCreditSummaryPrintCssText();
+    }
+    return resolveCssHrefWithImports(cssHref);
+  }
+
+  /**
+   * Prefer inlined CSS so print does not depend on async <link> / @import loading.
+   * @param {Object} options
+   * @returns {Promise<Object>}
+   */
+  async function preparePrintCssOptions(options) {
+    const next = { ...options };
+    if (next.cssText || !next.cssHref) return next;
+    next.cssText = await resolvePrintCssText(null, next.cssHref);
+    next.cssHref = undefined;
+    return next;
   }
 
   /**
@@ -447,6 +583,8 @@
    * Hides all other body children under @media print.
    */
   async function printInHostDocument(options) {
+    abortActivePrint();
+    const prepared = await preparePrintCssOptions(options);
     const {
       title = "Print",
       bodyHtml = "",
@@ -457,7 +595,7 @@
       containerClass = "",
       waitForReady,
       cleanupTimeoutMs = 5000,
-    } = options;
+    } = prepared;
 
     clearPrintHostArtifacts();
 
@@ -501,11 +639,14 @@
     };
 
     try {
+      activePrintTeardown = cleanup;
       if (typeof waitForReady === "function") {
         await waitForReady(document, window);
+        await waitForDocumentStylesheets(document);
+        await waitForPaint(document);
       } else {
         await waitForPrintReady(document, window, {
-          ...options,
+          ...prepared,
           waitForLoad: false,
         });
       }
@@ -518,6 +659,8 @@
     } catch (err) {
       cleanup();
       throw err;
+    } finally {
+      if (activePrintTeardown === cleanup) activePrintTeardown = null;
     }
   }
 
@@ -532,6 +675,8 @@
       return printInHostDocument(options);
     }
 
+    abortActivePrint();
+    const prepared = await preparePrintCssOptions(options);
     const {
       title = "Print",
       bodyHtml = "",
@@ -545,7 +690,7 @@
       waitForReady,
       cleanupTimeoutMs = 5000,
       onFallback,
-    } = options;
+    } = prepared;
 
     const iframe = document.createElement("iframe");
     iframe.setAttribute("title", iframeTitle);
@@ -591,10 +736,13 @@
     };
 
     try {
+      activePrintTeardown = cleanup;
       if (typeof waitForReady === "function") {
         await waitForReady(doc, win);
+        await waitForDocumentStylesheets(doc);
+        await waitForPaint(doc);
       } else {
-        await waitForPrintReady(doc, win, options);
+        await waitForPrintReady(doc, win, prepared);
       }
 
       win.addEventListener("afterprint", cleanup, { once: true });
@@ -605,11 +753,14 @@
     } catch (err) {
       cleanup();
       throw err;
+    } finally {
+      if (activePrintTeardown === cleanup) activePrintTeardown = null;
     }
   }
 
   global.PrintUtils = {
     COMPACT_IFRAME_STYLE,
+    CREDIT_SUMMARY_PRINT_CSS_HREF,
     DEFAULT_IFRAME_STYLE,
     PRINT_LOGO_IMAGE_SELECTORS,
     REPORT_PRINT_CSS_HREF,
@@ -619,13 +770,16 @@
     buildReportLetterhead,
     buildReportPrintFooter,
     escapeInlineCss,
+    getCreditSummaryPrintCssText,
     getReportPrintCssText,
     getStationLogoPrintUrl,
     iframePrintUnreliable,
+    preloadCreditSummaryPrintCss,
     preloadReportPrintCss,
     printInIframe,
     resolveAssetUrl,
     sanitizeFilenamePart,
+    waitForDocumentStylesheets,
     waitForFrameLoad,
     waitForImages,
     waitForPaint,

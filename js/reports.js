@@ -103,6 +103,7 @@ const REPORT_CATALOG = [
 let activeReport = "dsr";
 let cachedData = null;
 let cachedRange = null;
+const reportsLoadGuard = typeof createRequestGuard === "function" ? createRequestGuard() : null;
 let reportsLoadInFlight = null;
 let reportPrintBusy = false;
 
@@ -435,6 +436,15 @@ function initReportsPage() {
   // Load only when user picks a report or clicks Load data (see catalog + form handlers).
   syncReportsAboutHash();
   window.addEventListener("hashchange", syncReportsAboutHash);
+
+  if (typeof bindLiveRefresh === "function") {
+    bindLiveRefresh(
+      () => {
+        if (cachedData) void loadAndRenderReports();
+      },
+      { match: () => Boolean(document.getElementById("reports-preview")) }
+    );
+  }
 }
 
 function syncReportsAboutHash() {
@@ -783,6 +793,7 @@ function reportHeader(title, start, end) {
 }
 
 async function loadAndRenderReports() {
+  const loadId = reportsLoadGuard ? reportsLoadGuard.next() : 0;
   const start = document.getElementById("reports-start")?.value;
   const end = document.getElementById("reports-end")?.value;
   const errorEl = document.getElementById("reports-error");
@@ -812,37 +823,50 @@ async function loadAndRenderReports() {
   setReportPrintButtonWaiting();
 
   const cacheKey = `reports_${rangeStart}_${rangeEnd}`;
-  const fetchFn = () => fetchReportData(rangeStart, rangeEnd);
-
-  try {
-    await loadPumpSettings();
-    if (typeof withProgress === "function") {
-      cachedData = await withProgress(async () => {
-        if (typeof AppCache !== "undefined" && AppCache) {
-          return AppCache.getWithSWR(cacheKey, fetchFn, "reports_data");
-        }
-        return fetchFn();
-      });
-    } else if (typeof AppCache !== "undefined" && AppCache) {
-      cachedData = await AppCache.getWithSWR(cacheKey, fetchFn, "reports_data");
-    } else {
-      cachedData = await fetchFn();
-    }
-    cachedRange = { start: rangeStart, end: rangeEnd };
-    clearReportDerivedCache();
+  const fetchFn = async () => {
+    const data = await fetchReportData(rangeStart, rangeEnd);
     try {
       const { data: breakdown, error: brErr } = await supabaseClient.rpc("get_meter_sales_breakdown", {
         p_start: rangeStart,
         p_end: rangeEnd,
       });
       if (brErr) throw brErr;
-      if (cachedData) cachedData.meterBreakdown = breakdown || null;
+      data.meterBreakdown = breakdown || null;
     } catch (brErr) {
       AppError.report(brErr, { context: "loadAndRenderReports.meterBreakdown" });
-      if (cachedData) cachedData.meterBreakdown = null;
+      data.meterBreakdown = null;
     }
+    return data;
+  };
+
+  const onUpdate = (fresh) => {
+    if (reportsLoadGuard && !reportsLoadGuard.isCurrent(loadId)) return;
+    cachedData = fresh;
+    cachedRange = { start: rangeStart, end: rangeEnd };
+    clearReportDerivedCache();
+    renderActiveReport();
+  };
+
+  try {
+    await loadPumpSettings();
+    if (typeof withProgress === "function") {
+      cachedData = await withProgress(async () => {
+        if (typeof AppCache !== "undefined" && AppCache) {
+          return AppCache.getWithSWR(cacheKey, fetchFn, "reports_data", onUpdate);
+        }
+        return fetchFn();
+      });
+    } else if (typeof AppCache !== "undefined" && AppCache) {
+      cachedData = await AppCache.getWithSWR(cacheKey, fetchFn, "reports_data", onUpdate);
+    } else {
+      cachedData = await fetchFn();
+    }
+    if (reportsLoadGuard && !reportsLoadGuard.isCurrent(loadId)) return;
+    cachedRange = { start: rangeStart, end: rangeEnd };
+    clearReportDerivedCache();
     renderActiveReport();
   } catch (err) {
+    if (reportsLoadGuard && !reportsLoadGuard.isCurrent(loadId)) return;
     AppError.report(err, { context: "loadAndRenderReports" });
     if (preview) preview.innerHTML = `<p class="error">${escapeHtml(err.message || "Failed to load data.")}</p>`;
   }

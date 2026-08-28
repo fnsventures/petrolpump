@@ -76,6 +76,8 @@ jobs:
             *) echo "invalid target: $target" >&2; exit 1 ;;
           esac
 
+          npm run sync:assets
+
           cat > js/env.js <<EOF
           window.__APP_CONFIG__ = {
             SUPABASE_URL: "${SUPABASE_URL}",

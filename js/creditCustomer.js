@@ -6,7 +6,6 @@
   let creditPager = null;
   let paymentPager = null;
   let customerPeriodFilterApi = null;
-  const CREDIT_SUMMARY_PRINT_CSS = "css/credit-summary-print.css?v=3";
 
 function applyCustomerPeriodFromUrl(params) {
   const period = (params.get("period") || "").trim();
@@ -53,6 +52,7 @@ function applyCustomerPeriodFromUrl(params) {
 }
 
 async function initCustomerView() {
+  PrintUtils.preloadCreditSummaryPrintCss?.();
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();
   }
@@ -812,11 +812,12 @@ async function runCreditSummaryPrint() {
     ctx.customerName,
     ctx.asOfDate
   );
+  const cssText = await PrintUtils.getCreditSummaryPrintCssText();
 
   await PrintUtils.printInIframe({
     title,
     bodyHtml: sheetHtml,
-    cssHref: CREDIT_SUMMARY_PRINT_CSS,
+    cssText,
     bodyClass: "report-print-body",
     containerClass: "report-print-container",
     iframeTitle: "Credit summary print",
