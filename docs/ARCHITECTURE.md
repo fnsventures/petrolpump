@@ -237,7 +237,7 @@ docs/
 
 - **Entry:** Public users open `index.html` (landing); operators use `login.html` → Supabase Auth → `dashboard.html`. Legacy bookmarks (`credit-customer.html`, `credit-overdue.html`) redirect into `credit.html` with hash/query preserved.
 - **Config:** `js/env.js` exposes `window.__APP_CONFIG__` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `APP_ENV`). In CI this file is generated from GitHub environment secrets; locally it is created from `env.example.js`. Station defaults and GST slabs live in `js/appConfig.js`; live values are merged from `pump_settings` via `js/pumpSettings.js`.
-- **Supabase client:** `js/supabase.js` creates the client, registers `sw.js` on load, and exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker.
+- **Supabase client:** `js/supabase.js` creates the client and exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker. SW registration is handled by `js/pwa.js`.
 
 ### 5.2 Authentication and session
 
@@ -277,14 +277,17 @@ docs/
 ### 5.4 Caching and offline (PWA)
 
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
-- **`sw.js` (`CACHE_VERSION` `v174`):** Lean app-shell precache + runtime LRU caches. Strategies:
-  - HTML navigations: **network-first** with a short timeout → cached page → `offline.html`
-  - Static JS/CSS/fonts/images: **cache-first** (version bump clears old caches)
-  - Supabase REST: network-only for sensitive/financial tables & RPCs; short TTL network-first for other reference GETs
-  - Updates stay in **waiting** until the user clicks Reload (`SKIP_WAITING`) so tabs never mix shell versions mid-session; first install activates immediately
+- **`asset-version.json` + `scripts/sync-asset-versions.mjs`:** Single source of truth for shared static asset `?v=` query strings (utils, pwa, cache, auth, supabase, app-core.css) and `sw.js` `CACHE_VERSION`. Run before deploy when shared JS/CSS changes.
+- **`sw.js` (`CACHE_VERSION` `v188`):** Lean app-shell precache + runtime LRU caches. Strategies:
+  - HTML navigations: **network-first** while online; cached page or `offline.html` only when offline
+  - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
+  - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
+  - Updates: banner + safe auto-apply after 5s hidden; `controllerchange` reloads the tab
   - Navigation Preload enabled when the browser supports it
-- **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume`
-- **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` (role, reports, settings, etc.) — complementary to the SW, not a substitute for it
+- **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume` (cache invalidation on reconnect/resume is centralized in `js/utils.js` → `onAppResumeEvent`)
+- **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` with stale-while-revalidate, in-flight dedup, cross-tab invalidation (`BroadcastChannel` + `storage`), local `bpf:cache-invalidate` events, and `invalidateOperational()` for live data
+- **`js/utils.js`:** `bindLiveRefresh()` wires a page handler to both `bpf:app-resume` and `bpf:cache-invalidate` (same-tab mutations and cross-tab edits)
+- **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker (SW static/dynamic caches only — API is not SW-cached)
 - Scope works for prod root and `/staging/`
 
 ---

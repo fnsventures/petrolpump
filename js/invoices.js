@@ -474,7 +474,7 @@ async function deleteInvoice(id) {
   }
 }
 
-bindAppResume(() => {
+bindLiveRefresh(() => {
   loadInvoicesController?.abort();
   void loadInvoices();
 }, { match: () => Boolean(document.getElementById("invoice-table-body")) });

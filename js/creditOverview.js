@@ -8,7 +8,6 @@
   let lastOverviewData = null;
   let lastOverviewPeriodLabel = "";
   const OVERVIEW_EMPTY = Object.freeze({ credit_taken: 0, settled: 0, overdue: 0, customers: [] });
-  const CREDIT_OVERVIEW_PRINT_CSS = "css/credit-summary-print.css?v=3";
 
 function readOverviewDateRange() {
   return readDateRangeFromControls(
@@ -42,6 +41,7 @@ function getOverviewPeriodLabel() {
 }
 
 function initOverviewPanel() {
+  PrintUtils?.preloadCreditSummaryPrintCss?.();
   createDateRangeFilter({
     storageKey: "credit_overview_period",
     ranges: ["today", "this-week", "this-month", "all-time", "custom"],
@@ -59,6 +59,12 @@ function initOverviewPanel() {
   document.getElementById("credit-overview-print-btn")?.addEventListener("click", () => {
     void handleOverviewPrintClick();
   });
+
+  if (typeof bindLiveRefresh === "function") {
+    bindLiveRefresh(() => void loadOverviewPeriodActivity(), {
+      match: () => Boolean(document.getElementById("credit-overview-body")),
+    });
+  }
 }
 
 function overviewPeriodOutstanding(creditTaken, settled) {
@@ -345,7 +351,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
 
 async function ensureOverviewPrintDeps() {
   if (typeof PrintUtils === "undefined") {
-    await loadScript("js/printUtils.js?v=10");
+    await loadScript("js/printUtils.js?v=12");
   }
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();
@@ -374,11 +380,12 @@ async function runOverviewPrint() {
     start || null,
     start !== end ? end : null
   );
+  const cssText = await PrintUtils.getCreditSummaryPrintCssText();
 
   await PrintUtils.printInIframe({
     title,
     bodyHtml: sheetHtml,
-    cssHref: CREDIT_OVERVIEW_PRINT_CSS,
+    cssText,
     bodyClass: "report-print-body",
     containerClass: "report-print-container",
     iframeTitle: "Credit overview print",

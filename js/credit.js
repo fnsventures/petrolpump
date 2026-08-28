@@ -615,7 +615,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-bindAppResume(refreshCreditOnVisible, {
+bindLiveRefresh(refreshCreditOnVisible, {
   match: () =>
     document.body.classList.contains("credit-list-view") ||
     document.body.classList.contains("credit-customer-view"),

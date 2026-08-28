@@ -801,7 +801,7 @@ function updateInvoicesPaginationUI() {
   }
 }
 
-bindAppResume(
+bindLiveRefresh(
   () => {
     resetPaginationLoading(invoicesPagination, document.getElementById("invoices-load-more"));
     if (isSettingsPanelActive("history")) void loadInvoices(true);

@@ -4,6 +4,19 @@
  * and cache invalidation utilities.
  */
 
+/** Live ops data types — shared by AppCache and CacheInvalidation. */
+const BPF_OPERATIONAL_CACHE_TYPES = [
+  "dashboard_data",
+  "credit_summary",
+  "credit_overview",
+  "today_sales",
+  "recent_activity",
+  "dsr_summary",
+  "profit_loss",
+  "reports_data",
+  "missing_buying_price",
+];
+
 const AppCache = (function () {
   const CACHE_PREFIX = "bpf_cache_";
   const DEFAULT_TTL = 5 * 60 * 1000; // 5 minutes default TTL
@@ -15,23 +28,39 @@ const AppCache = (function () {
     staff_role: { ttl: 60 * 60 * 1000, staleTtl: 24 * 60 * 60 * 1000 }, // 1 hour, 24h stale
     staff_list: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 }, // 10 min, 1h stale
 
-    // Ops data — short TTL; keep stale window tight so SWR cannot linger
-    dashboard_data: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
-    credit_summary: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
-    credit_overview: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
-    today_sales: { ttl: 30 * 1000, staleTtl: 90 * 1000 },
-    recent_activity: { ttl: 30 * 1000, staleTtl: 90 * 1000 },
-    missing_buying_price: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    // Ops data — very short TTL; tight stale window to avoid showing old shift data
+    dashboard_data: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
+    credit_summary: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
+    credit_overview: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
+    today_sales: { ttl: 15 * 1000, staleTtl: 45 * 1000 },
+    recent_activity: { ttl: 15 * 1000, staleTtl: 45 * 1000 },
+    missing_buying_price: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
 
-    dsr_summary: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
-    profit_loss: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    dsr_summary: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
+    profit_loss: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
 
     // Settings & auth — longer TTL, revalidated on save
     pump_settings: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 },
     user_role: { ttl: 30 * 60 * 1000, staleTtl: 2 * 60 * 60 * 1000 },
 
-    reports_data: { ttl: 60 * 1000, staleTtl: 2 * 60 * 1000 },
+    reports_data: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
   };
+
+  /** In-flight fetch deduplication — prevents parallel SWR storms for the same key. */
+  const inflightFetches = new Map();
+
+  const CACHE_SYNC_KEY = "bpf_cache_sync";
+  let cacheBroadcast = null;
+
+  function getCacheBroadcast() {
+    if (cacheBroadcast === null && typeof BroadcastChannel !== "undefined") {
+      cacheBroadcast = new BroadcastChannel("bpf_cache_invalidate");
+    }
+    return cacheBroadcast;
+  }
+
+  /** Operational cache types cleared on reconnect / resume. */
+  const OPERATIONAL_TYPES = BPF_OPERATIONAL_CACHE_TYPES;
 
   /** Memoized — probing localStorage on every get/set was a hot-path cost. */
   let storageAvailable = null;
@@ -204,25 +233,20 @@ const AppCache = (function () {
   }
 
   function invalidateByTypes(cacheTypes) {
-    if (!isStorageAvailable() || !cacheTypes || !cacheTypes.length) return;
+    if (!isStorageAvailable() || !cacheTypes?.length) return;
     const typeSet = new Set(cacheTypes);
     try {
-      const keys = Object.keys(localStorage);
-      keys.forEach((key) => {
-        if (!key.startsWith(CACHE_PREFIX)) return;
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith(CACHE_PREFIX)) continue;
         try {
-          const raw = localStorage.getItem(key);
-          if (!raw) return;
-          const entry = JSON.parse(raw);
-          if (typeSet.has(entry.cacheType)) {
-            localStorage.removeItem(key);
-          }
+          const entry = JSON.parse(localStorage.getItem(key));
+          if (typeSet.has(entry.cacheType)) localStorage.removeItem(key);
         } catch {
-          // Ignore individual errors
+          localStorage.removeItem(key);
         }
-      });
+      }
     } catch {
-      // Ignore
+      /* ignore */
     }
   }
 
@@ -244,6 +268,46 @@ const AppCache = (function () {
     }
   }
 
+  function clearInflight(key) {
+    if (key) inflightFetches.delete(key);
+    else inflightFetches.clear();
+  }
+
+  function runDedupedFetch(key, fetchFn, cacheType, onUpdate) {
+    if (inflightFetches.has(key)) {
+      return inflightFetches.get(key);
+    }
+
+    const generation =
+      typeof window.getAppLoadGeneration === "function" ? window.getAppLoadGeneration() : 0;
+
+    const promise = Promise.resolve()
+      .then(() => fetchFn())
+      .then((freshData) => {
+        if (freshData !== null && freshData !== undefined) {
+          set(key, freshData, cacheType);
+          if (onUpdate && typeof onUpdate === "function") {
+            const currentGen =
+              typeof window.getAppLoadGeneration === "function"
+                ? window.getAppLoadGeneration()
+                : generation;
+            if (currentGen === generation) {
+              onUpdate(freshData);
+            }
+          }
+        }
+        return freshData;
+      })
+      .finally(() => {
+        if (inflightFetches.get(key) === promise) {
+          inflightFetches.delete(key);
+        }
+      });
+
+    inflightFetches.set(key, promise);
+    return promise;
+  }
+
   /**
    * Stale-while-revalidate pattern implementation
    * Returns cached data immediately while fetching fresh data in background
@@ -252,39 +316,28 @@ const AppCache = (function () {
    * @param {Function} fetchFn - Async function to fetch fresh data
    * @param {string} cacheType - Cache type for TTL configuration
    * @param {Function} onUpdate - Optional callback when fresh data arrives
+   * @param {{ forceRefresh?: boolean }} [options]
    * @returns {Promise<any>} - Returns cached data or fresh data
    */
-  async function getWithSWR(key, fetchFn, cacheType = null, onUpdate = null) {
-    const cached = get(key);
+  async function getWithSWR(key, fetchFn, cacheType = null, onUpdate = null, options = {}) {
+    const forceRefresh = Boolean(options.forceRefresh);
+    const revalidate = Boolean(options.revalidate);
+    const cached = forceRefresh ? { data: null, isStale: true, isExpired: true, isMiss: true } : get(key);
 
     // If we have cached data (even stale), return it
     if (!cached.isMiss && cached.data !== null) {
-      // If stale or expired, revalidate in background
-      if (cached.isStale || cached.isExpired) {
-        // Background revalidation
-        fetchFn()
-          .then((freshData) => {
-            if (freshData !== null && freshData !== undefined) {
-              set(key, freshData, cacheType);
-              if (onUpdate && typeof onUpdate === "function") {
-                onUpdate(freshData);
-              }
-            }
-          })
-          .catch((err) => {
-            console.warn("Background revalidation failed:", key, err);
-          });
+      // Revalidate when stale/expired or caller requests background refresh (e.g. after resume)
+      if (cached.isStale || cached.isExpired || revalidate) {
+        runDedupedFetch(key, fetchFn, cacheType, onUpdate).catch((err) => {
+          console.warn("Background revalidation failed:", key, err);
+        });
       }
       return cached.data;
     }
 
-    // No cached data - fetch fresh
+    // No cached data — fetch fresh (deduped)
     try {
-      const freshData = await fetchFn();
-      if (freshData !== null && freshData !== undefined) {
-        set(key, freshData, cacheType);
-      }
-      return freshData;
+      return await runDedupedFetch(key, fetchFn, cacheType, onUpdate);
     } catch (err) {
       if (typeof window.AppError !== "undefined" && window.AppError.report) {
         window.AppError.report(err, { context: "AppCache.getWithSWR", key });
@@ -293,6 +346,55 @@ const AppCache = (function () {
       }
       throw err;
     }
+  }
+
+  /**
+   * Invalidate all operational (live) data caches — call on reconnect or resume.
+   * @param {{ broadcast?: boolean }} [options]
+   */
+  function invalidateOperational(options = {}) {
+    invalidateByTypes(OPERATIONAL_TYPES);
+    clearInflight();
+    if (options.broadcast !== false) {
+      broadcastInvalidation(OPERATIONAL_TYPES);
+    }
+  }
+
+  function broadcastInvalidation(types) {
+    if (!types?.length) return;
+    const payload = { types: [...types], at: Date.now() };
+    try {
+      getCacheBroadcast()?.postMessage(payload);
+      localStorage.setItem(CACHE_SYNC_KEY, JSON.stringify(payload));
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  function applyRemoteInvalidation(payload) {
+    if (!payload?.types?.length) return;
+    invalidateByTypes(payload.types);
+    clearInflight();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("bpf:cache-invalidate", { detail: payload }));
+    }
+  }
+
+  function initCrossTabSync() {
+    if (typeof window === "undefined") return;
+
+    getCacheBroadcast()?.addEventListener("message", (event) => {
+      applyRemoteInvalidation(event.data);
+    });
+
+    window.addEventListener("storage", (event) => {
+      if (event.key !== CACHE_SYNC_KEY || !event.newValue) return;
+      try {
+        applyRemoteInvalidation(JSON.parse(event.newValue));
+      } catch {
+        /* ignore corrupt payload */
+      }
+    });
   }
 
   /**
@@ -338,6 +440,8 @@ const AppCache = (function () {
     return { entries, size, expired, stale };
   }
 
+  initCrossTabSync();
+
   // Public API
   return {
     set,
@@ -348,10 +452,14 @@ const AppCache = (function () {
     invalidateByType,
     invalidateByTypes,
     invalidateByPattern,
+    invalidateOperational,
+    broadcastInvalidation,
     getWithSWR,
     getStats,
+    clearInflight,
     isStorageAvailable,
     CACHE_CONFIG,
+    OPERATIONAL_TYPES,
   };
 })();
 
@@ -370,44 +478,17 @@ const CacheInvalidation = (function () {
     reports: ["reports_data", "profit_loss", "dashboard_data"],
     staff: ["staff_list"],
     pump_settings: ["pump_settings", "reports_data", "profit_loss", "dashboard_data"],
-    all_api: [
-      "dashboard_data",
-      "credit_summary",
-      "credit_overview",
-      "today_sales",
-      "recent_activity",
-      "dsr_summary",
-      "profit_loss",
-      "reports_data",
-      "missing_buying_price",
-    ],
+    all_api: BPF_OPERATIONAL_CACHE_TYPES,
   };
 
-  /** Scopes whose underlying data must not linger in the SW API cache after mutation. */
-  const SW_SYNC_SCOPES = new Set([
-    "operational",
-    "dsr",
-    "credit",
-    "reports",
-    "pump_settings",
-    "all_api",
-  ]);
-
-  function notifySwApiCacheClear() {
-    try {
-      navigator.serviceWorker?.controller?.postMessage({ type: "CLEAR_API_CACHE" });
-    } catch {
-      // Ignore — SW may not be registered yet
-    }
+  function notifyLocalInvalidation(types) {
+    if (typeof window === "undefined" || !types?.length) return;
+    window.dispatchEvent(
+      new CustomEvent("bpf:cache-invalidate", { detail: { types: [...types], at: Date.now(), local: true } })
+    );
   }
 
-  function shouldSyncSw(scope) {
-    if (typeof scope === "string" && SW_SYNC_SCOPES.has(scope)) return true;
-    if (Array.isArray(scope)) return scope.some((s) => SW_SYNC_SCOPES.has(s));
-    return false;
-  }
-
-  function invalidate(scope) {
+  function invalidate(scope, options = {}) {
     if (typeof AppCache === "undefined" || !AppCache) return;
     const types = SCOPES[scope] || (Array.isArray(scope) ? scope : [scope]);
     const unique = [...new Set(types)];
@@ -416,10 +497,14 @@ const CacheInvalidation = (function () {
     } else {
       unique.forEach((t) => AppCache.invalidateByType(t));
     }
-    if (shouldSyncSw(scope)) notifySwApiCacheClear();
+    if (AppCache.clearInflight) AppCache.clearInflight();
+    notifyLocalInvalidation(unique);
+    if (options.broadcast !== false && AppCache.broadcastInvalidation) {
+      AppCache.broadcastInvalidation(unique);
+    }
   }
 
-  function invalidateMultiple(scopes) {
+  function invalidateMultiple(scopes, options = {}) {
     const seen = new Set();
     scopes.forEach((scope) => {
       (SCOPES[scope] || (Array.isArray(scope) ? scope : [scope])).forEach((t) => seen.add(t));
@@ -430,10 +515,23 @@ const CacheInvalidation = (function () {
     } else {
       unique.forEach((t) => AppCache.invalidateByType(t));
     }
-    if (scopes.some((s) => shouldSyncSw(s))) notifySwApiCacheClear();
+    if (AppCache.clearInflight) AppCache.clearInflight();
+    notifyLocalInvalidation(unique);
+    if (options.broadcast !== false && AppCache.broadcastInvalidation) {
+      AppCache.broadcastInvalidation(unique);
+    }
   }
 
   return { invalidate, invalidateMultiple, SCOPES };
 })();
 
 window.CacheInvalidation = CacheInvalidation;
+
+// Prune expired entries on load — keeps localStorage fast on mobile.
+if (typeof AppCache !== "undefined" && AppCache.clearOldEntries) {
+  try {
+    AppCache.clearOldEntries();
+  } catch {
+    /* ignore */
+  }
+}

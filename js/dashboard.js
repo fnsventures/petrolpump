@@ -2127,6 +2127,10 @@ let dsrFilterApi = null;
 let plFilterApi = null;
 let dsrSectionLoaded = false;
 let plSectionLoaded = false;
+const dsrSummaryGuard = createRequestGuard();
+const plSummaryGuard = createRequestGuard();
+const todaySalesGuard = createRequestGuard();
+const creditSummaryGuard = createRequestGuard();
 
 function setupDsrFilter() {
   if (dsrFilterApi || !document.getElementById("dsr-range")) return dsrFilterApi;
@@ -2184,7 +2188,7 @@ async function ensurePlSectionLoaded() {
   }
 }
 
-async function fetchProfitLossData(range) {
+async function fetchProfitLossData(range, onUpdate = null) {
   await loadPumpSettings();
   const receiptStart = PumpSettings.getReceiptHistoryStart();
   const cacheKey = `pl_${range.start}_${range.end}_${receiptStart}`;
@@ -2254,12 +2258,13 @@ async function fetchProfitLossData(range) {
   };
 
   if (typeof AppCache !== "undefined" && AppCache?.getWithSWR) {
-    return AppCache.getWithSWR(cacheKey, loadFresh, "profit_loss");
+    return AppCache.getWithSWR(cacheKey, loadFresh, "profit_loss", onUpdate);
   }
   return loadFresh();
 }
 
 async function loadTodaySales(dateStr) {
+  const loadId = todaySalesGuard.next();
   const todayStat = document.getElementById("today-total");
   const todayRupees = document.getElementById("today-total-rupees");
   const todayDate = document.getElementById("today-date");
@@ -2305,17 +2310,20 @@ async function loadTodaySales(dateStr) {
   };
 
   const onUpdate = (freshData) => {
+    if (!todaySalesGuard.isCurrent(loadId)) return;
     void renderSalesBlock(freshData);
   };
 
   let data;
   if (AppCache) {
     data = await AppCache.getWithSWR(cacheKey, fetchFn, "today_sales", onUpdate);
+    if (!todaySalesGuard.isCurrent(loadId)) return;
     if (data !== undefined) {
       await renderSalesBlock(data);
     }
   } else {
     data = await fetchFn();
+    if (!todaySalesGuard.isCurrent(loadId)) return;
     await renderSalesBlock(data);
   }
 }
@@ -2400,6 +2408,7 @@ function updateTotalSaleRupees() {
 }
 
 async function loadCreditSummary(dateStr) {
+  const loadId = creditSummaryGuard.next();
   const creditTotal = document.getElementById("credit-total");
   const selectedDate = dateStr || getLocalDateString();
   const cacheKey = getCreditSummaryCacheKey(selectedDate);
@@ -2419,11 +2428,13 @@ async function loadCreditSummary(dateStr) {
   let total;
   if (typeof AppCache !== "undefined" && AppCache) {
     total = await AppCache.getWithSWR(cacheKey, fetchFn, "credit_summary", (fresh) => {
+      if (!creditSummaryGuard.isCurrent(loadId)) return;
       renderCreditSummary(fresh, creditTotal);
     });
   } else {
     total = await fetchFn();
   }
+  if (!creditSummaryGuard.isCurrent(loadId)) return;
   renderCreditSummary(total, creditTotal);
 }
 
@@ -2520,6 +2531,7 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
 }
 
 async function loadDsrSummary(range) {
+  const loadId = dsrSummaryGuard.next();
   const elements = {
     petrolStockEl: document.getElementById("dsr-petrol-stock"),
     dieselStockEl: document.getElementById("dsr-diesel-stock"),
@@ -2542,11 +2554,14 @@ async function loadDsrSummary(range) {
 
   // Callback to update UI when fresh data arrives
   const onUpdate = (freshData) => {
+    if (!dsrSummaryGuard.isCurrent(loadId)) return;
     renderDsrSummary(freshData, elements, range);
   };
 
   // Use Edge Function for single round-trip (with fallback and caching)
   const dashboardData = await fetchDashboardData(range.start, range.end, onUpdate);
+
+  if (!dsrSummaryGuard.isCurrent(loadId)) return;
 
   if (dashboardData.creditError) {
     const { data: creditRows, error: creditErr } = await supabaseClient
@@ -2747,6 +2762,7 @@ async function refreshMissingBuyingPriceUi() {
 }
 
 async function loadProfitLossSummary(range) {
+  const loadId = plSummaryGuard.next();
   const plValueEl = document.getElementById("pl-value");
   const plLabelEl = document.getElementById("pl-label");
   const plProfitHintEl = document.getElementById("pl-profit-hint");
@@ -2757,11 +2773,19 @@ async function loadProfitLossSummary(range) {
     plProfitHintEl.textContent = "";
   }
 
-  const plData = await fetchProfitLossData(range);
+  const plData = await fetchProfitLossData(range, (fresh) => {
+    if (!plSummaryGuard.isCurrent(loadId)) return;
+    renderProfitLossFromData(fresh, { plValueEl, plLabelEl, plProfitHintEl, range });
+  });
+  if (!plSummaryGuard.isCurrent(loadId)) return;
   if (plData.dsrError) AppError.report(plData.dsrError, { context: "profitLossSummary", type: "dsr" });
   if (plData.expenseError) AppError.report(plData.expenseError, { context: "profitLossSummary", type: "expense" });
   if (plData.lubeError) AppError.report(plData.lubeError, { context: "profitLossSummary", type: "lube" });
 
+  renderProfitLossFromData(plData, { plValueEl, plLabelEl, plProfitHintEl, range });
+}
+
+function renderProfitLossFromData(plData, { plValueEl, plLabelEl, plProfitHintEl }) {
   const hasDsr = !plData.dsrError;
   const hasExpense = !plData.expenseError;
   const pl = computeProfitLossSummary({
@@ -2825,17 +2849,30 @@ window.addEventListener("storage", (e) => {
   }
 });
 
-// Refetch open credit + notification sources when user returns to the dashboard
+// Refetch dashboard data when user returns or another tab invalidates cache
 function refreshDashboardOnVisible() {
   const dateInput = document.getElementById("snapshot-date");
   if (!dateInput) return;
   const date = dateInput.value || getLocalDateString();
+
+  void loadTodaySales(date);
   loadCreditSummary(date);
+  void loadHeroStock(date);
   void loadDayClosingBanners();
   void loadRemindersBanners();
   if (dashboardRole === "admin") void refreshMissingBuyingPriceUi();
+
+  if (dsrSectionLoaded && dsrFilterApi) {
+    const range = dsrFilterApi.getRange();
+    if (range?.start && range?.end) void loadDsrSummary(range);
+  }
+  if (plSectionLoaded && plFilterApi && dashboardRole === "admin") {
+    const range = plFilterApi.getRange();
+    if (range?.start && range?.end) void loadProfitLossSummary(range);
+  }
 }
-bindAppResume(refreshDashboardOnVisible, {
+
+bindLiveRefresh(refreshDashboardOnVisible, {
   match: () => Boolean(document.getElementById("snapshot-card")),
 });
 

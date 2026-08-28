@@ -6,6 +6,8 @@
   const CACHE_KEY_ACTIVE_DETAIL = "active_employees_detail_v2";
   const CACHE_KEY_ACTIVE_ROSTER = "active_employees_roster_v1";
   const CACHE_KEY_INACTIVE = "inactive_employees_detail_v1";
+  const staffLoadGuard =
+    typeof global.createRequestGuard === "function" ? global.createRequestGuard() : null;
 
   /** Full HR fields — matches list_employees_salary() + is_active. */
   const EMPLOYEE_DETAIL_SELECT =
@@ -82,26 +84,31 @@
    * @param {{ isAdmin?: boolean, useCache?: boolean, status?: 'active'|'inactive'|'all' }} [options]
    */
   async function loadEmployees(client, options = {}) {
+    const loadId = staffLoadGuard ? staffLoadGuard.next() : 0;
     const { isAdmin = false, useCache = true } = options;
     const status = normalizeStatus(options.status);
 
+    let result;
     if (status === "active") {
       const fetchFn = () => fetchActiveDetail(client, isAdmin);
       if (useCache && global.AppCache) {
-        return global.AppCache.getWithSWR(CACHE_KEY_ACTIVE_DETAIL, fetchFn, "staff_list");
+        result = await global.AppCache.getWithSWR(CACHE_KEY_ACTIVE_DETAIL, fetchFn, "staff_list");
+      } else {
+        result = await fetchFn();
       }
-      return fetchFn();
-    }
-
-    if (status === "inactive") {
+    } else if (status === "inactive") {
       const fetchFn = () => fetchFromEmployeesTable(client, "inactive");
       if (useCache && global.AppCache) {
-        return global.AppCache.getWithSWR(CACHE_KEY_INACTIVE, fetchFn, "staff_list");
+        result = await global.AppCache.getWithSWR(CACHE_KEY_INACTIVE, fetchFn, "staff_list");
+      } else {
+        result = await fetchFn();
       }
-      return fetchFn();
+    } else {
+      result = await fetchFromEmployeesTable(client, "all");
     }
 
-    return fetchFromEmployeesTable(client, "all");
+    if (staffLoadGuard && !staffLoadGuard.isCurrent(loadId)) return [];
+    return result;
   }
 
   async function loadActiveEmployees(client, options = {}) {
@@ -110,12 +117,17 @@
 
   /** Lightweight active roster (id/name/role) — attendance, E-20 datalist. */
   async function loadActiveRoster(client, options = {}) {
+    const loadId = staffLoadGuard ? staffLoadGuard.next() : 0;
     const { useCache = true } = options;
     const fetchFn = () => fetchFromRosterRpc(client);
+    let result;
     if (useCache && global.AppCache) {
-      return global.AppCache.getWithSWR(CACHE_KEY_ACTIVE_ROSTER, fetchFn, "staff_list");
+      result = await global.AppCache.getWithSWR(CACHE_KEY_ACTIVE_ROSTER, fetchFn, "staff_list");
+    } else {
+      result = await fetchFn();
     }
-    return fetchFn();
+    if (staffLoadGuard && !staffLoadGuard.isCurrent(loadId)) return [];
+    return result;
   }
 
   /**

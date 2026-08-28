@@ -2357,7 +2357,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initializeDayClosing();
 });
 
-bindAppResume(
+bindLiveRefresh(
   () => {
     if (isSettingsPanelActive("register")) {
       void onRegisterSectionShown();

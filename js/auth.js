@@ -201,7 +201,10 @@ function normalizeEmail(email) {
  * Fetch role from users table with caching.
  * Uses stale-while-revalidate pattern for fast role lookup.
  */
+const roleFetchGuard = typeof createRequestGuard === "function" ? createRequestGuard() : null;
+
 async function fetchRoleFromStaff(email) {
+  const loadId = roleFetchGuard ? roleFetchGuard.next() : 0;
   const normalized = normalizeEmail(email);
   if (!normalized) return null;
 
@@ -228,10 +231,14 @@ async function fetchRoleFromStaff(email) {
 
   // Use caching if available
   if (typeof AppCache !== "undefined" && AppCache) {
-    return AppCache.getWithSWR(cacheKey, fetchFn, "user_role");
+    const result = await AppCache.getWithSWR(cacheKey, fetchFn, "user_role");
+    if (roleFetchGuard && !roleFetchGuard.isCurrent(loadId)) return null;
+    return result;
   }
 
-  return fetchFn();
+  const result = await fetchFn();
+  if (roleFetchGuard && !roleFetchGuard.isCurrent(loadId)) return null;
+  return result;
 }
 
 async function resolveAuthForSession(session) {

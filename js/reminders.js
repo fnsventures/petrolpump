@@ -1185,7 +1185,7 @@
     </div>`;
   }
 
-  bindAppResume(
+  bindLiveRefresh(
     () => {
       resetPaginationLoading(donePagination, document.getElementById("reminders-done-load-more"));
       if (isSettingsPanelActive("done")) void loadDoneTasks(true);
