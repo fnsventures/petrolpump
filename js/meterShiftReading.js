@@ -210,15 +210,61 @@
     return Number.isInteger(num) ? String(num) : String(num);
   }
 
-  function staffOptionsHtml(selectedId) {
+  function staffOptionsHtml(selectedId, selectedName) {
     const opts = ['<option value="">— Unassigned —</option>'];
+    const selected = selectedId ? String(selectedId) : "";
+    const seen = new Set();
     for (const s of staffList) {
-      const sel = s.id === selectedId ? " selected" : "";
+      const id = String(s.id);
+      seen.add(id);
+      const sel = id === selected ? " selected" : "";
       opts.push(
-        `<option value="${escapeHtml(s.id)}"${sel}>${escapeHtml(s.name || "Staff")}</option>`
+        `<option value="${escapeHtml(id)}"${sel}>${escapeHtml(s.name || "Staff")}</option>`
+      );
+    }
+    if (selected && !seen.has(selected)) {
+      const label = (selectedName || "Staff").trim() || "Staff";
+      opts.push(
+        `<option value="${escapeHtml(selected)}" selected>${escapeHtml(label)}</option>`
       );
     }
     return opts.join("");
+  }
+
+  /** Include saved shift assignees (e.g. inactive staff on past dates) in dropdown options. */
+  async function ensureShiftStaffRoster(shiftData) {
+    const ids = new Set();
+    (shiftData?.nozzles || []).forEach((n) => {
+      if (n?.employee_id) ids.add(String(n.employee_id));
+    });
+    (shiftData?.cash || []).forEach((c) => {
+      if (c?.employee_id) ids.add(String(c.employee_id));
+    });
+    (shiftData?.attendance_hints || []).forEach((h) => {
+      if (h?.employee_id) ids.add(String(h.employee_id));
+    });
+    const missing = [...ids].filter((id) => !staffList.some((s) => String(s.id) === id));
+    if (!missing.length || typeof StaffEmployees?.resolveEmployeesByIds !== "function") return;
+
+    try {
+      const byId = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missing);
+      byId.forEach((emp) => {
+        staffList.push({
+          id: emp.id,
+          name: StaffEmployees.displayName(emp),
+          role_display: emp.role_display,
+          monthly_salary: emp.monthly_salary ?? 0,
+          display_order: emp.display_order,
+          is_active: emp.is_active !== false,
+        });
+      });
+      staffList.sort((a, b) => {
+        const order = (Number(a.display_order) || 0) - (Number(b.display_order) || 0);
+        return order !== 0 ? order : String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    } catch (err) {
+      AppError.report(err, { context: "MeterShiftReading.ensureShiftStaffRoster" });
+    }
   }
 
   function parseRateValue(raw) {
@@ -1121,7 +1167,7 @@
             : "shift-opening meter-reading";
           return `<tr data-product="${product}" data-pump="${slot.pump_no}" data-nozzle="${slot.nozzle_no}">
             <td class="shift-meter-label">${escapeHtml(slot.label)}</td>
-            <td><select class="shift-staff" aria-label="Staff for ${PRODUCT_LABEL[product]} ${slot.label}">${staffOptionsHtml(empId)}</select></td>
+            <td><select class="shift-staff" aria-label="Staff for ${PRODUCT_LABEL[product]} ${slot.label}">${staffOptionsHtml(empId, saved?.employee_name)}</select></td>
             <td><input type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" aria-label="Opening for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
             <td><input type="text" inputmode="numeric" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" aria-label="Closing for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
             <td><input type="text" readonly class="shift-sale calc-field" tabindex="-1" aria-label="Sale litres" /></td>
@@ -1351,10 +1397,15 @@
   async function loadStaff() {
     try {
       // Always fetch a fresh roster on shift page — stale staff list is confusing mid-shift
-      staffList = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: false });
+      const roster = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: false });
+      if (Array.isArray(roster) && roster.length) {
+        staffList = roster;
+      } else if (!staffList.length) {
+        staffList = roster || [];
+      }
     } catch (error) {
       AppError.report(error, { context: "MeterShiftReading.loadStaff" });
-      staffList = [];
+      if (!staffList.length) staffList = [];
     }
   }
 
@@ -1443,6 +1494,9 @@
       }
 
       shiftHasSavedRows = savedNozzles.length > 0;
+      await ensureShiftStaffRoster(data);
+      if (gen !== loadGeneration) return;
+
       const suggestClose =
         resolvedLock.locked
           ? null
@@ -2326,11 +2380,9 @@
     select.value = current === "afternoon" ? "afternoon" : "morning";
   }
 
-  async function init(opts = {}) {
-    if (initialized) {
-      await loadShift();
-      return;
-    }
+  let initPromise = null;
+
+  async function bootstrapShiftRegister(opts = {}) {
     isAdmin = opts.isAdmin === true;
     currentUserId = opts.userId || null;
     const clearBtn = el("shift-meter-clear");
@@ -2349,6 +2401,16 @@
     if (typeof ShiftStaffLedger?.init === "function") ShiftStaffLedger.init();
     await loadStaff();
     initialized = true;
+  }
+
+  async function init(opts = {}) {
+    if (!initialized) {
+      if (!initPromise) initPromise = bootstrapShiftRegister(opts);
+      await initPromise;
+    } else {
+      isAdmin = opts.isAdmin === true;
+      currentUserId = opts.userId || null;
+    }
     await loadShift();
   }
 
