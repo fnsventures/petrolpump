@@ -65,6 +65,104 @@
     errorEl?.classList.add("hidden");
   }
 
+  function clearFieldErrors(root) {
+    root?.querySelectorAll(".pl-field-invalid").forEach((el) => el.classList.remove("pl-field-invalid"));
+    root?.querySelectorAll(".pl-block-error").forEach((el) => {
+      el.textContent = "";
+      el.classList.add("hidden");
+    });
+  }
+
+  function markInvalid(input) {
+    input?.classList.add("pl-field-invalid");
+  }
+
+  /** Show error on the product card (near Save) and optionally the panel alert. */
+  function showSaveError(opts, block, message, focusEl) {
+    const { errorEl } = opts || {};
+    showError(errorEl, message);
+    const local = block?.querySelector(".pl-block-error");
+    if (local) {
+      local.textContent = message;
+      local.classList.remove("hidden");
+    }
+    if (focusEl && typeof focusEl.focus === "function") {
+      try {
+        focusEl.focus({ preventScroll: false });
+      } catch (_) {
+        focusEl.focus();
+      }
+      focusEl.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    } else {
+      (local || errorEl)?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function captureDrafts(listEl, excludeDsrId) {
+    const drafts = { products: {}, lfrByDate: {} };
+    listEl?.querySelectorAll(".pl-day-card").forEach((dayEl) => {
+      const date = dayEl.dataset.date;
+      if (date) {
+        drafts.lfrByDate[date] = {
+          total: dayEl.querySelector(".pl-lfr-total")?.value ?? "",
+          qty: dayEl.querySelector(".pl-lfr-qty")?.value ?? "",
+        };
+      }
+      dayEl.querySelectorAll(".pl-product-block").forEach((block) => {
+        const id = block.dataset.dsrId;
+        if (!id || id === excludeDsrId) return;
+        drafts.products[id] = {
+          rate: block.querySelector(".pl-buying-input")?.value ?? "",
+          delTotal: block.querySelector(".pl-del-total")?.value ?? "",
+          delQty: block.querySelector(".pl-del-qty")?.value ?? "",
+          inv: block.querySelector(".pl-inv-input")?.value ?? "",
+          gstin: block.querySelector(".pl-gstin-input")?.value ?? "",
+        };
+      });
+    });
+    return drafts;
+  }
+
+  function restoreDrafts(listEl, drafts) {
+    if (!listEl || !drafts) return;
+    Object.entries(drafts.lfrByDate || {}).forEach(([date, vals]) => {
+      const dayEl = listEl.querySelector(`.pl-day-card[data-date="${CSS.escape?.(date) ?? date}"]`);
+      if (!dayEl) return;
+      const t = dayEl.querySelector(".pl-lfr-total");
+      const q = dayEl.querySelector(".pl-lfr-qty");
+      if (t && vals.total != null) t.value = vals.total;
+      if (q && vals.qty != null) q.value = vals.qty;
+    });
+    Object.entries(drafts.products || {}).forEach(([id, vals]) => {
+      const sel = CSS.escape ? CSS.escape(id) : id;
+      const block = listEl.querySelector(`.pl-product-block[data-dsr-id="${sel}"]`);
+      if (!block) return;
+      const apply = (selector, value) => {
+        const el = block.querySelector(selector);
+        if (el && value != null) el.value = value;
+      };
+      apply(".pl-buying-input", vals.rate);
+      apply(".pl-del-total", vals.delTotal);
+      apply(".pl-del-qty", vals.delQty);
+      apply(".pl-inv-input", vals.inv);
+      apply(".pl-gstin-input", vals.gstin);
+    });
+    listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => updateDayComputed(dayEl));
+  }
+
+  function syncEmptyState(opts) {
+    const { listEl, alertEl, emptyEl } = opts || {};
+    const hasCards = Boolean(listEl?.querySelector(".pl-day-card"));
+    if (hasCards) {
+      emptyEl?.classList.add("hidden");
+      alertEl?.classList.remove("hidden");
+    } else {
+      if (listEl) listEl.innerHTML = "";
+      alertEl?.classList.add("hidden");
+      emptyEl?.classList.remove("hidden");
+    }
+  }
+
   function formatMoney(n) {
     if (!Number.isFinite(n)) return "—";
     return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -146,7 +244,15 @@
 
   function bindDayComputed(dayEl) {
     dayEl.querySelectorAll("input").forEach((input) => {
-      input.addEventListener("input", () => updateDayComputed(dayEl));
+      input.addEventListener("input", () => {
+        input.classList.remove("pl-field-invalid");
+        const blockErr = input.closest(".pl-product-block")?.querySelector(".pl-block-error");
+        if (blockErr) {
+          blockErr.textContent = "";
+          blockErr.classList.add("hidden");
+        }
+        updateDayComputed(dayEl);
+      });
     });
     updateDayComputed(dayEl);
   }
@@ -219,16 +325,16 @@
               </div>
               <div class="pl-field-grid">
                 <label class="pl-field">
-                  <span>Rate per Unit (₹/KL)</span>
-                  <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" />
+                  <span>Rate per Unit (₹/KL) <abbr title="required">*</abbr></span>
+                  <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <label class="pl-field">
-                  <span>DLY/TAXABLE CHARGE (₹)</span>
-                  <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" />
+                  <span>DLY/TAXABLE CHARGE (₹) <abbr title="required">*</abbr></span>
+                  <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <label class="pl-field">
-                  <span>Quantity (KL)</span>
-                  <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" />
+                  <span>Quantity (KL) <abbr title="required">*</abbr></span>
+                  <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <div class="pl-field pl-computed">
                   <span>Delivery ₹/KL</span>
@@ -244,6 +350,7 @@
                 </label>
               </div>
               <p class="pl-landed-preview muted">Buying price (landed): —</p>
+              <p class="pl-block-error error hidden" role="alert"></p>
               <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">Save ${escapeHtml(productLabel)}</button>
             </div>`;
           })
@@ -262,12 +369,12 @@
             </div>
             <div class="pl-field-grid">
               <label class="pl-field">
-                <span>TAXABLE AMT (₹)</span>
-                <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" />
+                <span>TAXABLE AMT (₹) <abbr title="required">*</abbr></span>
+                <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" required aria-required="true" />
               </label>
               <label class="pl-field">
-                <span>Total quantity (KL)</span>
-                <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" />
+                <span>Total quantity (KL) <abbr title="required">*</abbr></span>
+                <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" required aria-required="true" />
               </label>
               <div class="pl-field pl-computed">
                 <span>LFR ₹/KL (incl. GST)</span>
@@ -288,48 +395,72 @@
 
   async function handleSaveBuyingPrice(dsrId, opts) {
     const { listEl, errorEl, onSaved } = opts;
-    const block = listEl?.querySelector(`.pl-product-block[data-dsr-id="${dsrId}"]`);
+    const block = listEl?.querySelector(`.pl-product-block[data-dsr-id="${CSS.escape ? CSS.escape(dsrId) : dsrId}"]`);
     const dayEl = block?.closest(".pl-day-card");
     const input = document.getElementById(`pl-buying-${dsrId}`);
     const invInput = document.getElementById(`pl-inv-${dsrId}`);
     const gstinInput = document.getElementById(`pl-gstin-${dsrId}`);
-    const saveBtn = listEl?.querySelector(`.pl-buying-save[data-dsr-id="${dsrId}"]`);
+    const delTotalInput = block?.querySelector(".pl-del-total");
+    const delQtyInput = block?.querySelector(".pl-del-qty");
+    const lfrTotalInput = dayEl?.querySelector(".pl-lfr-total");
+    const lfrQtyInput = dayEl?.querySelector(".pl-lfr-qty");
+    const saveBtn = listEl?.querySelector(`.pl-buying-save[data-dsr-id="${CSS.escape ? CSS.escape(dsrId) : dsrId}"]`);
     const product = saveBtn?.dataset?.product || block?.dataset?.product;
     const receiptDate = dayEl?.dataset?.date || null;
+
+    clearFieldErrors(dayEl);
+    hideError(errorEl);
 
     const valueKl = readNum(input);
     const parsed = validateBuyingRateKlInput(valueKl);
     if (!parsed.ok) {
-      showError(
-        errorEl,
-        parsed.message || `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`
+      markInvalid(input);
+      showSaveError(
+        opts,
+        block,
+        parsed.message || `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`,
+        input
       );
       return;
     }
     const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
     if (value == null) {
-      showError(errorEl, `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`);
-      return;
-    }
-
-    const delTotal = readNum(block?.querySelector(".pl-del-total"));
-    const delQty = readNum(block?.querySelector(".pl-del-qty"));
-    const delPerKl = ratePerKlFromTotalAndQty(delTotal, delQty);
-    if (delPerKl == null) {
-      showError(
-        errorEl,
-        "Enter DLY/TAXABLE CHARGE (₹) and Quantity (KL) from the fuel invoice product line."
+      markInvalid(input);
+      showSaveError(
+        opts,
+        block,
+        `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`,
+        input
       );
       return;
     }
 
-    const lfrTotal = readNum(dayEl?.querySelector(".pl-lfr-total"));
-    const lfrQty = readNum(dayEl?.querySelector(".pl-lfr-qty"));
+    const delTotal = readNum(delTotalInput);
+    const delQty = readNum(delQtyInput);
+    const delPerKl = ratePerKlFromTotalAndQty(delTotal, delQty);
+    if (delPerKl == null) {
+      if (!Number.isFinite(delTotal) || delTotal < 0) markInvalid(delTotalInput);
+      if (!Number.isFinite(delQty) || delQty <= 0) markInvalid(delQtyInput);
+      showSaveError(
+        opts,
+        block,
+        "Enter DLY/TAXABLE CHARGE (₹) and Quantity (KL) from the fuel invoice — required to save.",
+        !Number.isFinite(delTotal) || delTotal < 0 ? delTotalInput : delQtyInput
+      );
+      return;
+    }
+
+    const lfrTotal = readNum(lfrTotalInput);
+    const lfrQty = readNum(lfrQtyInput);
     const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, getPurchaseLfrGstPct());
     if (lfrPerKl == null) {
-      showError(
-        errorEl,
-        "Enter LFR TAXABLE AMT (₹) and total KL from the LFR invoice (covers MS + HSD on this load)."
+      if (!Number.isFinite(lfrTotal) || lfrTotal < 0) markInvalid(lfrTotalInput);
+      if (!Number.isFinite(lfrQty) || lfrQty <= 0) markInvalid(lfrQtyInput);
+      showSaveError(
+        opts,
+        block,
+        "Enter LFR TAXABLE AMT (₹) and total KL from the LFR invoice (covers MS + HSD) — required to save.",
+        !Number.isFinite(lfrTotal) || lfrTotal < 0 ? lfrTotalInput : lfrQtyInput
       );
       return;
     }
@@ -347,10 +478,16 @@
         .toUpperCase();
     }
     if (supplierGstin && !/^[0-9A-Z]{15}$/.test(supplierGstin)) {
-      showError(errorEl, "Supplier GSTIN must be 15 characters (or leave blank).");
+      markInvalid(gstinInput);
+      showSaveError(
+        opts,
+        block,
+        "Supplier GSTIN must be 15 characters (or leave blank).",
+        gstinInput
+      );
       return;
     }
-    hideError(errorEl);
+
     const btn = saveBtn;
     const resetBtn = () => {
       if (btn) {
@@ -376,6 +513,14 @@
       vaultDocId = null;
     }
 
+    if (!window.supabaseClient?.rpc) {
+      showSaveError(opts, block, "Not connected. Refresh the page and try again.");
+      resetBtn();
+      return;
+    }
+
+    const drafts = captureDrafts(listEl, dsrId);
+
     const rpc = await window.supabaseClient.rpc("update_dsr_buying_price", {
       p_dsr_id: dsrId,
       p_value: value,
@@ -391,22 +536,35 @@
     });
     if (rpc.error) {
       AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
-      showError(
-        errorEl,
+      showSaveError(
+        opts,
+        block,
         rpc.error.message || "Could not save. Ensure you are logged in as admin."
       );
       resetBtn();
       return;
     }
-    if (btn) {
-      btn.textContent = "Saved";
-      btn.classList.add("pl-save-success");
+
+    // Remove this product from the UI immediately; day card goes away when both are saved.
+    block?.remove();
+    if (dayEl && !dayEl.querySelector(".pl-product-block")) {
+      dayEl.remove();
     }
+    syncEmptyState(opts);
+    hideError(errorEl);
+
     if (typeof AppCache !== "undefined" && AppCache) {
       CacheInvalidation.invalidate("dsr");
     }
-    if (typeof onSaved === "function") await onSaved();
-    else await refresh({ ...opts, force: true });
+
+    try {
+      if (typeof onSaved === "function") await onSaved();
+      else await refresh({ ...opts, force: true });
+      restoreDrafts(listEl, drafts);
+    } catch (err) {
+      AppError.report(err, { context: "handleSaveBuyingPrice.onSaved", type: "dsr" });
+      restoreDrafts(listEl, drafts);
+    }
   }
 
   async function refresh(opts = {}) {
