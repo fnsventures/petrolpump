@@ -191,8 +191,8 @@
   }
 
   async function refreshPumpSettingsFromNetwork() {
-    if (typeof supabaseClient !== "undefined" && supabaseClient) {
-      const { data, error } = await supabaseClient
+    if (typeof window.supabaseClient !== "undefined" && window.supabaseClient) {
+      const { data, error } = await window.supabaseClient
         .from("pump_settings")
         .select("config")
         .eq("id", SETTINGS_ROW_ID)
@@ -211,7 +211,7 @@
     const current = getCachedSync();
     const next = normalize(deepMerge(current, partial));
 
-    if (typeof supabaseClient !== "undefined" && supabaseClient) {
+    if (typeof window.supabaseClient !== "undefined" && window.supabaseClient) {
       const payload = {
         id: SETTINGS_ROW_ID,
         config: next,
@@ -219,7 +219,7 @@
       };
       if (userId) payload.updated_by = userId;
 
-      const { error } = await supabaseClient.from("pump_settings").upsert(payload, { onConflict: "id" });
+      const { error } = await window.supabaseClient.from("pump_settings").upsert(payload, { onConflict: "id" });
       if (error) throw error;
     }
 

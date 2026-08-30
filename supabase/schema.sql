@@ -1240,8 +1240,13 @@ create table if not exists public.invoice_items (
   rate numeric(12,2) not null default 0,
   gst_percent numeric(5,2) not null default 18,
   amount numeric(12,2) not null default 0,
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz default now()
 );
+
+-- Existing DBs created invoice_items without created_by; CREATE TABLE IF NOT EXISTS will not add it.
+alter table public.invoice_items
+  add column if not exists created_by uuid references auth.users(id) on delete set null;
 
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id);
 
@@ -1255,15 +1260,21 @@ create policy "invoice_items_select_authenticated" on public.invoice_items
 
 drop policy if exists "invoice_items_insert_own" on public.invoice_items;
 create policy "invoice_items_insert_own" on public.invoice_items
-  for insert to authenticated with check (false);
+  for insert to authenticated
+  with check (
+    public.is_supervisor_or_admin() and created_by = auth.uid()
+  );
 
 drop policy if exists "invoice_items_update_by_role" on public.invoice_items;
 create policy "invoice_items_update_by_role" on public.invoice_items
-  for update to authenticated using (false) with check (false);
+  for update to authenticated
+  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
+  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
 
 drop policy if exists "invoice_items_delete_authenticated" on public.invoice_items;
-create policy "invoice_items_delete_authenticated" on public.invoice_items
-  for delete to authenticated using (false);
+drop policy if exists "invoice_items_delete_admin" on public.invoice_items;
+create policy "invoice_items_delete_admin" on public.invoice_items
+  for delete to authenticated using (public.is_admin());
 
 
 -- Generate next invoice number (CRI/NNNN)
@@ -1381,7 +1392,7 @@ begin
 
     insert into public.invoice_items (
       invoice_id, sl_no, product_id, item_name, hsn_code,
-      quantity, unit, rate, gst_percent, amount
+      quantity, unit, rate, gst_percent, amount, created_by
     ) values (
       v_invoice_id,
       coalesce((v_item->>'sl_no')::integer, 1),
@@ -1393,7 +1404,8 @@ begin
       coalesce(v_item->>'unit', 'Pcs'),
       v_rate,
       v_gst_pct,
-      v_line_amount
+      v_line_amount,
+      auth.uid()
     );
   end loop;
 

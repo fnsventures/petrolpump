@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig */
 
 let productsCache = [];
 let currentAuth = null;
@@ -8,6 +8,7 @@ const PAGE_SIZE = 20;
 let invoicesPagination = { offset: 0, hasMore: true, totalCount: 0, isLoading: false };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -41,7 +42,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ─── Products ────────────────────────────────────────────────────────────────
 
 async function loadProducts() {
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("products")
     .select("id, name, unit, default_rate, gst_percent")
     .eq("is_active", true)
@@ -135,7 +136,7 @@ async function populatePartyDatalist() {
   const datalist = document.getElementById("party-list");
   if (!datalist) return;
 
-  const { data } = await supabaseClient
+  const { data } = await window.supabaseClient
     .from("invoices")
     .select("party_name")
     .order("created_at", { ascending: false })
@@ -423,7 +424,7 @@ async function saveInvoice() {
   showProgress();
 
   try {
-    const { data, error } = await supabaseClient.rpc("save_invoice", {
+    const { data, error } = await window.supabaseClient.rpc("save_invoice", {
       p_invoice_date: invoiceDate,
       p_invoice_type: document.getElementById("invoice-type")?.value || "CASH",
       p_party_name: partyName,
@@ -490,7 +491,7 @@ function resetForm() {
 // ─── Print Invoice ───────────────────────────────────────────────────────────
 
 async function showPrintInvoice(invoiceId) {
-  const { data: invoice, error } = await supabaseClient
+  const { data: invoice, error } = await window.supabaseClient
     .from("invoices")
     .select(
       "invoice_number, invoice_date, invoice_type, party_name, party_address, party_gstin, vehicle_no, mobile, km_reading, subtotal, discount, round_off, total_amount"
@@ -503,7 +504,7 @@ async function showPrintInvoice(invoiceId) {
     return;
   }
 
-  const { data: items } = await supabaseClient
+  const { data: items } = await window.supabaseClient
     .from("invoice_items")
     .select("sl_no, item_name, quantity, unit, rate, gst_percent, amount")
     .eq("invoice_id", invoiceId)
@@ -659,7 +660,7 @@ async function loadInvoices(reset = false) {
   try {
     if (reset) {
       const { count } = await runAppRequest("Invoice count", () =>
-        supabaseClient
+        window.supabaseClient
           .from("invoices")
           .select("id", { count: "exact", head: true })
           .gte("invoice_date", start)
@@ -669,7 +670,7 @@ async function loadInvoices(reset = false) {
     }
 
     const { data, error } = await runAppRequest("Invoices", () =>
-      supabaseClient
+      window.supabaseClient
         .from("invoices")
         .select("id, invoice_number, invoice_date, party_name, vehicle_no, total_amount, invoice_type")
         .gte("invoice_date", start)
@@ -701,7 +702,7 @@ async function loadInvoices(reset = false) {
 
     // Load item counts
     const invoiceIds = data.map(d => d.id);
-    const { data: itemCounts } = await supabaseClient
+    const { data: itemCounts } = await window.supabaseClient
       .from("invoice_items")
       .select("invoice_id")
       .in("invoice_id", invoiceIds);
@@ -773,7 +774,7 @@ async function deleteInvoice(btn) {
     auth: currentAuth,
     actionLabel: "delete invoices",
     confirmMessage: `Delete invoice ${invoiceNumber} dated ${formatNumericDate(invoiceDate)} (${formatCurrency(invoiceAmount)})?\n\nThis cannot be undone.`,
-    deleteFn: () => supabaseClient.from("invoices").delete().eq("id", invoiceId),
+    deleteFn: () => window.supabaseClient.from("invoices").delete().eq("id", invoiceId),
     cacheScope: "operational",
     onSuccess: () => loadInvoices(true),
     errorContext: { context: "deleteInvoice", invoiceId },

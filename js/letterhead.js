@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
+/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css?v=4";
@@ -232,7 +232,7 @@
       payload.created_by = currentAuth.session.user.id;
     }
 
-    const { error } = await supabaseClient.from("letterhead_letters").insert(payload);
+    const { error } = await window.supabaseClient.from("letterhead_letters").insert(payload);
     if (error) {
       AppError?.report?.(error, { context: "letterheadSaveHistory" });
       return { ok: false, error };
@@ -722,7 +722,7 @@
 
     try {
       if (reset) {
-        let countQuery = supabaseClient
+        let countQuery = window.supabaseClient
           .from("letterhead_letters")
           .select("id", { count: "exact", head: true });
         if (start) countQuery = countQuery.gte("letter_date", start);
@@ -731,7 +731,7 @@
         historyPagination.totalCount = count || 0;
       }
 
-      let listQuery = supabaseClient
+      let listQuery = window.supabaseClient
         .from("letterhead_letters")
         .select(LETTER_SELECT)
         .order("created_at", { ascending: false })
@@ -828,7 +828,7 @@
     const cached = findLoadedLetter(id);
     if (cached) return cached;
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("letterhead_letters")
       .select(LETTER_SELECT)
       .eq("id", id)
@@ -877,7 +877,7 @@
       auth: currentAuth,
       actionLabel: "delete letterhead history",
       confirmMessage: `Delete letter “${subject}” dated ${formatNumericDate(letterDate)}?\n\nThis cannot be undone.`,
-      deleteFn: () => supabaseClient.from("letterhead_letters").delete().eq("id", letterId),
+      deleteFn: () => window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId),
       cacheScope: "operational",
       onSuccess: () => {
         if (historyReportLetter?.id === letterId) closeHistoryReport();
@@ -930,8 +930,9 @@
       ?.addEventListener("click", () => closeHistoryReport());
   }
 
-  document.addEventListener("DOMContentLoaded", async () => {
-    const auth = await requireAuth({
+document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
+  const auth = await requireAuth({
       allowedRoles: ["admin", "supervisor"],
       onDenied: "dashboard.html",
       pageName: "letterhead",

@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "build:vendor": "node scripts/build-vendor.mjs",
+    "build:js": "node scripts/build-js.mjs",
     "build:images": "node scripts/optimize-images.mjs",
     "build:html": "node scripts/build-html.mjs",
     "sync:assets": "node scripts/sync-asset-versions.mjs",
     "dev": "node scripts/dev-server.mjs",
+    "dev:esbuild": "node scripts/dev-esbuild.mjs",
     "build:site": "node scripts/build-site.mjs",
     "build:fonts": "node scripts/download-fonts.mjs",
     "build:assets": "npm run build:images && npm run build:vendor && npm run build:fonts",

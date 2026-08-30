@@ -112,6 +112,11 @@
       return "Your session may have expired. Please sign in again.";
     }
 
+    // PGRST116 - No rows returned (expected for .maybeSingle()/.single() when no match)
+    if (code === "PGRST116" || lower.includes("pgrst116") || lower.includes("no rows")) {
+      return ""; // Empty string signals "not an error" - caller should handle
+    }
+
     // Fallback: return original message but truncate long technical strings
     if (message && message.length > 200) {
       return message.slice(0, 197) + "...";
@@ -211,13 +216,15 @@
   /**
    * Central handle: normalize, get friendly message, report, optionally show in UI.
    * @param {*} err
-   * @param {{ target?: HTMLElement | null, report?: boolean, context?: Object }} options
+   * @param {{ target?: HTMLElement | null, report?: boolean, context?: Object, toast?: boolean }} options
+   *   toast defaults to false (opt-in) so form field errors are not double-shown.
    * @returns {string} User-friendly message
    */
   function handle(err, options) {
     const opts = options || {};
     const target = opts.target;
     const shouldReport = opts.report !== false;
+    const shouldToast = opts.toast === true;
     const context = opts.context || {};
 
     const normalized = normalizeError(err);
@@ -227,7 +234,11 @@
       httpStatus,
     });
 
-    if (shouldReport) {
+    // PGRST116 (no rows) is expected - don't report or show to user
+    const isExpectedNoRows = normalized.code === "PGRST116" ||
+      (normalized.message && normalized.message.toLowerCase().includes("no rows"));
+
+    if (shouldReport && !isExpectedNoRows) {
       reportToMonitoring(err, { ...context, friendlyMessage: friendly, httpStatus });
     }
 
@@ -238,6 +249,10 @@
     if (target && typeof target.textContent !== "undefined") {
       target.textContent = friendly;
       target.classList && target.classList.remove("hidden");
+    }
+
+    if (shouldToast && friendly && !isExpectedNoRows) {
+      showToast(friendly, "error");
     }
 
     return friendly;
@@ -301,6 +316,63 @@
     window.addEventListener("unhandledrejection", onUnhandledRejection);
   }
 
+  /**
+   * Toast notification system for user-facing messages.
+   * @param {string} message
+   * @param {string} [type="info"] - "success" | "error" | "warning" | "info"
+   * @param {number} [duration=4000]
+   */
+  function showToast(message, type = "info", duration = 4000) {
+    if (typeof document === "undefined" || !document.body) return;
+    const text = String(message || "").trim();
+    if (!text) return;
+
+    let container = document.getElementById("app-toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "app-toast-container";
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("aria-atomic", "true");
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.className = `app-toast app-toast--${type}`;
+    toast.setAttribute("role", type === "error" ? "alert" : "status");
+
+    const body = document.createElement("span");
+    body.className = "app-toast-message";
+    body.textContent = text;
+    toast.appendChild(body);
+
+    const dismiss = () => {
+      clearTimeout(autoRemove);
+      toast.classList.remove("app-toast--visible");
+      const remove = () => toast.remove();
+      toast.addEventListener("transitionend", remove, { once: true });
+      setTimeout(remove, 300);
+    };
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "app-toast-close";
+    closeBtn.setAttribute("aria-label", "Dismiss");
+    closeBtn.textContent = "×";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dismiss();
+    });
+    toast.appendChild(closeBtn);
+
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      toast.classList.add("app-toast--visible");
+    });
+
+    const autoRemove = setTimeout(dismiss, duration);
+  }
+
   // Public API
   window.AppError = {
     handle: handle,
@@ -315,6 +387,7 @@
     withRetry: withRetry,
     isTransient: isTransientError,
     showGlobalBanner: showGlobalBanner,
+    showToast: showToast,
     normalize: normalizeError,
   };
 })();

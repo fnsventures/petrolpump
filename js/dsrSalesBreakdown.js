@@ -1,7 +1,7 @@
 /**
  * DSR sales detail — staff / shift / pump with professional filter bar.
  */
-/* global supabaseClient, AppError, escapeHtml, PumpSettings, formatQuantity, formatDisplayDate, formatFuelBadge */
+/* global window.supabaseClient, AppError, escapeHtml, PumpSettings, formatQuantity, formatDisplayDate, formatFuelBadge */
 
 (function (global) {
   const PRODUCT_LABEL = { petrol: "MS", diesel: "HSD" };
@@ -545,7 +545,7 @@
 
     setLoading(true);
     try {
-      const { data, error } = await supabaseClient.rpc("get_meter_sales_breakdown", {
+      const { data, error } = await window.supabaseClient.rpc("get_meter_sales_breakdown", {
         p_start: start,
         p_end: end,
       });

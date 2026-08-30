@@ -49,6 +49,9 @@ const AppCache = (function () {
   /** In-flight fetch deduplication — prevents parallel SWR storms for the same key. */
   const inflightFetches = new Map();
 
+  /** In-flight mutation deduplication — prevents double-submits (double-click = double charge). */
+  const inflightMutations = new Map();
+
   const CACHE_SYNC_KEY = "bpf_cache_sync";
   let cacheBroadcast = null;
 
@@ -273,6 +276,11 @@ const AppCache = (function () {
     else inflightFetches.clear();
   }
 
+  function clearInflightMutations(key) {
+    if (key) inflightMutations.delete(key);
+    else inflightMutations.clear();
+  }
+
   function runDedupedFetch(key, fetchFn, cacheType, onUpdate) {
     if (inflightFetches.has(key)) {
       return inflightFetches.get(key);
@@ -306,6 +314,74 @@ const AppCache = (function () {
 
     inflightFetches.set(key, promise);
     return promise;
+  }
+
+  /**
+   * Run a mutation once per key. Concurrent calls with the same key are rejected
+   * with DuplicateMutationError (callers should ignore that and rely on button disable).
+   *
+   * @param {string} key
+   * @param {Function} mutationFn - async () => result
+   * @returns {Promise<any>}
+   */
+  function runDedupedMutation(key, mutationFn) {
+    if (!key) return Promise.resolve().then(() => mutationFn());
+
+    if (inflightMutations.has(key)) {
+      const err = new Error("Mutation already in progress");
+      err.name = "DuplicateMutationError";
+      return Promise.reject(err);
+    }
+
+    const promise = Promise.resolve()
+      .then(() => mutationFn())
+      .finally(() => {
+        if (inflightMutations.get(key) === promise) {
+          inflightMutations.delete(key);
+        }
+      });
+
+    inflightMutations.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Apply optimistic update to cache. Returns previous data for rollback.
+   * @param {string} key
+   * @param {Function} updater - (currentData) => newData
+   * @param {string} [cacheType]
+   * @returns {any} previous data
+   */
+  function applyOptimisticUpdate(key, updater, cacheType) {
+    const previousData = get(key).data;
+    const newData = updater(previousData);
+    if (newData !== null && newData !== undefined) {
+      set(key, newData, cacheType);
+    }
+    return previousData;
+  }
+
+  /**
+   * Confirm optimistic update (data already written). Prefer a single
+   * CacheInvalidation / page refresh after success instead of invalidating here.
+   * @param {string} _key
+   */
+  function confirmOptimisticUpdate(_key) {
+    /* intentional no-op: cache already holds optimistic data; caller refreshes */
+  }
+
+  /**
+   * Rollback optimistic update.
+   * @param {string} key
+   * @param {any} previousData
+   * @param {string} [cacheType]
+   */
+  function rollbackOptimisticUpdate(key, previousData, cacheType) {
+    if (previousData !== null && previousData !== undefined) {
+      set(key, previousData, cacheType);
+    } else {
+      remove(key);
+    }
   }
 
   /**
@@ -457,6 +533,11 @@ const AppCache = (function () {
     getWithSWR,
     getStats,
     clearInflight,
+    clearInflightMutations,
+    runDedupedMutation,
+    applyOptimisticUpdate,
+    confirmOptimisticUpdate,
+    rollbackOptimisticUpdate,
     isStorageAvailable,
     CACHE_CONFIG,
     OPERATIONAL_TYPES,

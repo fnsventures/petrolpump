@@ -3,7 +3,7 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global supabaseClient, AppError, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger */
+/* global window.supabaseClient, AppError, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
@@ -247,7 +247,7 @@
     if (!missing.length || typeof StaffEmployees?.resolveEmployeesByIds !== "function") return;
 
     try {
-      const byId = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missing);
+      const byId = await StaffEmployees.resolveEmployeesByIds(window.supabaseClient, missing);
       byId.forEach((emp) => {
         staffList.push({
           id: emp.id,
@@ -277,7 +277,7 @@
     const table = product === "diesel" ? "dsr_diesel" : "dsr_petrol";
     const rateField = product === "diesel" ? "diesel_rate" : "petrol_rate";
     try {
-      const { data, error } = await supabaseClient
+      const { data, error } = await window.supabaseClient
         .from(table)
         .select(rateField)
         .not(rateField, "is", null)
@@ -362,7 +362,7 @@
 
   async function fetchLockInfo(date, shift) {
     try {
-      const { data, error } = await supabaseClient.rpc("meter_shift_lock_info", {
+      const { data, error } = await window.supabaseClient.rpc("meter_shift_lock_info", {
         p_date: date,
         p_shift: shift || null,
       });
@@ -1281,7 +1281,7 @@
   async function fetchMorningShiftClosings(dateStr) {
     const map = {};
     try {
-      const { data, error } = await supabaseClient
+      const { data, error } = await window.supabaseClient
         .from("meter_shift_readings")
         .select("product, pump_no, nozzle_no, closing_meter")
         .eq("reading_date", dateStr)
@@ -1308,7 +1308,7 @@
     let prior = data?.prior || null;
     if (!prior) {
       try {
-        const { data: priorData, error } = await supabaseClient.rpc("get_meter_shift_prior_closings", {
+        const { data: priorData, error } = await window.supabaseClient.rpc("get_meter_shift_prior_closings", {
           p_date: date,
           p_shift: shift,
         });
@@ -1397,7 +1397,7 @@
   async function loadStaff() {
     try {
       // Always fetch a fresh roster on shift page — stale staff list is confusing mid-shift
-      const roster = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: false });
+      const roster = await StaffEmployees.loadActiveRoster(window.supabaseClient, { useCache: false });
       if (Array.isArray(roster) && roster.length) {
         staffList = roster;
       } else if (!staffList.length) {
@@ -1433,7 +1433,7 @@
           : Promise.resolve(null);
 
       const [readingsRes, lockInfo, ledgerMap] = await Promise.all([
-        supabaseClient.rpc("get_meter_shift_readings", {
+        window.supabaseClient.rpc("get_meter_shift_readings", {
           p_date: date,
           p_shift: shift,
         }),
@@ -1616,7 +1616,7 @@
     // afternoon closing would fall below the new morning closing.
     if (shift === "morning") {
       try {
-        const { data: afternoonRows, error: aftErr } = await supabaseClient
+        const { data: afternoonRows, error: aftErr } = await window.supabaseClient
           .from("meter_shift_readings")
           .select("product, pump_no, nozzle_no, closing_meter")
           .eq("reading_date", date)
@@ -1666,7 +1666,7 @@
     showMsg("", false);
 
     try {
-      const { data, error } = await supabaseClient.rpc("save_meter_shift_readings", {
+      const { data, error } = await window.supabaseClient.rpc("save_meter_shift_readings", {
         p_date: date,
         p_shift: shift,
         p_nozzles: nozzles,
@@ -1754,7 +1754,7 @@
     }
 
     try {
-      const { data } = await supabaseClient.rpc("get_meter_shift_readings", {
+      const { data } = await window.supabaseClient.rpc("get_meter_shift_readings", {
         p_date: date,
         p_shift: shift,
       });
@@ -1804,7 +1804,7 @@
       actionLabel: "delete shift register entries",
       confirmMessage: `Delete shift register for ${formatDisplayDate?.(date) || date} (${shiftLabel(shift)})?\n\nNozzle meters and cash for this shift will be removed. MS/HSD forms will refresh from any remaining shifts.`,
       deleteFn: () =>
-        supabaseClient.rpc("delete_meter_shift_readings", {
+        window.supabaseClient.rpc("delete_meter_shift_readings", {
           p_date: date,
           p_shift: shift,
         }),
@@ -2113,7 +2113,7 @@
 
     try {
       const [{ data, error }, lock] = await Promise.all([
-        supabaseClient.rpc("get_meter_shift_readings", {
+        window.supabaseClient.rpc("get_meter_shift_readings", {
           p_date: date,
           p_shift: shift,
         }),

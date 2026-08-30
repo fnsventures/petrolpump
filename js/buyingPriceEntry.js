@@ -1,4 +1,4 @@
-/* global supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
+/* global window.supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
 
 /**
  * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.
@@ -10,7 +10,7 @@
     if (!title) return null;
 
     const exactQuery = (withDate) => {
-      let q = supabaseClient
+      let q = window.supabaseClient
         .from("invoice_documents")
         .select("id")
         .eq("category", "purchase")
@@ -29,7 +29,7 @@
     }
 
     const safePattern = `%${title.replace(/[%_\\]/g, "\\$&")}%`;
-    let fuzzy = supabaseClient
+    let fuzzy = window.supabaseClient
       .from("invoice_documents")
       .select("id, title")
       .eq("category", "purchase")
@@ -149,6 +149,15 @@
       input.addEventListener("input", () => updateDayComputed(dayEl));
     });
     updateDayComputed(dayEl);
+  }
+
+  /** True when the user has typed or focused fields — avoid wiping via re-render. */
+  function hasUnsavedEdits(listEl) {
+    if (!listEl?.children?.length) return false;
+    if (listEl.contains(document.activeElement) && document.activeElement?.matches?.("input, textarea, select, button")) {
+      return true;
+    }
+    return [...listEl.querySelectorAll("input")].some((input) => input.value !== input.defaultValue);
   }
 
   /**
@@ -367,7 +376,7 @@
       vaultDocId = null;
     }
 
-    const rpc = await supabaseClient.rpc("update_dsr_buying_price", {
+    const rpc = await window.supabaseClient.rpc("update_dsr_buying_price", {
       p_dsr_id: dsrId,
       p_value: value,
       p_supplier_invoice_no: supplierInvoiceNo || null,
@@ -402,6 +411,10 @@
 
   async function refresh(opts = {}) {
     const { force = false, listEl, alertEl, emptyEl, errorEl, onSaved } = opts;
+    // Soft reloads (section revisit, live refresh, landing race) must not wipe typed values.
+    if (!force && hasUnsavedEdits(listEl)) {
+      return null;
+    }
     const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows({ force });
     if (error) {
       AppError.report(error, { context: "BuyingPriceEntry.refresh" });
@@ -410,6 +423,10 @@
       emptyEl?.classList.add("hidden");
       showError(errorEl, error.message || "Could not load receipt days needing a buying price.");
       return [];
+    }
+    // Re-check after await: user may have started typing while the fetch was in flight.
+    if (!force && hasUnsavedEdits(listEl)) {
+      return null;
     }
     const rows = data ?? [];
     renderMissingBuyingList(rows, { listEl, alertEl, emptyEl, errorEl, onSaved });
@@ -425,5 +442,6 @@
     renderMissingBuyingList,
     refresh,
     focusFirstInput,
+    hasUnsavedEdits,
   };
 })(typeof window !== "undefined" ? window : globalThis);

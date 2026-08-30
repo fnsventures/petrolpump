@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, getExpenseCategoryLabel, buildExpenseCategoryMap, formatNumericDate, formatNumberPlain, initDocsAccordion, PrintUtils, fuelRowClass, formatFuelBadge */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppError, escapeHtml, GST_SLABS, PumpSettings, loadPumpSettings, AppConfig, formatBuyingRatePerKl, getBuyingPriceUnitLabel, normalizeProduct, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, DsrQueries, getDsrNetSaleLitres, getDsrSaleRate, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, computeProfitLossSummary, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, getExpenseCategoryLabel, buildExpenseCategoryMap, formatNumericDate, formatNumberPlain, initDocsAccordion, PrintUtils, fuelRowClass, formatFuelBadge */
 
 /** Report types grouped for the Generate section UI. */
 const REPORT_CATALOG = [
@@ -108,6 +108,7 @@ let reportsLoadInFlight = null;
 let reportPrintBusy = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin"],
     onDenied: "dashboard.html",
@@ -826,7 +827,7 @@ async function loadAndRenderReports() {
   const fetchFn = async () => {
     const data = await fetchReportData(rangeStart, rangeEnd);
     try {
-      const { data: breakdown, error: brErr } = await supabaseClient.rpc("get_meter_sales_breakdown", {
+      const { data: breakdown, error: brErr } = await window.supabaseClient.rpc("get_meter_sales_breakdown", {
         p_start: rangeStart,
         p_end: rangeEnd,
       });
@@ -902,7 +903,7 @@ function normalizeReportsPayload(payload) {
 async function fetchReportData(start, end) {
   try {
     const invoke = () =>
-      supabaseClient.functions.invoke("get-reports-data", {
+      window.supabaseClient.functions.invoke("get-reports-data", {
         body: {
           startDate: start,
           endDate: end,
@@ -949,7 +950,7 @@ async function fetchReportDataDirect(start, end) {
     vaultResult,
   ] = await Promise.all([
     DsrQueries.fetchDsrRows(start, end, { select: DsrQueries.DSR_SELECT_FULL }),
-    supabaseClient.rpc("get_dsr_stock_range", { p_start: start, p_end: end }),
+    window.supabaseClient.rpc("get_dsr_stock_range", { p_start: start, p_end: end }),
     DsrQueries.fetchExpenses(start, end, "date, category, amount, description"),
     supabaseClient
       .from("invoices")
@@ -959,7 +960,7 @@ async function fetchReportDataDirect(start, end) {
       .gte("invoice_date", start)
       .lte("invoice_date", end)
       .order("invoice_date", { ascending: true }),
-    supabaseClient.from("expense_categories").select("name, label").order("sort_order"),
+    window.supabaseClient.from("expense_categories").select("name, label").order("sort_order"),
     supabaseClient
       .from("invoice_documents")
       .select("id, invoice_date, vendor, amount, category, title, drive_web_view_link")

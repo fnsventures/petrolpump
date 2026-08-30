@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -491,6 +491,7 @@ async function runSalarySlipPrint(staff, staffPayments, monthValue) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -558,14 +559,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function deleteLinkedSalaryExpense(payment, staff) {
     if (payment?.id) {
-      const { data: linked, error: linkErr } = await supabaseClient
+      const { data: linked, error: linkErr } = await window.supabaseClient
         .from("expenses")
         .select("id")
         .eq("salary_payment_id", payment.id)
         .limit(1);
 
       if (!linkErr && linked?.length) {
-        const { error: delErr } = await supabaseClient.from("expenses").delete().eq("id", linked[0].id);
+        const { error: delErr } = await window.supabaseClient.from("expenses").delete().eq("id", linked[0].id);
         if (delErr) AppError.report(delErr, { context: "deleteLinkedSalaryExpenseById" });
         return;
       }
@@ -575,7 +576,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const desc = salaryExpenseDescription(staff, payment.note);
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("expenses")
       .select("id")
       .eq("category", "salary")
@@ -590,7 +591,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (!data?.length) return;
 
-    const { error: delErr } = await supabaseClient.from("expenses").delete().eq("id", data[0].id);
+    const { error: delErr } = await window.supabaseClient.from("expenses").delete().eq("id", data[0].id);
     if (delErr) {
       AppError.report(delErr, { context: "deleteLinkedSalaryExpense" });
     }
@@ -609,7 +610,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
     if (!confirmed) return;
 
-    const { error } = await supabaseClient.from("salary_payments").delete().eq("id", payment.id);
+    const { error } = await window.supabaseClient.from("salary_payments").delete().eq("id", payment.id);
     if (error) {
       alert(AppError.getUserMessage(error));
       AppError.report(error, { context: "deleteSalaryPayment", id: payment.id });
@@ -777,7 +778,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function loadStaffMembers() {
     try {
-      staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
+      staffList = await StaffEmployees.loadActiveEmployees(window.supabaseClient, {
         isAdmin,
         useCache: true,
       });
@@ -794,7 +795,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const missing = [...new Set((ids || []).filter((id) => id && !map.has(id)))];
     if (!missing.length) return map;
     try {
-      const resolved = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missing);
+      const resolved = await StaffEmployees.resolveEmployeesByIds(window.supabaseClient, missing);
       resolved.forEach((emp, id) => map.set(id, emp));
     } catch (err) {
       AppError.report(err, { context: "staffMapForIds" });
@@ -818,7 +819,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadPaymentsInRange(startDate, endDate) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("salary_payments")
       .select("id, employee_id, date, amount, note, salary_month")
       .gte("date", startDate)
@@ -827,7 +828,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (error) {
       if (isMissingSalaryMonthColumn(error)) {
-        const { data: legacyData, error: legacyError } = await supabaseClient
+        const { data: legacyData, error: legacyError } = await window.supabaseClient
           .from("salary_payments")
           .select("id, employee_id, date, amount, note")
           .gte("date", startDate)
@@ -849,7 +850,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const salaryMonth = normalizeSalaryMonth(monthValue);
     if (!salaryMonth) return [];
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("salary_payments")
       .select("id, employee_id, date, amount, note, salary_month")
       .eq("salary_month", salaryMonth)
@@ -1218,7 +1219,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       let insertedPayment = null;
       let paymentErrorResult = null;
 
-      ({ data: insertedPayment, error: paymentErrorResult } = await supabaseClient
+      ({ data: insertedPayment, error: paymentErrorResult } = await window.supabaseClient
         .from("salary_payments")
         .insert(payload)
         .select("id")
@@ -1227,7 +1228,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (paymentErrorResult && isMissingSalaryMonthColumn(paymentErrorResult)) {
         const legacyPayload = { employee_id: staffId, date, amount, note };
         if (auth.session?.user?.id) legacyPayload.created_by = auth.session.user.id;
-        ({ data: insertedPayment, error: paymentErrorResult } = await supabaseClient
+        ({ data: insertedPayment, error: paymentErrorResult } = await window.supabaseClient
           .from("salary_payments")
           .insert(legacyPayload)
           .select("id")
@@ -1251,16 +1252,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (auth.session?.user?.id) expensePayload.created_by = auth.session.user.id;
 
       let expenseError = null;
-      ({ error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload));
+      ({ error: expenseError } = await window.supabaseClient.from("expenses").insert(expensePayload));
 
       if (expenseError && isMissingSalaryPaymentIdColumn(expenseError)) {
         delete expensePayload.salary_payment_id;
-        ({ error: expenseError } = await supabaseClient.from("expenses").insert(expensePayload));
+        ({ error: expenseError } = await window.supabaseClient.from("expenses").insert(expensePayload));
       }
 
       if (expenseError) {
         if (insertedPayment?.id) {
-          const { error: rollbackError } = await supabaseClient
+          const { error: rollbackError } = await window.supabaseClient
             .from("salary_payments")
             .delete()
             .eq("id", insertedPayment.id);
