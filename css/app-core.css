@@ -1933,6 +1933,23 @@ tr.is-editing .expense-cat-drag-handle {
   font-size: 0.9rem;
 }
 
+.pl-block-error {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.pl-field-invalid {
+  border-color: #dc2626 !important;
+  outline: 1px solid #dc2626;
+  background: #fef2f2;
+}
+
+.pl-field abbr {
+  color: #dc2626;
+  text-decoration: none;
+  font-weight: 700;
+}
+
 .pl-missing-item {
   display: flex;
   flex-wrap: wrap;
