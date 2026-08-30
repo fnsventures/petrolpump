@@ -1,4 +1,4 @@
-/* global supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
+/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
 
 (function () {
   const page = () => window.CreditPage;
@@ -369,7 +369,7 @@ async function isCustomerNameTakenByOther(newName, ids) {
   if (!trimmed) return false;
   const targetNorm = normCustomerName(trimmed);
   const pattern = `%${escapeIlikePattern(trimmed)}%`;
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("credit_customers")
     .select("id, customer_name")
     .ilike("customer_name", pattern);
@@ -422,7 +422,7 @@ async function saveCustomerContact() {
   if (submitBtn) submitBtn.disabled = true;
   if (msg) msg.classList.add("hidden");
 
-  const { error } = await supabaseClient
+  const { error } = await window.supabaseClient
     .from("credit_customers")
     .update({
       customer_name: newName,
@@ -459,7 +459,7 @@ async function resolveCustomerIds() {
   }
   const needleNorm = normCustomerName(needle);
   const pattern = `%${escapeIlikePattern(needle)}%`;
-  const { data: list, error } = await supabaseClient
+  const { data: list, error } = await window.supabaseClient
     .from("credit_customers")
     .select("id, vehicle_no, amount_due, prepaid_balance, last_payment, customer_name, mobile, address")
     .ilike("customer_name", pattern);
@@ -967,7 +967,7 @@ async function loadCustomerDetail() {
   await resolveCustomerIds();
 
   try {
-    const { data: summaryData, error: summaryErr } = await supabaseClient.rpc(
+    const { data: summaryData, error: summaryErr } = await window.supabaseClient.rpc(
       "get_customer_credit_detail_as_of",
       { p_customer_name: page().state.customerName, p_date: asOfDate }
     );
@@ -1115,7 +1115,7 @@ async function handleSettle() {
   };
 
   if (settleIds.length === 1) {
-    const { error } = await supabaseClient.rpc("record_credit_payment", {
+    const { error } = await window.supabaseClient.rpc("record_credit_payment", {
       p_credit_customer_id: settleIds[0],
       p_date: settlementDate,
       p_amount: amount,
@@ -1136,7 +1136,7 @@ async function handleSettle() {
     }
   } else {
     const primaryId = page().state.customerId || settleIds[0];
-    const { error } = await supabaseClient.rpc("batch_record_credit_settlements", {
+    const { error } = await window.supabaseClient.rpc("batch_record_credit_settlements", {
       p_customer_ids: settleIds,
       p_primary_customer_id: primaryId,
       p_date: settlementDate,
@@ -1228,7 +1228,7 @@ async function deleteCreditEntry(entryId, btn) {
 
   if (btn) btn.disabled = true;
   showCustomerDetailMessage("");
-  const { error } = await supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
+  const { error } = await window.supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
 
   if (error) {
     if (btn) btn.disabled = false;
@@ -1255,7 +1255,7 @@ async function deleteCreditPayment(paymentId, btn) {
 
   if (btn) btn.disabled = true;
   showCustomerDetailMessage("");
-  const { error } = await supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
+  const { error } = await window.supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
 
   if (error) {
     if (btn) btn.disabled = false;

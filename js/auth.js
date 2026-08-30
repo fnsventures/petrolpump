@@ -678,6 +678,7 @@ async function initTopbarUserProfile() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  if (window.configPromise) await window.configPromise;
   const path = window.location.pathname || "";
   if (path.includes("login")) {
     const params = new URLSearchParams(window.location.search);
@@ -686,14 +687,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         "Your account is not set up yet. Ask an administrator to add you in Settings → Users & roles.";
       loginError.classList.remove("hidden");
     }
-    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (session) {
       const role = await resolveRoleForSession(session);
       if (role) {
         window.location.href = resolveLanding(role);
         return;
       }
-      await supabaseClient.auth.signOut();
+      await window.supabaseClient.auth.signOut();
     }
   }
   ensureTopbarUserMenu();
@@ -716,6 +717,8 @@ if (loginForm) {
     event.preventDefault();
     loginError?.classList.add("hidden");
 
+    if (window.configPromise) await window.configPromise;
+
     if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
       if (loginError) {
         loginError.textContent =
@@ -737,7 +740,7 @@ if (loginForm) {
     const email = formData.get("email");
     const password = formData.get("password");
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({
+    const { data, error } = await window.supabaseClient.auth.signInWithPassword({
       email,
       password,
     });
@@ -771,7 +774,8 @@ if (forgotPasswordLink) {
       return;
     }
     forgotPasswordLink.textContent = "Sending…";
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    if (window.configPromise) await window.configPromise;
+    const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + "/login.html",
     });
     if (loginError) loginError.classList.add("hidden");
@@ -920,6 +924,8 @@ async function requireAuth(options = {}) {
     pageName = null,
   } = options;
 
+  if (window.configPromise) await window.configPromise;
+
   if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
     window.location.href = redirectTo;
     return null;
@@ -927,7 +933,7 @@ async function requireAuth(options = {}) {
 
   const {
     data: { session },
-  } = await supabaseClient.auth.getSession();
+  } = await window.supabaseClient.auth.getSession();
 
   if (!session) {
     window.location.href = redirectTo;

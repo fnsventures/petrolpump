@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
 
 (function () {
   const QUALITY_SLOTS = [
@@ -62,8 +62,9 @@
 
   const dom = {};
 
-  document.addEventListener("DOMContentLoaded", async () => {
-    const auth = await requireAuth({
+document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
+  const auth = await requireAuth({
       allowedRoles: ["admin", "supervisor"],
       onDenied: "dashboard.html",
       pageName: "e20-register",
@@ -403,7 +404,7 @@
   }
 
   async function fetchRegister(dateStr) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("e20_testing_registers")
       .select(REGISTER_SELECT)
       .eq("register_date", dateStr)
@@ -414,7 +415,7 @@
 
   async function loadStaffNames() {
     try {
-      const data = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: true });
+      const data = await StaffEmployees.loadActiveRoster(window.supabaseClient, { useCache: true });
       if (!dom.staffList) return;
       dom.staffList.innerHTML = (data || [])
         .map((r) => r.name)
@@ -428,7 +429,7 @@
 
   async function loadTemplateRegister() {
     try {
-      const { data, error } = await supabaseClient
+      const { data, error } = await window.supabaseClient
         .from("e20_testing_registers")
         .select(TEMPLATE_SELECT)
         .order("register_date", { ascending: false })
@@ -901,7 +902,7 @@
     }
 
     try {
-      const { data, error } = await supabaseClient.rpc("save_e20_testing_register", {
+      const { data, error } = await window.supabaseClient.rpc("save_e20_testing_register", {
         p_date: dateStr,
         p_outlet_name: dom.outlet?.value?.trim() || "",
         p_cc_code: dom.cc?.value?.trim() || "",
@@ -958,7 +959,7 @@
     const deleteId = currentRegisterId;
     if (dom.deleteBtn) dom.deleteBtn.disabled = true;
     try {
-      const { error } = await supabaseClient
+      const { error } = await window.supabaseClient
         .from("e20_testing_registers")
         .delete()
         .eq("id", deleteId);
@@ -1014,7 +1015,7 @@
     }
 
     try {
-      let query = supabaseClient
+      let query = window.supabaseClient
         .from("e20_testing_registers")
         .select("register_date, certified, certified_at, cc_code, dealer_sign_name")
         .gte("register_date", start)

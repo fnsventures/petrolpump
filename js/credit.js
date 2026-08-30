@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation */
 
 const PAGE_SIZE = 25;
 
@@ -310,7 +310,7 @@ async function fetchOpenCreditTotal(forceReload = false) {
     return creditPagination.openCreditTotal;
   }
   const { data, error } = await runCreditRequest("Outstanding total", () =>
-    supabaseClient.rpc("get_open_credit_as_of", {
+    window.supabaseClient.rpc("get_open_credit_as_of", {
       p_date: getLocalDateString(),
     })
   );
@@ -321,7 +321,7 @@ async function fetchOpenCreditTotal(forceReload = false) {
 
 async function fetchLedgerData() {
   const { data: ledgerData, error } = await runCreditRequest("Credit ledger", () =>
-    supabaseClient.rpc("get_credit_ledger_aggregated")
+    window.supabaseClient.rpc("get_credit_ledger_aggregated")
   );
   if (error) throw error;
   creditPagination.ledgerData = ledgerData ?? [];
@@ -588,6 +588,7 @@ window.CreditPage = {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     pageName: "credit",

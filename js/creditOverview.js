@@ -1,4 +1,4 @@
-/* global supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, formatNumberPlain, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
+/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, formatNumberPlain, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
 
 (function () {
   const page = () => window.CreditPage;
@@ -192,7 +192,7 @@ async function loadOverviewPeriodActivity() {
 
   try {
     const fetchFn = async () => {
-      const { data, error } = await supabaseClient.rpc("get_credit_overview_period", {
+      const { data, error } = await window.supabaseClient.rpc("get_credit_overview_period", {
         p_from: start || null,
         p_to: end,
       });

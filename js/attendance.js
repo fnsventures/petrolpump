@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, toLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue */
 
 function getMonthStartEnd(year, month) {
   const m = month - 1;
@@ -109,6 +109,7 @@ function getShiftLabel(shiftValue) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -184,7 +185,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function loadStaffMembers() {
     try {
-      staffList = await StaffEmployees.loadActiveRoster(supabaseClient, { useCache: true });
+      staffList = await StaffEmployees.loadActiveRoster(window.supabaseClient, { useCache: true });
       return staffList;
     } catch (error) {
       AppError.report(error, { context: "loadStaffMembers" });
@@ -194,7 +195,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadAttendanceForDate(date) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("employee_attendance")
       .select("id, employee_id, date, status, shift, note")
       .eq("date", date);
@@ -333,7 +334,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!confirmed) return;
 
     btn.disabled = true;
-    const { error } = await supabaseClient.from("employee_attendance").delete().eq("id", recordId);
+    const { error } = await window.supabaseClient.from("employee_attendance").delete().eq("id", recordId);
 
     if (error) {
       btn.disabled = false;
@@ -379,13 +380,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     let error;
     if (recordId) {
-      const { error: updateErr } = await supabaseClient
+      const { error: updateErr } = await window.supabaseClient
         .from("employee_attendance")
         .update(payload)
         .eq("id", recordId);
       error = updateErr;
     } else {
-      const { error: insertErr } = await supabaseClient.from("employee_attendance").insert(payload);
+      const { error: insertErr } = await window.supabaseClient.from("employee_attendance").insert(payload);
       error = insertErr;
     }
 
@@ -427,7 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const { data, error } = await supabaseClient.rpc("save_employee_attendance_batch", {
+    const { data, error } = await window.supabaseClient.rpc("save_employee_attendance_batch", {
       p_date: date,
       p_rows: rows,
     });
@@ -458,7 +459,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const [year, month] = monthValue.split("-").map(Number);
     const { start, end } = getMonthStartEnd(year, month);
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("employee_attendance")
       .select("employee_id, date, status, shift, note")
       .gte("date", start)
@@ -548,7 +549,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const { start, end } = getMonthStartEnd(year, month);
 
     try {
-      const { data, error } = await supabaseClient
+      const { data, error } = await window.supabaseClient
         .from("employee_attendance")
         .select("employee_id, date, status, shift, note")
         .gte("date", start)
@@ -564,7 +565,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         ...new Set(list.map((r) => r.employee_id).filter((id) => id && !staffById.has(id))),
       ];
       if (missingIds.length) {
-        const resolved = await StaffEmployees.resolveEmployeesByIds(supabaseClient, missingIds);
+        const resolved = await StaffEmployees.resolveEmployeesByIds(window.supabaseClient, missingIds);
         resolved.forEach((emp, id) => staffById.set(id, emp));
       }
       const cfg = getShiftConfig();

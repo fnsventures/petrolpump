@@ -1,4 +1,4 @@
-/* global supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getLocalDateString, getValidFilterState, setFilterState */
+/* global window.supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getLocalDateString, getValidFilterState, setFilterState */
 
 /**
  * DSR summary section (filters / MS / HSD tabs) — loaded by dsr.html.
@@ -292,7 +292,7 @@
         .gte("date", startDate)
         .lte("date", endDate)
         .order("date", { ascending: false }),
-      supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
+      window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
     ]);
 
     if (dsrError || stockError) {

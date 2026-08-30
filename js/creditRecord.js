@@ -1,4 +1,4 @@
-/* global supabaseClient, AppError, escapeHtml, normCustomerName, formatCurrency, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle */
+/* global window.supabaseClient, AppCache, AppError, escapeHtml, normCustomerName, formatCurrency, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle */
 
 (function () {
   const page = () => window.CreditPage;
@@ -119,45 +119,93 @@ async function handleQuickPayment() {
     return;
   }
 
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+  }
 
-  const { error } = await supabaseClient.rpc("record_credit_payment", {
-    p_credit_customer_id: quickPaymentCustomerId,
-    p_date: settlementDate,
-    p_amount: amount,
-    p_note: null,
-    p_payment_mode: paymentMode,
-    p_same_day_settlement: sameDaySettlement,
-  });
+  const cacheKey = `credit_${quickPaymentCustomerId}`;
+  const mutationKey = `credit_payment:${quickPaymentCustomerId}:${amount}:${settlementDate}`;
+  let previousCreditData = null;
 
-  if (submitBtn) submitBtn.disabled = false;
+  if (typeof AppCache !== "undefined" && AppCache?.applyOptimisticUpdate) {
+    previousCreditData = AppCache.applyOptimisticUpdate(
+      cacheKey,
+      (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          netBalance: Math.max(0, (current.netBalance || 0) - amount),
+          amountDue: Math.max(0, (current.amountDue || 0) - amount),
+        };
+      },
+      "credit_overview"
+    );
+  }
 
-  if (error) {
+  const restoreSubmit = () => {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Record payment";
+    }
+  };
+
+  const rollback = () => {
+    if (typeof AppCache !== "undefined" && AppCache?.rollbackOptimisticUpdate && previousCreditData !== null) {
+      AppCache.rollbackOptimisticUpdate(cacheKey, previousCreditData, "credit_overview");
+    }
+  };
+
+  try {
+    const runMutation =
+      typeof AppCache !== "undefined" && AppCache?.runDedupedMutation
+        ? (key, fn) => AppCache.runDedupedMutation(key, fn)
+        : (_key, fn) => fn();
+
+    await runMutation(mutationKey, async () => {
+      const { error } = await window.supabaseClient.rpc("record_credit_payment", {
+        p_credit_customer_id: quickPaymentCustomerId,
+        p_date: settlementDate,
+        p_amount: amount,
+        p_note: null,
+        p_payment_mode: paymentMode,
+        p_same_day_settlement: sameDaySettlement,
+      });
+      if (error) throw error;
+    });
+
+    restoreSubmit();
+    AppCache?.confirmOptimisticUpdate?.(cacheKey);
+
+    const amountInput = document.getElementById("quick-settle-amount");
+    if (amountInput) amountInput.value = "";
+    const sameDayInput = document.getElementById("quick-settle-same-day");
+    if (sameDayInput) sameDayInput.checked = false;
+    savePersistedDate(RECORD_DATE_KEYS.creditQuickSettle, settlementDate);
+    await loadCustomerNames();
+    page().invalidateAndRefreshCreditPortfolio();
+    syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+
     if (msg) {
-      msg.textContent = AppError.getUserMessage(error);
-      msg.classList.remove("hidden");
+      msg.classList.remove("hidden", "error");
+      msg.classList.add("success");
+      msg.textContent = "Payment recorded.";
+    }
+    AppError.showToast("Payment recorded successfully", "success");
+  } catch (err) {
+    restoreSubmit();
+    if (err?.name === "DuplicateMutationError") return;
+
+    rollback();
+    if (msg) {
+      msg.textContent = AppError.getUserMessage(err);
+      msg.classList.remove("hidden", "success");
       msg.classList.add("error");
     }
-    AppError.report(error, { context: "handleQuickPayment", customerId: quickPaymentCustomerId });
+    AppError.report(err, { context: "handleQuickPayment", customerId: quickPaymentCustomerId });
     page().invalidateCreditCaches();
     await loadCustomerNames();
     syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
-    return;
-  }
-
-  const amountInput = document.getElementById("quick-settle-amount");
-  if (amountInput) amountInput.value = "";
-  const sameDayInput = document.getElementById("quick-settle-same-day");
-  if (sameDayInput) sameDayInput.checked = false;
-  savePersistedDate(RECORD_DATE_KEYS.creditQuickSettle, settlementDate);
-  await loadCustomerNames();
-  page().invalidateAndRefreshCreditPortfolio();
-  syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
-
-  if (msg) {
-    msg.classList.remove("hidden");
-    msg.classList.add("success");
-    msg.textContent = "Payment recorded.";
   }
 }
 
@@ -330,7 +378,7 @@ function initCustomerCombobox() {
 
 async function loadCustomerNames() {
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("credit_customers")
       .select("id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance, created_at")
       .order("created_at", { ascending: false });
@@ -396,45 +444,88 @@ async function handleCreditSubmit(event) {
     return;
   }
 
-  const { error } = await supabaseClient.rpc("add_credit_entry", {
-    p_customer_name: customerNameInput,
-    p_transaction_date: transactionDate,
-    p_amount: amount,
-    p_vehicle_no: vehicleNo,
-    p_fuel_type: fuelType || undefined,
-    p_quantity: quantity ?? undefined,
-    p_notes: notes,
-    p_mobile: mobile,
-    p_address: address,
-  });
+  const mutationKey = `credit_entry:${customerNameInput}:${amount}:${transactionDate}`;
+  let previousCreditData = null;
 
-  if (error) {
+  if (typeof AppCache !== "undefined" && AppCache?.applyOptimisticUpdate) {
+    previousCreditData = AppCache.applyOptimisticUpdate(
+      "credit_ledger",
+      (current) => {
+        const row = {
+          id: `temp-${Date.now()}`,
+          customer_name: customerNameInput,
+          amount,
+          transaction_date: transactionDate,
+          fuel_type: fuelType,
+          quantity,
+          notes,
+          vehicle_no: vehicleNo,
+          mobile,
+          address,
+          amount_settled: 0,
+        };
+        if (!current) return [row];
+        return [row, ...current];
+      },
+      "credit_overview"
+    );
+  }
+
+  const restoreSubmit = () => {
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save sale";
     }
-    AppError.handle(error, { target: errorEl });
-    return;
+  };
+
+  try {
+    const runMutation =
+      typeof AppCache !== "undefined" && AppCache?.runDedupedMutation
+        ? (key, fn) => AppCache.runDedupedMutation(key, fn)
+        : (_key, fn) => fn();
+
+    await runMutation(mutationKey, async () => {
+      const { error } = await window.supabaseClient.rpc("add_credit_entry", {
+        p_customer_name: customerNameInput,
+        p_transaction_date: transactionDate,
+        p_amount: amount,
+        p_vehicle_no: vehicleNo,
+        p_fuel_type: fuelType || undefined,
+        p_quantity: quantity ?? undefined,
+        p_notes: notes,
+        p_mobile: mobile,
+        p_address: address,
+      });
+      if (error) throw error;
+    });
+
+    restoreSubmit();
+    AppCache?.confirmOptimisticUpdate?.("credit_ledger");
+
+    finishRecordFormSave(form, { credit_date: transactionDate }, {
+      credit_date: RECORD_DATE_KEYS.creditTransaction,
+    });
+    setComboboxOpen(false);
+    const fuelTypeSelect = form.querySelector("#fuel-type");
+    if (fuelTypeSelect) fuelTypeSelect.value = savedFuel || "HSD";
+
+    successEl?.classList.remove("hidden");
+    page().invalidateAndRefreshCreditPortfolio();
+    loadCustomerNames().then(() => {
+      syncQuickPaymentPanel(form.querySelector("#customer")?.value || "");
+    });
+
+    form.querySelector("#customer")?.focus();
+    AppError.showToast("Credit sale recorded", "success");
+  } catch (err) {
+    restoreSubmit();
+    if (err?.name === "DuplicateMutationError") return;
+
+    if (typeof AppCache !== "undefined" && AppCache?.rollbackOptimisticUpdate && previousCreditData !== null) {
+      AppCache.rollbackOptimisticUpdate("credit_ledger", previousCreditData, "credit_overview");
+    }
+    AppError.handle(err, { target: errorEl });
   }
-
-  finishRecordFormSave(form, { credit_date: transactionDate }, {
-    credit_date: RECORD_DATE_KEYS.creditTransaction,
-  });
-  setComboboxOpen(false);
-  const fuelTypeSelect = form.querySelector("#fuel-type");
-  if (fuelTypeSelect) fuelTypeSelect.value = savedFuel || "HSD";
-
-  if (submitBtn) {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Save sale";
-  }
-  successEl?.classList.remove("hidden");
-  page().invalidateAndRefreshCreditPortfolio();
-  loadCustomerNames().then(() => {
-    syncQuickPaymentPanel(form.querySelector("#customer")?.value || "");
-  });
-
-  form.querySelector("#customer")?.focus();
 }
 
   function init() {

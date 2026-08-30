@@ -85,6 +85,46 @@ function toLocalDateString(date) {
 }
 
 /**
+ * Convert a local date string (YYYY-MM-DD) to UTC ISO string for start of day.
+ * Use this when querying timestamptz columns in the database.
+ * @param {string} localDateStr - YYYY-MM-DD in local timezone
+ * @returns {string} ISO string in UTC (start of day)
+ */
+function localDateToUtcStart(localDateStr) {
+  const [y, m, d] = String(localDateStr).split("-").map(Number);
+  if (!y || !m || !d) return new Date().toISOString();
+  // Create date at midnight in local timezone, then convert to UTC
+  const dt = new Date(y, m - 1, d, 0, 0, 0);
+  return dt.toISOString();
+}
+
+/**
+ * Convert a local date string (YYYY-MM-DD) to UTC ISO string for end of day.
+ * Use this when querying timestamptz columns in the database.
+ * @param {string} localDateStr - YYYY-MM-DD in local timezone
+ * @returns {string} ISO string in UTC (end of day, 23:59:59.999)
+ */
+function localDateToUtcEnd(localDateStr) {
+  const [y, m, d] = String(localDateStr).split("-").map(Number);
+  if (!y || !m || !d) return new Date().toISOString();
+  // Create date at 23:59:59.999 in local timezone, then convert to UTC
+  const dt = new Date(y, m - 1, d, 23, 59, 59, 999);
+  return dt.toISOString();
+}
+
+/**
+ * Get UTC range for a local date (for querying timestamptz columns).
+ * @param {string} localDateStr - YYYY-MM-DD in local timezone
+ * @returns {{ start: string, end: string }} ISO strings in UTC
+ */
+function getUtcRangeForLocalDate(localDateStr) {
+  return {
+    start: localDateToUtcStart(localDateStr),
+    end: localDateToUtcEnd(localDateStr),
+  };
+}
+
+/**
  * Add days to a YYYY-MM-DD string in local calendar time.
  * @param {string} yyyyMmDd
  * @param {number} days
@@ -128,18 +168,32 @@ function formatDateInput(date) {
 }
 
 /**
+ * Parse a YYYY-MM-DD date string as UTC (not local timezone).
+ * Use this when reading dates from the database that were stored as date type.
+ * @param {string|null|undefined} dateStr
+ * @returns {Date|null}
+ */
+function parseDateAsUtc(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = String(dateStr).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+/**
  * Format YYYY-MM-DD for display (e.g. "10 Feb 2025").
  * @param {string|null|undefined} dateStr
  * @returns {string}
  */
 function formatDisplayDate(dateStr) {
   if (!dateStr) return "—";
-  const date = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return "—";
+  const date = parseDateAsUtc(dateStr);
+  if (!date || Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -150,12 +204,13 @@ function formatDisplayDate(dateStr) {
  */
 function formatNumericDate(dateStr) {
   if (!dateStr) return "—";
-  const date = new Date(`${dateStr}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return "—";
+  const date = parseDateAsUtc(dateStr);
+  if (!date || Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -702,6 +757,10 @@ window.escapeHtml = escapeHtml;
 window.debounce = debounce;
 window.throttle = throttle;
 window.toLocalDateString = toLocalDateString;
+window.localDateToUtcStart = localDateToUtcStart;
+window.localDateToUtcEnd = localDateToUtcEnd;
+window.getUtcRangeForLocalDate = getUtcRangeForLocalDate;
+window.parseDateAsUtc = parseDateAsUtc;
 window.addDaysToDateString = addDaysToDateString;
 window.appendDatedNote = appendDatedNote;
 window.formatDateInput = formatDateInput;

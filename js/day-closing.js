@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
@@ -220,7 +220,7 @@ function clearDayClosingChannelHints() {
 
 async function loadExpenseCategoryLabels() {
   if (expenseCategoryLabels) return expenseCategoryLabels;
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("expense_categories")
     .select("name, label");
   if (error) throw error;
@@ -301,14 +301,14 @@ async function loadDayCreditSettleMaps(dateStr) {
 
   const promise = (async () => {
     const [entriesRes, paysRes] = await Promise.all([
-      supabaseClient
+      window.supabaseClient
         .from("credit_entries")
         .select(
           "id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, created_at, employees(name), credit_customers(customer_name)"
         )
         .eq("transaction_date", dateStr)
         .order("created_at", { ascending: false }),
-      supabaseClient
+      window.supabaseClient
         .from("credit_payments")
         .select(
           "id, amount, payment_mode, date, credit_customer_id, created_at, same_day_settlement, credit_customers(customer_name)"
@@ -411,7 +411,7 @@ async function fetchCollectionDetails(dateStr) {
 async function fetchCreditTodayDetails(dateStr) {
   const [{ entries, byId }, legacyRes] = await Promise.all([
     loadDayCreditSettleMaps(dateStr),
-    supabaseClient
+    window.supabaseClient
       .from("credit_customers")
       .select("id, customer_name, amount_due")
       .eq("date", dateStr)
@@ -457,7 +457,7 @@ async function fetchCreditTodayDetails(dateStr) {
     // Also exclude any legacy ids that have entries (even if not in today's entry list)
     const missing = ids.filter((id) => !hasEntry.has(id));
     if (missing.length) {
-      const { data: withEntries, error: entryCheckError } = await supabaseClient
+      const { data: withEntries, error: entryCheckError } = await window.supabaseClient
         .from("credit_entries")
         .select("credit_customer_id")
         .in("credit_customer_id", missing);
@@ -480,7 +480,7 @@ async function fetchCreditTodayDetails(dateStr) {
 
 async function fetchExpensesDetails(dateStr) {
   const [expensesRes, labelMap] = await Promise.all([
-    supabaseClient
+    window.supabaseClient
       .from("expenses")
       .select("category, description, amount, shift, employee_id, employees(name)")
       .eq("date", dateStr)
@@ -620,7 +620,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   clearDayClosingChannelHints();
 
   try {
-    const { data, error } = await supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
+    const { data, error } = await window.supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
     if (requestId !== dcBreakdownRequestId) return;
     if (error) throw error;
     dayClosingBreakdown = data;
@@ -810,7 +810,7 @@ async function loadDayClosingShiftChannelTotals(dateStr) {
   }
 
   const promise = (async () => {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("meter_shift_cash")
       .select("shift, cash_collected, phone_pay")
       .eq("reading_date", dateStr);
@@ -1397,7 +1397,7 @@ async function setDayClosingCertified(certified) {
   }
 
   try {
-    const { data, error } = await supabaseClient.rpc("set_day_closing_certified", {
+    const { data, error } = await window.supabaseClient.rpc("set_day_closing_certified", {
       p_date: dateStr,
       p_certified: !!certified,
     });
@@ -1512,7 +1512,7 @@ async function initializeDayClosing() {
     }
 
     try {
-      const { data, error } = await supabaseClient.rpc("save_day_closing", {
+      const { data, error } = await window.supabaseClient.rpc("save_day_closing", {
         p_date: dateStr,
         p_night_cash: nightCash,
         p_phone_pay: phonePay,
@@ -1679,7 +1679,7 @@ async function deleteDayClosingPayment(paymentId, btn, dateStr) {
     auth: isAdmin ? { role: "admin" } : null,
     actionLabel: "delete credit settlements",
     confirmMessage: `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from collection, day closing, and short. This cannot be undone.`,
-    deleteFn: () => supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId }),
+    deleteFn: () => window.supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId }),
     cacheScope: "operational",
     onSuccess: () => afterDcCreditRelatedDelete("collection", dateStr),
     errorContext: { context: "deleteDayClosingPayment", paymentId },
@@ -1695,7 +1695,7 @@ async function deleteDayClosingCreditEntry(entryId, btn, dateStr) {
     auth: isAdmin ? { role: "admin" } : null,
     actionLabel: "delete credit entries",
     confirmMessage: `Delete credit sale of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from credit today, day closing, and short. This cannot be undone.`,
-    deleteFn: () => supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId }),
+    deleteFn: () => window.supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId }),
     cacheScope: "operational",
     onSuccess: () => afterDcCreditRelatedDelete("credit", dateStr),
     errorContext: { context: "deleteDayClosingCreditEntry", entryId },
@@ -1712,7 +1712,7 @@ async function deleteDayClosing(btn, reloadBtn) {
     auth: isAdmin ? { role: "admin" } : null,
     actionLabel: "delete day closing records",
     confirmMessage: `Delete day closing for ${dateStr}${ref && ref !== "—" ? ` (${ref})` : ""}?\n\nOnly the latest closing can be removed so the day can be re-closed. This cannot be undone.`,
-    deleteFn: () => supabaseClient.rpc("delete_day_closing", { p_id: id }),
+    deleteFn: () => window.supabaseClient.rpc("delete_day_closing", { p_id: id }),
     cacheScope: "operational",
     onSuccess: async () => {
       if (dcDom?.dateInput?.value === dateStr) {
@@ -1801,7 +1801,7 @@ async function loadNightCashAvailable() {
   if (!totalEl) return null;
 
   try {
-    const { data, error } = await supabaseClient.rpc("get_night_cash_available");
+    const { data, error } = await window.supabaseClient.rpc("get_night_cash_available");
     if (error) throw error;
     nccAvailableData = data;
 
@@ -1856,7 +1856,7 @@ async function loadNightCashCollectionRegister() {
 
   body.innerHTML = '<tr><td colspan="7" class="muted">Loading…</td></tr>';
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("night_cash_collections")
       .select("collection_reference, from_date, to_date, day_count, total_amount, collected_at, remarks")
       .order("collected_at", { ascending: false });
@@ -1933,7 +1933,7 @@ async function previewNightCashCollection() {
   }
 
   try {
-    const { data, error } = await supabaseClient.rpc("preview_night_cash_collection", {
+    const { data, error } = await window.supabaseClient.rpc("preview_night_cash_collection", {
       p_from_date: from,
       p_to_date: to,
     });
@@ -2031,7 +2031,7 @@ async function recordNightCashCollection(e) {
   }
 
   try {
-    const { data, error } = await supabaseClient.rpc("collect_night_cash", {
+    const { data, error } = await window.supabaseClient.rpc("collect_night_cash", {
       p_from_date: from,
       p_to_date: to,
       p_remarks: remarks,
@@ -2130,7 +2130,7 @@ async function loadDayClosingRegister() {
 
   try {
     const status = statusFilter?.value || "all";
-    let closingsQuery = supabaseClient
+    let closingsQuery = window.supabaseClient
       .from("day_closing")
       .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks, certified, certified_at, night_cash_collection_id, night_cash_collections(collection_reference)")
       .gte("date", start)
@@ -2142,7 +2142,7 @@ async function loadDayClosingRegister() {
     }
 
     const latestQuery = isAdmin
-      ? supabaseClient
+      ? window.supabaseClient
           .from("day_closing")
           .select("date")
           .order("date", { ascending: false })
@@ -2324,6 +2324,7 @@ function initRegisterSection() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",

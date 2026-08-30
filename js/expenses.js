@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -30,6 +30,7 @@ let expensesPagination = {
 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -105,7 +106,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      const { error } = await supabaseClient.from("expenses").insert(payload);
+      const { error } = await window.supabaseClient.from("expenses").insert(payload);
 
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -142,7 +143,7 @@ async function loadAndFillCategorySelect() {
   const select = document.getElementById("expense-category");
   if (!select) return;
 
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("expense_categories")
     .select("name, label")
     .order("sort_order", { ascending: true })
@@ -396,7 +397,7 @@ async function deleteExpense(btn) {
     auth: currentAuth,
     actionLabel: "delete expenses",
     confirmMessage: `Delete expense of ${formatCurrency(amount)} on ${dateStr}${description ? ` (${description})` : ""}?\n\nThis cannot be undone.`,
-    deleteFn: () => supabaseClient.from("expenses").delete().eq("id", expenseId),
+    deleteFn: () => window.supabaseClient.from("expenses").delete().eq("id", expenseId),
     cacheScope: "operational",
     onSuccess: () => loadExpenses(true),
     errorContext: { context: "deleteExpense", expenseId },

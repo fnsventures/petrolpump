@@ -1,8 +1,9 @@
-/* global requireAuth, applyRoleVisibility, supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion */
 
 let analysisFilterApi = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin"],
     onDenied: "dashboard.html",
@@ -41,14 +42,14 @@ async function fetchAnalysisData(startDate, endDate) {
     DsrQueries.fetchDsrRows(startDate, endDate),
     DsrQueries.fetchExpenses(startDate, endDate),
     DsrQueries.fetchLubeSales(startDate, endDate),
-    supabaseClient
+window.supabaseClient
       .from("invoice_documents")
       .select("invoice_date, amount")
       .eq("category", "purchase")
       .gte("invoice_date", startDate)
       .lte("invoice_date", endDate)
       .gt("amount", 0),
-    supabaseClient.from("expense_categories").select("name, label"),
+    window.supabaseClient.from("expense_categories").select("name, label"),
   ]);
 
   if (dsrBundle.error) throw dsrBundle.error;
