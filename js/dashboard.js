@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString */
 
 /**
  * Generate cache key for dashboard data queries
@@ -253,7 +253,7 @@ const DSR_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
 async function fetchLastDsrRate(product) {
   const rateField = DSR_RATE_FIELD[product];
   if (!rateField) return null;
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("dsr")
     .select(`date, ${rateField}`)
     .eq("product", product)
@@ -454,11 +454,11 @@ async function loadHeroStock(dateStr) {
   const historyStart = PumpSettings.getReceiptHistoryStart();
   try {
     const [stockResult, dsrResult] = await Promise.all([
-      supabaseClient.rpc("get_dsr_stock_range", {
+      window.supabaseClient.rpc("get_dsr_stock_range", {
         p_start: historyStart,
         p_end: selectedDate,
       }),
-      supabaseClient
+      window.supabaseClient
         .from("dsr")
         .select("date, product, stock, dip_reading")
         .gte("date", historyStart)
@@ -722,6 +722,7 @@ function scheduleAutoFitStats() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -915,7 +916,7 @@ async function fetchDayClosingWindow() {
     return { data: [], error: null, todayStr, startStr };
   }
 
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("day_closing")
     .select("date, short_today, certified")
     .gte("date", startStr)
@@ -1012,57 +1013,57 @@ async function updateSmartAlerts(options = {}) {
     missingInvoiceRes,
   ] = await Promise.all([
     needClosingFetch
-      ? supabaseClient.from("day_closing").select("short_today").eq("date", todayStr).maybeSingle()
+      ? window.supabaseClient.from("day_closing").select("short_today").eq("date", todayStr).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     th.nightCashAlert
-      ? supabaseClient.rpc("get_night_cash_available")
+      ? window.supabaseClient.rpc("get_night_cash_available")
       : Promise.resolve({ data: null, error: null }),
     needDsrToday
-      ? supabaseClient
+      ? window.supabaseClient
           .from("dsr")
           .select("date, product, petrol_rate, diesel_rate, stock, dip_reading")
           .eq("date", todayStr)
       : Promise.resolve({ data: [], error: null }),
     needStockToday
-      ? supabaseClient.rpc("get_dsr_stock_range", { p_start: todayStr, p_end: todayStr })
+      ? window.supabaseClient.rpc("get_dsr_stock_range", { p_start: todayStr, p_end: todayStr })
       : Promise.resolve({ data: [], error: null }),
     needCreditList
-      ? supabaseClient.rpc("get_outstanding_credit_list_as_of", { p_date: todayStr })
+      ? window.supabaseClient.rpc("get_outstanding_credit_list_as_of", { p_date: todayStr })
       : Promise.resolve({ data: [], error: null }),
     th.attendanceAlert
-      ? supabaseClient.rpc("list_employees_roster")
+      ? window.supabaseClient.rpc("list_employees_roster")
       : Promise.resolve({ data: [], error: null }),
     th.attendanceAlert
-      ? supabaseClient
+      ? window.supabaseClient
           .from("employee_attendance")
           .select("id, employee_id")
           .eq("date", todayStr)
       : Promise.resolve({ data: [], error: null }),
     th.unpaidSalaryAlert && isAdmin
-      ? supabaseClient.rpc("list_employees_salary")
+      ? window.supabaseClient.rpc("list_employees_salary")
       : Promise.resolve({ data: [], error: null }),
     th.unpaidSalaryAlert && isAdmin
-      ? supabaseClient
+      ? window.supabaseClient
           .from("salary_payments")
           .select("employee_id, amount")
           .eq("salary_month", salaryMonth)
       : Promise.resolve({ data: [], error: null }),
     th.expenseRatioAlert
-      ? supabaseClient
+      ? window.supabaseClient
           .from("dsr")
           .select("product, total_sales, testing, petrol_rate, diesel_rate")
           .gte("date", monthRange.start)
           .lte("date", monthRange.end)
       : Promise.resolve({ data: [], error: null }),
     th.expenseRatioAlert
-      ? supabaseClient
+      ? window.supabaseClient
           .from("expenses")
           .select("amount")
           .gte("date", monthRange.start)
           .lte("date", monthRange.end)
       : Promise.resolve({ data: [], error: null }),
     th.missingInvoiceAlert && driveEnabled
-      ? supabaseClient
+      ? window.supabaseClient
           .from("dsr")
           .select("date, product, receipts, invoice_document_id")
           .gt("receipts", 0)
@@ -1586,7 +1587,7 @@ function renderTaskGroupHtml(rows, todayStr, builder) {
 async function loadRemindersBanners() {
   const todayStr = getLocalDateString();
   const loadGen = ++remindersLoadGen;
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("reminders")
     .select(
       "id, title, notes, due_date, priority, reminder_type, credit_customer_id, credit_customers(customer_name, mobile, amount_due)"
@@ -1940,7 +1941,7 @@ function bindReminderDoneButtons(container) {
 
       const { error } =
         typeof TaskUtils?.rescheduleOpenTask === "function"
-          ? await TaskUtils.rescheduleOpenTask(supabaseClient, {
+          ? await TaskUtils.rescheduleOpenTask(window.supabaseClient, {
               id,
               dueDate,
               note,
@@ -1981,7 +1982,7 @@ function bindReminderDoneButtons(container) {
     if (inFlight.has(id)) return;
     inFlight.add(id);
     btn.disabled = true;
-    const { data: doneRow, error } = await supabaseClient
+    const { data: doneRow, error } = await window.supabaseClient
       .from("reminders")
       .update({
         status: "done",
@@ -2197,7 +2198,7 @@ async function fetchProfitLossData(range, onUpdate = null) {
     try {
       const { data, error } = await AppError.withRetry(
         () =>
-          supabaseClient.functions.invoke("get-pl-data", {
+          window.supabaseClient.functions.invoke("get-pl-data", {
             body: {
               startDate: range.start,
               endDate: range.end,
@@ -2235,7 +2236,7 @@ async function fetchProfitLossData(range, onUpdate = null) {
           .gte("invoice_date", range.start)
           .lte("invoice_date", range.end)
           .gt("amount", 0),
-        supabaseClient.from("expense_categories").select("name, label"),
+        window.supabaseClient.from("expense_categories").select("name, label"),
       ]);
 
       const lubeCogs = (vaultResult.data ?? []).reduce(
@@ -2274,7 +2275,7 @@ async function loadTodaySales(dateStr) {
 
   // Use stale-while-revalidate pattern for cached data
   const fetchFn = async () => {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("dsr")
       .select("product, total_sales, testing, petrol_rate, diesel_rate")
       .eq("date", selectedDate);
@@ -2293,7 +2294,7 @@ async function loadTodaySales(dateStr) {
 
     // Missing sheet sales for a product — fill from shift register rollup
     // (clean model no longer inserts dsr_* stubs from shifts).
-    const { data: shiftAgg, error: shiftErr } = await supabaseClient.rpc(
+    const { data: shiftAgg, error: shiftErr } = await window.supabaseClient.rpc(
       "get_shift_aggregated_daily_meters",
       { p_date: selectedDate }
     );
@@ -2414,7 +2415,7 @@ async function loadCreditSummary(dateStr) {
   const cacheKey = getCreditSummaryCacheKey(selectedDate);
 
   const fetchFn = async () => {
-    const { data, error } = await supabaseClient.rpc("get_open_credit_as_of", {
+    const { data, error } = await window.supabaseClient.rpc("get_open_credit_as_of", {
       p_date: selectedDate,
     });
 
@@ -2468,7 +2469,7 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
       // Edge Function with retry; we retry only on transient errors (via isTransientError)
       const { data, error } = await AppError.withRetry(
         () =>
-          supabaseClient.functions.invoke("get-dashboard-data", {
+          window.supabaseClient.functions.invoke("get-dashboard-data", {
             body: { startDate, endDate },
           }),
         { maxAttempts: 3 }
@@ -2496,7 +2497,7 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
           .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
           .gte("date", startDate)
           .lte("date", endDate),
-        supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
+        window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
         supabaseClient
           .from("expenses")
           .select("date, amount, category, description")
@@ -2564,7 +2565,7 @@ async function loadDsrSummary(range) {
   if (!dsrSummaryGuard.isCurrent(loadId)) return;
 
   if (dashboardData.creditError) {
-    const { data: creditRows, error: creditErr } = await supabaseClient
+    const { data: creditRows, error: creditErr } = await window.supabaseClient
       .from("credit_entries")
       .select("amount, amount_settled")
       .gte("transaction_date", range.start)

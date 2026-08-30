@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -23,6 +23,7 @@ let documentCategoryLabelMap = Object.fromEntries(
 );
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -85,7 +86,7 @@ async function loadDocumentCategories() {
   const previousFilter = filterSelect?.value || "all";
   const previousUpload = uploadSelect?.value || "";
 
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("document_categories")
     .select("name, label")
     .order("sort_order", { ascending: true })
@@ -148,7 +149,7 @@ function applyLocalDriveBanner() {
 }
 
 async function getSessionToken() {
-  const { data } = await supabaseClient.auth.getSession();
+  const { data } = await window.supabaseClient.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new Error("Session expired. Please log in again.");
   return token;
@@ -156,14 +157,14 @@ async function getSessionToken() {
 
 function invoiceFunctionUrl() {
   const cfg = appConfig();
-  return `${cfg.SUPABASE_URL || supabaseClient.supabaseUrl}/functions/v1/invoice-documents`;
+  return `${cfg.SUPABASE_URL || window.supabaseClient.supabaseUrl}/functions/v1/invoice-documents`;
 }
 
 async function invoiceFunctionHeaders(json = false) {
   const cfg = appConfig();
   const headers = {
     Authorization: `Bearer ${await getSessionToken()}`,
-    apikey: cfg.SUPABASE_ANON_KEY || supabaseClient.supabaseKey,
+    apikey: cfg.SUPABASE_ANON_KEY || window.supabaseClient.supabaseKey,
   };
   if (json) headers["Content-Type"] = "application/json";
   return headers;
@@ -354,7 +355,7 @@ async function loadInvoices() {
 
   const { start, end } = getInvoiceDateRange();
   const categoryFilter = document.getElementById("invoice-category-filter")?.value || "all";
-  let query = supabaseClient
+  let query = window.supabaseClient
     .from("invoice_documents")
     .select(INVOICE_LIST_COLUMNS)
     .order("invoice_date", { ascending: false })

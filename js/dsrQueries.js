@@ -1,4 +1,4 @@
-/* global supabaseClient, PumpSettings, getLocalDateString, AppCache */
+/* global window.supabaseClient, PumpSettings, getLocalDateString, AppCache */
 
 /**
  * Shared DSR and expense query helpers for dashboard, reports, and analysis.
@@ -91,7 +91,7 @@
     }
 
     const queryStart = useReceiptHistory ? receiptStart : startDate;
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("dsr")
       .select(select)
       .gte("date", queryStart)
@@ -110,7 +110,7 @@
   }
 
   async function fetchExpenses(startDate, endDate, select) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("expenses")
       .select(select || "date, category, amount")
       .gte("date", startDate)
@@ -151,7 +151,7 @@
     const startStr = PumpSettings.getReceiptHistoryStart();
 
     const req = (async () => {
-      const { data, error } = await supabaseClient
+      const { data, error } = await window.supabaseClient
         .from("dsr")
         .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
         .gte("date", startStr)
@@ -177,7 +177,7 @@
 
   /** Lube/billing invoice totals for P&L (matches Reports trading account). */
   async function fetchLubeSales(startDate, endDate) {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("invoices")
       .select("invoice_date, total_amount")
       .gte("invoice_date", startDate)

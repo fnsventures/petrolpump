@@ -2,7 +2,7 @@
  * Shift staff ledger: add credit customers & expenses from Staff collections.
  * Persists real credit_entries / expenses rows (day closing picks them up).
  */
-/* global supabaseClient, AppError, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName */
+/* global window.supabaseClient, AppError, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName */
 
 (function (global) {
   const SALARY_CATEGORY = "salary";
@@ -36,7 +36,7 @@
   }
 
   async function loadCategories() {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("expense_categories")
       .select("name, label, sort_order")
       .order("sort_order", { ascending: true })
@@ -46,7 +46,7 @@
   }
 
   async function loadCustomerSuggestions() {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("credit_customers")
       .select("id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance")
       .order("customer_name", { ascending: true })
@@ -82,7 +82,7 @@
 
   async function loadLedgerForContext() {
     if (!context) return;
-    const { data, error } = await supabaseClient.rpc("get_shift_staff_ledger", {
+    const { data, error } = await window.supabaseClient.rpc("get_shift_staff_ledger", {
       p_date: context.date,
       p_shift: context.shift,
     });
@@ -404,7 +404,7 @@
       btn.textContent = "…";
     }
     try {
-      const { error } = await supabaseClient.rpc("add_credit_entry", {
+      const { error } = await window.supabaseClient.rpc("add_credit_entry", {
         p_customer_name: customer,
         p_transaction_date: context.date,
         p_amount: amount,
@@ -447,7 +447,7 @@
       btn.textContent = "…";
     }
     try {
-      const { error } = await supabaseClient.rpc("add_shift_expense", {
+      const { error } = await window.supabaseClient.rpc("add_shift_expense", {
         p_date: context.date,
         p_shift: context.shift,
         p_employee_id: context.employeeId,
@@ -476,7 +476,7 @@
     if (!id || !confirm("Remove this credit sale from the shift?")) return;
     setMsg("");
     try {
-      const { error } = await supabaseClient.rpc("delete_shift_credit_entry", { p_entry_id: id });
+      const { error } = await window.supabaseClient.rpc("delete_shift_credit_entry", { p_entry_id: id });
       if (error) throw error;
       await loadLedgerForContext();
       renderBody();
@@ -492,7 +492,7 @@
     if (!id || !confirm("Remove this expense from the shift?")) return;
     setMsg("");
     try {
-      const { error } = await supabaseClient.rpc("delete_shift_expense", { p_expense_id: id });
+      const { error } = await window.supabaseClient.rpc("delete_shift_expense", { p_expense_id: id });
       if (error) throw error;
       await loadLedgerForContext();
       renderBody();
@@ -569,7 +569,7 @@
 
   /** Fetch ledger totals keyed by employee_id for a shift. */
   async function fetchTotalsByEmployee(date, shift) {
-    const { data, error } = await supabaseClient.rpc("get_shift_staff_ledger", {
+    const { data, error } = await window.supabaseClient.rpc("get_shift_staff_ledger", {
       p_date: date,
       p_shift: shift,
     });

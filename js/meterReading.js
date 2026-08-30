@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -98,7 +98,7 @@ async function fetchShiftAggregatedDailyMeters(dateStr) {
   if (shiftAggregateCache.has(dateStr)) return shiftAggregateCache.get(dateStr);
 
   const pending = (async () => {
-    const { data, error } = await supabaseClient.rpc("get_shift_aggregated_daily_meters", {
+    const { data, error } = await window.supabaseClient.rpc("get_shift_aggregated_daily_meters", {
       p_date: dateStr,
     });
     if (error) {
@@ -244,6 +244,7 @@ const dsrPagination = {
 const meterRefreshGeneration = { petrol: 0, diesel: 0 };
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -328,24 +329,43 @@ function getPurchaseCostEntryOpts() {
     emptyEl: document.getElementById("purchase-cost-empty"),
     errorEl: document.getElementById("purchase-cost-error"),
     onSaved: async () => {
-      await BuyingPriceEntry.refresh({ ...getPurchaseCostEntryOpts(), force: true });
+      purchaseCostLoaded = false;
+      await ensurePurchaseCostLoaded({ force: true });
     },
   };
 }
 
 let purchaseCostLoadPromise = null;
+let purchaseCostLoaded = false;
 
-async function ensurePurchaseCostLoaded() {
+/**
+ * Load Purchase cost list once. Pass force to rebuild after save / clean live refresh.
+ * Skips when already loaded or when the user has unsaved edits (unless force).
+ */
+async function ensurePurchaseCostLoaded(options = {}) {
   if (typeof BuyingPriceEntry?.refresh !== "function") return;
+  const force = Boolean(options.force);
+  if (!force && purchaseCostLoaded) return;
   if (purchaseCostLoadPromise) return purchaseCostLoadPromise;
+
+  const listEl = document.getElementById("purchase-cost-missing-list");
+  if (!force && typeof BuyingPriceEntry.hasUnsavedEdits === "function" && BuyingPriceEntry.hasUnsavedEdits(listEl)) {
+    return;
+  }
 
   const hintEl = document.getElementById("purchase-cost-hint");
   if (hintEl && typeof getPlBuyingPriceHint === "function") {
     hintEl.textContent = getPlBuyingPriceHint();
   }
-  purchaseCostLoadPromise = BuyingPriceEntry.refresh(getPurchaseCostEntryOpts()).finally(() => {
-    purchaseCostLoadPromise = null;
-  });
+  purchaseCostLoadPromise = BuyingPriceEntry.refresh({ ...getPurchaseCostEntryOpts(), force })
+    .then((rows) => {
+      // null => skipped to preserve edits; keep loaded flag as-is
+      if (rows !== null) purchaseCostLoaded = true;
+      return rows;
+    })
+    .finally(() => {
+      purchaseCostLoadPromise = null;
+    });
   return purchaseCostLoadPromise;
 }
 
@@ -372,7 +392,7 @@ function initMeterDeleteHandlers() {
       confirmMessage: `Delete the ${fuelLabel} meter entry for ${dateStr || "this date"}? This cannot be undone.`,
       deleteFn: () => {
         const table = DSR_TABLE[product] || "dsr_petrol";
-        return supabaseClient.from(table).delete().eq("id", id);
+        return window.supabaseClient.from(table).delete().eq("id", id);
       },
       cacheScope: "dsr",
       onSuccess: async () => {
@@ -424,7 +444,7 @@ function getMeterRowSelectColumns(product) {
 async function fetchDsrFullRowForDate(product, dateStr) {
   if (!dateStr || !product) return null;
   const table = DSR_TABLE[product] || "dsr_petrol";
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from(table)
     .select(getMeterRowSelectColumns(product))
     .eq("date", dateStr)
@@ -980,12 +1000,12 @@ function initReadingForm(product) {
       const updatePayload = { ...payload };
       delete updatePayload.created_by;
       delete updatePayload.product;
-      const { error } = await supabaseClient.from(table).update(updatePayload).eq("id", existingId);
+      const { error } = await window.supabaseClient.from(table).update(updatePayload).eq("id", existingId);
       saveError = error;
     } else {
       const insertPayload = { ...payload };
       delete insertPayload.product;
-      const { error } = await supabaseClient.from(table).insert(insertPayload);
+      const { error } = await window.supabaseClient.from(table).insert(insertPayload);
       // Race: another writer inserted the same date — fall back to update when allowed
       if (error && /duplicate|unique|23505/i.test(`${error.message || ""} ${error.code || ""}`)) {
         const racedRow = await fetchDsrFullRowForDate(product, payload.date);
@@ -997,7 +1017,7 @@ function initReadingForm(product) {
           const updatePayload = { ...payload };
           delete updatePayload.created_by;
           delete updatePayload.product;
-          const { error: updErr } = await supabaseClient
+          const { error: updErr } = await window.supabaseClient
             .from(table)
             .update(updatePayload)
             .eq("id", racedId);
@@ -1037,7 +1057,7 @@ function initReadingForm(product) {
     // Push daily openings into morning shift rows; afternoon closings when afternoon exists
     let syncFailed = false;
     try {
-      const { error: syncErr } = await supabaseClient.rpc("sync_shift_meters_from_dsr", {
+      const { error: syncErr } = await window.supabaseClient.rpc("sync_shift_meters_from_dsr", {
         p_date: payload.date,
         p_shift: null,
       });
@@ -1085,7 +1105,7 @@ async function getPreviousDayDipStock(product, dateStr) {
     .join(", ");
 
   // Look back several days so an incomplete row (stock 0) does not wipe opening stock.
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from(table)
     .select(selectCols)
     .lt("date", dateStr)
@@ -1358,7 +1378,7 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
   const prevDateStr = getPreviousDateStr(selectedDateStr);
   const table = DSR_TABLE[product] || "dsr_petrol";
 
-  const { data: prevDayData, error: prevError } = await supabaseClient
+  const { data: prevDayData, error: prevError } = await window.supabaseClient
     .from(table)
     .select(selectCols)
     .eq("date", prevDateStr)
@@ -1370,7 +1390,7 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
   }
   if (prevDayData) return { row: prevDayData, error: null };
 
-  const { data: lastData, error: lastError } = await supabaseClient
+  const { data: lastData, error: lastError } = await window.supabaseClient
     .from(table)
     .select(selectCols)
     .lt("date", selectedDateStr)
@@ -1395,7 +1415,7 @@ async function fetchLastDsrRate(product) {
   if (!rateField) return null;
   const table = DSR_TABLE[product] || "dsr_petrol";
 
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from(table)
     .select(rateField)
     .not(rateField, "is", null)
@@ -1605,7 +1625,11 @@ bindLiveRefresh(
       void MeterShiftReading.init({ isAdmin: currentUserRole === "admin", userId: currentUserId });
     }
     if (currentUserRole === "admin" && isSettingsPanelActive("purchase-cost")) {
-      void ensurePurchaseCostLoaded();
+      const listEl = document.getElementById("purchase-cost-missing-list");
+      const dirty =
+        typeof BuyingPriceEntry?.hasUnsavedEdits === "function" &&
+        BuyingPriceEntry.hasUnsavedEdits(listEl);
+      if (!dirty) void ensurePurchaseCostLoaded({ force: true });
     }
   },
   { match: () => document.body.classList.contains("meter-reading-page") }

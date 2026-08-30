@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -10,6 +10,7 @@ const MAX_STAFF_PHOTO_BYTES = 2 * 1024 * 1024;
 const STAFF_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin", "supervisor"],
     onDenied: "dashboard.html",
@@ -292,13 +293,13 @@ async function uploadEmployeePhoto(employeeId, file) {
   if (file.size > MAX_STAFF_PHOTO_BYTES) throw new Error("Image must be 2 MB or smaller.");
   const ext = photoExtensionFromFile(file);
   const path = `${employeeId}/photo.${ext}`;
-  const { error: uploadError } = await supabaseClient.storage
+  const { error: uploadError } = await window.supabaseClient.storage
     .from(STAFF_PHOTO_BUCKET)
     .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
   if (uploadError) throw uploadError;
-  const { data: urlData } = supabaseClient.storage.from(STAFF_PHOTO_BUCKET).getPublicUrl(path);
+  const { data: urlData } = window.supabaseClient.storage.from(STAFF_PHOTO_BUCKET).getPublicUrl(path);
   const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
-  const { error: rpcError } = await supabaseClient.rpc("set_employee_photo", {
+  const { error: rpcError } = await window.supabaseClient.rpc("set_employee_photo", {
     p_employee_id: employeeId,
     p_photo_url: publicUrl,
   });
@@ -307,12 +308,12 @@ async function uploadEmployeePhoto(employeeId, file) {
 }
 
 async function clearEmployeePhoto(employeeId) {
-  await supabaseClient.storage.from(STAFF_PHOTO_BUCKET).remove([
+  await window.supabaseClient.storage.from(STAFF_PHOTO_BUCKET).remove([
     `${employeeId}/photo.jpg`,
     `${employeeId}/photo.png`,
     `${employeeId}/photo.webp`,
   ]);
-  const { error: rpcError } = await supabaseClient.rpc("set_employee_photo", {
+  const { error: rpcError } = await window.supabaseClient.rpc("set_employee_photo", {
     p_employee_id: employeeId,
     p_photo_url: null,
   });
@@ -735,7 +736,7 @@ function initStaffPage(auth) {
 
   async function loadStaffMembers() {
     try {
-      staffList = await StaffEmployees.loadEmployees(supabaseClient, {
+      staffList = await StaffEmployees.loadEmployees(window.supabaseClient, {
         isAdmin,
         useCache: true,
         status: rosterStatus,
@@ -754,7 +755,7 @@ function initStaffPage(auth) {
     if (staffList.some((s) => s.id === hashId)) return { id: hashId, status: rosterStatus };
     if (!isAdmin) return null;
     try {
-      const map = await StaffEmployees.resolveEmployeesByIds(supabaseClient, [hashId]);
+      const map = await StaffEmployees.resolveEmployeesByIds(window.supabaseClient, [hashId]);
       const emp = map.get(hashId);
       if (!emp) return null;
       return { id: hashId, status: emp.is_active === false ? "inactive" : "active" };
@@ -794,7 +795,7 @@ function initStaffPage(auth) {
     const busyBtn = makeActive ? reactivateBtn : deactivateBtn;
     if (busyBtn) busyBtn.disabled = true;
     try {
-      await StaffEmployees.setEmployeeActive(supabaseClient, id, makeActive);
+      await StaffEmployees.setEmployeeActive(window.supabaseClient, id, makeActive);
       rosterStatus = makeActive ? "active" : "inactive";
       syncStatusFilterUi();
       selectedId = null;
@@ -999,7 +1000,7 @@ function initStaffPage(auth) {
 
     let employeeId = id;
     if (id) {
-      const { error } = await supabaseClient.from("employees").update(payload).eq("id", id);
+      const { error } = await window.supabaseClient.from("employees").update(payload).eq("id", id);
       if (error) {
         AppError.handle(error, { target: staffFormError });
         if (staffSubmitBtn) {
@@ -1009,7 +1010,7 @@ function initStaffPage(auth) {
         return;
       }
     } else {
-      const { data, error } = await supabaseClient.from("employees").insert(payload).select("id").single();
+      const { data, error } = await window.supabaseClient.from("employees").insert(payload).select("id").single();
       if (error) {
         AppError.handle(error, { target: staffFormError });
         if (staffSubmitBtn) {

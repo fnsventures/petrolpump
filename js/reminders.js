@@ -1,4 +1,4 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
 
 (function () {
   const PAGE_SIZE = 30;
@@ -17,8 +17,9 @@
   let customerComboboxMatches = [];
   let customerComboboxActiveIndex = -1;
 
-  document.addEventListener("DOMContentLoaded", async () => {
-    const auth = await requireAuth({
+document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
+  const auth = await requireAuth({
       allowedRoles: ["admin", "supervisor"],
       onDenied: "dashboard.html",
       pageName: "reminders",
@@ -402,7 +403,7 @@
           return;
         }
 
-        const { data: existingOpen, error: existingError } = await supabaseClient
+        const { data: existingOpen, error: existingError } = await window.supabaseClient
           .from("reminders")
           .select("id, due_date, title")
           .eq("status", "open")
@@ -443,7 +444,7 @@
         }
       }
 
-      const { error } = await supabaseClient.from("reminders").insert({
+      const { error } = await window.supabaseClient.from("reminders").insert({
         title,
         due_date: dueDate,
         priority,
@@ -517,7 +518,7 @@
   }
 
   async function loadCustomerOptions() {
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("credit_customers")
       .select("id, customer_name, mobile, amount_due")
       .order("customer_name", { ascending: true })
@@ -675,7 +676,7 @@
     const creditList = document.getElementById("reminders-credit-list");
     const todoList = document.getElementById("reminders-todo-list");
 
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from("reminders")
       .select(OPEN_SELECT)
       .eq("status", "open")
@@ -949,7 +950,7 @@
 
     const { error } =
       typeof TaskUtils?.rescheduleOpenTask === "function"
-        ? await TaskUtils.rescheduleOpenTask(supabaseClient, {
+        ? await TaskUtils.rescheduleOpenTask(window.supabaseClient, {
             id,
             dueDate,
             note: noteRaw,
@@ -975,7 +976,7 @@
   async function completeTask(id, btn, inFlight) {
     inFlight?.add(id);
     btn.disabled = true;
-    const { data: doneRow, error } = await supabaseClient
+    const { data: doneRow, error } = await window.supabaseClient
       .from("reminders")
       .update({
         status: "done",
@@ -1008,7 +1009,7 @@
   async function reopenTask(id, btn, inFlight) {
     inFlight?.add(id);
     btn.disabled = true;
-    const { data: openRow, error } = await supabaseClient
+    const { data: openRow, error } = await window.supabaseClient
       .from("reminders")
       .update({
         status: "open",
@@ -1043,7 +1044,7 @@
       auth: currentAuth,
       actionLabel: "delete tasks",
       confirmMessage: "Delete this task permanently?",
-      deleteFn: () => supabaseClient.from("reminders").delete().eq("id", id),
+      deleteFn: () => window.supabaseClient.from("reminders").delete().eq("id", id),
       cacheScope: "operational",
       onSuccess: async () => {
         removeCard(id);

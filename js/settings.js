@@ -1,8 +1,9 @@
-/* global supabaseClient, requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees */
 
 let currentAuth = null;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await window.configPromise;
   const auth = await requireAuth({
     allowedRoles: ["admin"],
     onDenied: "dashboard.html",
@@ -246,7 +247,7 @@ function initProducts() {
 async function loadProducts() {
   const tbody = document.getElementById("products-table-body");
   if (!tbody) return;
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("products")
     .select("id, name, hsn_code, unit, default_rate, gst_percent")
     .eq("is_active", true)
@@ -303,7 +304,7 @@ async function saveProduct(form) {
     if (errorEl) { errorEl.textContent = "Product name is required."; errorEl.classList.remove("hidden"); }
     return;
   }
-  const { error } = await supabaseClient.from("products").insert(payload);
+  const { error } = await window.supabaseClient.from("products").insert(payload);
   if (error) {
     AppError.handle(error, { target: errorEl });
     return;
@@ -317,7 +318,7 @@ async function saveProduct(form) {
 
 async function deleteProduct(id) {
   if (!id || !confirm("Remove this product from the billing list?")) return;
-  const { error } = await supabaseClient.from("products").update({ is_active: false }).eq("id", id);
+  const { error } = await window.supabaseClient.from("products").update({ is_active: false }).eq("id", id);
   if (error) {
     alert(AppError.getUserMessage(error));
     return;
@@ -624,7 +625,7 @@ function initUsersForm() {
       return;
     }
 
-    const { data: existingUser, error: userError } = await supabaseClient
+    const { data: existingUser, error: userError } = await window.supabaseClient
       .from("users")
       .select("id")
       .eq("email", email)
@@ -645,14 +646,14 @@ function initUsersForm() {
     let passwordNote = "";
     if (password) {
       if (!existingUser) {
-        const { error: signupError } = await supabaseClient.auth.signUp({ email, password });
+        const { error: signupError } = await window.supabaseClient.auth.signUp({ email, password });
         if (signupError && !isExistingUserError(signupError)) {
           if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
           AppError.handle(signupError, { target: errorEl });
           return;
         }
       } else {
-        const { error: resetError } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
           redirectTo: window.location.origin + "/login.html",
         });
         if (resetError) {
@@ -665,7 +666,7 @@ function initUsersForm() {
     }
 
     const displayName = formData.get("display_name")?.trim() || null;
-    const { error } = await supabaseClient.rpc("upsert_staff", {
+    const { error } = await window.supabaseClient.rpc("upsert_staff", {
       p_email: email,
       p_role: role,
       p_display_name: displayName || null,
@@ -760,7 +761,7 @@ function createSortableCategoryManager(opts) {
   async function load() {
     const tbody = document.getElementById(opts.tbodyId);
     if (!tbody) return;
-    const { data, error } = await supabaseClient
+    const { data, error } = await window.supabaseClient
       .from(opts.table)
       .select("id, name, label, sort_order")
       .order("sort_order", { ascending: true })
@@ -842,7 +843,7 @@ function createSortableCategoryManager(opts) {
     orderedIds.forEach((id, index) => {
       const nextOrder = index + 1;
       if (sortById.get(id) !== nextOrder) {
-        updates.push(supabaseClient.from(opts.table).update({ sort_order: nextOrder }).eq("id", id));
+        updates.push(window.supabaseClient.from(opts.table).update({ sort_order: nextOrder }).eq("id", id));
       }
     });
 
@@ -895,7 +896,7 @@ function createSortableCategoryManager(opts) {
     }
     btn.disabled = true;
     btn.textContent = "Saving…";
-    const { error } = await supabaseClient.from(opts.table).update({ label: trimmed }).eq("id", id);
+    const { error } = await window.supabaseClient.from(opts.table).update({ label: trimmed }).eq("id", id);
     if (error) {
       alert(AppError.getUserMessage(error));
       btn.disabled = false;
@@ -911,7 +912,7 @@ function createSortableCategoryManager(opts) {
     const name = btn.dataset.name;
     const label = btn.dataset.label || name;
     if (!id || !confirm(`Delete ${opts.noun} "${label}"?`)) return;
-    const { count } = await supabaseClient
+    const { count } = await window.supabaseClient
       .from(opts.usageTable)
       .select("id", { count: "exact", head: true })
       .eq(opts.usageColumn, name);
@@ -919,7 +920,7 @@ function createSortableCategoryManager(opts) {
       alert(`Cannot delete: ${count} ${opts.usageNoun} use this ${opts.noun}.`);
       return;
     }
-    const { error } = await supabaseClient.from(opts.table).delete().eq("id", id);
+    const { error } = await window.supabaseClient.from(opts.table).delete().eq("id", id);
     if (error) {
       alert(AppError.getUserMessage(error));
       return;
@@ -987,7 +988,7 @@ function createSortableCategoryManager(opts) {
           }
           return;
         }
-        const { data: inserted, error } = await supabaseClient
+        const { data: inserted, error } = await window.supabaseClient
           .from(opts.table)
           .insert({
             name: slugifyCategoryName(label),
@@ -1076,7 +1077,7 @@ function initStaffSalaries() {
 
   async function loadSalaries() {
     try {
-      staffList = await StaffEmployees.loadActiveEmployees(supabaseClient, {
+      staffList = await StaffEmployees.loadActiveEmployees(window.supabaseClient, {
         isAdmin: true,
         useCache: false,
       });
@@ -1151,7 +1152,7 @@ function initStaffSalaries() {
     btn.textContent = "Saving…";
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const { error } = await supabaseClient
+    const { error } = await window.supabaseClient
       .from("employees")
       .update({ monthly_salary: monthlySalary, pf_contribution: pfContribution })
       .eq("id", id);
@@ -1188,7 +1189,7 @@ async function deleteStaffAccess(btn) {
     auth: currentAuth,
     actionLabel: "remove users from the access list",
     confirmMessage: `Remove ${email} from the access list?\n\nThis deletes their app access and Supabase login. This cannot be undone.`,
-    deleteFn: () => supabaseClient.rpc("delete_staff", { p_email: email }),
+    deleteFn: () => window.supabaseClient.rpc("delete_staff", { p_email: email }),
     cacheScope: "operational",
     onSuccess: async () => {
       if (typeof invalidateUserRoleCache === "function") invalidateUserRoleCache(email);
@@ -1202,7 +1203,7 @@ async function loadStaffList() {
   const tbody = document.getElementById("settings-table-body");
   if (!tbody) return;
   tbody.innerHTML = "<tr><td colspan='5' class='muted'>Loading…</td></tr>";
-  const { data, error } = await supabaseClient
+  const { data, error } = await window.supabaseClient
     .from("users")
     .select("email, display_name, role, created_at")
     .order("created_at", { ascending: false });
