@@ -130,16 +130,23 @@
               </a>
             </div>
           </article>
-          <a class="card-link" href="credit.html#outstanding">
-            <article class="card highlight-card clickable-card dashboard-metric-card dashboard-metric-card--credit">
+          <article class="card highlight-card clickable-card dashboard-metric-card dashboard-metric-card--credit">
+            <a class="card-link dashboard-metric-card-body-link" href="credit.html#outstanding">
               <div class="dashboard-metric-card-head">
                 <h3>Open credit</h3>
                 <span class="dashboard-metric-pill dashboard-metric-pill--muted">Outstanding</span>
               </div>
-              <p class="stat dashboard-metric-hero-stat" id="credit-total">&#8212;</p>
+            </a>
+            <div class="credit-total-wrapper masked">
+              <a class="card-link credit-total-amount-link" href="credit.html#outstanding">
+                <p class="stat dashboard-metric-hero-stat" id="credit-total">₹ ******</p>
+              </a>
+              <button type="button" class="credit-unhide-btn link" id="credit-unhide-btn" aria-label="Show credit total" aria-pressed="false">Show</button>
+            </div>
+            <a class="card-link dashboard-metric-card-body-link" href="credit.html#outstanding">
               <small class="muted">Total due across customers as of selected date</small>
-            </article>
-          </a>
+            </a>
+          </article>
         </div>
       </section>
 
