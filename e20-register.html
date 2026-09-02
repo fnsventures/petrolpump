@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>E-20 testing register · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css" />
+    <script src="js/roleBootstrap.js?v=17"></script>
+    <script src="js/appNav.js?v=17"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=17" />
+    <link rel="stylesheet" href="css/app-e20-register.css?v=7" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js?v=17"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/utils.js?v=17"></script>
+    <script defer src="js/dateRangeFilter.js?v=10"></script>
+    <script defer src="js/pwa.js?v=17"></script>
+    <script defer src="js/supabase.js?v=17"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/printUtils.js?v=10"></script>
+    <script defer src="js/auth.js?v=17"></script>
+    <script defer src="js/staffEmployees.js?v=4"></script>
+    <script defer src="js/e20Register.js?v=12"></script>
+  </head>
+  <body class="e20-register-page">
+    <header class="topbar no-print">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">E-20 testing</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+        <a href="e20-register.html">E-20 testing</a>
+        <a href="reminders.html">Tasks</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout no-print">
+      <nav class="settings-nav card" aria-label="E-20 sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="record">Daily register</button>
+        <button type="button" class="settings-nav-item" data-section="history">History &amp; certified</button>
+      </nav>
+
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card e20-card is-visible" data-panel="record">
+          <header class="panel-head e20-head">
+            <div>
+              <h1 class="dashboard-section-title">Daily E-20 Testing Register</h1>
+              <p class="muted panel-lead">
+                One register per day. Station details and tanks fill automatically from the last entry.
+                Keep saving through the day; certify once at close — then the form locks.
+                Open the RO sheet from History &amp; certified → View (stays on that page).
+              </p>
+            </div>
+            <div class="e20-head-actions">
+              <div class="form-field e20-date-field">
+                <label for="e20-date">Date</label>
+                <input id="e20-date" name="date" type="date" form="e20-form" required />
+              </div>
+              <button type="button" id="e20-print-btn" class="button-secondary">Print</button>
+            </div>
+          </header>
+
+          <div id="e20-mode-banner" class="e20-mode-banner hidden" role="status" aria-live="polite"></div>
+          <p id="e20-status" class="e20-status muted" aria-live="polite"></p>
+          <p id="e20-success" class="success hidden" role="status"></p>
+          <p id="e20-error" class="error hidden" role="alert"></p>
+
+          <form id="e20-form" class="form e20-form" autocomplete="off">
+            <fieldset id="e20-fields" class="e20-fieldset">
+            <legend class="sr-only">Register fields</legend>
+            <div class="e20-meta form-grid">
+              <div class="form-field">
+                <label for="e20-outlet">Retail outlet name</label>
+                <input id="e20-outlet" name="retail_outlet_name" type="text" maxlength="200" required />
+              </div>
+              <div class="form-field">
+                <label for="e20-cc">CC code</label>
+                <input id="e20-cc" name="cc_code" type="text" maxlength="32" required />
+              </div>
+            </div>
+
+            <section class="e20-part" aria-labelledby="e20-part-a-title">
+              <div class="e20-part-head">
+                <h2 id="e20-part-a-title" class="e20-part-title">Part A — Morning water check through tank dip</h2>
+                <button type="button" id="e20-add-tank" class="button-secondary button-sm">Add tank</button>
+              </div>
+              <div class="table-scroll">
+                <table class="e20-table" id="e20-water-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Time</th>
+                      <th scope="col">Product tank no.</th>
+                      <th scope="col">Opening dip (mm)</th>
+                      <th scope="col">Water finding (mm)</th>
+                      <th scope="col">Water present</th>
+                      <th scope="col">Corrective action</th>
+                      <th scope="col">Tested by</th>
+                      <th scope="col">Mgr sign</th>
+                      <th scope="col" class="e20-col-actions"><span class="sr-only">Row</span></th>
+                    </tr>
+                  </thead>
+                  <tbody id="e20-water-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="e20-part" aria-labelledby="e20-part-b-title">
+              <div class="e20-part-head">
+                <h2 id="e20-part-b-title" class="e20-part-title">Part B — E-20 petrol quality monitoring (every 2 hours)</h2>
+                <button type="button" id="e20-fill-slots" class="button-secondary button-sm" title="Copy tester and Clear &amp; Bright / No water into empty slots">
+                  Fill empty slots
+                </button>
+              </div>
+              <div class="table-scroll">
+                <table class="e20-table e20-table--quality" id="e20-quality-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Sl.</th>
+                      <th scope="col">Time</th>
+                      <th scope="col">Visual appearance</th>
+                      <th scope="col">Water separation</th>
+                      <th scope="col">Action if abnormal</th>
+                      <th scope="col">Tested by</th>
+                      <th scope="col">Sign</th>
+                    </tr>
+                  </thead>
+                  <tbody id="e20-quality-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="e20-cert" aria-labelledby="e20-cert-title">
+              <h2 id="e20-cert-title" class="e20-part-title">Daily certification</h2>
+              <p class="e20-cert-text">
+                I certify that all mandatory E-20 quality checks were carried out as per prescribed guidelines
+                and no abnormality was observed, except those recorded above.
+              </p>
+              <div class="form-grid e20-cert-grid">
+                <div class="form-field e20-cert-check">
+                  <label class="checkbox-label">
+                    <input id="e20-certified" name="certified" type="checkbox" />
+                    <span>Certified by RO dealer</span>
+                  </label>
+                </div>
+                <div class="form-field">
+                  <label for="e20-certified-at">Date &amp; time</label>
+                  <input id="e20-certified-at" name="certified_at" type="datetime-local" />
+                </div>
+                <div class="form-field">
+                  <label for="e20-dealer">RO dealer name / signature</label>
+                  <input id="e20-dealer" name="dealer_sign_name" type="text" maxlength="120" list="e20-staff-list" />
+                </div>
+                <div class="form-field form-field-full">
+                  <label for="e20-remarks">Remarks</label>
+                  <textarea id="e20-remarks" name="remarks" rows="2" maxlength="2000" placeholder="Optional notes"></textarea>
+                </div>
+              </div>
+            </section>
+            </fieldset>
+
+            <datalist id="e20-staff-list"></datalist>
+
+            <div class="form-actions e20-actions">
+              <button type="submit" id="e20-save-btn" class="button-primary">Save register</button>
+              <button type="button" id="e20-unlock-btn" class="button-secondary hidden" data-role="admin-only">Unlock to edit</button>
+              <button type="button" id="e20-delete-btn" class="button-delete hidden" data-role="admin-only">Delete day</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="settings-panel card dashboard-card e20-history-card" data-panel="history" hidden>
+          <header class="panel-head card-head snapshot-head" id="e20-history-head">
+            <div>
+              <h2 class="dashboard-section-title">History &amp; certified registers</h2>
+              <p class="muted panel-lead">
+                Browse drafts and certified days. View opens the certified report here; Print sends it to the printer.
+              </p>
+            </div>
+            <div class="snapshot-controls e20-history-filters">
+              <div class="form-field">
+                <label for="e20-status-filter">Status</label>
+                <select id="e20-status-filter">
+                  <option value="all">All</option>
+                  <option value="certified" selected>Certified only</option>
+                  <option value="draft">Drafts only</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="e20-range">Period</label>
+                <select id="e20-range">
+                  <option value="this-month" selected>This month</option>
+                  <option value="this-week">This week</option>
+                  <option value="custom">Custom dates</option>
+                </select>
+              </div>
+              <div id="e20-custom-range" class="custom-range hidden" aria-hidden="true">
+                <div class="form-field">
+                  <label for="e20-start">From</label>
+                  <input id="e20-start" type="date" />
+                </div>
+                <div class="form-field">
+                  <label for="e20-end">To</label>
+                  <input id="e20-end" type="date" />
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="e20-apply-filter">Apply</button>
+              </div>
+            </div>
+          </header>
+
+          <div id="e20-history-list">
+            <p id="e20-history-summary" class="muted e20-history-summary" aria-live="polite"></p>
+            <p id="e20-history-error" class="error hidden" role="alert"></p>
+
+            <div class="table-wrap margin-top">
+              <table class="e20-history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>CC code</th>
+                    <th>Dealer</th>
+                    <th class="table-actions">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="e20-history-body">
+                  <tr>
+                    <td colspan="5" class="muted">Loading…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div id="e20-history-empty" class="empty-state hidden">
+              <p>No registers match this filter.</p>
+              <p class="empty-cta">Save a daily register, or widen the period / status filter.</p>
+            </div>
+            <div class="e20-history-pager">
+              <button type="button" id="e20-history-more" class="button-secondary hidden">Load more</button>
+            </div>
+          </div>
+
+          <div id="e20-report-view" class="e20-report-view hidden" aria-label="E-20 register report" aria-hidden="true">
+            <div class="e20-report-output-head">
+              <div>
+                <h2 class="e20-report-title">Daily E-20 Testing Register</h2>
+                <p id="e20-report-subtitle" class="muted e20-report-subtitle"></p>
+              </div>
+              <div class="e20-report-actions">
+                <button type="button" id="e20-report-print-btn" class="button-secondary">Print this report</button>
+                <button type="button" id="e20-report-unlock-btn" class="button-secondary hidden" data-role="admin-only">Unlock to edit</button>
+                <button type="button" id="e20-report-history-btn" class="button-secondary">Back to list</button>
+              </div>
+            </div>
+            <p id="e20-report-error" class="error hidden" role="alert"></p>
+            <div id="e20-sheet-preview" class="e20-sheet-preview" aria-live="polite"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="app-footer no-print">
+      <p>Bishnupriya Fuels · E-20 testing register</p>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,1 @@
+(function(){if(((window.location.pathname||"").split("/").pop()||"")!=="dsr.html")return;const o=(window.location.hash||"").replace(/^#/,"");(o==="meter"||o==="petrol"||o==="diesel")&&window.location.replace("meter-reading.html"+window.location.search+window.location.hash)})();

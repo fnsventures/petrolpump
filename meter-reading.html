@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Meter Reading · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css?v=3" />
+    <script src="js/roleBootstrap.js?v=17"></script>
+    <script src="js/appNav.js?v=17"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=17" />
+    <link rel="stylesheet" href="css/app-dsr.css?v=12" />
+    <link rel="stylesheet" href="css/app-meter-reading.css?v=48" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js"></script>
+    <script defer src="js/cache.js?v=17"></script>
+    <script defer src="js/appConfig.js"></script>
+    <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/purchaseTaxUtils.js?v=7"></script>
+    <script defer src="js/utils.js?v=17"></script>
+    <script defer src="js/pwa.js?v=17"></script>
+    <script defer src="js/supabase.js?v=17"></script>
+    <script defer src="js/dsrQueries.js?v=2"></script>
+    <script defer src="js/buyingPriceEntry.js?v=6"></script>
+    <script defer src="js/dsrFuelNav.js"></script>
+    <script defer src="js/pageSections.js"></script>
+    <script defer src="js/auth.js?v=17"></script>
+    <script defer src="js/staffEmployees.js?v=4"></script>
+    <script defer src="js/shiftStaffLedger.js?v=5"></script>
+    <script defer src="js/meterShiftReading.js?v=43"></script>
+    <script defer src="js/meterReading.js?v=32"></script>
+  </head>
+  <body class="meter-reading-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+    <span class="page-subtitle">Meter Reading</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" aria-label="Main navigation">
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Operations<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="dashboard.html">Dashboard</a>
+        <a href="meter-reading.html">Meter Reading</a>
+        <a href="dsr.html">DSR</a>
+        <a href="e20-register.html">E-20 testing</a>
+        <a href="reminders.html">Tasks</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Finance<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="credit.html">Credit</a>
+        <a href="expenses.html">Expenses</a>
+        <a href="day-closing.html">Day closing &amp; short</a>
+        <a href="billing.html">Billing</a>
+      </div>
+    </div>
+    <div class="nav-group-block">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">HR<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="attendance.html">Attendance</a>
+        <a href="salary.html">Salary</a>
+        <a href="staff.html">Staff</a>
+        <a href="invoices.html">Vault</a>
+        <a href="letterhead.html">Letter Desk</a>
+      </div>
+    </div>
+    <div class="nav-group-block" data-role="admin-only">
+      <span class="nav-group-label" tabindex="0" aria-haspopup="true" aria-expanded="false">Admin<span class="nav-chevron" aria-hidden="true"></span></span>
+      <div class="nav-group" role="menu">
+        <a href="analysis.html">Analysis</a>
+        <a href="reports.html">Reports</a>
+        <a href="settings.html">Settings</a>
+      </div>
+    </div>
+    <button id="logout-button" class="link nav-logout">Logout</button>
+  </nav>
+</header>
+
+    <main class="settings-layout page-layout-wide" id="meter-page-main">
+      <nav class="settings-nav card dsr-fuel-nav" id="meter-sidebar-nav" aria-label="Meter reading sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="shift-readings">
+          <span class="settings-nav-item-label">Shift register</span>
+          <span class="settings-nav-item-meta">Meters · staff · cash</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="petrol">
+          <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-meta">Petrol · 15 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="diesel">
+          <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-meta">Diesel · 20 KL</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="purchase-cost" data-role="admin-only">
+          <span class="settings-nav-item-label">Purchase cost</span>
+          <span class="settings-nav-item-meta">Buying price ₹/KL</span>
+        </button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card dsr-card dsr-card--petrol" data-panel="petrol" data-product="petrol" hidden>
+        <div class="panel-head dsr-card-head">
+          <div class="dsr-fuel-head">
+            <span class="fuel-rate-icon" aria-hidden="true">MS</span>
+            <div>
+              <h2 class="dashboard-section-title">MS (Petrol) · 15KL Tank</h2>
+              <p class="muted panel-lead">
+                Fill the reading sheet exactly like the physical DSR register.
+              </p>
+              <p class="muted"><a href="dsr.html">Period summary (DSR) →</a></p>
+            </div>
+          </div>
+        </div>
+        <form id="dsr-form-petrol" class="sheet-form" autocomplete="off">
+          <p
+            id="dsr-meter-locked-banner-petrol"
+            class="dsr-meter-locked-banner hidden"
+            role="status"
+            aria-live="polite"
+          ></p>
+          <div class="meter-stack">
+            <div class="meter-block">
+              <div class="meter-block-head">
+                <h3 class="meter-title">Opening meter reading</h3>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
+              </div>
+              <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>P1 · N1</th>
+                    <th>P1 · N2</th>
+                    <th>P2 · N1</th>
+                    <th>P2 · N2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <input
+                        id="petrol-reading-date"
+                        name="date"
+                        type="date"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-opening-p1n1"
+                        name="opening_pump1_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-opening-p1n2"
+                        name="opening_pump1_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-opening-p2n1"
+                        name="opening_pump2_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-opening-p2n2"
+                        name="opening_pump2_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="meter-block">
+              <h3 class="meter-title">Closing meter reading</h3>
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
+                    <th>P1 · N1</th>
+                    <th>P1 · N2</th>
+                    <th>P2 · N1</th>
+                    <th>P2 · N2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
+                    <td>
+                      <input
+                        id="petrol-closing-p1n1"
+                        name="closing_pump1_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-closing-p1n2"
+                        name="closing_pump1_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-closing-p2n1"
+                        name="closing_pump2_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-closing-p2n2"
+                        name="closing_pump2_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="meter-block meter-block-wide">
+              <div class="meter-block-head">
+                <h3 class="meter-title">Sales, testing &amp; stock</h3>
+                <p class="dsr-field-legend muted">
+                  <span class="dsr-legend-dot dsr-legend-dot--calc" aria-hidden="true"></span> Auto-calculated
+                  <span class="dsr-legend-sep" aria-hidden="true">·</span>
+                  <span class="dsr-legend-dot dsr-legend-dot--input" aria-hidden="true"></span> Enter manually
+                </p>
+              </div>
+              <div class="table-scroll meter-table-scroll">
+              <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Total stock (L)</th>
+                    <th>Sales pump 1 (L)</th>
+                    <th>Sales pump 2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip reading (mm)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <input
+                        id="petrol-opening-stock-inline"
+                        name="opening_stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-receipts-inline"
+                        name="receipts"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-total-stock-inline"
+                        name="total_stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-sales-p1"
+                        name="sales_pump1"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-sales-p2"
+                        name="sales_pump2"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-total-sales"
+                        name="total_sales"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-testing"
+                        name="testing"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-net-sale"
+                        name="net_sale"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-dip-reading"
+                        name="dip_reading"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-stock"
+                        name="stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="petrol-variation"
+                        name="variation"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet-rate-row dsr-rate-row">
+            <div class="form-field">
+              <label for="petrol-rate">Petrol rate (₹/L)</label>
+              <input
+                id="petrol-rate"
+                name="petrol_rate"
+                type="number"
+                inputmode="decimal"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div class="sheet-remarks">
+            <label for="petrol-reading-remarks">Remarks</label>
+            <textarea
+              id="petrol-reading-remarks"
+              name="remarks"
+              rows="2"
+              placeholder="Optional notes"
+            ></textarea>
+          </div>
+
+          <div class="sheet-actions">
+            <button type="submit">Save meter entry</button>
+            <p id="dsr-success-petrol" class="success hidden">
+              Entry saved successfully.
+            </p>
+            <p id="dsr-error-petrol" class="error hidden"></p>
+          </div>
+        </form>
+
+        <div class="dsr-history">
+          <h3>Recent meter entries</h3>
+          <div class="table-scroll">
+            <table class="dsr-table meter-history">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Pump 1 sale (L)</th>
+                  <th>Pump 2 sale (L)</th>
+                  <th>Total sales (L)</th>
+                  <th>Testing (L)</th>
+                  <th>Dip reading (mm)</th>
+                  <th>Stock (L)</th>
+                  <th>Rate (₹/L)</th>
+                  <th>Remarks</th>
+                  <th data-role="admin-only">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="dsr-table-petrol">
+                <tr>
+                  <td colspan="9" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="settings-panel card dashboard-card dsr-card dsr-card--diesel" data-panel="diesel" data-product="diesel" hidden>
+        <div class="panel-head dsr-card-head">
+          <div class="dsr-fuel-head">
+            <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
+            <div>
+              <h2 class="dashboard-section-title">HSD (Diesel) · 20KL Tank</h2>
+              <p class="muted panel-lead">
+                Fill the reading sheet exactly like the physical DSR register.
+              </p>
+              <p class="muted"><a href="dsr.html">Period summary (DSR) →</a></p>
+            </div>
+          </div>
+        </div>
+        <form id="dsr-form-diesel" class="sheet-form" autocomplete="off">
+          <p
+            id="dsr-meter-locked-banner-diesel"
+            class="dsr-meter-locked-banner hidden"
+            role="status"
+            aria-live="polite"
+          ></p>
+          <div class="meter-stack">
+            <div class="meter-block">
+              <div class="meter-block-head">
+                <h3 class="meter-title">Opening meter reading</h3>
+                <div class="meter-block-actions">
+                  <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+                  <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
+                </div>
+              </div>
+              <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>P1 · N1</th>
+                    <th>P1 · N2</th>
+                    <th>P2 · N1</th>
+                    <th>P2 · N2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <input
+                        id="diesel-reading-date"
+                        name="date"
+                        type="date"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-opening-p1n1"
+                        name="opening_pump1_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-opening-p1n2"
+                        name="opening_pump1_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-opening-p2n1"
+                        name="opening_pump2_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-opening-p2n2"
+                        name="opening_pump2_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="meter-block">
+              <h3 class="meter-title">Closing meter reading</h3>
+              <table class="dsr-table meter-table compact meter-table--closing">
+                <colgroup>
+                  <col class="meter-col-date" />
+                  <col class="meter-col-nozzle" span="4" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
+                    <th>P1 · N1</th>
+                    <th>P1 · N2</th>
+                    <th>P2 · N1</th>
+                    <th>P2 · N2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
+                    <td>
+                      <input
+                        id="diesel-closing-p1n1"
+                        name="closing_pump1_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-closing-p1n2"
+                        name="closing_pump1_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-closing-p2n1"
+                        name="closing_pump2_nozzle1"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-closing-p2n2"
+                        name="closing_pump2_nozzle2"
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="15"
+                        placeholder="0"
+                        required
+                        class="meter-reading"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="meter-block meter-block-wide">
+              <div class="meter-block-head">
+                <h3 class="meter-title">Sales, testing &amp; stock</h3>
+                <p class="dsr-field-legend muted">
+                  <span class="dsr-legend-dot dsr-legend-dot--calc" aria-hidden="true"></span> Auto-calculated
+                  <span class="dsr-legend-sep" aria-hidden="true">·</span>
+                  <span class="dsr-legend-dot dsr-legend-dot--input" aria-hidden="true"></span> Enter manually
+                </p>
+              </div>
+              <div class="table-scroll meter-table-scroll">
+              <table class="dsr-table meter-table compact">
+                <colgroup>
+                  <col class="meter-col-stock" span="11" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Opening stock (L)</th>
+                    <th>Receipts (L)</th>
+                    <th>Total stock (L)</th>
+                    <th>Sales pump 1 (L)</th>
+                    <th>Sales pump 2 (L)</th>
+                    <th>Total sales (L)</th>
+                    <th>Testing (L)</th>
+                    <th>Net sale (L)</th>
+                    <th>Dip reading (mm)</th>
+                    <th>Dip stock (L)</th>
+                    <th>Variation (L)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <input
+                        id="diesel-opening-stock-inline"
+                        name="opening_stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-receipts-inline"
+                        name="receipts"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-total-stock-inline"
+                        name="total_stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-sales-p1"
+                        name="sales_pump1"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-sales-p2"
+                        name="sales_pump2"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-total-sales"
+                        name="total_sales"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-testing"
+                        name="testing"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-net-sale"
+                        name="net_sale"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-dip-reading"
+                        name="dip_reading"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-stock"
+                        name="stock"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="0"
+                        required
+                      />
+                    </td>
+                    <td>
+                      <input
+                        id="diesel-variation"
+                        name="variation"
+                        type="number"
+                        inputmode="decimal"
+                        step="0.01"
+                        placeholder="0"
+                        readonly
+                        class="calc-field"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="sheet-rate-row dsr-rate-row">
+            <div class="form-field">
+              <label for="diesel-rate">Diesel rate (₹/L)</label>
+              <input
+                id="diesel-rate"
+                name="diesel_rate"
+                type="number"
+                inputmode="decimal"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div class="sheet-remarks">
+            <label for="diesel-reading-remarks">Remarks</label>
+            <textarea
+              id="diesel-reading-remarks"
+              name="remarks"
+              rows="2"
+              placeholder="Optional notes"
+            ></textarea>
+          </div>
+
+          <div class="sheet-actions">
+            <button type="submit">Save meter entry</button>
+            <p id="dsr-success-diesel" class="success hidden">
+              Entry saved successfully.
+            </p>
+            <p id="dsr-error-diesel" class="error hidden"></p>
+          </div>
+        </form>
+
+        <div class="dsr-history">
+          <h3>Recent meter entries</h3>
+          <div class="table-scroll">
+            <table class="dsr-table meter-history">
+          <thead>
+            <tr>
+              <th>Date</th>
+                  <th>Pump 1 sale (L)</th>
+                  <th>Pump 2 sale (L)</th>
+                  <th>Total sales (L)</th>
+                  <th>Testing (L)</th>
+                  <th>Dip reading (mm)</th>
+                  <th>Stock (L)</th>
+              <th>Rate (₹/L)</th>
+              <th>Remarks</th>
+              <th data-role="admin-only">Actions</th>
+            </tr>
+          </thead>
+              <tbody id="dsr-table-diesel">
+                <tr>
+                  <td colspan="9" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+        <section
+          class="settings-panel card dashboard-card dsr-card is-visible shift-register-panel"
+          data-panel="shift-readings"
+          id="shift-readings"
+        >
+          <div class="panel-head dsr-card-head shift-register-head">
+            <div class="shift-register-title-block">
+              <h2 class="dashboard-section-title">Shift register</h2>
+              <p id="shift-meter-attendance-note" class="shift-attendance-note muted hidden"></p>
+            </div>
+            <div class="shift-register-meta">
+              <p id="shift-meter-context-label" class="muted shift-context-label">Select a date and shift</p>
+              <span id="shift-meter-context-status" class="shift-status-badge shift-status-badge--idle">—</span>
+            </div>
+          </div>
+
+          <div class="shift-meter-controls">
+            <div class="form-field">
+              <label for="shift-meter-date">Date</label>
+              <input id="shift-meter-date" type="date" required />
+            </div>
+            <div class="form-field">
+              <label for="shift-meter-shift">Shift</label>
+              <select id="shift-meter-shift"></select>
+            </div>
+            <div class="form-field form-field--fuel-petrol">
+              <label for="shift-meter-rate-petrol">MS ₹/L</label>
+              <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="form-field form-field--fuel-diesel">
+              <label for="shift-meter-rate-diesel">HSD ₹/L</label>
+              <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
+            </div>
+            <div class="shift-control-actions">
+              <button type="button" id="shift-meter-copy-openings" class="button-secondary">Copy openings</button>
+              <button type="button" id="shift-meter-clear" class="button-delete hidden" data-role="admin-only">Delete</button>
+            </div>
+          </div>
+
+          <p id="shift-meter-locked-banner" class="dsr-meter-locked-banner hidden" role="status" aria-live="polite"></p>
+          <p id="shift-meter-loading" class="muted shift-loading hidden">Loading shift…</p>
+          <div id="shift-meter-totals" class="shift-totals" aria-live="polite"></div>
+
+          <div id="shift-meter-edit-zone" class="shift-meter-edit-zone">
+            <section class="shift-section" aria-labelledby="shift-section-meters-title">
+              <h3 id="shift-section-meters-title" class="shift-section-title">Nozzle meters</h3>
+              <div id="shift-meter-nozzle-tables" class="shift-nozzle-blocks meter-stack"></div>
+            </section>
+
+            <section class="shift-section" aria-labelledby="shift-section-cash-title">
+              <h3 id="shift-section-cash-title" class="shift-section-title">Staff collections</h3>
+              <div id="shift-meter-staff-hint"></div>
+              <div id="shift-meter-staff-body" class="shift-staff-host">
+                <p class="muted shift-staff-empty">Assign staff to nozzles above to see cash rows.</p>
+              </div>
+            </section>
+          </div>
+
+          <div class="shift-save-row" id="shift-save-row">
+            <div class="shift-save-notes">
+              <label for="shift-meter-remarks">Comments</label>
+              <textarea
+                id="shift-meter-remarks"
+                rows="2"
+                maxlength="500"
+                placeholder="Optional notes for this shift"
+              ></textarea>
+              <p id="shift-save-summary" class="shift-save-summary muted"></p>
+            </div>
+            <button type="button" id="shift-meter-save" class="shift-save-btn">Save shift</button>
+          </div>
+
+          <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>
+          <p id="shift-meter-error" class="error hidden" role="alert"></p>
+
+          <section class="shift-section shift-section--quiet" aria-labelledby="shift-section-sheets-title">
+            <h3 id="shift-section-sheets-title" class="shift-section-title">Daily sheets</h3>
+            <div id="shift-meter-reconcile" class="shift-reconcile" aria-live="polite"></div>
+          </section>
+
+          <section class="shift-section shift-section--history" aria-labelledby="shift-history-title">
+            <h3 id="shift-history-title" class="shift-section-title">Recent shifts</h3>
+            <div class="table-scroll">
+              <table class="dsr-table meter-history compact shift-history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Shift</th>
+                    <th>MS (L)</th>
+                    <th>HSD (L)</th>
+                    <th>Staff</th>
+                    <th>Total ₹</th>
+                    <th>View</th>
+                  </tr>
+                </thead>
+                <tbody id="shift-meter-history-body">
+                  <tr>
+                    <td colspan="7" class="muted">Loading…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section
+          class="settings-panel card dashboard-card"
+          data-panel="purchase-cost"
+          data-role="admin-only"
+          id="purchase-cost"
+          hidden
+        >
+          <div class="panel-head">
+            <h2 class="dashboard-section-title">Purchase cost</h2>
+            <p class="muted panel-lead">
+              Enter amounts exactly as on the BPCL invoices for that receipt day. The app calculates delivery ₹/KL, LFR ₹/KL, and landed buying price.
+              Each save applies from that receipt onward only — earlier days stay as they were.
+            </p>
+          </div>
+          <p id="purchase-cost-error" class="error hidden" role="alert"></p>
+          <p id="purchase-cost-hint" class="muted"></p>
+          <div id="purchase-cost-alert" class="pl-buying-price-alert hidden">
+            <p class="pl-alert-message">
+              <strong>Fuel invoice:</strong> Rate per Unit, DLY/TAXABLE CHARGE, Quantity (KL).<br />
+              <strong>LFR invoice:</strong> TAXABLE AMT and total KL for the load (MS+HSD). GST on LFR is applied automatically.
+            </p>
+            <ul id="purchase-cost-missing-list" class="pl-missing-buying-list"></ul>
+          </div>
+          <p id="purchase-cost-empty" class="muted hidden" role="status">
+            All receipt days in the lookback window have rate, delivery, and LFR. Full P&amp;L is on
+            <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a>
+            and <a href="analysis.html">Analysis</a>.
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <div
+      id="shift-view-overlay"
+      class="shift-view-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shift-view-title"
+    >
+      <div class="shift-view-backdrop" id="shift-view-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card shift-view-card">
+        <div class="shift-view-head">
+          <div>
+            <h2 id="shift-view-title">Shift register</h2>
+            <p id="shift-view-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="shift-view-close" id="shift-view-close" aria-label="Close">×</button>
+        </div>
+        <div id="shift-view-body" class="shift-view-body">
+          <p class="muted">Loading…</p>
+        </div>
+        <div class="shift-view-actions">
+          <button type="button" id="shift-view-open-editor" class="button-secondary">Open in editor</button>
+          <button type="button" id="shift-view-dismiss">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="shift-ledger-overlay"
+      class="shift-view-overlay shift-ledger-overlay"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shift-ledger-title"
+    >
+      <div class="shift-view-backdrop" id="shift-ledger-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card shift-view-card shift-ledger-card">
+        <div class="shift-view-head">
+          <div>
+            <h2 id="shift-ledger-title">Staff</h2>
+            <p id="shift-ledger-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="shift-view-close" id="shift-ledger-close" aria-label="Close">×</button>
+        </div>
+        <div id="shift-ledger-body" class="shift-view-body shift-ledger-body">
+          <p class="muted">Loading…</p>
+        </div>
+        <div class="shift-view-actions">
+          <button type="button" id="shift-ledger-dismiss">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>
