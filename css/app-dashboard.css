@@ -1587,6 +1587,58 @@ a.dashboard-fuel-chip:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Credit total mask/unhide — quiet text control beside the amount */
+.credit-total-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.credit-total-amount-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.credit-total-wrapper.masked #credit-total {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2em;
+}
+
+button.credit-unhide-btn {
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+  transform: none;
+}
+
+button.credit-unhide-btn:hover,
+button.credit-unhide-btn:active {
+  color: var(--text);
+  background: none;
+  box-shadow: none;
+  transform: none;
+}
+
+button.credit-unhide-btn:focus-visible {
+  outline: 1px dotted var(--text-muted);
+  outline-offset: 2px;
+}
+
 
 /* Legacy welcome strip (other pages may still use) */
 .dashboard-welcome-strip {
