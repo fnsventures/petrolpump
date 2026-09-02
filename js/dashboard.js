@@ -821,6 +821,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     ]);
     if (snapshotCard) snapshotCard.classList.remove("loading");
 
+    // Initialize credit mask toggle (button is outside the card link)
+    const creditUnhideBtn = document.getElementById("credit-unhide-btn");
+    if (creditUnhideBtn) {
+      syncCreditMaskButton(isCreditMasked());
+      creditUnhideBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleCreditMask();
+      });
+    }
+
     const initialSection = (location.hash || "").replace(/^#/, "") || "snapshot";
     if (initialSection === "dsr") {
       await ensureDsrSectionLoaded();
@@ -2439,10 +2450,52 @@ async function loadCreditSummary(dateStr) {
   renderCreditSummary(total, creditTotal);
 }
 
+const CREDIT_MASK_STORAGE_KEY = "petrolpump_credit_masked";
+
 /**
- * Render credit summary to UI (total is numeric from get_open_credit_as_of)
+ * Credit total is hidden by default (first visit / no preference).
+ * Only "false" in localStorage means the user chose to show it.
  */
-function renderCreditSummary(total, creditTotal) {
+function isCreditMasked() {
+  try {
+    return localStorage.getItem(CREDIT_MASK_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+
+function setCreditMasked(masked) {
+  try {
+    localStorage.setItem(CREDIT_MASK_STORAGE_KEY, masked ? "true" : "false");
+  } catch {}
+}
+
+function renderMaskedCredit(creditTotal) {
+  if (!creditTotal) return;
+  creditTotal.textContent = "₹ ******";
+  creditTotal.dataset.masked = "true";
+}
+
+function renderUnmaskedCredit(creditTotal, value) {
+  if (!creditTotal) return;
+  creditTotal.textContent = formatCurrency(value);
+  creditTotal.dataset.masked = "false";
+}
+
+function syncCreditMaskButton(masked) {
+  const btn = document.getElementById("credit-unhide-btn");
+  const wrapper = document.querySelector(".credit-total-wrapper");
+  if (wrapper) wrapper.classList.toggle("masked", masked);
+  if (!btn) return;
+  btn.setAttribute("aria-pressed", masked ? "false" : "true");
+  btn.setAttribute("aria-label", masked ? "Show credit total" : "Hide credit total");
+  btn.textContent = masked ? "Show" : "Hide";
+}
+
+/**
+ * Update credit total UI with mask support
+ */
+function updateCreditTotalUI(total, creditTotal) {
   if (total === null || total === undefined) {
     lastCreditTotalRupees = null;
     if (creditTotal) creditTotal.textContent = "—";
@@ -2452,8 +2505,39 @@ function renderCreditSummary(total, creditTotal) {
 
   const value = Number(total);
   lastCreditTotalRupees = value;
-  if (creditTotal) creditTotal.textContent = formatCurrency(value);
+  const isMasked = isCreditMasked();
+  syncCreditMaskButton(isMasked);
+
+  if (isMasked) {
+    renderMaskedCredit(creditTotal);
+  } else {
+    renderUnmaskedCredit(creditTotal, value);
+  }
+
   syncCreditSmartAlert();
+}
+
+/**
+ * Render credit summary to UI (total is numeric from get_open_credit_as_of)
+ */
+function renderCreditSummary(total, creditTotal) {
+  updateCreditTotalUI(total, creditTotal);
+}
+
+/**
+ * Toggle credit mask — stays on dashboard; does not follow the card link.
+ */
+function toggleCreditMask() {
+  const newMasked = !isCreditMasked();
+  setCreditMasked(newMasked);
+  syncCreditMaskButton(newMasked);
+
+  const creditTotal = document.getElementById("credit-total");
+  if (newMasked) {
+    renderMaskedCredit(creditTotal);
+  } else if (Number.isFinite(lastCreditTotalRupees)) {
+    renderUnmaskedCredit(creditTotal, lastCreditTotalRupees);
+  }
 }
 
 /**
