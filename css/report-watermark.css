@@ -1,0 +1,47 @@
+/* Shared Bishnupriya Fuels report watermark (screen + print sheets) */
+
+.report-print-sheet,
+.e20-sheet {
+  position: relative;
+  isolation: isolate;
+}
+
+.report-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: -1;
+  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.report-watermark-img {
+  width: min(18rem, 58%);
+  height: auto;
+  max-height: 18rem;
+  object-fit: contain;
+  opacity: 0.07;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@media print {
+  .report-watermark {
+    /* Fixed so the logo appears centered on every printed page */
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+  }
+
+  .report-watermark-img {
+    width: 95mm;
+    height: 95mm;
+    max-width: 58%;
+    max-height: 58%;
+    opacity: 0.08;
+  }
+}

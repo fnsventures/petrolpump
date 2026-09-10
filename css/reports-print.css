@@ -1,5 +1,7 @@
 /* Business reports — uniform A4 portrait (isolated iframe print) */
 
+@import url("report-watermark.css");
+
 @page {
   size: A4 portrait;
   margin: 12mm 10mm;

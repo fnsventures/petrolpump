@@ -1,5 +1,7 @@
 /* Daily E-20 Testing Register — isolated iframe print; A4 portrait */
 
+@import url("report-watermark.css");
+
 @page {
   size: A4 portrait;
   margin: 10mm 12mm;
