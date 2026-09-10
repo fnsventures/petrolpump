@@ -55,7 +55,7 @@
   const PRINT_LOGO_CLASS_RE =
     "invoice-bpcl-logo|report-bpcl-logo|salary-slip-logo";
   const PRINT_LOGO_IMAGE_SELECTORS =
-    ".report-bpcl-logo, .invoice-bpcl-logo, .salary-slip-logo";
+    ".report-bpcl-logo, .invoice-bpcl-logo, .salary-slip-logo, .report-watermark-img";
 
   /** Resolved absolute URL for letterhead logos in print/PDF output. */
   function getStationLogoPrintUrl() {
@@ -63,6 +63,49 @@
       (typeof AppConfig !== "undefined" && AppConfig.getStationLogoPrintSrc?.()) ||
       "assets/logo-print.webp";
     return resolveAssetUrl(path);
+  }
+
+  /**
+   * Centered Bishnupriya Fuels logo watermark for report sheets (screen + print).
+   * @returns {string}
+   */
+  function buildReportWatermarkHtml() {
+    return `<div class="report-watermark" aria-hidden="true"><img src="${getStationLogoPrintUrl()}" alt="" class="report-watermark-img" width="320" height="320" decoding="async" /></div>`;
+  }
+
+  const REPORT_SHEET_OPEN_RE =
+    /<(div|article)(\s[^>]*\bclass\s*=\s*["'][^"']*\b(?:report-print-sheet|e20-sheet)\b[^"']*["'][^>]*)>/i;
+
+  /**
+   * Ensure a report sheet includes the station logo watermark (idempotent).
+   * Single injection point for print + screen previews.
+   * @param {string} bodyHtml
+   * @returns {string}
+   */
+  function ensureReportWatermark(bodyHtml) {
+    const html = String(bodyHtml || "");
+    if (!html || html.includes('class="report-watermark"') || html.includes("class='report-watermark'")) {
+      return html;
+    }
+    const mark = buildReportWatermarkHtml();
+    const next = html.replace(REPORT_SHEET_OPEN_RE, `<$1$2>${mark}`);
+    return next === html ? `${mark}${html}` : next;
+  }
+
+  function shouldStampReportWatermark(bodyClass, containerClass) {
+    const body = bodyClass || "";
+    const container = containerClass || "";
+    return (
+      body.includes("report-print-body") ||
+      body.includes("e20-print-body") ||
+      container.includes("report-print-container")
+    );
+  }
+
+  function preparePrintBodyHtml(bodyHtml, bodyClass, containerClass) {
+    return shouldStampReportWatermark(bodyClass, containerClass)
+      ? ensureReportWatermark(bodyHtml)
+      : String(bodyHtml || "");
   }
 
   /** Normalize logo markup before iframe print (high-res src, no picture/srcset). */
@@ -202,7 +245,7 @@
   }
 
   /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=8";
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=10";
 
   /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
   const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=3";
@@ -251,19 +294,21 @@
 
   /**
    * Cached report print CSS text (shared by reports + day closing).
+   * Resolves @import (e.g. report-watermark.css) so iframe print does not race.
    * @returns {Promise<string>}
    */
   async function getReportPrintCssText() {
     if (reportPrintCssCache) return reportPrintCssCache;
     if (reportPrintCssInflight) return reportPrintCssInflight;
 
-    const url = resolveAssetUrl(REPORT_PRINT_CSS_HREF);
     reportPrintCssInflight = (async () => {
       try {
-        const res = await fetch(url, { cache: "default" });
-        if (!res.ok) return fetchReportPrintCssViaLink(url);
-        reportPrintCssCache = await res.text();
-        return reportPrintCssCache;
+        try {
+          reportPrintCssCache = await resolveCssHrefWithImports(REPORT_PRINT_CSS_HREF);
+          return reportPrintCssCache;
+        } catch {
+          return fetchReportPrintCssViaLink(resolveAssetUrl(REPORT_PRINT_CSS_HREF));
+        }
       } finally {
         reportPrintCssInflight = null;
       }
@@ -587,7 +632,7 @@
     const prepared = await preparePrintCssOptions(options);
     const {
       title = "Print",
-      bodyHtml = "",
+      bodyHtml: rawBodyHtml = "",
       cssHref,
       cssText,
       headExtras = "",
@@ -596,6 +641,8 @@
       waitForReady,
       cleanupTimeoutMs = 5000,
     } = prepared;
+
+    const bodyHtml = preparePrintBodyHtml(rawBodyHtml, bodyClass, containerClass);
 
     clearPrintHostArtifacts();
 
@@ -679,7 +726,7 @@
     const prepared = await preparePrintCssOptions(options);
     const {
       title = "Print",
-      bodyHtml = "",
+      bodyHtml: rawBodyHtml = "",
       cssHref,
       cssText,
       headExtras = "",
@@ -691,6 +738,8 @@
       cleanupTimeoutMs = 5000,
       onFallback,
     } = prepared;
+
+    const bodyHtml = preparePrintBodyHtml(rawBodyHtml, bodyClass, containerClass);
 
     const iframe = document.createElement("iframe");
     iframe.setAttribute("title", iframeTitle);
@@ -769,6 +818,8 @@
     buildPrintFilename,
     buildReportLetterhead,
     buildReportPrintFooter,
+    buildReportWatermarkHtml,
+    ensureReportWatermark,
     escapeInlineCss,
     getCreditSummaryPrintCssText,
     getReportPrintCssText,
@@ -778,6 +829,7 @@
     preloadReportPrintCss,
     printInIframe,
     resolveAssetUrl,
+    resolveCssHrefWithImports,
     sanitizeFilenamePart,
     waitForDocumentStylesheets,
     waitForFrameLoad,

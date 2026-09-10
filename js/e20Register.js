@@ -17,7 +17,7 @@
   ];
 
   const DEFAULT_TANKS = ["MS Tank-1", "MS Tank-2"];
-  const PRINT_CSS = "css/e20-register-print.css?v=2";
+  const PRINT_CSS = "css/e20-register-print.css?v=4";
   const HISTORY_PAGE_SIZE = 25;
 
   const REGISTER_SELECT = `
@@ -327,7 +327,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       dom.reportView.setAttribute("aria-hidden", "false");
     }
     if (dom.sheetPreview) {
-      dom.sheetPreview.innerHTML = `<div class="e20-preview-inner">${buildSheetHtml(snap)}</div>`;
+      const sheet = buildSheetHtml(snap);
+      dom.sheetPreview.innerHTML = `<div class="e20-preview-inner">${
+        typeof PrintUtils !== "undefined" && PrintUtils.ensureReportWatermark
+          ? PrintUtils.ensureReportWatermark(sheet)
+          : sheet
+      }</div>`;
     }
     if (dom.reportSubtitle) {
       dom.reportSubtitle.textContent = [
@@ -1248,6 +1253,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (printCssCache) return printCssCache;
     if (printCssInflight) return printCssInflight;
     printCssInflight = (async () => {
+      if (typeof PrintUtils !== "undefined" && PrintUtils.resolveCssHrefWithImports) {
+        printCssCache = await PrintUtils.resolveCssHrefWithImports(PRINT_CSS);
+        return printCssCache;
+      }
       const res = await fetch(new URL(PRINT_CSS, window.location.href).href);
       if (!res.ok) throw new Error("Could not load E-20 print styles.");
       printCssCache = await res.text();

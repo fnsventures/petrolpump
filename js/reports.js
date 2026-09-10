@@ -3225,13 +3225,19 @@ function renderActiveReport() {
   }
 
   const html = renderReportHtml(activeReport, cachedData, cachedRange);
+  const sheetHtml =
+    typeof PrintUtils !== "undefined" && PrintUtils.ensureReportWatermark
+      ? PrintUtils.ensureReportWatermark(
+          `<div class="report-print-sheet">${html}</div>`
+        )
+      : `<div class="report-print-sheet">${html}</div>`;
 
   if (preview) {
-    preview.innerHTML = `<div class="report-preview-inner">${html}</div>`;
+    preview.innerHTML = `<div class="report-preview-inner">${sheetHtml}</div>`;
     preview.classList.remove("muted");
   }
   if (printRoot) {
-    printRoot.innerHTML = `<div class="report-print-sheet">${html}</div>`;
+    printRoot.innerHTML = sheetHtml;
     printRoot.removeAttribute("aria-hidden");
   }
 
