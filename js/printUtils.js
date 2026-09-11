@@ -65,12 +65,60 @@
     return resolveAssetUrl(path);
   }
 
+  /** Print-safe watermark CSS inlined into the print document (no @import dependency). */
+  const REPORT_WATERMARK_PRINT_CSS = `
+.report-watermark{
+  position:fixed!important;
+  inset:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  pointer-events:none!important;
+  z-index:1000!important;
+  margin:0!important;
+  padding:0!important;
+  overflow:hidden!important;
+  -webkit-print-color-adjust:exact!important;
+  print-color-adjust:exact!important;
+}
+.report-watermark-img{
+  width:95mm!important;
+  height:95mm!important;
+  max-width:55%!important;
+  max-height:55%!important;
+  object-fit:contain!important;
+  opacity:0.12!important;
+  margin:0!important;
+  -webkit-print-color-adjust:exact!important;
+  print-color-adjust:exact!important;
+}`;
+
   /**
    * Centered Bishnupriya Fuels logo watermark for report sheets (screen + print).
+   * @param {{ fixed?: boolean }} [options] fixed=true for print/PDF (repeats every page)
    * @returns {string}
    */
-  function buildReportWatermarkHtml() {
-    return `<div class="report-watermark" aria-hidden="true"><img src="${getStationLogoPrintUrl()}" alt="" class="report-watermark-img" width="320" height="320" decoding="async" /></div>`;
+  function buildReportWatermarkHtml(options = {}) {
+    const src = getStationLogoPrintUrl();
+    const fixed = Boolean(options.fixed);
+    // absolute for screen preview; fixed for print (reinforced by inlined print CSS).
+    const wrapStyle = fixed
+      ? "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;" +
+        "pointer-events:none;z-index:1000;margin:0;padding:0;overflow:hidden;" +
+        "-webkit-print-color-adjust:exact;print-color-adjust:exact;"
+      : "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
+        "pointer-events:none;z-index:0;margin:0;padding:0;overflow:hidden;";
+    const imgStyle = fixed
+      ? "width:95mm;height:95mm;max-width:55%;max-height:55%;object-fit:contain;" +
+        "opacity:0.12;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;"
+      : "width:min(18rem,55%);height:auto;max-height:18rem;object-fit:contain;" +
+        "opacity:0.1;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;";
+    return (
+      `<div class="report-watermark" aria-hidden="true" style="${wrapStyle}">` +
+      `<img src="${src}" alt="" class="report-watermark-img" width="320" height="320" ` +
+      `decoding="${fixed ? "sync" : "async"}" style="${imgStyle}" />` +
+      `</div>`
+    );
   }
 
   const REPORT_SHEET_OPEN_RE =
@@ -78,17 +126,19 @@
 
   /**
    * Ensure a report sheet includes the station logo watermark (idempotent).
-   * Single injection point for print + screen previews.
+   * Injected as a sibling *before* the sheet so position:fixed is not trapped
+   * by sheet stacking contexts.
    * @param {string} bodyHtml
+   * @param {{ fixed?: boolean }} [options]
    * @returns {string}
    */
-  function ensureReportWatermark(bodyHtml) {
+  function ensureReportWatermark(bodyHtml, options = {}) {
     const html = String(bodyHtml || "");
     if (!html || html.includes('class="report-watermark"') || html.includes("class='report-watermark'")) {
       return html;
     }
-    const mark = buildReportWatermarkHtml();
-    const next = html.replace(REPORT_SHEET_OPEN_RE, `<$1$2>${mark}`);
+    const mark = buildReportWatermarkHtml(options);
+    const next = html.replace(REPORT_SHEET_OPEN_RE, `${mark}<$1$2>`);
     return next === html ? `${mark}${html}` : next;
   }
 
@@ -103,9 +153,16 @@
   }
 
   function preparePrintBodyHtml(bodyHtml, bodyClass, containerClass) {
-    return shouldStampReportWatermark(bodyClass, containerClass)
-      ? ensureReportWatermark(bodyHtml)
-      : String(bodyHtml || "");
+    if (!shouldStampReportWatermark(bodyClass, containerClass)) {
+      return String(bodyHtml || "");
+    }
+    // Always rebuild watermark with print positioning (screen preview may have absolute).
+    let html = String(bodyHtml || "").replace(
+      /<div class="report-watermark"[^>]*>[\s\S]*?<\/div>/i,
+      ""
+    );
+    html = ensureReportWatermark(html, { fixed: true });
+    return `<style>${REPORT_WATERMARK_PRINT_CSS}</style>${html}`;
   }
 
   /** Normalize logo markup before iframe print (high-res src, no picture/srcset). */
@@ -245,7 +302,7 @@
   }
 
   /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=10";
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=11";
 
   /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
   const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=3";
