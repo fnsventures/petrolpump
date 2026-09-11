@@ -495,3 +495,28 @@ body.report-print-body {
     color: #854d0e !important;
   }
 }
+
+/* watermark-print-fallback — keep even if report-watermark.css @import fails */
+@media print {
+  .report-watermark {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    pointer-events: none !important;
+    z-index: 1000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .report-watermark-img {
+    width: 95mm !important;
+    height: 95mm !important;
+    max-width: 55% !important;
+    max-height: 55% !important;
+    object-fit: contain !important;
+    opacity: 0.12 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
