@@ -498,32 +498,34 @@ body.report-print-body {
 
 /* watermark-print-fallback — keep even if report-watermark.css @import fails */
 @media print {
-  .report-watermark {
+  .report-watermark--page {
     position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    inset: auto !important;
-    width: 100mm !important;
-    height: 100mm !important;
-    margin: -50mm 0 0 -50mm !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
     padding: 0 !important;
-    display: block !important;
-    overflow: visible !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
     pointer-events: none !important;
     z-index: 1000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
-  .report-watermark-img {
+  .report-watermark--page .report-watermark-img {
     display: block !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
+    width: 100mm !important;
+    height: 100mm !important;
+    max-width: 46% !important;
+    max-height: 46% !important;
     object-fit: contain !important;
-    opacity: 0.075 !important;
+    opacity: 0.08 !important;
+    margin: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
