@@ -9,7 +9,7 @@
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v189";
+const CACHE_VERSION = "v193";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 

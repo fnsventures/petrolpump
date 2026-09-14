@@ -19,6 +19,7 @@ Guides for **Bishnupriya Fuels**.
 | Change database tables | [DATA_TABLES.md](DATA_TABLES.md) · [DSR_TABLES.md](DSR_TABLES.md) |
 | Supplier PDFs in Google Drive | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
 | Drive backup restore (deep) | [BACKUP.md](BACKUP.md) |
+| Stay on Supabase free (500 MB) + lean indexes / less duplication | [STORAGE_RETENTION.md](STORAGE_RETENTION.md) |
 
 ---
 
@@ -68,6 +69,7 @@ Full steps: **[OPERATIONS.md](OPERATIONS.md)**
 | [DSR_TABLES.md](DSR_TABLES.md) | Meter / stock model |
 | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Invoice PDF → Drive |
 | [BACKUP.md](BACKUP.md) | Backup restore |
+| [STORAGE_RETENTION.md](STORAGE_RETENTION.md) | Free-tier size, index hygiene, anti-duplication |
 | [../scripts/README.md](../scripts/README.md) | Script internals |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Pull requests |
 
