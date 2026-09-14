@@ -1,11 +1,11 @@
 /* Shared Bishnupriya Fuels report watermark (screen + print sheets)
  *
- * Print/PDF: fixed box centered on each page with top/left 50% + negative margins.
- * Do not use inset:0 flex centering (Chrome centers mid-document on multi-page).
- * Do not use transform on the fixed wrapper (can break per-page repetition).
+ * Screen: absolute mark centered in the preview sheet.
+ * Print: .report-watermark--page is position:fixed; inset of the page box with
+ * flex centering so the logo sits in the true middle of every printed page.
  */
 
-.report-watermark {
+.report-watermark:not(.report-watermark--page) {
   position: absolute;
   inset: 0;
   display: flex;
@@ -31,7 +31,6 @@
   print-color-adjust: exact;
 }
 
-/* Screen preview: sheet is the positioning context */
 .report-print-sheet,
 .e20-sheet,
 .report-preview-inner,
@@ -39,38 +38,43 @@
   position: relative;
 }
 
-.report-print-sheet > :not(.report-watermark),
-.e20-sheet > :not(.report-watermark),
-.report-preview-inner > :not(.report-watermark),
-.e20-preview-inner > :not(.report-watermark) {
+.report-print-sheet > :not(.report-watermark):not(.report-watermark-layer),
+.e20-sheet > :not(.report-watermark):not(.report-watermark-layer),
+.report-preview-inner > :not(.report-watermark):not(.report-watermark-layer),
+.e20-preview-inner > :not(.report-watermark):not(.report-watermark-layer) {
   position: relative;
   z-index: 1;
 }
 
 @media print {
-  .report-watermark {
+  .report-watermark--page {
     position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    right: auto !important;
-    bottom: auto !important;
-    inset: auto !important;
-    width: 100mm !important;
-    height: 100mm !important;
-    margin: -50mm 0 0 -50mm !important;
-    padding: 0 !important;
-    display: block !important;
-    overflow: visible !important;
-    z-index: 1000 !important;
-  }
-
-  .report-watermark-img {
-    display: block !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
     width: 100% !important;
     height: 100% !important;
-    max-width: none !important;
-    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    z-index: 1000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .report-watermark--page .report-watermark-img {
+    display: block !important;
+    width: 100mm !important;
+    height: 100mm !important;
+    max-width: 46% !important;
+    max-height: 46% !important;
     object-fit: contain !important;
-    opacity: 0.075 !important;
+    opacity: 0.08 !important;
+    margin: 0 !important;
   }
 }
