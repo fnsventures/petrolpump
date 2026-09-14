@@ -257,6 +257,8 @@ export GOOGLE_DRIVE_BACKUP_FOLDER_ID="..."
 
 (`PROD_DB_URL` comes from `scripts/db.env`.)
 
+**Long-term free-tier size:** Measure growth, keep indexes lean, avoid duplicate storage, and archive old years before 500 MB — see [STORAGE_RETENTION.md](STORAGE_RETENTION.md). Always backup (this section) before archive deletes or index/schema cleanup.
+
 ---
 
 ## 5. Which command should I run?

@@ -360,6 +360,7 @@ Also consider **Supabase Dashboard → Database → Backups** (plan-dependent) b
 | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Google OAuth setup (shared credentials) |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | App structure and Supabase model |
 | [DATA_TABLES.md](DATA_TABLES.md) | Tables included in `public` schema dump |
+| [STORAGE_RETENTION.md](STORAGE_RETENTION.md) | Free-tier 500 MB: retention, indexes, lean schema |
 
 **Source files**
 
