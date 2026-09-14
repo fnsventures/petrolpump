@@ -500,22 +500,30 @@ body.report-print-body {
 @media print {
   .report-watermark {
     position: fixed !important;
-    inset: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
+    width: 100mm !important;
+    height: 100mm !important;
+    margin: -50mm 0 0 -50mm !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
     pointer-events: none !important;
     z-index: 1000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
   .report-watermark-img {
-    width: 95mm !important;
-    height: 95mm !important;
-    max-width: 55% !important;
-    max-height: 55% !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
     object-fit: contain !important;
-    opacity: 0.12 !important;
+    opacity: 0.075 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }

@@ -1,8 +1,8 @@
 /* Shared Bishnupriya Fuels report watermark (screen + print sheets)
  *
- * Print/PDF (Chrome): use fixed + low-opacity *above* content.
- * z-index:-1 is dropped behind the page background and disappears.
- * Keep rules here AND inline on the watermark node in printUtils.js.
+ * Print/PDF: fixed box centered on each page with top/left 50% + negative margins.
+ * Do not use inset:0 flex centering (Chrome centers mid-document on multi-page).
+ * Do not use transform on the fixed wrapper (can break per-page repetition).
  */
 
 .report-watermark {
@@ -21,11 +21,11 @@
 }
 
 .report-watermark-img {
-  width: min(18rem, 55%);
+  width: min(16rem, 50%);
   height: auto;
-  max-height: 18rem;
+  max-height: 16rem;
   object-fit: contain;
-  opacity: 0.1;
+  opacity: 0.08;
   margin: 0;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -49,17 +49,28 @@
 
 @media print {
   .report-watermark {
-    /* Repeats centered on every printed page */
     position: fixed !important;
-    inset: 0 !important;
+    top: 50% !important;
+    left: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
+    width: 100mm !important;
+    height: 100mm !important;
+    margin: -50mm 0 0 -50mm !important;
+    padding: 0 !important;
+    display: block !important;
+    overflow: visible !important;
     z-index: 1000 !important;
   }
 
   .report-watermark-img {
-    width: 95mm !important;
-    height: 95mm !important;
-    max-width: 55% !important;
-    max-height: 55% !important;
-    opacity: 0.12 !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: contain !important;
+    opacity: 0.075 !important;
   }
 }
