@@ -17,7 +17,7 @@
   ];
 
   const DEFAULT_TANKS = ["MS Tank-1", "MS Tank-2"];
-  const PRINT_CSS = "css/e20-register-print.css?v=4";
+  const PRINT_CSS = "css/e20-register-print.css?v=5";
   const HISTORY_PAGE_SIZE = 25;
 
   const REGISTER_SELECT = `

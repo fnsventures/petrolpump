@@ -10,6 +10,8 @@ let creditPagination = {
   ledgerData: [],
   searchQuery: "",
   openCreditTotal: null,
+  sortBy: "balance-desc",
+  statusFilter: "open",
 };
 
 
@@ -281,20 +283,119 @@ function initPaginationControls() {
   });
 }
 
-function getFilteredLedger() {
-  const q = creditPagination.searchQuery;
-  const listed = creditPagination.ledgerData.filter(ledgerRowIsListed);
-  if (!q) return listed;
-  const needle = q.toLowerCase();
-  return listed.filter((row) => {
-    const name = (row.customer_name || "").toLowerCase();
-    const vehicle = (row.vehicle_no || "").toLowerCase();
-    return name.includes(needle) || vehicle.includes(needle);
-  });
+function ledgerRowStatus(row) {
+  if (ledgerRowIsFullyCleared(row)) return "settled";
+  const prepaid = ledgerRowPrepaid(row);
+  const net = ledgerRowNetBalance(row);
+  if (customerHasAdvance(net, prepaid)) return "advance";
+  return "outstanding";
 }
 
-function updateSummaryStats(filtered, portfolioTotal = null) {
-  const withBalance = filtered.filter((r) => !ledgerRowIsFullyCleared(r));
+function ledgerRowMatchesStatusFilter(row, filter = creditPagination.statusFilter) {
+  const status = ledgerRowStatus(row);
+  if (filter === "all") return isAdmin || status !== "settled";
+  if (filter === "open") return status === "outstanding" || status === "advance";
+  if (filter === "outstanding") return status === "outstanding";
+  if (filter === "advance") return status === "advance";
+  if (filter === "settled") return isAdmin && status === "settled";
+  return ledgerRowIsListed(row);
+}
+
+function compareLedgerLastPaid(a, b) {
+  const aPay = a.last_payment || "";
+  const bPay = b.last_payment || "";
+  if (!aPay && !bPay) return 0;
+  if (!aPay) return 1;
+  if (!bPay) return -1;
+  return aPay.localeCompare(bPay);
+}
+
+function sortLedgerRows(rows, sortBy = creditPagination.sortBy) {
+  const sorted = rows.slice();
+  sorted.sort((a, b) => {
+    const aNet = ledgerRowNetBalance(a);
+    const bNet = ledgerRowNetBalance(b);
+    const aPrepaid = ledgerRowPrepaid(a);
+    const bPrepaid = ledgerRowPrepaid(b);
+    const aAbs = customerHasAdvance(aNet, aPrepaid) ? aPrepaid : Math.max(0, aNet);
+    const bAbs = customerHasAdvance(bNet, bPrepaid) ? bPrepaid : Math.max(0, bNet);
+
+    if (sortBy === "name") {
+      return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), undefined, {
+        sensitivity: "base",
+      });
+    }
+    if (sortBy === "last-paid-asc") return compareLedgerLastPaid(a, b);
+    if (sortBy === "last-paid-desc") return compareLedgerLastPaid(b, a);
+    if (sortBy === "balance-asc") {
+      if (aAbs !== bAbs) return aAbs - bAbs;
+      return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), undefined, {
+        sensitivity: "base",
+      });
+    }
+    // balance-desc (default)
+    if (aAbs !== bAbs) return bAbs - aAbs;
+    return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+  return sorted;
+}
+
+function daysSinceDateString(dateStr) {
+  if (!dateStr || typeof getLocalDateString !== "function") return null;
+  const today = getLocalDateString();
+  const start = new Date(`${dateStr}T00:00:00`);
+  const end = new Date(`${today}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return Math.round((end - start) / 86400000);
+}
+
+function formatLedgerLastPaid(dateStr) {
+  if (!dateStr) {
+    return { text: "Never", title: "No payment recorded", className: "muted" };
+  }
+  const days = daysSinceDateString(dateStr);
+  const absolute = formatDisplayDate(dateStr);
+  if (days == null) {
+    return { text: absolute, title: absolute, className: "" };
+  }
+  if (days <= 0) {
+    return { text: "Today", title: absolute, className: "" };
+  }
+  if (days === 1) {
+    return { text: "Yesterday", title: absolute, className: "" };
+  }
+  if (days < 30) {
+    return {
+      text: `${days} days ago`,
+      title: absolute,
+      className: days >= 14 ? "muted" : "",
+    };
+  }
+  return {
+    text: absolute,
+    title: absolute,
+    className: "",
+  };
+}
+
+function getFilteredLedger() {
+  const q = creditPagination.searchQuery;
+  let listed = creditPagination.ledgerData.filter((row) => ledgerRowMatchesStatusFilter(row));
+  if (q) {
+    const needle = q.toLowerCase();
+    listed = listed.filter((row) => {
+      const name = (row.customer_name || "").toLowerCase();
+      const vehicle = (row.vehicle_no || "").toLowerCase();
+      return name.includes(needle) || vehicle.includes(needle);
+    });
+  }
+  return sortLedgerRows(listed);
+}
+
+function updateSummaryStats(portfolioTotal = null) {
+  const withBalance = creditPagination.ledgerData.filter((r) => ledgerRowMatchesStatusFilter(r, "open"));
   const total =
     portfolioTotal != null
       ? Number(portfolioTotal) || 0
@@ -341,19 +442,15 @@ async function ensurePortfolioData(forceReload = false) {
   ]);
 }
 
-function refreshSummaryStats(filtered = getFilteredLedger()) {
-  if (creditPagination.searchQuery) {
-    updateSummaryStats(filtered, null);
-    return;
-  }
+function refreshSummaryStats() {
   if (creditPagination.openCreditTotal != null) {
-    updateSummaryStats(filtered, creditPagination.openCreditTotal);
+    updateSummaryStats(creditPagination.openCreditTotal);
     return;
   }
   void fetchOpenCreditTotal()
-    .then((total) => updateSummaryStats(filtered, total))
+    .then((total) => updateSummaryStats(total))
     .catch((err) => {
-      updateSummaryStats(filtered, null);
+      updateSummaryStats(null);
       AppError.report(err, { context: "refreshSummaryStats" });
     });
 }
@@ -363,7 +460,7 @@ async function loadPortfolioSnapshot(forceReload = false) {
   creditPagination.isLoading = true;
   try {
     await ensurePortfolioData(forceReload);
-    refreshSummaryStats(getFilteredLedger());
+    refreshSummaryStats();
   } catch (err) {
     if (err?.code !== "CANCELLED" && !isCancelledRequestError(err)) {
       AppError.report(err, { context: "loadPortfolioSnapshot" });
@@ -381,7 +478,7 @@ function renderLedgerBalanceCell(net, prepaid, isAdvance) {
 
 function renderLedgerCustomerCell(row, detailHref, isAdvance, isFullyCleared) {
   const advanceTag = isAdvance
-    ? '<span class="credit-advance-tag">Advance payment</span>'
+    ? '<span class="credit-advance-tag">Advance</span>'
     : "";
   const settledTag =
     isFullyCleared && isAdmin
@@ -396,21 +493,25 @@ function renderLedgerPage(resetTable) {
 
   const filtered = getFilteredLedger();
   creditPagination.totalCount = filtered.length;
-  refreshSummaryStats(filtered);
+  refreshSummaryStats();
 
   if (filtered.length === 0) {
     let msg;
     if (creditPagination.searchQuery) {
-      msg = isAdmin
-        ? "No matching credit customers."
-        : "No matching customers with outstanding or advance balance.";
+      msg = "No matching credit customers.";
     } else if (creditPagination.ledgerData.length === 0) {
       msg = "No credit customers yet.";
+    } else if (creditPagination.statusFilter === "settled") {
+      msg = "No settled customers.";
+    } else if (creditPagination.statusFilter === "advance") {
+      msg = "No customers with advance balance.";
+    } else if (creditPagination.statusFilter === "outstanding") {
+      msg = "No customers with outstanding balance.";
     } else {
-      msg = "No outstanding or advance balances — all customers are cleared.";
+      msg = "No open balances — all customers are cleared.";
     }
     tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>${escapeHtml(msg)}</p>${
-      creditPagination.searchQuery
+      creditPagination.searchQuery || creditPagination.statusFilter !== "open"
         ? ""
         : '<p class="empty-cta"><a href="#record">Record credit sale</a>.</p>'
     }</div></td></tr>`;
@@ -435,11 +536,14 @@ function renderLedgerPage(resetTable) {
     const net = ledgerRowNetBalance(row);
     const isAdvance = customerHasAdvance(net, prepaid);
     const isFullyCleared = ledgerRowIsFullyCleared(row);
+    const lastPaid = formatLedgerLastPaid(row.last_payment);
+    tr.className = "credit-ledger-row";
+    tr.dataset.href = detailHref;
     tr.innerHTML = `
       ${renderLedgerCustomerCell(row, detailHref, isAdvance, isFullyCleared)}
       <td>${escapeHtml(row.vehicle_no ?? "—")}</td>
       ${renderLedgerBalanceCell(net, prepaid, isAdvance)}
-      <td>${formatDisplayDate(row.last_payment)}</td>
+      <td class="${lastPaid.className}" title="${escapeHtml(lastPaid.title)}">${escapeHtml(lastPaid.text)}</td>
       <td class="table-actions"><a class="button-secondary button-small" href="${detailHref}">View details</a></td>
     `;
     tbody.appendChild(tr);
@@ -559,6 +663,31 @@ function initOutstandingTab() {
   document.getElementById("credit-search")?.addEventListener("input", (e) => {
     onCreditSearch((e.target.value || "").trim().toLowerCase());
   });
+
+  const statusFilter = document.getElementById("credit-status-filter");
+  if (statusFilter && !isAdmin) {
+    statusFilter.querySelectorAll("[data-role='admin-only']").forEach((opt) => opt.remove());
+  }
+  statusFilter?.addEventListener("change", (e) => {
+    creditPagination.statusFilter = e.target.value || "open";
+    creditPagination.offset = 0;
+    renderLedgerPage(true);
+  });
+
+  document.getElementById("credit-sort")?.addEventListener("change", (e) => {
+    creditPagination.sortBy = e.target.value || "balance-desc";
+    creditPagination.offset = 0;
+    renderLedgerPage(true);
+  });
+
+  const tbody = document.getElementById("credit-table-body");
+  tbody?.addEventListener("click", (e) => {
+    if (e.target.closest("a, button")) return;
+    const row = e.target.closest("tr.credit-ledger-row[data-href]");
+    if (!row?.dataset.href) return;
+    window.location.href = row.dataset.href;
+  });
+
   void loadCreditLedger(true);
 }
 
