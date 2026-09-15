@@ -674,14 +674,14 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
   const alreadySaved = !!b.already_saved;
   const editable = !alreadySaved || canOverwrite;
 
-  setDayClosingMoneyInput(
-    dcDom.nightCashInput,
-    alreadySaved ? b.saved_night_cash ?? b.night_cash : b.suggested_night_cash ?? b.night_cash
-  );
-  setDayClosingMoneyInput(
-    dcDom.phonePayInput,
-    alreadySaved ? b.saved_phone_pay ?? b.phone_pay : b.suggested_phone_pay ?? b.phone_pay
-  );
+  // Never prefill suggestions — user must type counted amounts. Only restore saved values.
+  if (alreadySaved) {
+    setDayClosingMoneyInput(dcDom.nightCashInput, b.saved_night_cash ?? b.night_cash);
+    setDayClosingMoneyInput(dcDom.phonePayInput, b.saved_phone_pay ?? b.phone_pay);
+  } else {
+    setDayClosingMoneyInput(dcDom.nightCashInput, "");
+    setDayClosingMoneyInput(dcDom.phonePayInput, "");
+  }
   syncDayClosingShiftCashHints(b);
   syncDayClosingCreditHint(b);
   syncDayClosingSaveButton(dcDom.saveBtn);
@@ -726,8 +726,40 @@ function dcMoney(value) {
 
 function setDayClosingMoneyInput(el, value) {
   if (!el) return;
+  if (value === "" || value == null) {
+    el.value = "";
+    return;
+  }
   const n = Number(value);
   el.value = Number.isFinite(n) ? String(n) : "";
+}
+
+/** Keep only digits and at most one decimal point (typed money amounts). */
+function sanitizeDayClosingMoneyTyping(raw) {
+  const s = String(raw ?? "").replace(/[^\d.]/g, "");
+  const dot = s.indexOf(".");
+  if (dot === -1) return s;
+  return s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, "");
+}
+
+function parseDayClosingMoneyInput(el) {
+  const raw = el?.value?.trim() ?? "";
+  if (!raw) return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Number inputs change on wheel/trackpad; block that. Text fields are also guarded. */
+function guardMoneyInputAgainstScroll(el) {
+  if (!el || el.dataset.scrollGuard === "1") return;
+  el.dataset.scrollGuard = "1";
+  el.addEventListener(
+    "wheel",
+    (e) => {
+      if (document.activeElement === el) e.preventDefault();
+    },
+    { passive: false }
+  );
 }
 
 /**
@@ -1143,8 +1175,8 @@ function updateDayClosingShortLive() {
   const shortPrevious = Number(dayClosingBreakdown.short_previous ?? 0);
   const creditToday = Number(dayClosingBreakdown.credit_today ?? 0);
   const expensesToday = Number(dayClosingBreakdown.expenses_today ?? 0);
-  const nightCash = Number(dcDom.nightCashInput?.value ?? 0) || 0;
-  const phonePay = Number(dcDom.phonePayInput?.value ?? 0) || 0;
+  const nightCash = parseDayClosingMoneyInput(dcDom.nightCashInput);
+  const phonePay = parseDayClosingMoneyInput(dcDom.phonePayInput);
 
   updateShortDisplay(
     computeDayClosingShort({
@@ -1180,8 +1212,8 @@ function getDayClosingStatementAmounts() {
     throw new Error("Load a day closing first.");
   }
   const b = dayClosingBreakdown;
-  const nightCash = Number(dcDom.nightCashInput?.value ?? b.night_cash ?? 0) || 0;
-  const phonePay = Number(dcDom.phonePayInput?.value ?? b.phone_pay ?? 0) || 0;
+  const nightCash = parseDayClosingMoneyInput(dcDom.nightCashInput);
+  const phonePay = parseDayClosingMoneyInput(dcDom.phonePayInput);
   const totalSale = Number(b.total_sale ?? 0);
   const collection = Number(b.collection ?? 0);
   const shortPrevious = Number(b.short_previous ?? 0);
@@ -1454,14 +1486,23 @@ async function initializeDayClosing() {
   });
 
   const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
-  if (nightCashInput) {
-    nightCashInput.addEventListener("input", debouncedShortUpdate);
-    nightCashInput.addEventListener("change", updateDayClosingShortLive);
-  }
-  if (phonePayInput) {
-    phonePayInput.addEventListener("input", debouncedShortUpdate);
-    phonePayInput.addEventListener("change", updateDayClosingShortLive);
-  }
+  const bindMoneyInput = (el) => {
+    if (!el) return;
+    guardMoneyInputAgainstScroll(el);
+    el.addEventListener("beforeinput", (e) => {
+      if (e.inputType?.startsWith("insert") && e.data && /[^\d.]/.test(e.data)) {
+        e.preventDefault();
+      }
+    });
+    el.addEventListener("input", () => {
+      const next = sanitizeDayClosingMoneyTyping(el.value);
+      if (next !== el.value) el.value = next;
+      debouncedShortUpdate();
+    });
+    el.addEventListener("change", updateDayClosingShortLive);
+  };
+  bindMoneyInput(nightCashInput);
+  bindMoneyInput(phonePayInput);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1475,8 +1516,8 @@ async function initializeDayClosing() {
     dcDom.errorEl?.classList.add("hidden");
 
     const dateStr = dateInput.value?.trim();
-    const nightCash = Number(nightCashInput?.value ?? 0);
-    const phonePay = Number(phonePayInput?.value ?? 0);
+    const nightCash = parseDayClosingMoneyInput(nightCashInput);
+    const phonePay = parseDayClosingMoneyInput(phonePayInput);
     const remarks = dcDom.remarksInput?.value?.trim() || null;
     if (!dateStr) {
       syncDayClosingSaveButton(submitBtn);

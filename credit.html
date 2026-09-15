@@ -16,7 +16,7 @@
     <script src="js/roleBootstrap.js?v=17"></script>
     <script src="js/appNav.js?v=17"></script>
     <link rel="stylesheet" href="css/app-core.css?v=17" />
-    <link rel="stylesheet" href="css/app-credit.css?v=12" />
+    <link rel="stylesheet" href="css/app-credit.css?v=14" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=17"></script>
     <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/credit.js?v=9"></script>
+    <script defer src="js/credit.js?v=11"></script>
   </head>
   <body class="credit-list-view">
     <header class="topbar" data-build-topbar>
@@ -344,7 +344,7 @@
           <div>
             <h2>Outstanding balances</h2>
             <p class="muted credit-ledger-admin-note" data-role="admin-only">
-              Fully settled customers stay in this list so you can open their account and correct credit entries or settlements.
+              Fully settled customers stay available under Settled so you can open their account and correct entries.
             </p>
             <p id="credit-ledger-summary" class="muted" aria-live="polite"></p>
           </div>
@@ -352,6 +352,26 @@
             <div class="form-field search-field">
               <label for="credit-search">Search customer</label>
               <input id="credit-search" type="search" placeholder="Name or vehicle…" autocomplete="off" />
+            </div>
+            <div class="form-field">
+              <label for="credit-status-filter">Status</label>
+              <select id="credit-status-filter" aria-label="Filter by balance status">
+                <option value="open" selected>Open</option>
+                <option value="outstanding">Due</option>
+                <option value="advance">Advance</option>
+                <option value="settled" data-role="admin-only">Settled</option>
+                <option value="all" data-role="admin-only">All</option>
+              </select>
+            </div>
+            <div class="form-field">
+              <label for="credit-sort">Sort by</label>
+              <select id="credit-sort" aria-label="Sort outstanding list">
+                <option value="balance-desc" selected>Balance · high to low</option>
+                <option value="balance-asc">Balance · low to high</option>
+                <option value="name">Name · A to Z</option>
+                <option value="last-paid-asc">Last paid · oldest first</option>
+                <option value="last-paid-desc">Last paid · newest first</option>
+              </select>
             </div>
           </div>
         </div>
@@ -361,9 +381,9 @@
               <tr>
                 <th>Customer</th>
                 <th>Vehicle</th>
-                <th>Balance (₹)</th>
+                <th class="num">Balance (₹)</th>
                 <th>Last paid</th>
-                <th></th>
+                <th class="table-actions"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody id="credit-table-body">
