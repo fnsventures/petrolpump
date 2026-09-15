@@ -54,10 +54,13 @@ resizePng(logo, path.join(assets, "logo-104.png"), 104);
 resizePng(logo, path.join(assets, "apple-touch-icon.png"), 180);
 resizePng(logo, path.join(assets, "icon-192.png"), 192);
 resizePng(logo, path.join(assets, "icon-512.png"), 512);
+/** Print letterhead + report watermark — 384px stays sharp at ~100 mm on A4. */
+resizePng(logo, path.join(assets, "logo-print.png"), 384);
 
 toWebp(path.join(assets, "logo-44.png"), path.join(assets, "logo-44.webp"), 90);
 toWebp(path.join(assets, "logo-80.png"), path.join(assets, "logo-80.webp"), 90);
 toWebp(path.join(assets, "logo-104.png"), path.join(assets, "logo-104.webp"), 90);
+toWebp(path.join(assets, "logo-print.png"), path.join(assets, "logo-print.webp"), 92);
 
 console.log("Generating landing WebP slideshow…");
 for (let i = 1; i <= 4; i++) {

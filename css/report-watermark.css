@@ -1,9 +1,20 @@
-/* Shared Bishnupriya Fuels report watermark (screen + print sheets)
+/* Shared Bishnupriya Fuels report watermark — single source of truth
+ *
+ * Tokens below must stay in sync with PrintUtils watermark constants
+ * (REPORT_WATERMARK_*). Screen preview and print use the same opacity
+ * and the same relative footprint (~46% of the sheet).
  *
  * Screen: absolute mark centered in the preview sheet.
- * Print: .report-watermark--page is position:fixed; inset of the page box with
- * flex centering so the logo sits in the true middle of every printed page.
+ * Print:  .report-watermark--page is position:fixed over the page box
+ *         (repeats on every printed page in Chrome/Safari).
  */
+
+:root {
+  --report-wm-opacity: 0.08;
+  --report-wm-size-print: 100mm;
+  --report-wm-max-pct: 46%;
+  --report-wm-size-screen: min(46%, 15rem);
+}
 
 .report-watermark:not(.report-watermark--page) {
   position: absolute;
@@ -21,11 +32,11 @@
 }
 
 .report-watermark-img {
-  width: min(16rem, 50%);
+  width: var(--report-wm-size-screen);
   height: auto;
-  max-height: 16rem;
+  max-height: var(--report-wm-size-screen);
   object-fit: contain;
-  opacity: 0.08;
+  opacity: var(--report-wm-opacity);
   margin: 0;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -69,12 +80,12 @@
 
   .report-watermark--page .report-watermark-img {
     display: block !important;
-    width: 100mm !important;
-    height: 100mm !important;
-    max-width: 46% !important;
-    max-height: 46% !important;
+    width: var(--report-wm-size-print) !important;
+    height: var(--report-wm-size-print) !important;
+    max-width: var(--report-wm-max-pct) !important;
+    max-height: var(--report-wm-max-pct) !important;
     object-fit: contain !important;
-    opacity: 0.08 !important;
+    opacity: var(--report-wm-opacity) !important;
     margin: 0 !important;
   }
 }
