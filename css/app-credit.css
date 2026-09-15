@@ -145,6 +145,14 @@
   font-weight: 500;
 }
 
+.credit-ledger-table tbody tr.credit-ledger-row {
+  cursor: pointer;
+}
+
+.credit-ledger-table tbody tr.credit-ledger-row:hover > td {
+  background: rgba(0, 112, 192, 0.05);
+}
+
 /* Pagination controls */
 .pagination-controls {
   display: flex;

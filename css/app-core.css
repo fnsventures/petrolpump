@@ -671,6 +671,8 @@ tbody tr:hover {
 .day-closing-breakdown .dc-input-cell input {
   width: 100%;
   box-sizing: border-box;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .dc-suggested-amount {
   font-weight: 600;
