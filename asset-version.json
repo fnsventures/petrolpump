@@ -1,0 +1,14 @@
+{
+  "version": "17",
+  "swCacheVersion": "v189",
+  "shared": [
+    "js/roleBootstrap.js",
+    "js/appNav.js",
+    "js/utils.js",
+    "js/pwa.js",
+    "js/cache.js",
+    "js/auth.js",
+    "js/supabase.js",
+    "css/app-core.css"
+  ]
+}
