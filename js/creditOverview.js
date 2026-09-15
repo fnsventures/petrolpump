@@ -351,7 +351,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
 
 async function ensureOverviewPrintDeps() {
   if (typeof PrintUtils === "undefined") {
-    await loadScript("js/printUtils.js?v=19");
+    await loadScript("js/printUtils.js?v=20");
   }
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();

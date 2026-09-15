@@ -496,37 +496,5 @@ body.report-print-body {
   }
 }
 
-/* watermark-print-fallback — keep even if report-watermark.css @import fails */
-@media print {
-  .report-watermark--page {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    overflow: hidden !important;
-    pointer-events: none !important;
-    z-index: 1000 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-  .report-watermark--page .report-watermark-img {
-    display: block !important;
-    width: 100mm !important;
-    height: 100mm !important;
-    max-width: 46% !important;
-    max-height: 46% !important;
-    object-fit: contain !important;
-    opacity: 0.08 !important;
-    margin: 0 !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-}
+/* Print watermark styles: css/report-watermark.css + PrintUtils inlined critical CSS.
+   Do not duplicate size/opacity here — drift caused PWA vs website mismatches. */

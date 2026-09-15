@@ -27,7 +27,9 @@
   background: #fff;
 }
 @media print {
-  body > *:not(#${PRINT_HOST_ID}) {
+  /* Keep watermark (body child) visible alongside the print host — same
+     page-box fixed positioning as desktop iframe print. */
+  body > *:not(#${PRINT_HOST_ID}):not(.report-watermark--page) {
     display: none !important;
   }
   #${PRINT_HOST_ID} {
@@ -66,18 +68,22 @@
   }
 
   /**
-   * A4 content box height used only to estimate page count for diagnostics.
-   * Watermark placement uses position:fixed + full page flex center (Chrome page box).
+   * Watermark tokens — keep in sync with css/report-watermark.css :root vars.
+   * Same values for desktop iframe print and mobile/PWA host print.
    */
-  const REPORT_PAGE_CONTENT_MM = 273;
   const REPORT_WATERMARK_SIZE_MM = 100;
+  const REPORT_WATERMARK_MAX_PCT = "46%";
   const REPORT_WATERMARK_OPACITY = "0.08";
+  const REPORT_WATERMARK_IMG_PX = 384;
 
   /**
-   * Single full-page fixed watermark. In print, fixed is anchored to each page box,
-   * so flex centering = true middle of every page (including sparse/blank ones).
+   * Critical print CSS inlined into every print payload (iframe + host).
+   * Always targets body-level marks so desktop iframe and PWA/mobile host
+   * print share identical page-box centering.
+   * @returns {string}
    */
-  const REPORT_WATERMARK_PRINT_CSS = `
+  function buildWatermarkPrintCss() {
+    return `
 body > .report-watermark,
 html body .report-watermark.report-watermark--page{
   position:fixed!important;
@@ -104,36 +110,70 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   display:block!important;
   width:${REPORT_WATERMARK_SIZE_MM}mm!important;
   height:${REPORT_WATERMARK_SIZE_MM}mm!important;
-  max-width:46%!important;
-  max-height:46%!important;
+  max-width:${REPORT_WATERMARK_MAX_PCT}!important;
+  max-height:${REPORT_WATERMARK_MAX_PCT}!important;
   object-fit:contain!important;
   opacity:${REPORT_WATERMARK_OPACITY}!important;
   margin:0!important;
   -webkit-print-color-adjust:exact!important;
   print-color-adjust:exact!important;
 }`;
+  }
+
+  function applyWatermarkLayerStyles(el) {
+    el.style.setProperty("position", "fixed", "important");
+    el.style.setProperty("top", "0", "important");
+    el.style.setProperty("left", "0", "important");
+    el.style.setProperty("right", "0", "important");
+    el.style.setProperty("bottom", "0", "important");
+    el.style.setProperty("width", "100%", "important");
+    el.style.setProperty("height", "100%", "important");
+    el.style.setProperty("margin", "0", "important");
+    el.style.setProperty("padding", "0", "important");
+    el.style.setProperty("display", "flex", "important");
+    el.style.setProperty("align-items", "center", "important");
+    el.style.setProperty("justify-content", "center", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+    el.style.setProperty("z-index", "1000", "important");
+    el.style.setProperty("-webkit-print-color-adjust", "exact", "important");
+    el.style.setProperty("print-color-adjust", "exact", "important");
+  }
+
+  function applyWatermarkImgStyles(img) {
+    img.style.setProperty("display", "block", "important");
+    img.style.setProperty("width", `${REPORT_WATERMARK_SIZE_MM}mm`, "important");
+    img.style.setProperty("height", `${REPORT_WATERMARK_SIZE_MM}mm`, "important");
+    img.style.setProperty("max-width", REPORT_WATERMARK_MAX_PCT, "important");
+    img.style.setProperty("max-height", REPORT_WATERMARK_MAX_PCT, "important");
+    img.style.setProperty("object-fit", "contain", "important");
+    img.style.setProperty("opacity", REPORT_WATERMARK_OPACITY, "important");
+    img.style.setProperty("margin", "0", "important");
+    img.style.setProperty("-webkit-print-color-adjust", "exact", "important");
+    img.style.setProperty("print-color-adjust", "exact", "important");
+  }
 
   /**
-   * Centered Bishnupriya Fuels logo watermark for report sheets (screen preview).
+   * Centered station logo watermark for report sheets (screen preview).
    * Print uses layoutPrintWatermarks() — one fixed full-page mark (repeats each page).
+   * Markup relies on report-watermark.css; inline styles are a fallback only.
    * @param {{ fixed?: boolean }} [options]
    * @returns {string}
    */
   function buildReportWatermarkHtml(options = {}) {
     const src = getStationLogoPrintUrl();
     if (options.fixed) {
-      // Placeholder removed/replaced by layoutPrintWatermarks (must be body child).
+      // Placeholder removed/replaced by layoutPrintWatermarks (must be mount child).
       return "";
     }
     const wrapStyle =
       "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
       "pointer-events:none;z-index:0;margin:0;padding:0;overflow:hidden;";
     const imgStyle =
-      "width:min(16rem,50%);height:auto;max-height:16rem;object-fit:contain;" +
+      `width:min(46%,15rem);height:auto;max-height:min(46%,15rem);object-fit:contain;` +
       `opacity:${REPORT_WATERMARK_OPACITY};margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     return (
       `<div class="report-watermark" aria-hidden="true" style="${wrapStyle}">` +
-      `<img src="${src}" alt="" class="report-watermark-img" width="320" height="320" decoding="async" style="${imgStyle}" />` +
+      `<img src="${src}" alt="" class="report-watermark-img" width="${REPORT_WATERMARK_IMG_PX}" height="${REPORT_WATERMARK_IMG_PX}" decoding="async" style="${imgStyle}" />` +
       `</div>`
     );
   }
@@ -143,7 +183,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
 
   /**
    * Ensure a report sheet includes the station logo watermark (idempotent).
-   * Screen preview only — print stamps via layoutPrintWatermarks on document.body.
+   * Screen preview only — print stamps via layoutPrintWatermarks on the print mount.
    * @param {string} bodyHtml
    * @param {{ fixed?: boolean }} [options]
    * @returns {string}
@@ -174,6 +214,11 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     );
   }
 
+  /**
+   * @param {string} bodyHtml
+   * @param {string} bodyClass
+   * @param {string} containerClass
+   */
   function preparePrintBodyHtml(bodyHtml, bodyClass, containerClass) {
     if (!shouldStampReportWatermark(bodyClass, containerClass)) {
       return String(bodyHtml || "");
@@ -182,12 +227,13 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     const html = String(bodyHtml || "")
       .replace(/<div class="report-watermark-layer"[^>]*>[\s\S]*?<\/div>/gi, "")
       .replace(/<div class="report-watermark"[^>]*>[\s\S]*?<\/div>/gi, "");
-    return `<style>${REPORT_WATERMARK_PRINT_CSS}</style>${html}`;
+    return `<style>${buildWatermarkPrintCss()}</style>${html}`;
   }
 
   /**
    * Stamp a page-centered watermark on every printed page.
-   * Uses position:fixed covering the page box + flex center (not content-height absolute).
+   * Always mounts on document.body so iframe (website) and host (PWA/mobile)
+   * share the same page-box fixed positioning.
    * @param {Document} doc
    */
   function layoutPrintWatermarks(doc) {
@@ -195,49 +241,22 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
 
     doc.querySelectorAll(".report-watermark-layer, .report-watermark").forEach((el) => el.remove());
 
-    // iframe → body; mobile host-print → #print-utils-host (body siblings are hidden when printing)
-    const mount = doc.getElementById(PRINT_HOST_ID) || doc.body;
-
     const wm = doc.createElement("div");
     wm.className = "report-watermark report-watermark--page";
     wm.setAttribute("aria-hidden", "true");
-    wm.style.setProperty("position", "fixed", "important");
-    wm.style.setProperty("top", "0", "important");
-    wm.style.setProperty("left", "0", "important");
-    wm.style.setProperty("right", "0", "important");
-    wm.style.setProperty("bottom", "0", "important");
-    wm.style.setProperty("width", "100%", "important");
-    wm.style.setProperty("height", "100%", "important");
-    wm.style.setProperty("margin", "0", "important");
-    wm.style.setProperty("padding", "0", "important");
-    wm.style.setProperty("display", "flex", "important");
-    wm.style.setProperty("align-items", "center", "important");
-    wm.style.setProperty("justify-content", "center", "important");
-    wm.style.setProperty("pointer-events", "none", "important");
-    wm.style.setProperty("z-index", "1000", "important");
-    wm.style.setProperty("-webkit-print-color-adjust", "exact", "important");
-    wm.style.setProperty("print-color-adjust", "exact", "important");
+    applyWatermarkLayerStyles(wm);
 
     const img = doc.createElement("img");
     img.className = "report-watermark-img";
     img.alt = "";
-    img.width = 320;
-    img.height = 320;
+    img.width = REPORT_WATERMARK_IMG_PX;
+    img.height = REPORT_WATERMARK_IMG_PX;
     img.decoding = "sync";
     img.src = getStationLogoPrintUrl();
-    img.style.setProperty("display", "block", "important");
-    img.style.setProperty("width", `${REPORT_WATERMARK_SIZE_MM}mm`, "important");
-    img.style.setProperty("height", `${REPORT_WATERMARK_SIZE_MM}mm`, "important");
-    img.style.setProperty("max-width", "46%", "important");
-    img.style.setProperty("max-height", "46%", "important");
-    img.style.setProperty("object-fit", "contain", "important");
-    img.style.setProperty("opacity", REPORT_WATERMARK_OPACITY, "important");
-    img.style.setProperty("margin", "0", "important");
-    img.style.setProperty("-webkit-print-color-adjust", "exact", "important");
-    img.style.setProperty("print-color-adjust", "exact", "important");
+    applyWatermarkImgStyles(img);
 
     wm.appendChild(img);
-    mount.appendChild(wm);
+    doc.body.appendChild(wm);
   }
 
   async function finalizePrintWatermarks(doc, bodyClass, containerClass) {
@@ -383,11 +402,11 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     </div>`;
   }
 
-  /** Bump when reports-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=15";
+  /** Bump when reports-print.css / report-watermark.css changes (also bump CACHE_VERSION in sw.js). */
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=16";
 
   /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=6";
+  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=7";
 
   const CSS_IMPORT_RE =
     /@import\s+(?:url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])\s*[^;]*;/gi;
@@ -674,6 +693,10 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   function clearPrintHostArtifacts() {
     document.querySelectorAll("[data-print-utils]").forEach((el) => el.remove());
     document.getElementById(PRINT_HOST_ID)?.remove();
+    // Host-print mounts the watermark on document.body (sibling of the host).
+    document
+      .querySelectorAll("body > .report-watermark--page, body > .report-watermark")
+      .forEach((el) => el.remove());
   }
 
   async function waitForStylesheet(link, timeoutMs = 2000) {
