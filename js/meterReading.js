@@ -470,7 +470,12 @@ function applyDsrRowFieldsToMeterForm(form, row, product, openingStockHint) {
       input.value = val ?? "";
       continue;
     }
-    if (input.type === "number" || input.classList.contains("meter-reading")) {
+    if (
+      input.type === "number" ||
+      input.inputMode === "decimal" ||
+      input.inputMode === "numeric" ||
+      input.classList.contains("meter-reading")
+    ) {
       input.value = val != null && val !== "" ? Number(val).toFixed(2) : "";
     }
   }

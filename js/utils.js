@@ -1592,3 +1592,50 @@ window.getAppLoadGeneration = getAppLoadGeneration;
 window.isCancelledRequestError = isCancelledRequestError;
 window.isSettingsPanelActive = isSettingsPanelActive;
 window.APP_REQUEST_TIMEOUT_MS = APP_REQUEST_TIMEOUT_MS;
+
+/**
+ * Browser number inputs change value on wheel/trackpad while focused.
+ * Prevent that for type=number, and also for decimal/numeric text fields inside
+ * scrollable meter/DSR tables (belt-and-suspenders with type=text conversion).
+ */
+function isScrollSensitiveNumericInput(el) {
+  if (!el || el.tagName !== "INPUT" || el.disabled) return false;
+  const type = (el.getAttribute("type") || "text").toLowerCase();
+  if (type === "number") return true;
+  if (type !== "text" && type !== "search" && type !== "") return false;
+  const mode = (el.getAttribute("inputmode") || el.inputMode || "").toLowerCase();
+  return mode === "decimal" || mode === "numeric";
+}
+
+function installNumericInputScrollGuard() {
+  if (typeof document === "undefined") return;
+  if (document.documentElement.dataset.bpfNumScrollGuard === "1") return;
+  document.documentElement.dataset.bpfNumScrollGuard = "1";
+
+  document.addEventListener(
+    "wheel",
+    (e) => {
+      const active = document.activeElement;
+      const target = e.target instanceof Element ? e.target.closest("input") : null;
+      const el = isScrollSensitiveNumericInput(active)
+        ? active
+        : isScrollSensitiveNumericInput(target)
+          ? target
+          : null;
+      if (!el) return;
+      e.preventDefault();
+      if (document.activeElement === el) el.blur();
+    },
+    { passive: false, capture: true }
+  );
+}
+
+window.installNumericInputScrollGuard = installNumericInputScrollGuard;
+
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", installNumericInputScrollGuard, { once: true });
+  } else {
+    installNumericInputScrollGuard();
+  }
+}
