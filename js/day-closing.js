@@ -749,19 +749,6 @@ function parseDayClosingMoneyInput(el) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Number inputs change on wheel/trackpad; block that. Text fields are also guarded. */
-function guardMoneyInputAgainstScroll(el) {
-  if (!el || el.dataset.scrollGuard === "1") return;
-  el.dataset.scrollGuard = "1";
-  el.addEventListener(
-    "wheel",
-    (e) => {
-      if (document.activeElement === el) e.preventDefault();
-    },
-    { passive: false }
-  );
-}
-
 /**
  * Ensure night cash / phone pay suggestions = shift till + Cash/UPI settlements.
  * Uses RPC settle_* when present; otherwise one shared payments fetch via settle maps cache.
@@ -1488,7 +1475,6 @@ async function initializeDayClosing() {
   const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
   const bindMoneyInput = (el) => {
     if (!el) return;
-    guardMoneyInputAgainstScroll(el);
     el.addEventListener("beforeinput", (e) => {
       if (e.inputType?.startsWith("insert") && e.data && /[^\d.]/.test(e.data)) {
         e.preventDefault();
