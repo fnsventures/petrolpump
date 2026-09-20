@@ -123,17 +123,17 @@ A typical daily sequence:
    → short_today becomes next day’s short_previous
    → Supervisor: may edit day closing until certified or night cash is collected
    → After day closing is saved: supervisors cannot change that day’s shifts (admin can)
-   → Admin: can_overwrite when allowed → re-save (clears certification); recascades short forward
-   → Admin: set_day_closing_certified(date, true) to acknowledge after supervisor save
-   → After certify: supervisors cannot edit; print statement shows certifier name/time
-   → Admin register tab: delete_day_closing (latest date only) to reopen a day
-     (also unlocks shift re-save for supervisors)
+   → Admin: can_overwrite until certified (and after night cash collected, admin may still edit if not certified)
+   → Admin: set_day_closing_certified(date, true) to acknowledge after save — locks the statement for everyone, including admin
+   → After certify: figures are frozen; print statement shows certifier name/time
+   → Admin: set_day_closing_certified(date, false) to revoke, then edit, then acknowledge again (new name + timestamp)
+   → Admin register tab: delete_day_closing (latest uncertified date only; collected or certified rows cannot be deleted)
 
 5. Night-cash collection (day-closing.html — collection UI)
    → get_night_cash_available / preview_night_cash_collection(from, to)
    → collect_night_cash(from, to, remarks?) → night_cash_collections row
    → Links day_closing.night_cash_collection_id for included dates
-   → After collection: supervisors cannot edit those closings; admins still can
+   → After collection: supervisors cannot edit those closings; admins may still edit unless the day is certified
 ```
 
 **Data dependencies:**
@@ -144,7 +144,7 @@ A typical daily sequence:
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
 - **Night cash / Phone pay:** Sum of `meter_shift_cash.cash_collected` / `phone_pay` for both shifts (prefilled until locked).
-- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save).
+- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save). While certified, the statement is frozen for everyone until revoke.
 - **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---
 
