@@ -16,7 +16,7 @@
     <script src="js/roleBootstrap.js?v=17"></script>
     <script src="js/appNav.js?v=17"></script>
     <link rel="stylesheet" href="css/app-core.css?v=17" />
-    <link rel="stylesheet" href="css/app-day-closing.css?v=11" />
+    <link rel="stylesheet" href="css/app-day-closing.css?v=12" />
     <link rel="stylesheet" href="css/app-dsr.css?v=12" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
@@ -30,7 +30,7 @@
     <script defer src="js/printUtils.js?v=20"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=17"></script>
-    <script defer src="js/day-closing.js?v=24"></script>
+    <script defer src="js/day-closing.js?v=25"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -124,7 +124,7 @@
                 </div>
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
-                    <span class="dc-row-label">Night cash <span class="dc-input-badge">Enter</span></span>
+                    <span class="dc-row-label">Night cash <span class="dc-input-badge" data-dc-input-badge>Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
                     <input id="dc-night-cash" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Night cash — hard cash counted at close" />
@@ -133,7 +133,7 @@
                 </div>
                 <div class="dsr-summary-row dc-manual-input-row dc-row--input">
                   <dt>
-                    <span class="dc-row-label">Phone pay <span class="dc-input-badge">Enter</span></span>
+                    <span class="dc-row-label">Phone pay <span class="dc-input-badge" data-dc-input-badge>Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
                     <input id="dc-phone-pay" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Phone pay — PhonePe and UPI collections" />
@@ -196,10 +196,15 @@
             <div class="dc-certify-copy">
               <p id="dc-certify-title" class="dc-certify-title"></p>
               <p id="dc-certify-detail" class="muted dc-certify-detail"></p>
+              <dl id="dc-certify-figures" class="dc-certify-figures hidden"></dl>
+              <label id="dc-certify-ack-wrap" class="checkbox-label dc-certify-ack hidden">
+                <input id="dc-certify-ack" type="checkbox" />
+                <span>I have reviewed these figures and they are correct.</span>
+              </label>
             </div>
             <div class="dc-certify-actions">
               <button type="button" id="dc-certify-btn" class="primary" data-role="admin-only">Acknowledge &amp; certify</button>
-              <button type="button" id="dc-uncertify-btn" class="button-secondary hidden" data-role="admin-only">Remove certification</button>
+              <button type="button" id="dc-uncertify-btn" class="button-secondary hidden" data-role="admin-only">Revoke certification</button>
             </div>
             <p id="dc-certify-error" class="error hidden" role="alert"></p>
           </div>
