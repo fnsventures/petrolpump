@@ -69,6 +69,9 @@ function cacheDayClosingDom() {
     certifyPanel: document.getElementById("dc-certify-panel"),
     certifyTitle: document.getElementById("dc-certify-title"),
     certifyDetail: document.getElementById("dc-certify-detail"),
+    certifyFigures: document.getElementById("dc-certify-figures"),
+    certifyAckWrap: document.getElementById("dc-certify-ack-wrap"),
+    certifyAck: document.getElementById("dc-certify-ack"),
     certifyBtn: document.getElementById("dc-certify-btn"),
     uncertifyBtn: document.getElementById("dc-uncertify-btn"),
     certifyError: document.getElementById("dc-certify-error"),
@@ -248,7 +251,7 @@ function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } 
     }
     return '<p class="muted">No entries for this date.</p>';
   }
-  const showActions = isAdmin && (kind === "collection" || kind === "credit");
+  const showActions = isAdmin && !dayClosingBreakdown?.certified && (kind === "collection" || kind === "credit");
   const head = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("")
     + (showActions ? '<th class="table-actions">Actions</th>' : "");
   const body = rows.map((row) => {
@@ -608,6 +611,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
   if (dcCloseLoadedDate && dcCloseLoadedDate !== dateStr) {
     collapseDayClosingDetails();
+    if (dcDom.certifyAck) dcDom.certifyAck.checked = false;
   }
   dcCloseLoadedDate = dateStr;
   invalidateDcCloseCaches(dateStr);
@@ -672,7 +676,13 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
 
   const canOverwrite = canOverwriteDayClosing(b);
   const alreadySaved = !!b.already_saved;
-  const editable = !alreadySaved || canOverwrite;
+  const certified = !!b.certified;
+  const editable = !certified && (!alreadySaved || canOverwrite);
+
+  dcDom.form?.classList.toggle("dc-form-locked", certified);
+  document.querySelectorAll("[data-dc-input-badge]").forEach((badge) => {
+    badge.textContent = certified ? "Locked" : "Enter";
+  });
 
   // Never prefill suggestions — user must type counted amounts. Only restore saved values.
   if (alreadySaved) {
@@ -716,7 +726,19 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
 }
 
 function canOverwriteDayClosing(breakdown) {
+  if (breakdown?.certified) return false;
   return !!breakdown?.can_overwrite;
+}
+
+function dayClosingHasUnsavedEdits(breakdown) {
+  if (!breakdown?.already_saved || breakdown.certified) return false;
+  const savedNight = dcMoney(breakdown.saved_night_cash ?? breakdown.night_cash);
+  const savedPhone = dcMoney(breakdown.saved_phone_pay ?? breakdown.phone_pay);
+  const savedRemarks = String(breakdown.remarks ?? "").trim();
+  const night = parseDayClosingMoneyInput(dcDom?.nightCashInput);
+  const phone = parseDayClosingMoneyInput(dcDom?.phonePayInput);
+  const remarks = dcDom?.remarksInput?.value?.trim() || "";
+  return night !== savedNight || phone !== savedPhone || remarks !== savedRemarks;
 }
 
 function dcMoney(value) {
@@ -1057,16 +1079,50 @@ function certifiedLabel(breakdown) {
   return "Certified";
 }
 
+function renderCertifyFigures(breakdown) {
+  const el = dcDom?.certifyFigures;
+  if (!el) return;
+  if (!breakdown?.already_saved) {
+    el.innerHTML = "";
+    el.classList.add("hidden");
+    return;
+  }
+  const night = dcMoney(breakdown.saved_night_cash ?? breakdown.night_cash);
+  const phone = dcMoney(breakdown.saved_phone_pay ?? breakdown.phone_pay);
+  const shortToday =
+    breakdown.short_today != null
+      ? dcMoney(breakdown.short_today)
+      : computeDayClosingShort({
+          totalSale: dcMoney(breakdown.total_sale),
+          collection: dcMoney(breakdown.collection),
+          shortPrevious: dcMoney(breakdown.short_previous),
+          nightCash: night,
+          phonePay: phone,
+          creditToday: dcMoney(breakdown.credit_today),
+          expensesToday: dcMoney(breakdown.expenses_today),
+        });
+  el.innerHTML = `
+    <dt>Night cash</dt><dd>${escapeHtml(formatCurrency(night))}</dd>
+    <dt>PhonePe / UPI</dt><dd>${escapeHtml(formatCurrency(phone))}</dd>
+    <dt>Today's short</dt><dd>${escapeHtml(formatCurrency(shortToday))}</dd>`;
+  el.classList.remove("hidden");
+}
+
 function syncDayClosingCertifyPanel(breakdown, { clearError = true } = {}) {
   const panel = dcDom?.certifyPanel;
   if (!panel) return;
 
   const alreadySaved = !!breakdown?.already_saved;
   const certified = !!breakdown?.certified;
+  const unsavedEdits = dayClosingHasUnsavedEdits(breakdown);
+  const ackChecked = !!dcDom.certifyAck?.checked;
   const canCertify =
-    breakdown?.can_certify != null
-      ? !!breakdown.can_certify
-      : isAdmin && alreadySaved && !certified;
+    alreadySaved &&
+    !certified &&
+    isAdmin &&
+    !unsavedEdits &&
+    ackChecked &&
+    (breakdown?.can_certify != null ? !!breakdown.can_certify : true);
   const errorEl = dcDom.certifyError;
 
   if (clearError) {
@@ -1077,6 +1133,9 @@ function syncDayClosingCertifyPanel(breakdown, { clearError = true } = {}) {
   if (!alreadySaved) {
     panel.classList.add("hidden");
     panel.hidden = true;
+    if (dcDom.certifyAck) dcDom.certifyAck.checked = false;
+    dcDom.certifyFigures?.classList.add("hidden");
+    dcDom.certifyAckWrap?.classList.add("hidden");
     return;
   }
 
@@ -1085,26 +1144,37 @@ function syncDayClosingCertifyPanel(breakdown, { clearError = true } = {}) {
   panel.classList.add(certified ? "dc-certify--done" : "dc-certify--pending");
 
   if (dcDom.certifyTitle) {
-    dcDom.certifyTitle.textContent = certified ? "Certified" : "Awaiting acknowledgment";
+    dcDom.certifyTitle.textContent = certified ? "Certified & locked" : "Awaiting acknowledgment";
   }
   if (dcDom.certifyDetail) {
     if (certified) {
       dcDom.certifyDetail.textContent =
         certifiedLabel(breakdown) +
         (isAdmin
-          ? " Saving changes will remove certification so you can acknowledge again."
-          : " This statement is locked for supervisors.");
+          ? " This statement is locked. Revoke certification to make corrections, then acknowledge again."
+          : " This statement is locked.");
+    } else if (isAdmin && unsavedEdits) {
+      dcDom.certifyDetail.textContent =
+        "Save your changes before acknowledging. Certification locks night cash, PhonePe/UPI, and today's short for everyone, including admin.";
     } else if (isAdmin) {
       dcDom.certifyDetail.textContent =
-        "Review night cash, PhonePe/UPI, and today's short, then acknowledge to certify. Supervisors cannot edit once certified.";
+        "Review the figures below, then acknowledge to certify. After that, nobody can edit this statement until certification is revoked.";
     } else {
       dcDom.certifyDetail.textContent =
         "Saved. Waiting for an admin to acknowledge and certify this statement.";
     }
   }
 
+  renderCertifyFigures(breakdown);
+
+  const showAck = isAdmin && !certified && !unsavedEdits;
+  dcDom.certifyAckWrap?.classList.toggle("hidden", !showAck);
+  if (!showAck && dcDom.certifyAck && certified) {
+    dcDom.certifyAck.checked = false;
+  }
+
   if (dcDom.certifyBtn) {
-    dcDom.certifyBtn.classList.toggle("hidden", !canCertify);
+    dcDom.certifyBtn.classList.toggle("hidden", !(isAdmin && alreadySaved && !certified));
     dcDom.certifyBtn.disabled = !canCertify || dcCertifyInFlight;
   }
   if (dcDom.uncertifyBtn) {
@@ -1117,8 +1187,10 @@ function syncDayClosingCertifyPanel(breakdown, { clearError = true } = {}) {
 function syncDayClosingSaveButton(btn) {
   if (!btn) return;
   const alreadySaved = !!dayClosingBreakdown?.already_saved;
+  const certified = !!dayClosingBreakdown?.certified;
   const canOverwrite = canOverwriteDayClosing(dayClosingBreakdown);
-  btn.disabled = alreadySaved && !canOverwrite;
+  btn.classList.toggle("hidden", certified);
+  btn.disabled = certified || (alreadySaved && !canOverwrite);
   btn.textContent = canOverwrite ? "Save changes" : "Save day closing";
 }
 
@@ -1385,16 +1457,32 @@ async function setDayClosingCertified(certified) {
     syncDayClosingCertifyPanel(dayClosingBreakdown);
     return;
   }
+  if (certified && dayClosingHasUnsavedEdits(dayClosingBreakdown)) {
+    if (dcDom.certifyError) {
+      dcDom.certifyError.textContent = "Save day closing before certifying.";
+      dcDom.certifyError.classList.remove("hidden");
+    }
+    syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
+    return;
+  }
+  if (certified && !dcDom.certifyAck?.checked) {
+    if (dcDom.certifyError) {
+      dcDom.certifyError.textContent = "Confirm that you have reviewed the figures before certifying.";
+      dcDom.certifyError.classList.remove("hidden");
+    }
+    syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
+    return;
+  }
 
   const ref = dayClosingBreakdown?.closing_reference || "";
   const dateLabel = formatDisplayDate(dateStr);
   const collected = !!dayClosingBreakdown?.night_cash_collected;
   const confirmed = window.confirm(
     certified
-      ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nSupervisors will no longer be able to edit these figures.`
+      ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
       : collected
-        ? `Remove certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nSupervisors remain locked because night cash was already collected.`
-        : `Remove certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThe statement can be edited again until you recertify or night cash is collected.`
+        ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
+        : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`
   );
   if (!confirmed) return;
 
@@ -1412,7 +1500,7 @@ async function setDayClosingCertified(certified) {
   }
   if (uncertifyBtn) {
     uncertifyBtn.disabled = true;
-    if (!certified) uncertifyBtn.textContent = "Removing…";
+    if (!certified) uncertifyBtn.textContent = "Revoking…";
   }
 
   try {
@@ -1426,8 +1514,8 @@ async function setDayClosingCertified(certified) {
 
     if (dcDom.successEl) {
       dcDom.successEl.textContent = certified
-        ? `Day closing certified${data?.certified_by_name ? ` by ${data.certified_by_name}` : ""}.`
-        : "Certification removed. You can edit and acknowledge again.";
+        ? `Day closing certified${data?.certified_by_name ? ` by ${data.certified_by_name}` : ""}. Statement is locked.`
+        : "Certification revoked. You can edit and acknowledge again.";
       dcDom.successEl.classList.remove("hidden");
     }
 
@@ -1447,7 +1535,7 @@ async function setDayClosingCertified(certified) {
   } finally {
     dcCertifyInFlight = false;
     if (certifyBtn) certifyBtn.textContent = "Acknowledge & certify";
-    if (uncertifyBtn) uncertifyBtn.textContent = "Remove certification";
+    if (uncertifyBtn) uncertifyBtn.textContent = "Revoke certification";
     syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
   }
 }
@@ -1484,11 +1572,18 @@ async function initializeDayClosing() {
       const next = sanitizeDayClosingMoneyTyping(el.value);
       if (next !== el.value) el.value = next;
       debouncedShortUpdate();
+      syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
     });
     el.addEventListener("change", updateDayClosingShortLive);
   };
   bindMoneyInput(nightCashInput);
   bindMoneyInput(phonePayInput);
+  dcDom.remarksInput?.addEventListener("input", () => {
+    syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
+  });
+  dcDom.certifyAck?.addEventListener("change", () => {
+    syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1518,16 +1613,12 @@ async function initializeDayClosing() {
       syncDayClosingSaveButton(submitBtn);
       syncDayClosingAlreadySavedNotice(dayClosingBreakdown);
       dcDom.errorEl?.classList.add("hidden");
-      return;
-    }
-    if (isAdmin && dayClosingBreakdown?.already_saved && dayClosingBreakdown?.certified) {
-      const confirmed = window.confirm(
-        "This statement is certified. Saving will remove certification so you can acknowledge again after the change. Continue?"
-      );
-      if (!confirmed) {
-        syncDayClosingSaveButton(submitBtn);
-        return;
+      if (dayClosingBreakdown?.certified && dcDom.errorEl) {
+        dcDom.errorEl.textContent =
+          "This statement is certified and locked. Revoke certification before changing it.";
+        dcDom.errorEl.classList.remove("hidden");
       }
+      return;
     }
     if (nightCash < 0 || phonePay < 0) {
       syncDayClosingSaveButton(submitBtn);
@@ -1664,6 +1755,8 @@ function initDayClosingCreditDeleteHandlers() {
 
     e.preventDefault();
     e.stopPropagation();
+
+    if (dayClosingBreakdown?.certified) return;
 
     const dateInput = dcDom?.dateInput;
     const dateStr = dateInput?.value?.trim() || "";
@@ -2233,7 +2326,7 @@ async function loadDayClosingRegister() {
         totals.pendingCount += 1;
       }
 
-      const canDelete = isAdmin && row.id && row.date === latestDate && !isCollected;
+      const canDelete = isAdmin && row.id && row.date === latestDate && !isCollected && !row.certified;
       const deleteBtn = canDelete
         ? AdminDelete.buttonHtml({
             selector: "dc-delete-btn",
@@ -2241,7 +2334,13 @@ async function loadDayClosingRegister() {
             title: "Delete latest closing (admin)",
           })
         : isAdmin
-          ? `<span class="muted" title="${isCollected ? `Night cash collected (${collectedRef || "locked"})` : "Only the most recent closing can be deleted"}">—</span>`
+          ? `<span class="muted" title="${
+              isCollected
+                ? `Night cash collected (${collectedRef || "locked"})`
+                : row.certified
+                  ? "Revoke certification before deleting"
+                  : "Only the most recent closing can be deleted"
+            }">—</span>`
           : "";
       const actionsCell = isAdmin ? `<td class="table-actions">${deleteBtn}</td>` : "";
 

@@ -313,7 +313,7 @@ docs/
 - **Staff / HR RPCs:** `list_employees_roster()` (no PII — attendance/salary pickers), `list_employees_salary()` (full HR fields for slips), `set_employee_photo(uuid, url)` (admin), `save_employee_attendance_batch(date, jsonb)`.
 - **Operator profile:** `update_my_avatar(url)`, `my_avatar_storage_folder()` (path helper for Storage RLS).
 - **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `batch_record_credit_settlements`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
-- **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite`, `certified`, `can_certify`), `save_day_closing(...)`, `set_day_closing_certified(date, boolean)` (admin acknowledgment), `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest date only), `recascade_day_closing_short_from(date)` (internal).
+- **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite`, `certified`, `can_certify`), `save_day_closing(...)` (rejects certified rows), `set_day_closing_certified(date, boolean)` (admin certify/revoke), `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest uncertified date only), `recascade_day_closing_short_from(date)` (internal; skips later certified days).
 - **Billing:** `generate_invoice_number()`, `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
 - **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
 - **User management:** `upsert_staff(...)`, `delete_staff(email)` — admin staff provisioning with bootstrap rules.
@@ -359,10 +359,10 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 | Meter Reading → Purchase cost (buying price entry) | ✓ | ✗ |
 | Product catalog edit (Settings → Billing) | ✓ | ✗ (can bill using existing products) |
 | Employee master mutations (`employees` table) | ✓ | ✗ (reads via `list_employees_*` RPCs) |
-| Day closing overwrite after save | ✓ | ✓ until certified or night cash collected |
-| Day closing certify / acknowledge | ✓ | ✗ (view status only) |
-| Night-cash collection (register pickup) | ✓ | ✗ (view only); admins may still edit linked closings |
-| Delete latest day closing | ✓ | ✗ |
+| Day closing overwrite after save | ✓ until certified | ✓ until certified or night cash collected |
+| Day closing certify / acknowledge | ✓ (locks everyone until revoke) | ✗ (view status only) |
+| Night-cash collection (register pickup) | ✓ | ✗ (view only); admins may still edit linked closings unless certified |
+| Delete latest day closing | ✓ if not certified and not collected | ✗ |
 | Delete credit entries / payments | ✓ | ✗ |
 | Delete supplier invoice documents | ✓ | ✗ |
 | Delete salary payments | ✓ | ✗ |

@@ -2552,7 +2552,7 @@ comment on column public.day_closing.credit_today is 'New credit (₹) that day 
 comment on column public.day_closing.expenses_today is 'Expenses (₹) that day – snapshot.';
 comment on column public.day_closing.closing_reference is 'Unique reference for accounting (e.g. DC-2026-00001).';
 comment on column public.day_closing.remarks is 'Optional remarks at closing.';
-comment on column public.day_closing.certified is 'True after an admin acknowledges the supervisor''s saved statement.';
+comment on column public.day_closing.certified is 'True after an admin acknowledges the saved statement. While true, figures are frozen for everyone until revoke.';
 comment on column public.day_closing.certified_at is 'When the admin certified this closing.';
 comment on column public.day_closing.certified_by is 'auth.users.id of the admin who certified.';
 comment on column public.day_closing.certified_by_name is 'Display name (or email) snapshot of the certifying admin.';
@@ -2625,7 +2625,7 @@ create index if not exists day_closing_night_cash_collection_idx
   where night_cash_collection_id is not null;
 
 comment on column public.day_closing.night_cash_collection_id is
-  'When set, night cash was collected. Supervisors cannot edit; admins may still modify the closing.';
+  'When set, night cash was collected. Supervisors cannot edit; admins may still modify unless the closing is certified.';
 
 drop policy if exists "day_closing_update_by_role" on public.day_closing;
 create policy "day_closing_update_by_role" on public.day_closing
@@ -2633,29 +2633,91 @@ create policy "day_closing_update_by_role" on public.day_closing
   using (
     public.is_supervisor_or_admin()
     and (created_by = auth.uid() or public.is_admin())
-    and (night_cash_collection_id is null or public.is_admin())
-    and (certified = false or public.is_admin())
+    and night_cash_collection_id is null
+    and certified = false
   )
   with check (
     public.is_supervisor_or_admin()
     and (created_by = auth.uid() or public.is_admin())
-    and (night_cash_collection_id is null or public.is_admin())
-    and (certified = false or public.is_admin())
+    and night_cash_collection_id is null
+    and certified = false
   );
 
 drop policy if exists "day_closing_delete_admin" on public.day_closing;
 create policy "day_closing_delete_admin" on public.day_closing
   for delete to authenticated
-  using (public.is_admin() and night_cash_collection_id is null);
+  using (
+    public.is_admin()
+    and night_cash_collection_id is null
+    and certified = false
+  );
 
 create or replace function public.day_closing_block_collected_mutation()
 returns trigger
 language plpgsql
 as $$
 begin
-  if tg_op = 'UPDATE' and old.night_cash_collection_id is not null then
+  if tg_op = 'DELETE' then
+    if coalesce(old.certified, false) then
+      raise exception
+        'Day closing for % is certified and locked. Revoke certification before deleting it.',
+        old.date;
+    end if;
+    if old.night_cash_collection_id is not null then
+      raise exception
+        'Day closing for % is locked: night cash was collected. Remove the collection in the database first.',
+        old.date;
+    end if;
+    return old;
+  end if;
+
+  if coalesce(old.certified, false) then
+    -- Revoke: only certification columns may change.
+    if not coalesce(new.certified, false) then
+      if new.night_cash is distinct from old.night_cash
+         or new.phone_pay is distinct from old.phone_pay
+         or new.short_today is distinct from old.short_today
+         or new.total_sale is distinct from old.total_sale
+         or new.collection is distinct from old.collection
+         or new.short_previous is distinct from old.short_previous
+         or new.credit_today is distinct from old.credit_today
+         or new.expenses_today is distinct from old.expenses_today
+         or new.remarks is distinct from old.remarks
+         or new.closing_reference is distinct from old.closing_reference
+         or new.night_cash_collection_id is distinct from old.night_cash_collection_id
+      then
+        raise exception
+          'Day closing for % is certified and locked. Revoke certification before changing it.',
+          old.date;
+      end if;
+      return new;
+    end if;
+
+    -- Stay certified: allow night-cash collection link only.
+    if new.night_cash is distinct from old.night_cash
+       or new.phone_pay is distinct from old.phone_pay
+       or new.short_today is distinct from old.short_today
+       or new.total_sale is distinct from old.total_sale
+       or new.collection is distinct from old.collection
+       or new.short_previous is distinct from old.short_previous
+       or new.credit_today is distinct from old.credit_today
+       or new.expenses_today is distinct from old.expenses_today
+       or new.remarks is distinct from old.remarks
+       or new.closing_reference is distinct from old.closing_reference
+       or new.certified_at is distinct from old.certified_at
+       or new.certified_by is distinct from old.certified_by
+       or new.certified_by_name is distinct from old.certified_by_name
+    then
+      raise exception
+        'Day closing for % is certified and locked. Revoke certification before changing it.',
+        old.date;
+    end if;
+  end if;
+
+  if old.night_cash_collection_id is not null then
     if not public.is_admin() then
-      raise exception 'Day closing for % is locked: night cash was collected (ref %). Only an admin can modify it.',
+      raise exception
+        'Day closing for % is locked: night cash was collected (ref %). Only an admin can modify it.',
         old.date,
         (select collection_reference from public.night_cash_collections where id = old.night_cash_collection_id);
     end if;
@@ -2663,15 +2725,8 @@ begin
       raise exception 'Cannot change night cash collection link on a collected day closing.';
     end if;
   end if;
-  if tg_op = 'DELETE' and old.night_cash_collection_id is not null then
-    raise exception 'Day closing for % is locked: night cash was collected. Remove the collection in the database first.',
-      old.date;
-  end if;
-  if tg_op = 'UPDATE' and new.night_cash_collection_id is distinct from old.night_cash_collection_id
-     and old.night_cash_collection_id is null and new.night_cash_collection_id is not null then
-    return new;
-  end if;
-  return coalesce(new, old);
+
+  return new;
 end;
 $$;
 
@@ -2875,11 +2930,15 @@ declare
   v_short_today numeric;
 begin
   for v_row in
-    select date, night_cash, phone_pay
+    select date, night_cash, phone_pay, certified
     from public.day_closing
     where date > p_from_date
     order by date asc
   loop
+    if coalesce(v_row.certified, false) then
+      continue;
+    end if;
+
     v_components := public.compute_day_closing_components(v_row.date);
     v_short_today := (
       coalesce((v_components->>'total_sale')::numeric, 0)
@@ -2904,11 +2963,41 @@ end;
 $$;
 
 comment on function public.recascade_day_closing_short_from(date) is
-  'After a day closing overwrite, recalculate short chain for all later closed dates.';
+  'After a day closing overwrite, recalculate short chain for later uncertified dates. Certified later days stay frozen.';
 
 grant execute on function public.recascade_day_closing_short_from(date) to service_role;
 revoke all on function public.recascade_day_closing_short_from(date) from public;
 revoke all on function public.recascade_day_closing_short_from(date) from authenticated;
+
+create or replace function public.raise_if_day_closing_certified(p_date date)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if p_date is null then
+    return;
+  end if;
+  if exists (
+    select 1
+    from public.day_closing
+    where date = p_date
+      and coalesce(certified, false)
+  ) then
+    raise exception
+      'Day closing for % is certified and locked. Revoke certification before changing it.',
+      p_date;
+  end if;
+end;
+$$;
+
+comment on function public.raise_if_day_closing_certified(date) is
+  'Raise when the date''s day closing is certified. Used by save/sync/delete paths.';
+
+revoke all on function public.raise_if_day_closing_certified(date) from public;
+revoke all on function public.raise_if_day_closing_certified(date) from authenticated;
 
 -- RPC: Get day closing breakdown; when already_saved returns stored snapshot (for accounting)
 create or replace function public.get_day_closing_breakdown(p_date date)
@@ -2955,9 +3044,9 @@ begin
   v_night_cash_collected := v_already_saved and v_existing.night_cash_collection_id is not null;
   v_certified := v_already_saved and coalesce(v_existing.certified, false);
   v_collection_ref := v_existing.collection_reference;
-  v_can_overwrite := v_already_saved and (
+  v_can_overwrite := v_already_saved and not v_certified and (
     public.is_admin()
-    or (not v_night_cash_collected and not v_certified)
+    or not v_night_cash_collected
   );
   v_use_snapshot := v_already_saved and v_existing.total_sale is not null and not v_can_overwrite;
 
@@ -3039,7 +3128,7 @@ end;
 $$;
 
 comment on function public.get_day_closing_breakdown(date) is
-  'Day closing breakdown. suggested_* = shift + Cash/UPI settles; night_cash/phone_pay = saved when already registered, else suggested.';
+  'Day closing breakdown. Certified days return the frozen snapshot; can_overwrite is false for everyone until revoke.';
 
 
 -- RPC: Available (uncollected) night cash summary
@@ -3248,11 +3337,9 @@ begin
   select closing_reference, night_cash_collection_id, certified into v_existing
   from public.day_closing where date = p_date;
   if found then
+    perform public.raise_if_day_closing_certified(p_date);
     if v_existing.night_cash_collection_id is not null and not public.is_admin() then
       raise exception 'Day closing for % is locked: night cash was collected. Only an admin can modify it.', p_date;
-    end if;
-    if coalesce(v_existing.certified, false) and not public.is_admin() then
-      raise exception 'Day closing for % is locked: it has been certified. Only an admin can modify it.', p_date;
     end if;
     v_is_overwrite := true;
     v_ref := v_existing.closing_reference;
@@ -3278,11 +3365,7 @@ begin
       short_previous = v_short_previous,
       credit_today = v_credit_today,
       expenses_today = v_expenses_today,
-      remarks = nullif(trim(p_remarks), ''),
-      certified = false,
-      certified_at = null,
-      certified_by = null,
-      certified_by_name = null
+      remarks = nullif(trim(p_remarks), '')
     where date = p_date;
 
     perform public.recascade_day_closing_short_from(p_date);
@@ -3326,7 +3409,7 @@ begin
 end;
 $$;
 comment on function public.save_day_closing(date, numeric, numeric, text) is
-  'Save or overwrite day closing. Supervisors may edit until certified or night cash is collected. Overwrite clears certification.';
+  'Save or overwrite day closing. Certified rows are rejected until an admin revokes certification.';
 
 create or replace function public.set_day_closing_certified(
   p_date date,
@@ -3422,7 +3505,7 @@ end;
 $$;
 
 comment on function public.set_day_closing_certified(date, boolean) is
-  'Admin-only: acknowledge (certify) a saved day closing, or remove certification so figures can be edited again.';
+  'Admin-only: certify a saved statement (locks figures) or revoke so it can be edited and acknowledged again.';
 
 -- RPC: Add credit entry (Transaction Date = DSR date; optional shift attribution)
 drop function if exists public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text);
@@ -3600,7 +3683,6 @@ declare
   v_phone_pay numeric;
   v_short_today numeric;
   v_mode text;
-  v_locked boolean := false;
 begin
   if p_date is null then
     return;
@@ -3618,8 +3700,9 @@ begin
     return;
   end if;
 
-  v_locked := (v_row.night_cash_collection_id is not null) or coalesce(v_row.certified, false);
-  if v_locked and not public.is_admin() then
+  perform public.raise_if_day_closing_certified(p_date);
+
+  if v_row.night_cash_collection_id is not null and not public.is_admin() then
     return;
   end if;
 
@@ -3656,11 +3739,7 @@ begin
     expenses_today = v_expenses_today,
     night_cash = v_night_cash,
     phone_pay = v_phone_pay,
-    short_today = v_short_today,
-    certified = false,
-    certified_at = null,
-    certified_by = null,
-    certified_by_name = null
+    short_today = v_short_today
   where date = p_date;
 
   perform public.recascade_day_closing_short_from(p_date);
@@ -3668,7 +3747,7 @@ end;
 $$;
 
 comment on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) is
-  'After a credit payment: refresh day_closing open credit; same-day Cash/UPI bumps night_cash/phone_pay.';
+  'After a credit payment: refresh day_closing. Certified dates are rejected until revoke.';
 
 revoke all on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) from public;
 revoke all on function public.apply_credit_payment_to_day_closing(date, boolean, text, numeric) from authenticated;
@@ -3956,7 +4035,7 @@ declare
   v_changed boolean := false;
 begin
   select night_cash, phone_pay, total_sale, collection, short_previous, credit_today,
-         expenses_today, short_today
+         expenses_today, short_today, certified
   into v_row
   from public.day_closing
   where date = p_date
@@ -3965,6 +4044,8 @@ begin
   if not found then
     return;
   end if;
+
+  perform public.raise_if_day_closing_certified(p_date);
 
   v_components := public.compute_day_closing_components(p_date);
   v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
@@ -3993,11 +4074,7 @@ begin
     short_previous = v_short_previous,
     credit_today = v_credit_today,
     expenses_today = v_expenses_today,
-    short_today = v_short_today,
-    certified = false,
-    certified_at = null,
-    certified_by = null,
-    certified_by_name = null
+    short_today = v_short_today
   where date = p_date;
 
   perform public.recascade_day_closing_short_from(p_date);
@@ -4005,7 +4082,7 @@ end;
 $$;
 
 comment on function public.sync_saved_day_closing_for_date(date) is
-  'Refresh saved day_closing snapshot from live DSR/credit/expense data; clear certification only when values change; recascade short chain.';
+  'Refresh saved day_closing snapshot from live books. Certified dates are rejected until revoke.';
 
 revoke all on function public.sync_saved_day_closing_for_date(date) from public;
 revoke all on function public.sync_saved_day_closing_for_date(date) from authenticated;
@@ -4089,6 +4166,12 @@ begin
     raise exception 'Day closing record not found';
   end if;
 
+  if coalesce(v_row.certified, false) then
+    raise exception
+      'Day closing for % is certified and locked. Revoke certification before deleting it.',
+      v_row.date;
+  end if;
+
   if v_row.night_cash_collection_id is not null then
     raise exception 'Day closing for % is locked: night cash was collected.', v_row.date;
   end if;
@@ -4109,7 +4192,7 @@ end;
 $$;
 
 comment on function public.delete_day_closing(uuid) is
-  'Admin-only: delete the latest day closing so the date can be re-closed.';
+  'Admin-only: delete the latest uncertified day closing so the date can be re-closed.';
 
 create or replace function public.delete_credit_entry(p_entry_id uuid)
 returns jsonb
