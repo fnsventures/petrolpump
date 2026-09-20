@@ -2,21 +2,24 @@
  * Service Worker — Bishnupriya Fuels (standard PWA patterns)
  *
  * Strategies (performance-first for a financial ops MPA):
- * - App shell: precache on install (lean; no full-site dump)
+ * - App shell: precache on install (app HTML + shared/page CSS/JS + fonts)
+ * - Precache is never LRU-trimmed; other static files use a runtime cache
  * - Static JS/CSS/fonts/images: stale-while-revalidate (fast + fresh)
  * - HTML navigations: network-first (no timeout fallback to stale HTML)
+ * - env.js: network-first with last-known cache fallback (generated at deploy)
  * - Supabase REST/Functions: always network-only (ops data must never be stale)
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v189";
+const CACHE_VERSION = "v200";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `bpf-runtime-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 
-/** Max entries for runtime caches (prevents unbounded growth on desktop). */
+/** Max entries for runtime caches (precache is never trimmed). */
 const CACHE_LIMITS = {
-  dynamic: 30,
-  staticRuntime: 60,
+  dynamic: 80,
+  runtime: 120,
 };
 
 /** Min gap between background revalidations for the same URL (reduces network churn). */
@@ -24,46 +27,137 @@ const REVALIDATE_MS = 30 * 1000;
 const revalidateAt = new Map();
 
 /**
- * True app shell only. Page modules are runtime-cached on first visit.
- * env.js is never cached (see fetch handler).
+ * True app shell. Page modules listed here install with the PWA; env.js is never precached.
  */
 const STATIC_ASSET_PATHS = [
-  "offline.html",
-  "index.html",
-  "login.html",
-  "dashboard.html",
   "404.html",
+  "about.html",
+  "analysis.html",
+  "attendance.html",
+  "billing.html",
+  "credit-customer.html",
+  "credit-overdue.html",
+  "credit.html",
+  "dashboard.html",
+  "day-closing.html",
+  "dsr.html",
+  "e20-register.html",
+  "expenses.html",
+  "index.html",
+  "invoices.html",
+  "letterhead.html",
+  "login.html",
+  "meter-reading.html",
+  "offline.html",
+  "reminders.html",
+  "reports.html",
+  "salary.html",
+  "sales-daily.html",
+  "settings.html",
+  "staff.html",
   "manifest.json",
-  "css/base.css",
-  "css/fonts.css",
   "css/landing.css",
   "css/login.css",
-  "css/app-core.css?v=17",
-  "css/app-dashboard.css",
+  "css/staff-id-print.css",
+  "css/app-core.css",
+  "css/app-staff.css",
+  "css/reports-print.css",
+  "css/report-watermark.css",
+  "js/landing.js",
+  "js/vendor/supabase-login.min.js",
+  "js/vendor/supabase.min.js",
+  "js/dsrFuelNav.js",
+  "js/dsrLegacyRedirect.js",
+  "js/dsrSections.js",
+  "js/expenses.js",
+  "js/billing.js",
+  "js/invoices.js",
+  "js/settings.js",
+  "js/creditOverview.js",
+  "js/creditRecord.js",
+  "js/creditCustomerDetail.js",
+  "js/creditCustomer.js",
+  "css/fonts.css",
+  "css/app-sidebar.css",
+  "css/app-notifications.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
   "assets/icon-192.png",
   "assets/icon-512.png",
   "assets/logo-44.webp",
   "assets/logo-80.webp",
+  "assets/logo-80.png",
   "assets/logo-104.webp",
+  "assets/logo-104.png",
   "assets/logo-print.webp",
-  "css/report-watermark.css?v=7",
+  "fonts/caveat-latin-ext.woff2",
+  "fonts/caveat-latin.woff2",
+  "fonts/dm-sans-italic-latin-ext.woff2",
+  "fonts/dm-sans-italic-latin.woff2",
+  "fonts/dm-sans-latin-ext.woff2",
   "fonts/dm-sans-latin.woff2",
+  "fonts/source-serif-4-latin-ext.woff2",
   "fonts/source-serif-4-latin.woff2",
-  "js/vendor/supabase-login.min.js",
-  "js/vendor/supabase.min.js",
-  "js/roleBootstrap.js?v=17",
-  "js/appNav.js?v=17",
-  "js/errorHandler.js",
-  "js/pwa.js?v=17",
-  "js/cache.js?v=17",
-  "js/appConfig.js",
-  "js/utils.js?v=17",
-  "js/pumpSettings.js",
-  "js/supabase.js?v=17",
-  "js/auth.js?v=17",
-  "js/pageSections.js",
+  "js/roleBootstrap.js?v=24",
+  "js/appNav.js?v=24",
+  "js/utils.js?v=24",
+  "js/pwa.js?v=24",
+  "js/cache.js?v=24",
+  "js/auth.js?v=24",
+  "js/supabase.js?v=24",
+  "js/errorHandler.js?v=24",
+  "js/appConfig.js?v=24",
+  "js/pumpSettings.js?v=24",
+  "js/pageSections.js?v=24",
+  "js/taskUtils.js?v=24",
+  "js/dsrQueries.js?v=24",
+  "js/notifications.js?v=24",
+  "css/base.css?v=24",
+  "css/app-core.css?v=24",
+  "css/app-layout.css?v=24",
+  "css/app-dashboard.css?v=31",
+  "js/purchaseTaxUtils.js?v=7",
+  "js/dateRangeFilter.js?v=10",
+  "js/dashboard.js?v=23",
+  "css/app-dsr.css?v=19",
+  "css/app-meter-reading.css?v=48",
+  "js/buyingPriceEntry.js?v=6",
+  "js/staffEmployees.js?v=4",
+  "js/shiftStaffLedger.js?v=5",
+  "js/meterShiftReading.js?v=43",
+  "js/meterReading.js?v=33",
+  "js/printUtils.js?v=20",
+  "js/dsrSummary.js?v=3",
+  "js/dsrSalesBreakdown.js?v=10",
+  "js/dsr.js?v=7",
+  "css/app-e20-register.css?v=9",
+  "css/report-watermark.css?v=7",
+  "js/e20Register.js?v=14",
+  "css/app-reminders.css?v=13",
+  "js/reminders.js?v=17",
+  "css/app-credit.css?v=14",
+  "js/credit.js?v=11",
+  "css/app-day-closing.css?v=12",
+  "js/day-closing.js?v=25",
+  "css/app-billing.css?v=10",
+  "css/app-attendance.css?v=12",
+  "js/attendance.js?v=12",
+  "css/app-salary.css?v=13",
+  "js/salary.js?v=19",
+  "css/app-staff.css?v=14",
+  "js/staff.js?v=16",
+  "css/app-letterhead.css?v=6",
+  "js/letterhead.js?v=11",
+  "css/app-analysis.css?v=9",
+  "js/analysis.js?v=9",
+  "css/app-reports.css?v=15",
+  "js/reports.js?v=20",
+  "css/reports-print.css?v=16",
+  "css/credit-summary-print.css?v=7",
+  "css/e20-register-print.css?v=5",
+  "css/letterhead-print.css?v=4",
+  "css/invoice-print.css?v=3",
+  "css/salary-slip-print.css?v=2",
 ];
 
 /** Only for offline.html / shell fallbacks — never for versioned JS/CSS or API. */
@@ -131,6 +225,7 @@ self.addEventListener("activate", (event) => {
             (name) =>
               name.startsWith("bpf-") &&
               name !== STATIC_CACHE &&
+              name !== RUNTIME_CACHE &&
               name !== DYNAMIC_CACHE
           )
           .map((name) => caches.delete(name))
@@ -160,7 +255,7 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   if (url.pathname.endsWith("/js/env.js")) {
-    event.respondWith(fetch(request));
+    event.respondWith(networkFirstRuntime(request));
     return;
   }
 
@@ -176,7 +271,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isStaticAsset(url)) {
-    event.respondWith(staleWhileRevalidateStatic(request));
+    event.respondWith(staleWhileRevalidateAsset(request));
     return;
   }
 
@@ -230,18 +325,50 @@ async function networkFirstNavigate(event) {
     const cachedResponse = await caches.match(request);
     if (cachedResponse) return cachedResponse;
 
+    // start_url / shortcuts use ?source=pwa — fall back to the precached HTML shell.
+    const shell = await caches.match(request, OFFLINE_MATCH_OPTS);
+    if (shell) return shell;
+
     return getOfflineFallback();
+  }
+}
+
+async function revalidateRequest(cache, request, cacheName, maxEntries) {
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+      await cache.put(request, networkResponse.clone());
+      if (maxEntries) void trimCache(cacheName, maxEntries, cache);
+    }
+    return networkResponse;
+  } catch {
+    return null;
   }
 }
 
 /**
  * Stale-while-revalidate: serve cache immediately for speed, refresh in background.
- * Exact URL match so ?v= query busting works.
+ * Exact URL match so ?v= query busting works. Precache is never LRU-trimmed.
  */
+async function staleWhileRevalidateAsset(request) {
+  const staticCache = await caches.open(STATIC_CACHE);
+  const precached = await staticCache.match(request);
+  if (precached) {
+    const now = Date.now();
+    if (now - (revalidateAt.get(request.url) || 0) >= REVALIDATE_MS) {
+      revalidateAt.set(request.url, now);
+      void revalidateRequest(staticCache, request);
+    }
+    return precached;
+  }
+
+  return staleWhileRevalidateStatic(request, RUNTIME_CACHE, CACHE_LIMITS.runtime);
+}
+
 async function staleWhileRevalidateStatic(
   request,
-  cacheName = STATIC_CACHE,
-  maxEntries = CACHE_LIMITS.staticRuntime
+  cacheName = RUNTIME_CACHE,
+  maxEntries = CACHE_LIMITS.runtime
 ) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
@@ -255,15 +382,7 @@ async function staleWhileRevalidateStatic(
 
   revalidateAt.set(request.url, now);
 
-  const networkPromise = fetch(request)
-    .then(async (networkResponse) => {
-      if (networkResponse.ok) {
-        await cache.put(request, networkResponse.clone());
-        void trimCache(cacheName, maxEntries, cache);
-      }
-      return networkResponse;
-    })
-    .catch(() => null);
+  const networkPromise = revalidateRequest(cache, request, cacheName, maxEntries);
 
   if (cachedResponse) {
     void networkPromise;
@@ -274,6 +393,24 @@ async function staleWhileRevalidateStatic(
   if (networkResponse) return networkResponse;
 
   return new Response("Resource not available offline", { status: 503 });
+}
+
+async function networkFirstRuntime(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse.ok) {
+      await cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch {
+    const cachedResponse = await cache.match(request);
+    if (cachedResponse) return cachedResponse;
+    return new Response("/* unavailable offline */", {
+      status: 503,
+      headers: { "Content-Type": "application/javascript; charset=utf-8" },
+    });
+  }
 }
 
 async function networkWithCacheFallback(request) {
@@ -349,12 +486,15 @@ async function getCacheStats() {
   const stats = {
     version: CACHE_VERSION,
     static: { entries: 0 },
+    runtime: { entries: 0 },
     dynamic: { entries: 0 },
   };
 
   try {
     const staticCache = await caches.open(STATIC_CACHE);
     stats.static.entries = (await staticCache.keys()).length;
+    const runtimeCache = await caches.open(RUNTIME_CACHE);
+    stats.runtime.entries = (await runtimeCache.keys()).length;
     const dynamicCache = await caches.open(DYNAMIC_CACHE);
     stats.dynamic.entries = (await dynamicCache.keys()).length;
   } catch {

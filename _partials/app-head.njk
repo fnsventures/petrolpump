@@ -1,0 +1,25 @@
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{{ title }}</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="{{ baseCss }}" />
+{%- for src in earlyScripts %}
+    <script src="{{ src }}"></script>
+{%- endfor %}
+    <script src="{{ roleBootstrap }}"></script>
+    <script src="{{ appNav }}"></script>
+    <link rel="stylesheet" href="{{ layoutCss }}" />
+    <link rel="stylesheet" href="{{ coreCss }}" />
+{%- for href in css %}
+    <link rel="stylesheet" href="{{ href }}" />
+{%- endfor %}
+{%- for src in scripts %}
+    <script defer src="{{ src }}"></script>
+{%- endfor %}

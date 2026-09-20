@@ -2,7 +2,7 @@
 /* ── Reports page ── */
 
 body.reports-page main.settings-layout.page-layout-wide {
-  width: min(92rem, 98vw);
+  width: min(92rem, 100%);
 }
 
 .reports-generate-panel {

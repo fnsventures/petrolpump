@@ -1,52 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>DSR · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0070c0" />
-    <meta name="application-name" content="Bishnupriya Fuels" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="BPFuels" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="stylesheet" href="css/base.css" />
-    <script src="js/dsrLegacyRedirect.js"></script>
-    <script src="js/roleBootstrap.js?v=17"></script>
-    <script src="js/appNav.js?v=17"></script>
-    <script src="js/dsrSections.js"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=17" />
-    <link rel="stylesheet" href="css/app-dsr.css?v=19" />
-    <script defer src="js/vendor/supabase.min.js"></script>
-    <script defer src="js/env.js"></script>
-    <script defer src="js/errorHandler.js"></script>
-    <script defer src="js/cache.js?v=17"></script>
-    <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=17"></script>
-    <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/pwa.js?v=17"></script>
-    <script defer src="js/supabase.js?v=17"></script>
-    <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/dsrFuelNav.js"></script>
-    <script defer src="js/pageSections.js"></script>
-    <script defer src="js/auth.js?v=17"></script>
-    <script defer src="js/dsrSummary.js?v=3"></script>
-    <script defer src="js/dsrSalesBreakdown.js?v=10"></script>
-    <script defer src="js/dsr.js?v=7"></script>
+    <!-- @partial app-head -->
   </head>
   <body class="dsr-page">
-    <header class="topbar" data-build-topbar>
-      <div class="brand">
-        <a href="dashboard.html">Bishnupriya Fuels</a>
-        <span class="page-subtitle">DSR</span>
-      </div>
-      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
-    </header>
+    <!-- @partial app-topbar title="DSR" -->
 
-    <main class="settings-layout page-layout-wide" id="dsr-page-main">
+    <main class="app-layout settings-layout page-layout-wide" id="dsr-page-main">
       <nav class="settings-nav card dsr-fuel-nav" id="dsr-sidebar-nav" aria-label="DSR sections">
         <p class="settings-nav-title">Daily register</p>
         <button type="button" class="settings-nav-item is-active" data-section="filters">

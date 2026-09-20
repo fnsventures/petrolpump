@@ -656,6 +656,20 @@
   display: none;
 }
 
+.topbar-notifications-popup .notifications-panel,
+.topbar-notifications-popup .notifications-panel.card {
+  margin: 0;
+  padding: 0.85rem 1rem 1rem;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.topbar-notifications-popup .notifications-panel-lead {
+  max-width: none;
+}
+
 .notifications-empty-title {
   margin: 0 0 0.35rem;
   font-size: var(--heading-sm);

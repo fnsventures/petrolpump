@@ -1,6 +1,7 @@
 /**
- * In-page section navigation (same pattern as Settings).
- * Use classes: settings-layout, settings-nav, settings-nav-item, settings-panels, settings-panel
+ * In-page section navigation (layer 3 of the app shell).
+ * Prefer: app-layout, app-sections, app-section-item, app-panels, app-panel
+ * Legacy aliases: settings-layout, settings-nav, settings-nav-item, settings-panels, settings-panel
  */
 (function (global) {
   /**
@@ -15,8 +16,8 @@
    * @param {(section: string) => void} [config.onSectionChange]
    */
   function initPageSections(config = {}) {
-    const navItemSelector = config.navItemSelector || ".settings-nav-item";
-    const panelSelector = config.panelSelector || ".settings-panel";
+    const navItemSelector = config.navItemSelector || ".settings-nav-item, .app-section-item";
+    const panelSelector = config.panelSelector || ".settings-panel, .app-panel";
     const navItems = document.querySelectorAll(navItemSelector);
     const panels = document.querySelectorAll(panelSelector);
     if (!navItems.length || !panels.length) return;

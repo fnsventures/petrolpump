@@ -1,48 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Billing · Bishnupriya Fuels</title>
-    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-    <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0070c0" />
-    <meta name="application-name" content="Bishnupriya Fuels" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="BPFuels" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="stylesheet" href="css/base.css" />
-    <script src="js/roleBootstrap.js?v=17"></script>
-    <script src="js/appNav.js?v=17"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=17" />
-    <link rel="stylesheet" href="css/app-billing.css?v=10" />
-    <script defer src="js/vendor/supabase.min.js"></script>
-    <script defer src="js/env.js"></script>
-    <script defer src="js/errorHandler.js"></script>
-    <script defer src="js/cache.js?v=17"></script>
-    <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=17"></script>
-    <script defer src="js/dateRangeFilter.js?v=10"></script>
-    <script defer src="js/pwa.js?v=17"></script>
-    <script defer src="js/supabase.js?v=17"></script>
-    <script defer src="js/pumpSettings.js"></script>
-    <script defer src="js/pageSections.js"></script>
-    <script defer src="js/auth.js?v=17"></script>
-    <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/billing.js"></script>
+    <!-- @partial app-head -->
   </head>
   <body class="billing-page">
-    <header class="topbar no-print" data-build-topbar>
-      <div class="brand">
-        <a href="dashboard.html">Bishnupriya Fuels</a>
-        <span class="page-subtitle">Billing</span>
-      </div>
-      <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
-      <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
-    </header>
+    <!-- @partial app-topbar title="Billing" noPrint -->
 
-    <main class="settings-layout">
+    <main class="app-layout settings-layout">
       <nav class="settings-nav card no-print" aria-label="Billing sections">
         <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="create">Create invoice</button>

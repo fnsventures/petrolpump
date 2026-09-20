@@ -2,7 +2,7 @@
 
 body.dsr-page main.settings-layout.page-layout-wide,
 body.meter-reading-page main.settings-layout.page-layout-wide {
-  width: min(80rem, 98vw);
+  width: min(80rem, 100%);
 }
 
 .table-scroll {

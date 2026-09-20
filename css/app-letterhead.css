@@ -1,7 +1,7 @@
 /* Letterhead page — compose + preview (matches billing / reports layout) */
 
 body.letterhead-page main.settings-layout.page-layout-wide {
-  width: min(92rem, 98vw);
+  width: min(92rem, 100%);
   max-width: 100%;
   min-width: 0;
 }
@@ -434,7 +434,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
 
 @media (max-width: 768px) {
   body.letterhead-page main.settings-layout.page-layout-wide {
-    width: min(100%, 98vw);
+    width: 100%;
     padding: 0.75rem;
   }
 

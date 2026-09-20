@@ -175,10 +175,10 @@
     shiftAfternoonEnd: "petrolpump_shift_afternoon_end",
   };
 
-  /** Topbar / compact logo (44×44). */
-  const STATION_LOGO_SRC = "assets/logo-44.webp";
-  /** Invoice, staff ID, and other large logo slots (80×80). */
-  const STATION_LOGO_LG_SRC = "assets/logo-80.webp";
+  /** Topbar / compact logo — 80px source stays sharp when shown at ~40–44px. */
+  const STATION_LOGO_SRC = "assets/logo-80.webp";
+  /** Sidebar / large logo — 104px source stays sharp on the ~40px disc. */
+  const STATION_LOGO_LG_SRC = "assets/logo-104.webp";
   /** Print / PDF letterhead + report watermark (384×384 WebP — sharp at ~100 mm watermark). */
   const STATION_LOGO_PRINT_SRC = "assets/logo-print.webp";
   /** @deprecated Use STATION_LOGO_SRC — kept for backward compatibility. */

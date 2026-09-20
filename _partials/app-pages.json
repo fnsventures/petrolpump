@@ -1,0 +1,250 @@
+{
+  "description": "Authenticated page assets. Expanded by scripts/build-html.mjs from <!-- @partial app-head -->.",
+  "sharedCss": ["css/base.css", "css/app-core.css"],
+  "earlyJs": ["js/roleBootstrap.js", "js/appNav.js"],
+  "sharedJs": [
+    "js/vendor/supabase.min.js",
+    "js/env.js",
+    "js/errorHandler.js",
+    "js/cache.js",
+    "js/appConfig.js",
+    "js/utils.js",
+    "js/pwa.js",
+    "js/supabase.js",
+    "js/pumpSettings.js"
+  ],
+  "sharedAfterAuth": [
+    "js/taskUtils.js",
+    "js/dsrQueries.js",
+    "js/notifications.js"
+  ],
+  "navLayers": {
+    "Operations": [
+      "dashboard.html",
+      "meter-reading.html",
+      "dsr.html",
+      "e20-register.html",
+      "reminders.html"
+    ],
+    "Finance": ["credit.html", "expenses.html", "day-closing.html", "billing.html"],
+    "HR": [
+      "attendance.html",
+      "salary.html",
+      "staff.html",
+      "invoices.html",
+      "letterhead.html"
+    ],
+    "Admin": ["analysis.html", "reports.html", "settings.html"]
+  },
+  "assetVersions": {
+    "css/app-dashboard.css": "31",
+    "css/app-dsr.css": "19",
+    "css/app-meter-reading.css": "48",
+    "css/app-credit.css": "14",
+    "css/app-reminders.css": "13",
+    "css/app-day-closing.css": "12",
+    "css/app-billing.css": "10",
+    "css/app-attendance.css": "12",
+    "css/app-salary.css": "13",
+    "css/app-staff.css": "14",
+    "css/app-analysis.css": "9",
+    "css/app-reports.css": "15",
+    "css/app-e20-register.css": "9",
+    "css/app-letterhead.css": "6",
+    "css/report-watermark.css": "7",
+    "js/dashboard.js": "23",
+    "js/meterReading.js": "33",
+    "js/meterShiftReading.js": "43",
+    "js/shiftStaffLedger.js": "5",
+    "js/buyingPriceEntry.js": "6",
+    "js/dsr.js": "7",
+    "js/dsrSummary.js": "3",
+    "js/dsrSalesBreakdown.js": "10",
+    "js/dsrQueries.js": "2",
+    "js/credit.js": "11",
+    "js/reminders.js": "17",
+    "js/taskUtils.js": "9",
+    "js/day-closing.js": "25",
+    "js/attendance.js": "12",
+    "js/salary.js": "19",
+    "js/staff.js": "16",
+    "js/staffEmployees.js": "4",
+    "js/analysis.js": "9",
+    "js/reports.js": "20",
+    "js/e20Register.js": "14",
+    "js/letterhead.js": "11",
+    "js/printUtils.js": "20",
+    "js/dateRangeFilter.js": "10",
+    "js/purchaseTaxUtils.js": "7"
+  },
+  "pages": {
+    "dashboard.html": {
+      "title": "Dashboard · Bishnupriya Fuels",
+      "pageTitle": "Dashboard",
+      "bodyClass": "dashboard-page",
+      "css": ["css/app-dashboard.css"],
+      "beforeAuth": [
+        "js/purchaseTaxUtils.js",
+        "js/dateRangeFilter.js",
+        "js/pageSections.js"
+      ],
+      "page": "js/dashboard.js"
+    },
+    "meter-reading.html": {
+      "title": "Meter Reading · Bishnupriya Fuels",
+      "pageTitle": "Meter Reading",
+      "bodyClass": "meter-reading-page",
+      "css": ["css/app-dsr.css", "css/app-meter-reading.css"],
+      "beforeAuth": [
+        "js/purchaseTaxUtils.js",
+        "js/buyingPriceEntry.js",
+        "js/dsrFuelNav.js",
+        "js/pageSections.js"
+      ],
+      "afterAuth": [
+        "js/staffEmployees.js",
+        "js/shiftStaffLedger.js",
+        "js/meterShiftReading.js"
+      ],
+      "page": "js/meterReading.js"
+    },
+    "dsr.html": {
+      "title": "DSR · Bishnupriya Fuels",
+      "pageTitle": "DSR",
+      "bodyClass": "dsr-page",
+      "earlyScripts": ["js/dsrLegacyRedirect.js", "js/dsrSections.js"],
+      "css": ["css/app-dsr.css"],
+      "beforeAuth": ["js/printUtils.js", "js/dsrFuelNav.js", "js/pageSections.js"],
+      "afterAuth": ["js/dsrSummary.js", "js/dsrSalesBreakdown.js"],
+      "page": "js/dsr.js"
+    },
+    "e20-register.html": {
+      "title": "E-20 testing register · Bishnupriya Fuels",
+      "pageTitle": "E-20 testing",
+      "bodyClass": "e20-register-page",
+      "noPrint": true,
+      "css": ["css/app-e20-register.css", "css/report-watermark.css"],
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js", "js/printUtils.js"],
+      "afterAuth": ["js/staffEmployees.js"],
+      "page": "js/e20Register.js"
+    },
+    "reminders.html": {
+      "title": "Tasks · Bishnupriya Fuels",
+      "pageTitle": "Tasks",
+      "bodyClass": "reminders-page",
+      "css": ["css/app-reminders.css"],
+      "beforeAuth": ["js/pageSections.js"],
+      "page": "js/reminders.js"
+    },
+    "credit.html": {
+      "title": "Credit · Bishnupriya Fuels",
+      "pageTitle": "Credit Ledger",
+      "bodyClass": "credit-list-view",
+      "css": ["css/app-credit.css"],
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "afterAuth": ["js/printUtils.js"],
+      "page": "js/credit.js"
+    },
+    "expenses.html": {
+      "title": "Expenses · Bishnupriya Fuels",
+      "pageTitle": "Expenses",
+      "bodyClass": "expenses-page",
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "page": "js/expenses.js"
+    },
+    "day-closing.html": {
+      "title": "Day closing & short · Bishnupriya Fuels",
+      "pageTitle": "Day closing & short",
+      "bodyClass": "day-closing-page",
+      "css": ["css/app-day-closing.css", "css/app-dsr.css"],
+      "beforeAuth": ["js/printUtils.js", "js/pageSections.js"],
+      "page": "js/day-closing.js"
+    },
+    "billing.html": {
+      "title": "Billing · Bishnupriya Fuels",
+      "pageTitle": "Billing",
+      "bodyClass": "billing-page",
+      "noPrint": true,
+      "css": ["css/app-billing.css"],
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "afterAuth": ["js/printUtils.js"],
+      "page": "js/billing.js"
+    },
+    "invoices.html": {
+      "title": "Vault · Bishnupriya Fuels",
+      "pageTitle": "Vault",
+      "bodyClass": "invoices-page",
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "page": "js/invoices.js"
+    },
+    "attendance.html": {
+      "title": "Attendance · Bishnupriya Fuels",
+      "pageTitle": "Attendance",
+      "bodyClass": "attendance-page",
+      "css": ["css/app-attendance.css"],
+      "beforeAuth": ["js/pageSections.js"],
+      "afterAuth": ["js/staffEmployees.js"],
+      "page": "js/attendance.js"
+    },
+    "salary.html": {
+      "title": "Salary · Bishnupriya Fuels",
+      "pageTitle": "Salary",
+      "bodyClass": "salary-page",
+      "css": ["css/app-salary.css"],
+      "beforeAuth": ["js/pageSections.js"],
+      "afterAuth": ["js/staffEmployees.js", "js/printUtils.js"],
+      "page": "js/salary.js"
+    },
+    "staff.html": {
+      "title": "Staff · Bishnupriya Fuels",
+      "pageTitle": "Staff",
+      "bodyClass": "staff-page",
+      "css": ["css/app-staff.css"],
+      "afterAuth": ["js/staffEmployees.js", "js/printUtils.js"],
+      "page": "js/staff.js"
+    },
+    "letterhead.html": {
+      "title": "Letterhead · Bishnupriya Fuels",
+      "pageTitle": "Letterhead",
+      "bodyClass": "letterhead-page",
+      "noPrint": true,
+      "css": ["css/app-letterhead.css"],
+      "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "afterAuth": ["js/printUtils.js"],
+      "page": "js/letterhead.js"
+    },
+    "analysis.html": {
+      "title": "Analysis · Bishnupriya Fuels",
+      "pageTitle": "Analysis",
+      "bodyClass": "analysis-page",
+      "css": ["css/app-analysis.css"],
+      "beforeAuth": [
+        "js/purchaseTaxUtils.js",
+        "js/dateRangeFilter.js",
+        "js/pageSections.js"
+      ],
+      "page": "js/analysis.js"
+    },
+    "reports.html": {
+      "title": "Reports · Bishnupriya Fuels",
+      "pageTitle": "Reports",
+      "bodyClass": "reports-page",
+      "noPrint": true,
+      "css": ["css/app-reports.css", "css/report-watermark.css"],
+      "beforeAuth": [
+        "js/purchaseTaxUtils.js",
+        "js/pageSections.js",
+        "js/printUtils.js"
+      ],
+      "page": "js/reports.js"
+    },
+    "settings.html": {
+      "title": "Settings · Bishnupriya Fuels",
+      "pageTitle": "Settings",
+      "bodyClass": "settings-page",
+      "beforeAuth": ["js/pageSections.js"],
+      "afterAuth": ["js/staffEmployees.js"],
+      "page": "js/settings.js"
+    }
+  }
+}

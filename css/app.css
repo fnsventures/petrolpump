@@ -1,4 +1,5 @@
-/* Legacy bundle: imports all split app CSS. Prefer base + app-core + route CSS in HTML. */
+/* Legacy bundle: imports all split app CSS. Prefer base + app-layout + app-core + route CSS in HTML. */
+@import url("app-layout.css");
 @import url("app-core.css");
 @import url("app-day-closing.css");
 @import url("app-credit.css");
