@@ -30,7 +30,8 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=17"></script>
     <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/billing.js"></script>
+    <script defer src="js/driveFiles.js?v=1"></script>
+    <script defer src="js/billing.js?v=2"></script>
   </head>
   <body class="billing-page">
     <header class="topbar no-print" data-build-topbar>
@@ -53,9 +54,10 @@
         <div class="panel-head">
           <div>
             <h2 class="dashboard-section-title">Create invoice</h2>
-            <p class="muted panel-lead">Issue cash or credit memos with station letterhead. Saved invoices appear in Invoice history.</p>
+            <p class="muted panel-lead">Issue cash or credit memos with station letterhead. The invoice is saved for GST reports and the document is archived to Google Drive.</p>
           </div>
         </div>
+        <p id="billing-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
         <form id="invoice-form" class="form">
           <div class="form-grid billing-header-grid">
             <div class="form-field">

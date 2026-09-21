@@ -21,7 +21,7 @@ One map of every credential this app needs, where it lives, and how to rotate it
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Same | Same | Same |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | Same | Same | Regenerate with **matching** client ID/secret |
 | `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | GitHub **prod** | DB backup upload | Drive folder URL after `/folders/` |
-| Invoice Drive folder / roots | Supabase Edge Function secrets | `invoice-documents` | See [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
+| Invoice Drive folder / roots | Settings + Edge secrets | `invoice-documents`, `drive-files` | See [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
 | `GODADDY_API_KEY` | GitHub repo secrets (optional) | DNS sibling auto-fix | [developer.godaddy.com/keys](https://developer.godaddy.com/keys) |
 | `GODADDY_API_SECRET` | Same | Same | Same |
 
@@ -58,7 +58,7 @@ Repo-level (required on `petrolpump` for the hourly DNS job; optional on `fns-ca
 
 ### C. Supabase Edge Function secrets
 
-Dashboard → Edge Functions → Secrets (per project). Used by `invoice-documents` (Google OAuth + Drive paths). **Not** the same place as GitHub secrets — see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).
+Dashboard → Edge Functions → Secrets (per project). Used by `invoice-documents` and `drive-files` (Google OAuth + Drive paths). **Not** the same place as GitHub secrets — see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).
 
 Do **not** put the service-role key in the frontend. Anon key in `env.js` is expected; RLS protects data.
 

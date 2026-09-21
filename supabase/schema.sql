@@ -1026,7 +1026,11 @@ create table if not exists public.invoices (
   notes text,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  drive_file_id text,
+  drive_folder_id text,
+  drive_web_view_link text,
+  drive_file_name text
 );
 
 create index if not exists invoices_date_idx on public.invoices (invoice_date desc);
@@ -1034,7 +1038,9 @@ create index if not exists invoices_party_idx on public.invoices (party_name);
 create index if not exists invoices_number_idx on public.invoices (invoice_number);
 create index if not exists invoices_list_order_idx on public.invoices (invoice_date desc, created_at desc);
 
-comment on table public.invoices is 'Sales invoices / cash memos for products (lubricants, accessories, etc).';
+comment on table public.invoices is 'Sales invoices / cash memos for products (lubricants, accessories, etc). Generated documents are stored in Google Drive.';
+comment on column public.invoices.drive_file_id is
+  'Google Drive file ID for the generated sales invoice document.';
 
 alter table public.invoices enable row level security;
 
@@ -1065,9 +1071,15 @@ create table if not exists public.letterhead_letters (
   subject text not null default '',
   body text not null default '',
   export_type text not null default 'print'
-    check (export_type in ('print', 'word')),
+    check (export_type in ('print', 'word', 'save')),
+  include_sign boolean not null default true,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default timezone('utc'::text, now()),
+  drive_file_id text,
+  drive_folder_id text,
+  drive_web_view_link text,
+  drive_file_name text,
+  mime_type text,
   constraint letterhead_letters_has_content check (
     length(trim(subject)) > 0 or length(trim(body)) > 0
   )
@@ -1080,7 +1092,11 @@ create index if not exists letterhead_letters_created_at_idx
   on public.letterhead_letters (created_at desc);
 
 comment on table public.letterhead_letters is
-  'History of typed station letterhead letters (print/Word). Blank stationery is not recorded.';
+  'History of typed station letters. Document files are stored in Google Drive; body is kept for in-app preview.';
+comment on column public.letterhead_letters.include_sign is
+  'When true, printed letter includes From / Authorised Signatory footer.';
+comment on column public.letterhead_letters.drive_file_id is
+  'Google Drive file ID for the archived letter document.';
 
 alter table public.letterhead_letters enable row level security;
 
@@ -1191,7 +1207,7 @@ create index if not exists invoice_documents_purchase_date_idx
   where category = 'purchase';
 
 comment on table public.invoice_documents is
-  'Pump vault documents (purchase invoices and other important files) stored in Google Drive under year/month folders.';
+  'Pump vault documents stored in Google Drive under 01 Finance / 03 Compliance.';
 comment on column public.invoice_documents.category is
   'Document type slug; display label comes from document_categories.';
 comment on column public.invoice_documents.invoice_date is
@@ -1519,6 +1535,9 @@ create table if not exists public.employees (
     or blood_group in ('A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-')
   ),
   photo_url text,
+  photo_drive_file_id text,
+  aadhaar_drive_file_id text,
+  aadhaar_file_name text,
   date_of_birth date,
   id_valid_from date,
   id_valid_to date,
@@ -1536,7 +1555,11 @@ create index if not exists employees_active_roster_idx
 comment on table public.employees is 'Pump employees who receive salary. Mutations: admin or supervisor (delete: admin only). Used for salary and attendance.';
 comment on column public.employees.is_active is
   'Employment status. false = inactive everywhere (salary, attendance, E-20, settings).';
-comment on column public.employees.photo_url is 'Public URL of staff photo for ID card (staff-photos bucket).';
+comment on column public.employees.photo_url is 'Display URL for staff ID photo (Google Drive public image link).';
+comment on column public.employees.photo_drive_file_id is 'Google Drive file ID for the staff photo.';
+comment on column public.employees.aadhaar_drive_file_id is
+  'Google Drive file ID for the attached Aadhaar card (private; download via edge function).';
+comment on column public.employees.aadhaar_file_name is 'Stored Aadhaar file name in Google Drive.';
 comment on column public.employees.date_of_birth is 'Date of birth (shown on staff ID card).';
 comment on column public.employees.id_valid_from is 'ID card valid from (back of card).';
 comment on column public.employees.id_valid_to is 'ID card valid until (back of card).';
@@ -1585,7 +1608,12 @@ begin
     raise exception 'Staff access required';
   end if;
   update public.employees
-  set photo_url = nullif(trim(p_photo_url), '')
+  set
+    photo_url = nullif(trim(p_photo_url), ''),
+    photo_drive_file_id = case
+      when nullif(trim(p_photo_url), '') is null then null
+      else photo_drive_file_id
+    end
   where id = p_employee_id;
   if not found then
     raise exception 'Employee not found';
@@ -1640,7 +1668,10 @@ returns table (
   photo_url text,
   date_of_birth date,
   id_valid_from date,
-  id_valid_to date
+  id_valid_to date,
+  photo_drive_file_id text,
+  aadhaar_drive_file_id text,
+  aadhaar_file_name text
 )
 language plpgsql
 security definer
@@ -1666,7 +1697,10 @@ begin
     e.photo_url,
     e.date_of_birth,
     e.id_valid_from,
-    e.id_valid_to
+    e.id_valid_to,
+    e.photo_drive_file_id,
+    e.aadhaar_drive_file_id,
+    e.aadhaar_file_name
   from public.employees e
   where e.is_active = true
   order by e.display_order, e.name;
@@ -1696,7 +1730,10 @@ returns table (
   date_of_birth date,
   id_valid_from date,
   id_valid_to date,
-  is_active boolean
+  is_active boolean,
+  photo_drive_file_id text,
+  aadhaar_drive_file_id text,
+  aadhaar_file_name text
 )
 language plpgsql
 security definer
@@ -1726,7 +1763,10 @@ begin
     e.date_of_birth,
     e.id_valid_from,
     e.id_valid_to,
-    e.is_active
+    e.is_active,
+    e.photo_drive_file_id,
+    e.aadhaar_drive_file_id,
+    e.aadhaar_file_name
   from public.employees e
   where e.id = any (p_ids);
 end;
