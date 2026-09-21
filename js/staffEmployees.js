@@ -3,13 +3,13 @@
  * Operational pages use active only; Staff page can load inactive; history resolves by id.
  */
 (function (global) {
-  const CACHE_KEY_ACTIVE_DETAIL = "active_employees_detail_v2";
+  const CACHE_KEY_ACTIVE_DETAIL = "active_employees_detail_v3";
   const CACHE_KEY_ACTIVE_ROSTER = "active_employees_roster_v1";
-  const CACHE_KEY_INACTIVE = "inactive_employees_detail_v1";
+  const CACHE_KEY_INACTIVE = "inactive_employees_detail_v2";
 
   /** Full HR fields — matches list_employees_salary() + is_active. */
   const EMPLOYEE_DETAIL_SELECT =
-    "id, name, role_display, display_order, monthly_salary, phone_number, aadhar_number, address, pan_number, pf_number, pf_contribution, blood_group, photo_url, date_of_birth, id_valid_from, id_valid_to, is_active";
+    "id, name, role_display, display_order, monthly_salary, phone_number, aadhar_number, address, pan_number, pf_number, pf_contribution, blood_group, photo_url, photo_drive_file_id, aadhaar_drive_file_id, aadhaar_file_name, date_of_birth, id_valid_from, id_valid_to, is_active";
 
   function normalizeStatus(status) {
     if (status === "inactive" || status === "all") return status;

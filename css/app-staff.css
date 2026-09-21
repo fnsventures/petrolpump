@@ -1100,8 +1100,40 @@
   gap: 0.5rem;
 }
 
-.emp-photo-actions input[type="file"] {
+.emp-aadhaar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.emp-aadhaar-status {
+  margin: 0;
+}
+
+.emp-aadhaar-status.is-attached {
+  color: var(--bpcl-blue-dark, #005a9c);
+  font-weight: 600;
+}
+
+.emp-aadhaar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.emp-aadhaar-actions input[type="file"] {
   max-width: 16rem;
+}
+
+.staff-profile-aadhaar-file dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.staff-profile-aadhaar-file .link {
+  padding: 0;
 }
 
 @media print {

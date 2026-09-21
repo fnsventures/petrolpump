@@ -30,7 +30,8 @@
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=17"></script>
     <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/letterhead.js?v=11"></script>
+    <script defer src="js/driveFiles.js?v=1"></script>
+    <script defer src="js/letterhead.js?v=12"></script>
   </head>
   <body class="letterhead-page">
     <header class="topbar no-print" data-build-topbar>
@@ -57,11 +58,12 @@
               <h2 class="dashboard-section-title">Compose letterhead</h2>
               <p class="muted panel-lead">
                 Print blank stationery or type a letter on the station letterhead.
-                Branding is taken from
+                Created letters are archived to Google Drive. Branding is taken from
                 <a href="settings.html#station">Settings → Station &amp; branding</a>.
               </p>
             </div>
           </header>
+          <p id="letterhead-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
 
           <div class="letterhead-compose-layout">
             <div class="letterhead-compose-main">
@@ -104,7 +106,7 @@
                 <div class="letterhead-export" aria-label="Export options">
                   <div class="letterhead-export-group letterhead-export-group--save">
                     <p class="letterhead-export-label">Save</p>
-                    <p class="muted letterhead-export-hint">Store the letter under Letter history so you can view or print it later.</p>
+                    <p class="muted letterhead-export-hint">Stores the letter in Google Drive and Letter history so you can view or print it later.</p>
                     <div class="letterhead-export-actions">
                       <button type="button" id="letterhead-save" class="button-primary">Save letter</button>
                     </div>
@@ -149,7 +151,7 @@
             <div>
               <h2 class="dashboard-section-title">Letter history</h2>
               <p class="muted panel-lead">
-                Saved and printed letters. View opens the letter here; blank stationery is not saved.
+                Saved and printed letters, archived in Google Drive. View opens the letter here; blank stationery is not saved.
               </p>
             </div>
             <div class="snapshot-controls">

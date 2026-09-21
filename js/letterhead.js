@@ -1,10 +1,11 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
+/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css?v=4";
   const PAGE_SIZE = 20;
   const HISTORY_COLSPAN = 5;
-  const LETTER_SELECT = "id, letter_date, subject, body, export_type, include_sign, created_at";
+  const LETTER_SELECT =
+    "id, letter_date, subject, body, export_type, include_sign, created_at, drive_file_id, drive_web_view_link, drive_file_name";
 
   let currentAuth = null;
   let letterheadPrintBusy = false;
@@ -196,6 +197,26 @@
     setStatus("letterhead-success", msg);
   }
 
+  function refreshLetterheadDriveBanner() {
+    const banner = document.getElementById("letterhead-drive-banner");
+    if (!banner || typeof DriveFiles === "undefined") return;
+    const local = DriveFiles.localSettings();
+    if (local.enabled && local.rootFolderId) {
+      banner.classList.add("hidden");
+      banner.hidden = true;
+      banner.textContent = "";
+      return;
+    }
+    const hint =
+      currentAuth?.role === "admin"
+        ? "Enable it in Settings → Integrations so created letters are archived to Drive."
+        : "Ask an admin to enable Google Drive in Settings.";
+    banner.className = "smart-alert smart-alert--warning";
+    banner.hidden = false;
+    banner.classList.remove("hidden");
+    banner.textContent = `Google Drive is not fully configured. Letters can still save in history. ${hint}`;
+  }
+
   function clearMessages() {
     showError("");
     showSuccess("");
@@ -216,9 +237,7 @@
     return "Print";
   }
 
-  async function saveLetterHistory(values, exportType) {
-    if (!hasLetterContent(values)) return { ok: true, skipped: true };
-
+  async function saveLetterHistoryToDatabase(values, exportType) {
     const payload = {
       letter_date:
         values.date ||
@@ -238,6 +257,41 @@
       return { ok: false, error };
     }
     return { ok: true };
+  }
+
+  async function saveLetterHistory(values, exportType) {
+    if (!hasLetterContent(values)) return { ok: true, skipped: true };
+
+    if (typeof DriveFiles !== "undefined") {
+      try {
+        const file = await buildLetterDocFile(values);
+        const data = await DriveFiles.upload({
+          kind: "letter",
+          file,
+          fields: {
+            letterDate:
+              values.date ||
+              (typeof getLocalDateString === "function"
+                ? getLocalDateString()
+                : new Date().toISOString().slice(0, 10)),
+            subject: values.subject || "",
+            body: values.body || "",
+            exportType: exportType === "word" ? "word" : exportType === "save" ? "save" : "print",
+            includeSign: values.includeSign ? "true" : "false",
+            fileName: file.name,
+          },
+        });
+        return { ok: true, letter: data.letter };
+      } catch (err) {
+        if (!DriveFiles.isNotConfiguredError(err)) {
+          AppError?.report?.(err, { context: "letterheadDriveSave" });
+          return { ok: false, error: err };
+        }
+        AppError?.report?.(err, { context: "letterheadDriveFallback" });
+      }
+    }
+
+    return saveLetterHistoryToDatabase(values, exportType);
   }
 
   async function saveLetterOnly() {
@@ -261,7 +315,12 @@
         showError(AppError?.getUserMessage?.(saved.error) || "Could not save the letter. Try again.");
         return;
       }
-      showSuccess("Letter saved. Open Letter history to view it.");
+      const viaDrive = Boolean(saved.letter);
+      showSuccess(
+        viaDrive
+          ? "Letter saved to Google Drive. Open Letter history to view it."
+          : "Letter saved. Open Letter history to view it."
+      );
       if (location.hash === "#history") loadHistory(true);
     } finally {
       if (btn) {
@@ -318,7 +377,7 @@
       if (useContent && saveHistory) {
         const saved = await saveLetterHistory(values, "print");
         if (saved.ok && !saved.skipped) {
-          historyNote = " Saved to letter history.";
+          historyNote = " Saved to Google Drive.";
           if (location.hash === "#history") loadHistory(true);
         } else if (!saved.ok) {
           historyNote = " (Could not save to history — print still opened.)";
@@ -448,6 +507,24 @@
 </html>`;
   }
 
+  async function buildLetterDocFile(values) {
+    const logoSrc = await logoAsPngDataUrl();
+    const html = buildWordHtml({
+      date: values.date,
+      subject: values.subject,
+      body: values.body,
+      logoSrc,
+      includeSign: hasLetterContent(values) && values.includeSign,
+    });
+    const blob = new Blob(["\ufeff", html], { type: "application/msword" });
+    const name = PrintUtils.buildPrintFilename(
+      "letterhead",
+      values.subject || "letter",
+      values.date
+    );
+    return new File([blob], `${name}.doc`, { type: "application/msword" });
+  }
+
   function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -478,27 +555,19 @@
     });
 
     try {
-      const logoSrc = await logoAsPngDataUrl();
-      const html = buildWordHtml({
+      const file = await buildLetterDocFile({
         date: useContent ? values.date : "",
         subject: useContent ? values.subject : "",
         body: useContent ? values.body : "",
-        logoSrc,
         includeSign: useContent && hasLetterContent(values) && values.includeSign,
       });
-      const blob = new Blob(["\ufeff", html], {
-        type: "application/msword",
-      });
-      const name = useContent
-        ? PrintUtils.buildPrintFilename("letterhead", values.subject || "letter", values.date)
-        : PrintUtils.buildPrintFilename("letterhead", "blank");
-      downloadBlob(`${name}.doc`, blob);
+      downloadBlob(file.name, file);
 
       let historyNote = "";
       if (useContent) {
         const saved = await saveLetterHistory(values, "word");
         if (saved.ok && !saved.skipped) {
-          historyNote = " Saved to letter history.";
+          historyNote = " Saved to Google Drive.";
           if (location.hash === "#history") loadHistory(true);
         } else if (!saved.ok) {
           historyNote = " (Could not save to history — file still downloaded.)";
@@ -776,6 +845,10 @@
             })}`
           : "";
 
+        const driveLink = row.drive_web_view_link
+          ? ` <a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Drive</a>`
+          : "";
+
         tr.innerHTML = `
           <td>${formatNumericDate(row.letter_date)}</td>
           <td><strong>${escapeHtml(subjectLabel)}</strong></td>
@@ -783,7 +856,7 @@
           <td>${escapeHtml(exportTypeLabel(row.export_type))}</td>
           <td class="table-actions">
             <button type="button" class="link" data-view-letter="${row.id}">View</button>
-            <button type="button" class="link" data-print-letter="${row.id}">Print</button>${deleteBtn}
+            <button type="button" class="link" data-print-letter="${row.id}">Print</button>${driveLink}${deleteBtn}
           </td>
         `;
         tr.dataset.letterId = row.id;
@@ -877,7 +950,15 @@
       auth: currentAuth,
       actionLabel: "delete letterhead history",
       confirmMessage: `Delete letter “${subject}” dated ${formatNumericDate(letterDate)}?\n\nThis cannot be undone.`,
-      deleteFn: () => window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId),
+      deleteFn: async () => {
+        try {
+          await DriveFiles.remove({ kind: "letter", id: letterId });
+          return { error: null };
+        } catch (err) {
+          AppError?.report?.(err, { context: "letterheadDeleteDrive", letterId });
+          return window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId);
+        }
+      },
       cacheScope: "operational",
       onSuccess: () => {
         if (historyReportLetter?.id === letterId) closeHistoryReport();
@@ -960,6 +1041,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     await loadPumpSettings();
+    refreshLetterheadDriveBanner();
     bindUi();
     initHistoryFilters();
     refreshPreview();

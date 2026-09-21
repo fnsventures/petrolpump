@@ -76,7 +76,8 @@ Details: [OPERATIONS.md — DNS](OPERATIONS.md#dns-safety-net-fnsventuresin).
 | Function | If missing |
 |----------|------------|
 | `get-dashboard-data`, `get-reports-data`, `get-pl-data` | Client falls back to direct queries (slower) |
-| `invoice-documents` | Drive upload/download broken |
+| `invoice-documents` | Drive vault upload/download broken |
+| `drive-files` | Billing/letter/staff Drive archive broken |
 
 Deploy via Actions (on `supabase/functions/**` push) or CLI — [DEVELOPMENT.md §2.5](DEVELOPMENT.md#25-edge-functions).
 

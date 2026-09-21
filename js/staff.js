@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -7,7 +7,9 @@ const STATION_ISSUER_PLACE = "Padmanavpur";
 const BPCL_TAGLINE = "Energising Lives";
 const STAFF_PHOTO_BUCKET = "staff-photos";
 const MAX_STAFF_PHOTO_BYTES = 2 * 1024 * 1024;
+const MAX_STAFF_AADHAAR_BYTES = 10 * 1024 * 1024;
 const STAFF_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+const STAFF_AADHAAR_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
 document.addEventListener("DOMContentLoaded", async () => {
   await window.configPromise;
@@ -20,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyRoleVisibility(auth.role);
   await loadPumpSettings(true);
   applyStaffBranding();
+  refreshStaffDriveBanner(auth);
   initStaffPage(auth);
 });
 
@@ -30,6 +33,26 @@ function applyStaffBranding() {
   });
   const subtitle = document.querySelector("header.topbar .page-subtitle")?.textContent?.trim();
   if (subtitle) document.title = `${subtitle} · ${name}`;
+}
+
+function refreshStaffDriveBanner(auth) {
+  const banner = document.getElementById("staff-drive-banner");
+  if (!banner || typeof DriveFiles === "undefined") return;
+  const local = DriveFiles.localSettings();
+  if (local.enabled && local.rootFolderId) {
+    banner.classList.add("hidden");
+    banner.hidden = true;
+    banner.textContent = "";
+    return;
+  }
+  const hint =
+    auth?.role === "admin"
+      ? "Enable it in Settings → Integrations so photos and Aadhaar cards are stored in Drive."
+      : "Ask an admin to enable Google Drive in Settings.";
+  banner.className = "smart-alert smart-alert--warning";
+  banner.hidden = false;
+  banner.classList.remove("hidden");
+  banner.textContent = `Google Drive is not fully configured. Staff photo and Aadhaar uploads need Drive. ${hint}`;
 }
 
 function staffInitial(name) {
@@ -86,9 +109,16 @@ function invalidateEmployeeListCache() {
   }
 }
 
+function staffPhotoImgHtml(url, className) {
+  const safeUrl = escapeHtml(url);
+  const isDrive = /googleusercontent\.com|drive\.google\.com/.test(url);
+  const cors = isDrive ? ` referrerpolicy="no-referrer"` : ` crossorigin="anonymous"`;
+  return `<img class="${className}" src="${safeUrl}" alt=""${cors} />`;
+}
+
 function buildPhotoSlotHtml(employee) {
   if (employee.photo_url) {
-    return `<img class="staff-id-photo" src="${escapeHtml(employee.photo_url)}" alt="" crossorigin="anonymous" />`;
+    return staffPhotoImgHtml(employee.photo_url, "staff-id-photo");
   }
   return `<div class="staff-id-photo-placeholder" aria-hidden="true">${escapeHtml(staffInitial(employee.name))}</div>`;
 }
@@ -288,26 +318,35 @@ function photoExtensionFromFile(file) {
   return "jpg";
 }
 
+function hasAadhaarCard(employee) {
+  return Boolean(employee?.aadhaar_drive_file_id);
+}
+
+function aadhaarStatusLabel(employee) {
+  if (employee?.aadhaar_file_name) return employee.aadhaar_file_name;
+  if (employee?.aadhaar_drive_file_id) return "Aadhaar card attached";
+  return "";
+}
+
 async function uploadEmployeePhoto(employeeId, file) {
   if (!STAFF_PHOTO_MIME.has(file.type)) throw new Error("Use a JPG, PNG, or WebP image.");
   if (file.size > MAX_STAFF_PHOTO_BYTES) throw new Error("Image must be 2 MB or smaller.");
+  if (typeof DriveFiles === "undefined") throw new Error("Google Drive helper is not loaded.");
   const ext = photoExtensionFromFile(file);
-  const path = `${employeeId}/photo.${ext}`;
-  const { error: uploadError } = await window.supabaseClient.storage
-    .from(STAFF_PHOTO_BUCKET)
-    .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
-  if (uploadError) throw uploadError;
-  const { data: urlData } = window.supabaseClient.storage.from(STAFF_PHOTO_BUCKET).getPublicUrl(path);
-  const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
-  const { error: rpcError } = await window.supabaseClient.rpc("set_employee_photo", {
-    p_employee_id: employeeId,
-    p_photo_url: publicUrl,
+  const named = new File([file], `01 Photo.${ext}`, { type: file.type });
+  const data = await DriveFiles.upload({
+    kind: "staff_photo",
+    file: named,
+    fields: { employeeId, fileName: named.name },
   });
-  if (rpcError) throw rpcError;
-  return publicUrl;
+  return data?.photo?.photo_url || null;
 }
 
 async function clearEmployeePhoto(employeeId) {
+  if (typeof DriveFiles !== "undefined") {
+    await DriveFiles.remove({ kind: "staff_photo", employeeId });
+    return;
+  }
   await window.supabaseClient.storage.from(STAFF_PHOTO_BUCKET).remove([
     `${employeeId}/photo.jpg`,
     `${employeeId}/photo.png`,
@@ -318,6 +357,25 @@ async function clearEmployeePhoto(employeeId) {
     p_photo_url: null,
   });
   if (rpcError) throw rpcError;
+}
+
+async function uploadEmployeeAadhaar(employeeId, file) {
+  if (!STAFF_AADHAAR_MIME.has(file.type)) {
+    throw new Error("Aadhaar card must be PDF, JPG, PNG, or WebP.");
+  }
+  if (file.size > MAX_STAFF_AADHAAR_BYTES) throw new Error("Aadhaar file must be 10 MB or smaller.");
+  if (typeof DriveFiles === "undefined") throw new Error("Google Drive helper is not loaded.");
+  const data = await DriveFiles.upload({
+    kind: "staff_aadhaar",
+    file,
+    fields: { employeeId, fileName: file.name },
+  });
+  return data?.aadhaar || null;
+}
+
+async function clearEmployeeAadhaar(employeeId) {
+  if (typeof DriveFiles === "undefined") throw new Error("Google Drive helper is not loaded.");
+  await DriveFiles.remove({ kind: "staff_aadhaar", employeeId });
 }
 
 function waitForCardImages(root, timeoutMs = 4000) {
@@ -368,6 +426,10 @@ function initStaffPage(auth) {
   const photoPreviewImg = document.getElementById("emp-photo-img");
   const photoPreviewInitial = document.getElementById("emp-photo-initial");
   const photoClearBtn = document.getElementById("emp-photo-clear");
+  const aadhaarFileInput = document.getElementById("emp-aadhaar-file");
+  const aadhaarStatusEl = document.getElementById("emp-aadhaar-status");
+  const aadhaarClearBtn = document.getElementById("emp-aadhaar-clear");
+  const profileAadhaarFile = document.getElementById("staff-profile-aadhaar-file");
   const profileName = document.getElementById("staff-profile-name");
   const profileRole = document.getElementById("staff-profile-role");
   const profilePhotoBox = document.getElementById("staff-profile-photo");
@@ -404,6 +466,9 @@ function initStaffPage(auth) {
   let selectedId = null;
   let pendingPhotoFile = null;
   let removePhotoOnSave = false;
+  let pendingAadhaarFile = null;
+  let removeAadhaarOnSave = false;
+  let currentAadhaarName = "";
   let idCardModalOpen = false;
   let idCardRenderedForId = null;
 
@@ -420,6 +485,7 @@ function initStaffPage(auth) {
   function setFormPhotoPreview(url, name) {
     if (!photoPreviewBox) return;
     if (url && photoPreviewImg) {
+      photoPreviewImg.referrerPolicy = "no-referrer";
       photoPreviewImg.src = url;
       photoPreviewImg.alt = name ? `Photo of ${name}` : "";
       photoPreviewImg.classList.remove("hidden");
@@ -440,6 +506,7 @@ function initStaffPage(auth) {
   function setProfilePhoto(url, name) {
     if (!profilePhotoBox) return;
     if (url && profilePhotoImg) {
+      profilePhotoImg.referrerPolicy = "no-referrer";
       profilePhotoImg.src = url;
       profilePhotoImg.alt = name ? `Photo of ${name}` : "";
       profilePhotoImg.classList.remove("hidden");
@@ -453,6 +520,27 @@ function initStaffPage(auth) {
       if (profileInitial) profileInitial.textContent = staffInitial(name);
       profilePhotoBox.classList.add("is-placeholder");
     }
+  }
+
+  function setFormAadhaarStatus(fileName) {
+    currentAadhaarName = fileName || "";
+    if (aadhaarStatusEl) {
+      if (currentAadhaarName) {
+        aadhaarStatusEl.textContent = currentAadhaarName;
+        aadhaarStatusEl.classList.add("is-attached");
+      } else {
+        aadhaarStatusEl.textContent = "No card attached.";
+        aadhaarStatusEl.classList.remove("is-attached");
+      }
+    }
+    aadhaarClearBtn?.classList.toggle("hidden", !currentAadhaarName && !pendingAadhaarFile);
+  }
+
+  function resetFormAadhaar() {
+    pendingAadhaarFile = null;
+    removeAadhaarOnSave = false;
+    if (aadhaarFileInput) aadhaarFileInput.value = "";
+    setFormAadhaarStatus("");
   }
 
   function resetFormPhoto() {
@@ -479,6 +567,10 @@ function initStaffPage(auth) {
     pendingPhotoFile = null;
     removePhotoOnSave = false;
     setFormPhotoPreview(emp.photo_url, emp.name);
+    pendingAadhaarFile = null;
+    removeAadhaarOnSave = false;
+    if (aadhaarFileInput) aadhaarFileInput.value = "";
+    setFormAadhaarStatus(aadhaarStatusLabel(emp));
     if (formTitle) formTitle.textContent = "Edit staff";
     if (staffSubmitBtn) staffSubmitBtn.textContent = "Save changes";
   }
@@ -487,6 +579,7 @@ function initStaffPage(auth) {
     staffMemberForm.reset();
     if (idInput) idInput.value = "";
     resetFormPhoto();
+    resetFormAadhaar();
     const y = new Date().getFullYear();
     if (validFromInput) validFromInput.value = `${y}-01-01`;
     if (validToInput) validToInput.value = `${y}-12-31`;
@@ -639,6 +732,18 @@ function initStaffPage(auth) {
     }
     if (profilePhone) profilePhone.textContent = formatDetail(emp.phone_number);
     if (profileAadhar) profileAadhar.textContent = formatDetail(emp.aadhar_number);
+    if (profileAadhaarFile) {
+      if (hasAadhaarCard(emp)) {
+        const label = escapeHtml(aadhaarStatusLabel(emp) || "Aadhaar card");
+        profileAadhaarFile.innerHTML = `
+          <span>${label}</span>
+          <button type="button" class="link" data-aadhaar-view="${escapeHtml(emp.id)}">View</button>
+          <button type="button" class="link" data-aadhaar-download="${escapeHtml(emp.id)}">Download</button>
+        `;
+      } else {
+        profileAadhaarFile.textContent = "Not attached";
+      }
+    }
     if (profilePan) profilePan.textContent = formatDetail(emp.pan_number);
     if (profilePf) profilePf.textContent = formatDetail(emp.pf_number);
     if (profilePfContribution) {
@@ -708,7 +813,7 @@ function initStaffPage(auth) {
         const active = s.id === selectedId ? " is-active" : "";
         const inactiveCls = s.is_active === false ? " is-inactive-member" : "";
         const thumb = s.photo_url
-          ? `<img class="staff-roster-thumb" src="${escapeHtml(s.photo_url)}" alt="" />`
+          ? staffPhotoImgHtml(s.photo_url, "staff-roster-thumb")
           : `<span class="staff-roster-thumb staff-roster-thumb-placeholder">${escapeHtml(staffInitial(s.name))}</span>`;
         let badge;
         if (s.is_active === false) {
@@ -913,6 +1018,48 @@ function initStaffPage(auth) {
     setFormPhotoPreview(null, nameInput?.value || "");
   });
 
+  aadhaarFileInput?.addEventListener("change", () => {
+    const file = aadhaarFileInput.files?.[0];
+    if (!file) return;
+    if (!STAFF_AADHAAR_MIME.has(file.type)) {
+      alert("Aadhaar card must be PDF, JPG, PNG, or WebP.");
+      aadhaarFileInput.value = "";
+      return;
+    }
+    if (file.size > MAX_STAFF_AADHAAR_BYTES) {
+      alert("Aadhaar file must be 10 MB or smaller.");
+      aadhaarFileInput.value = "";
+      return;
+    }
+    pendingAadhaarFile = file;
+    removeAadhaarOnSave = false;
+    setFormAadhaarStatus(file.name);
+    aadhaarClearBtn?.classList.remove("hidden");
+  });
+
+  aadhaarClearBtn?.addEventListener("click", () => {
+    pendingAadhaarFile = null;
+    removeAadhaarOnSave = true;
+    if (aadhaarFileInput) aadhaarFileInput.value = "";
+    setFormAadhaarStatus("");
+  });
+
+  profileAadhaarFile?.addEventListener("click", (e) => {
+    const viewBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-view]") : null;
+    const downloadBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-download]") : null;
+    const employeeId = viewBtn?.getAttribute("data-aadhaar-view") || downloadBtn?.getAttribute("data-aadhaar-download");
+    if (!employeeId) return;
+    const action = viewBtn ? DriveFiles?.openBlob : DriveFiles?.downloadAndSave;
+    if (!action) {
+      alert("Google Drive helper is not loaded.");
+      return;
+    }
+    action({ kind: "staff_aadhaar", employeeId }).catch((err) => {
+      AppError.report(err, { context: "staffAadhaarDownload" });
+      alert(AppError.getUserMessage(err) || "Could not open the Aadhaar card.");
+    });
+  });
+
   async function runStaffIdPrint(emp) {
     try {
       await runStaffIdPrintInIframe(emp);
@@ -1025,6 +1172,8 @@ function initStaffPage(auth) {
     try {
       if (removePhotoOnSave && employeeId) await clearEmployeePhoto(employeeId);
       else if (pendingPhotoFile && employeeId) await uploadEmployeePhoto(employeeId, pendingPhotoFile);
+      if (removeAadhaarOnSave && employeeId) await clearEmployeeAadhaar(employeeId);
+      else if (pendingAadhaarFile && employeeId) await uploadEmployeeAadhaar(employeeId, pendingAadhaarFile);
     } catch (photoErr) {
       AppError.handle(photoErr, { target: staffFormError });
       if (staffSubmitBtn) {
