@@ -621,15 +621,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  margin-left: 0.4rem;
-  padding: 0 0.35rem;
-  font-size: 0.7rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  font-size: 0.62rem;
   font-weight: 700;
   line-height: 1;
   color: #fff;
-  background: #ea580c;
+  background: var(--bpcl-red, #e60012);
   border-radius: 999px;
   vertical-align: middle;
 }
@@ -657,7 +656,9 @@
 }
 
 .topbar-notifications-popup .notifications-panel,
-.topbar-notifications-popup .notifications-panel.card {
+.topbar-notifications-popup .notifications-panel.card,
+.topbar-notifications-popup .notifications-panel[hidden] {
+  display: block !important;
   margin: 0;
   padding: 0.85rem 1rem 1rem;
   border: none;

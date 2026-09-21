@@ -210,6 +210,7 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   top: 0;
   z-index: 200;
   isolation: isolate;
+  overflow: visible;
   background: #ffffff;
   color: var(--bpcl-blue);
   padding:
@@ -536,6 +537,11 @@ main a:not(.button-secondary):not(.nav-logout):hover {
 .topbar-icon-btn svg {
   width: 1.15rem;
   height: 1.15rem;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
 }
 
 .topbar-icon-btn:hover,
@@ -551,12 +557,22 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   position: absolute;
   top: -0.2rem;
   right: -0.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   margin: 0;
   min-width: 1.05rem;
   height: 1.05rem;
   padding: 0 0.28rem;
   font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  color: #fff;
   background: var(--bpcl-red, #e60012);
+  border: none;
+  border-radius: 999px;
 }
 
 .topbar-notifications {
@@ -577,6 +593,13 @@ main a:not(.button-secondary):not(.nav-logout):hover {
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 12px;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+}
+
+.topbar-notifications-popup .notifications-panel,
+.topbar-notifications-popup .notifications-panel.card,
+.topbar-notifications-popup .notifications-panel[hidden] {
+  display: block !important;
+  visibility: visible;
 }
 
 .topbar-notifications-popup.hidden,

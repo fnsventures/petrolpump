@@ -61,6 +61,8 @@
         btn.classList.toggle("is-active", btn.dataset.section === navId);
       });
       panels.forEach((panel) => {
+        if (panel.closest("#topbar-notifications-popup")) return;
+        if (!panel.dataset.panel) return;
         const active = panel.dataset.panel === panelId;
         panel.classList.toggle("is-visible", active);
         panel.hidden = !active;

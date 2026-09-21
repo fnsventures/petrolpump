@@ -345,7 +345,7 @@ function openTopbarNotifications() {
   popup.classList.remove("hidden");
   toggle.setAttribute("aria-expanded", "true");
   toggle.classList.add("is-active");
-  window.AppNotifications?.mount?.();
+  void window.AppNotifications?.mount?.({ force: true });
 }
 
 function openNotificationsIfRequested() {

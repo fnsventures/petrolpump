@@ -11,7 +11,7 @@
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v200";
+const CACHE_VERSION = "v202";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `bpf-runtime-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
@@ -98,23 +98,23 @@ const STATIC_ASSET_PATHS = [
   "fonts/dm-sans-latin.woff2",
   "fonts/source-serif-4-latin-ext.woff2",
   "fonts/source-serif-4-latin.woff2",
-  "js/roleBootstrap.js?v=24",
-  "js/appNav.js?v=24",
-  "js/utils.js?v=24",
-  "js/pwa.js?v=24",
-  "js/cache.js?v=24",
-  "js/auth.js?v=24",
-  "js/supabase.js?v=24",
-  "js/errorHandler.js?v=24",
-  "js/appConfig.js?v=24",
-  "js/pumpSettings.js?v=24",
-  "js/pageSections.js?v=24",
-  "js/taskUtils.js?v=24",
-  "js/dsrQueries.js?v=24",
-  "js/notifications.js?v=24",
-  "css/base.css?v=24",
-  "css/app-core.css?v=24",
-  "css/app-layout.css?v=24",
+  "js/roleBootstrap.js?v=26",
+  "js/appNav.js?v=26",
+  "js/utils.js?v=26",
+  "js/pwa.js?v=26",
+  "js/cache.js?v=26",
+  "js/auth.js?v=26",
+  "js/supabase.js?v=26",
+  "js/errorHandler.js?v=26",
+  "js/appConfig.js?v=26",
+  "js/pumpSettings.js?v=26",
+  "js/pageSections.js?v=26",
+  "js/taskUtils.js?v=26",
+  "js/dsrQueries.js?v=26",
+  "js/notifications.js?v=26",
+  "css/base.css?v=26",
+  "css/app-core.css?v=26",
+  "css/app-layout.css?v=26",
   "css/app-dashboard.css?v=31",
   "js/purchaseTaxUtils.js?v=7",
   "js/dateRangeFilter.js?v=10",

@@ -112,7 +112,9 @@
   }
 
   function getAlertThresholds() {
-    const t = PumpSettings.getAlertThresholds();
+    const t = (typeof PumpSettings?.getAlertThresholds === "function"
+      ? PumpSettings.getAlertThresholds()
+      : {}) || {};
     return {
       petrol: t.petrol,
       diesel: t.diesel,
@@ -890,7 +892,7 @@
     if (shortAmount != null) {
       const thresholdLabel =
         th.dayClosingShortage > 0 ? `your threshold (${formatCurrency(th.dayClosingShortage)})` : "zero";
-      if (th.shortageAlert && PumpSettings.isDayClosingShortage(shortAmount)) {
+      if (th.shortageAlert && PumpSettings?.isDayClosingShortage?.(shortAmount)) {
         alerts.push({
           type: "warning",
           label: "Cash shortage",
@@ -898,7 +900,7 @@
           cta: "Day closing",
           href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
         });
-      } else if (th.surplusAlert && PumpSettings.isDayClosingSurplus(shortAmount)) {
+      } else if (th.surplusAlert && PumpSettings?.isDayClosingSurplus?.(shortAmount)) {
         alerts.push({
           type: "warning",
           label: "Cash surplus",
@@ -1067,7 +1069,7 @@
     }
 
     if (th.attendanceAlert) {
-      const shifts = PumpSettings.getShiftConfig();
+      const shifts = PumpSettings?.getShiftConfig?.() || {};
       if (isPastLocalHm(shifts.afternoonEnd) && !rosterRes.error && !attendanceRes.error) {
         const rosterCount = (rosterRes.data ?? []).length;
         const markedCount = (attendanceRes.data ?? []).length;
@@ -1155,15 +1157,21 @@
   }
 
   async function refresh() {
-    if (!document.getElementById("notifications-feed")) return;
+    const feed = document.getElementById("notifications-feed");
+    if (!feed) return;
     if (typeof loadPumpSettings === "function") await loadPumpSettings();
     const closingWindow = await fetchDayClosingWindow();
-    await Promise.all([
+    const results = await Promise.allSettled([
       refreshSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
       refreshDayClosing(closingWindow),
       refreshReminders(),
       refreshBuyingPrice(),
     ]);
+    results.forEach((result) => {
+      if (result.status === "rejected") {
+        AppError.report(result.reason, { context: "notifications.refresh" });
+      }
+    });
     updateAlertsVisibility();
     lastRefreshAt = Date.now();
   }
@@ -1177,36 +1185,54 @@
     </div>`;
   }
 
+  async function waitForClient() {
+    if (global.supabaseClient?.auth) return global.supabaseClient;
+    if (typeof global.configPromise?.then === "function") {
+      try {
+        await global.configPromise;
+      } catch {
+        /* config may still be missing */
+      }
+    }
+    const start = Date.now();
+    while (!global.supabaseClient?.auth && Date.now() - start < 2500) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return global.supabaseClient;
+  }
+
   async function mount(options = {}) {
     const body = document.getElementById("topbar-notifications-body");
     if (!body) return null;
     const stale = mounted && Date.now() - lastRefreshAt > STALE_MS;
     if (mounted && !options.force && !stale) return loadPromise;
-    if (mounted) {
-      loadPromise = refresh();
-      return loadPromise;
-    }
-    const existing = document.querySelector(".notifications-panel");
+
+    let panel = body.querySelector(".notifications-panel");
     document.getElementById("topbar-notifications-fallback")?.remove();
-    document.querySelector(".topbar-notifications-head")?.setAttribute("hidden", "");
-    if (existing) {
-      existing.hidden = false;
-      existing.classList.add("is-visible");
-      existing.removeAttribute("data-panel");
-      if (existing.parentElement !== body) body.appendChild(existing);
-    } else {
+    document.querySelector("#topbar-notifications-popup .topbar-notifications-head")?.setAttribute("hidden", "");
+    if (!panel) {
       body.insertAdjacentHTML("afterbegin", PANEL_HTML);
+      panel = body.querySelector(".notifications-panel");
+    }
+    if (panel) {
+      panel.hidden = false;
+      panel.removeAttribute("hidden");
+      panel.classList.add("is-visible");
+      panel.removeAttribute("data-panel");
     }
     mounted = true;
     try {
+      const client = await waitForClient();
+      if (!client?.auth) {
+        throw new Error("Not signed in yet. Open Notifications again in a moment.");
+      }
       const {
         data: { session },
-      } = await global.supabaseClient.auth.getSession();
+      } = await client.auth.getSession();
       userId = session?.user?.id || null;
       loadPromise = refresh();
       await loadPromise;
     } catch (error) {
-      mounted = false;
       AppError.report(error, { context: "notifications.mount" });
       showFallbackError(error?.message);
     }

@@ -1,7 +1,9 @@
 /* Shared header notification inbox (same feed as Dashboard). */
 
 .topbar-notifications-popup .notifications-panel,
-.topbar-notifications-popup .notifications-panel.card {
+.topbar-notifications-popup .notifications-panel.card,
+.topbar-notifications-popup .notifications-panel[hidden] {
+  display: block !important;
   margin: 0;
   padding: 0.85rem 1rem 1rem;
   border: none;
@@ -45,6 +47,21 @@
   border: 1px solid #fdba74;
   border-radius: 999px;
   white-space: nowrap;
+}
+
+.notifications-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--bpcl-red, #e60012);
+  border-radius: 999px;
 }
 
 .notifications-count-badge.hidden,
