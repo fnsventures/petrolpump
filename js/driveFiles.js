@@ -50,6 +50,7 @@
       method: "POST",
       headers: await functionHeaders(true),
       body: JSON.stringify(body),
+      keepalive: body?.action === "archive",
       ...init,
     });
     if (!res.ok) throw new Error(await parseErrorResponse(res));
@@ -60,6 +61,22 @@
 
   async function status() {
     return invokeJson({ action: "status" });
+  }
+
+  async function archive(params) {
+    return invokeJson({ action: "archive", ...params });
+  }
+
+  async function waitUntilArchived({ table, id, timeoutMs = 18000 } = {}) {
+    const client = global.supabaseClient;
+    if (!table || !id || !client) return false;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const { data } = await client.from(table).select("drive_file_id").eq("id", id).maybeSingle();
+      if (data?.drive_file_id) return true;
+      await new Promise((resolve) => setTimeout(resolve, 700));
+    }
+    return false;
   }
 
   /**
@@ -92,38 +109,82 @@
     return data;
   }
 
+  function mimeFromFileName(fileName) {
+    const name = String(fileName || "").toLowerCase();
+    if (name.endsWith(".pdf")) return "application/pdf";
+    if (name.endsWith(".png")) return "image/png";
+    if (name.endsWith(".webp")) return "image/webp";
+    if (name.endsWith(".gif")) return "image/gif";
+    if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+    return "";
+  }
+
+  function fileNameFromDisposition(header, fallback) {
+    const value = String(header || "");
+    const encoded = value.match(/filename\*=UTF-8''([^;]+)/i);
+    const quoted = value.match(/filename="([^"]+)"/i);
+    const plain = value.match(/filename=([^;]+)/i);
+    const raw = encoded?.[1] || quoted?.[1] || plain?.[1] || "";
+    try {
+      const decoded = decodeURIComponent(raw.replace(/"/g, "").trim());
+      if (decoded) return decoded;
+    } catch {
+      if (raw.trim()) return raw.trim();
+    }
+    return fallback || "download";
+  }
+
+  function withUsefulType(blob, fileName) {
+    const type = String(blob?.type || "").toLowerCase();
+    if (type && type !== "application/octet-stream") return blob;
+    const guessed = mimeFromFileName(fileName);
+    return guessed ? new Blob([blob], { type: guessed }) : blob;
+  }
+
   async function download(params) {
+    const { previewWindow: _previewWindow, ...request } = params || {};
     const res = await fetch(functionUrl(), {
       method: "POST",
       headers: await functionHeaders(true),
-      body: JSON.stringify({ action: "download", ...params }),
+      body: JSON.stringify({ action: "download", ...request }),
     });
     if (!res.ok) throw new Error(await parseErrorResponse(res));
-    const blob = await res.blob();
-    const header = res.headers.get("Content-Disposition") || "";
-    const match = header.match(/filename="([^"]+)"/i);
-    return { blob, fileName: match?.[1] || params.fileName || "download" };
+    const fileName = fileNameFromDisposition(
+      res.headers.get("Content-Disposition"),
+      params.fileName
+    );
+    const blob = withUsefulType(await res.blob(), fileName);
+    return { blob, fileName };
   }
 
-  async function downloadAndSave(params) {
-    const { blob, fileName } = await download(params);
+  function saveBlob(blob, fileName) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = fileName;
-    a.rel = "noopener";
+    a.download = fileName || "download";
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function downloadAndSave(params) {
+    const { blob, fileName } = await download(params);
+    saveBlob(blob, fileName);
     return { blob, fileName };
   }
 
   async function openBlob(params) {
-    const { blob } = await download(params);
+    const preview = params.previewWindow && !params.previewWindow.closed ? params.previewWindow : null;
+    const { blob, fileName } = await download(params);
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    if (preview) {
+      preview.location.replace(url);
+    } else {
+      const opened = window.open(url, "_blank");
+      if (!opened) saveBlob(blob, fileName);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
     return url;
   }
 
@@ -142,6 +203,8 @@
   global.DriveFiles = {
     functionUrl,
     status,
+    archive,
+    waitUntilArchived,
     upload,
     download,
     downloadAndSave,

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -471,9 +471,14 @@ function initStaffPage(auth) {
   let currentAadhaarName = "";
   let idCardModalOpen = false;
   let idCardRenderedForId = null;
+  let aadhaarModalOpen = false;
+  let aadhaarPreviewUrl = "";
 
   function showPanel(mode) {
-    if (mode !== "profile") closeIdCardModal();
+    if (mode !== "profile") {
+      closeIdCardModal();
+      closeAadhaarModal();
+    }
     emptyState?.classList.toggle("hidden", mode !== "empty");
     if (emptyState) emptyState.hidden = mode !== "empty";
     formPanel?.classList.toggle("hidden", mode !== "form");
@@ -698,6 +703,7 @@ function initStaffPage(auth) {
   }
 
   function renderProfile(emp) {
+    if (aadhaarModalOpen && selectedId !== emp.id) closeAadhaarModal();
     selectedId = emp.id;
     const inactive = emp.is_active === false;
     if (profileName) profileName.textContent = emp.name || "—";
@@ -736,9 +742,13 @@ function initStaffPage(auth) {
       if (hasAadhaarCard(emp)) {
         const label = escapeHtml(aadhaarStatusLabel(emp) || "Aadhaar card");
         profileAadhaarFile.innerHTML = `
-          <span>${label}</span>
-          <button type="button" class="link" data-aadhaar-view="${escapeHtml(emp.id)}">View</button>
-          <button type="button" class="link" data-aadhaar-download="${escapeHtml(emp.id)}">Download</button>
+          <div class="staff-aadhaar-file-row">
+            <span class="staff-aadhaar-file-name">${label}</span>
+            <span class="staff-aadhaar-actions">
+              <button type="button" class="link" data-aadhaar-view="${escapeHtml(emp.id)}">View</button>
+              <button type="button" class="link" data-aadhaar-download="${escapeHtml(emp.id)}">Download</button>
+            </span>
+          </div>
         `;
       } else {
         profileAadhaarFile.textContent = "Not attached";
@@ -1044,20 +1054,125 @@ function initStaffPage(auth) {
     setFormAadhaarStatus("");
   });
 
-  profileAadhaarFile?.addEventListener("click", (e) => {
-    const viewBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-view]") : null;
-    const downloadBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-download]") : null;
-    const employeeId = viewBtn?.getAttribute("data-aadhaar-view") || downloadBtn?.getAttribute("data-aadhaar-download");
-    if (!employeeId) return;
-    const action = viewBtn ? DriveFiles?.openBlob : DriveFiles?.downloadAndSave;
-    if (!action) {
+  function revokeAadhaarPreview() {
+    if (!aadhaarPreviewUrl) return;
+    URL.revokeObjectURL(aadhaarPreviewUrl);
+    aadhaarPreviewUrl = "";
+  }
+
+  function closeAadhaarModal() {
+    const modal = document.getElementById("staff-aadhaar-modal");
+    if (!modal) return;
+    modal.classList.add("hidden");
+    modal.hidden = true;
+    aadhaarModalOpen = false;
+    const body = document.getElementById("staff-aadhaar-modal-body");
+    if (body) body.innerHTML = "";
+    revokeAadhaarPreview();
+  }
+
+  function paintAadhaarPreview(blob, fileName) {
+    const body = document.getElementById("staff-aadhaar-modal-body");
+    if (!body) return;
+    revokeAadhaarPreview();
+    const url = URL.createObjectURL(blob);
+    aadhaarPreviewUrl = url;
+    const type = String(blob.type || "").toLowerCase();
+    const isPdf = type === "application/pdf" || /\.pdf$/i.test(fileName || "");
+    if (type.startsWith("image/")) {
+      body.innerHTML = `<div class="staff-aadhaar-frame"><img alt="Aadhaar card" src="${url}" /></div>`;
+      return;
+    }
+    if (isPdf) {
+      body.innerHTML = `<div class="staff-aadhaar-frame"><iframe title="Aadhaar card" src="${url}"></iframe></div>`;
+      return;
+    }
+    body.innerHTML = `<p class="muted">This file can’t be previewed here. Use Download to save it.</p>`;
+  }
+
+  async function openAadhaarModal(employeeId) {
+    const modal = document.getElementById("staff-aadhaar-modal");
+    const body = document.getElementById("staff-aadhaar-modal-body");
+    const title = document.getElementById("staff-aadhaar-modal-title");
+    const subtitle = document.getElementById("staff-aadhaar-modal-subtitle");
+    if (!modal || !body) return;
+    if (typeof DriveFiles === "undefined") {
       alert("Google Drive helper is not loaded.");
       return;
     }
-    action({ kind: "staff_aadhaar", employeeId }).catch((err) => {
-      AppError.report(err, { context: "staffAadhaarDownload" });
-      alert(AppError.getUserMessage(err) || "Could not open the Aadhaar card.");
-    });
+    const emp = staffList.find((s) => s.id === employeeId);
+    const fileName = emp?.aadhaar_file_name || "Aadhaar.pdf";
+    if (title) title.textContent = emp?.name ? `${emp.name} · Aadhaar` : "Aadhaar card";
+    if (subtitle) subtitle.textContent = fileName;
+    body.innerHTML = `<p class="staff-id-modal-loading">Opening…</p>`;
+    modal.classList.remove("hidden");
+    modal.hidden = false;
+    aadhaarModalOpen = true;
+    document.getElementById("staff-aadhaar-modal-close")?.focus();
+    try {
+      const result = await DriveFiles.download({ kind: "staff_aadhaar", employeeId, fileName });
+      if (!aadhaarModalOpen) return;
+      paintAadhaarPreview(result.blob, result.fileName || fileName);
+      if (subtitle && result.fileName) subtitle.textContent = result.fileName;
+    } catch (err) {
+      AppError.report(err, { context: "staffAadhaarView" });
+      if (!aadhaarModalOpen) return;
+      body.innerHTML = `<p class="error">${escapeHtml(AppError.getUserMessage(err) || "Could not open the Aadhaar card.")}</p>`;
+    }
+  }
+
+  profileAadhaarFile?.addEventListener("click", (e) => {
+    const viewBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-view]") : null;
+    const downloadBtn = e.target instanceof Element ? e.target.closest("[data-aadhaar-download]") : null;
+    const trigger = viewBtn || downloadBtn;
+    const employeeId = viewBtn?.getAttribute("data-aadhaar-view") || downloadBtn?.getAttribute("data-aadhaar-download");
+    if (!employeeId || !trigger || trigger.disabled) return;
+    if (typeof DriveFiles === "undefined") {
+      alert("Google Drive helper is not loaded.");
+      return;
+    }
+    if (viewBtn) {
+      void openAadhaarModal(employeeId);
+      return;
+    }
+    const emp = staffList.find((s) => s.id === employeeId);
+    const fileName = emp?.aadhaar_file_name || "Aadhaar.pdf";
+    const original = trigger.textContent;
+    trigger.disabled = true;
+    trigger.textContent = "Downloading…";
+    DriveFiles.downloadAndSave({ kind: "staff_aadhaar", employeeId, fileName })
+      .catch((err) => {
+        AppError.report(err, { context: "staffAadhaarDownload" });
+        alert(AppError.getUserMessage(err) || "Could not download the Aadhaar card.");
+      })
+      .finally(() => {
+        trigger.disabled = false;
+        trigger.textContent = original;
+      });
+  });
+
+  document.getElementById("staff-aadhaar-modal-close")?.addEventListener("click", closeAadhaarModal);
+  document.getElementById("staff-aadhaar-modal")?.querySelector("[data-aadhaar-close]")?.addEventListener("click", closeAadhaarModal);
+  document.getElementById("staff-aadhaar-modal")?.addEventListener("click", (e) => {
+    if (e.target?.id === "staff-aadhaar-modal") closeAadhaarModal();
+  });
+  document.getElementById("staff-aadhaar-modal-download")?.addEventListener("click", () => {
+    const emp = staffList.find((s) => s.id === selectedId);
+    if (!emp || typeof DriveFiles === "undefined") return;
+    const btn = document.getElementById("staff-aadhaar-modal-download");
+    if (btn) btn.disabled = true;
+    DriveFiles.downloadAndSave({
+      kind: "staff_aadhaar",
+      employeeId: emp.id,
+      fileName: emp.aadhaar_file_name || "Aadhaar.pdf",
+    })
+      .catch((err) => {
+        AppError.report(err, { context: "staffAadhaarDownload" });
+        alert(AppError.getUserMessage(err) || "Could not download the Aadhaar card.");
+      })
+      .finally(() => {
+        if (btn) btn.disabled = false;
+      });
   });
 
   async function runStaffIdPrint(emp) {
@@ -1080,7 +1195,9 @@ function initStaffPage(auth) {
     if (e.target === idCardModal) closeIdCardModal();
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && idCardModalOpen) closeIdCardModal();
+    if (e.key !== "Escape") return;
+    if (aadhaarModalOpen) closeAadhaarModal();
+    else if (idCardModalOpen) closeIdCardModal();
   });
 
   printBtn?.addEventListener("click", () => {
@@ -1144,51 +1261,65 @@ function initStaffPage(auth) {
 
     const payload = { name, role_display: roleInput?.value?.trim() || null, ...details };
     if (!id && auth.session?.user?.id) payload.created_by = auth.session.user.id;
-
-    let employeeId = id;
-    if (id) {
-      const { error } = await window.supabaseClient.from("employees").update(payload).eq("id", id);
-      if (error) {
-        AppError.handle(error, { target: staffFormError });
-        if (staffSubmitBtn) {
-          staffSubmitBtn.disabled = false;
-          staffSubmitBtn.textContent = "Save changes";
-        }
-        return;
-      }
-    } else {
-      const { data, error } = await window.supabaseClient.from("employees").insert(payload).select("id").single();
-      if (error) {
-        AppError.handle(error, { target: staffFormError });
-        if (staffSubmitBtn) {
-          staffSubmitBtn.disabled = false;
-          staffSubmitBtn.textContent = "Save staff";
-        }
-        return;
-      }
-      employeeId = data.id;
-    }
+    const willTouchPhoto = Boolean(removePhotoOnSave || pendingPhotoFile);
+    const willTouchAadhaar = Boolean(removeAadhaarOnSave || pendingAadhaarFile);
+    const steps = 1 + (willTouchPhoto ? 1 : 0) + (willTouchAadhaar ? 1 : 0);
+    const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
 
     try {
-      if (removePhotoOnSave && employeeId) await clearEmployeePhoto(employeeId);
-      else if (pendingPhotoFile && employeeId) await uploadEmployeePhoto(employeeId, pendingPhotoFile);
-      if (removeAadhaarOnSave && employeeId) await clearEmployeeAadhaar(employeeId);
-      else if (pendingAadhaarFile && employeeId) await uploadEmployeeAadhaar(employeeId, pendingAadhaarFile);
-    } catch (photoErr) {
-      AppError.handle(photoErr, { target: staffFormError });
+      await (progress
+        ? progress.run(
+            {
+              title: isEdit ? "Saving staff" : "Adding staff",
+              status: "Saving staff record…",
+              steps,
+              doneStatus: "Saved",
+            },
+            (p) => saveStaffRecord(p)
+          )
+        : saveStaffRecord({ setStep() {} }));
+    } catch (err) {
+      AppError.handle(err, { target: staffFormError });
+    } finally {
       if (staffSubmitBtn) {
         staffSubmitBtn.disabled = false;
         staffSubmitBtn.textContent = isEdit ? "Save changes" : "Save staff";
       }
-      return;
     }
 
-    invalidateEmployeeListCache();
-    if (staffSubmitBtn) {
-      staffSubmitBtn.disabled = false;
-      staffSubmitBtn.textContent = isEdit ? "Save changes" : "Save staff";
+    async function saveStaffRecord(p) {
+      p.setStep(0, "Saving staff record…");
+      let employeeId = id;
+      if (id) {
+        const { error } = await window.supabaseClient.from("employees").update(payload).eq("id", id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await window.supabaseClient.from("employees").insert(payload).select("id").single();
+        if (error) throw error;
+        employeeId = data.id;
+      }
+
+      let step = 1;
+      if (removePhotoOnSave && employeeId) {
+        p.setStep(step, "Removing staff photo…");
+        await clearEmployeePhoto(employeeId);
+        step += 1;
+      } else if (pendingPhotoFile && employeeId) {
+        p.setStep(step, "Uploading photo to Google Drive…");
+        await uploadEmployeePhoto(employeeId, pendingPhotoFile);
+        step += 1;
+      }
+      if (removeAadhaarOnSave && employeeId) {
+        p.setStep(step, "Removing Aadhaar card…");
+        await clearEmployeeAadhaar(employeeId);
+      } else if (pendingAadhaarFile && employeeId) {
+        p.setStep(step, "Uploading Aadhaar card to Google Drive…");
+        await uploadEmployeeAadhaar(employeeId, pendingAadhaarFile);
+      }
+
+      invalidateEmployeeListCache();
+      await refreshAndSelect(employeeId);
     }
-    await refreshAndSelect(employeeId);
   });
 
   void (async () => {

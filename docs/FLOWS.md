@@ -203,8 +203,10 @@ Create invoice (billing.html)
    → Line items with GST slabs (from AppConfig.GST_SLABS)
    → save_invoice(date, type, party, …, items jsonb)
    → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
-   → Generated cash memo uploaded to Google Drive (01 Finance / Sales invoices / Year / Month) via drive-files
-   → Print layout: css/invoice-print.css
+   → Save returns immediately after the save overlay finishes (DB + Drive PDF)
+      (Billing invoices / 2026)
+   → Drive PDF uses the same letterhead, tax summary, and payment layout as print
+      (css/invoice-print.css)
 
 Reports
    → GST sales summary/detail reads invoices when billing.includeInGstReports is true
@@ -225,7 +227,7 @@ Admin one-time setup (Settings → Integrations + Supabase secrets + edge functi
 
 Upload (invoices.html → Upload tab)
    → multipart POST to edge function invoice-documents
-   → file → Google Drive (purchase: Root/01 Finance/Purchase invoices/Year/Month; other: Root/03 Compliance/{type}/Year); metadata → invoice_documents
+   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/{type}/Year); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
    → SELECT invoice_documents (this year / last year / all time)
@@ -242,10 +244,11 @@ Library (invoices.html → Library tab)
 
 ```
 Compose (letterhead.html)
-   → Save / Print letter / Download Word
-   → drive-files uploads a .doc to Google Drive
-      (02 Correspondence / Official letters / Year / Month)
-   → letterhead_letters stores date, subject, body (preview) + Drive file ID
+   → Save (DB metadata first) / Print letter / Download Word (local only)
+   → A DB trigger queues a Drive PDF archive, then letter body is cleared
+      (Letters / 2026)
+   → Drive PDF uses the same station letterhead as print (css/letterhead-print.css)
+   → letterhead_letters stores date, subject, Drive file ID (not the letter text)
 
 History
    → View / Print from saved body
@@ -318,7 +321,9 @@ Staff (staff.html) — admin + supervisor (inactive toggle: admin only)
    → CRUD on employees table (direct Supabase client)
    → Fields: name, job title, DOB, ID validity dates, photo, Aadhaar card scan, blood group,
              phone, Aadhaar number, PAN, PF/UAN, address
-   → Photo + Aadhaar upload → Google Drive (04 People / Staff records / {Name}) via drive-files
+   → Photo + Aadhaar upload → Google Drive (Staff / {Name}) via drive-files
+   → Photo: original image (public, for ID cards) plus a letterhead PDF copy
+   → Aadhaar: JPEG/PNG scans filed as a letterhead PDF; native PDFs stored as-is
    → BPCL-style ID card preview + print (requires photo, blood group, DOB)
    → PF contribution amount edited in Settings → Staff salaries (not on staff form)
    → Deep link: staff.html#{employee_uuid}

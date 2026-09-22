@@ -256,7 +256,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | notes | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
-| drive_file_id, drive_folder_id, drive_file_name | text | Archived cash memo in Google Drive (`01 Finance / Sales invoices / Year / Month`) |
+| drive_file_id, drive_folder_id, drive_file_name | text | Archived cash memo PDF in Google Drive (`Billing invoices / Year`) |
 | drive_web_view_link | text | Drive view link |
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
@@ -289,7 +289,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ## invoice_documents
 
-**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (`01 Finance / Purchase invoices / Year / Month`; other types: `03 Compliance / {type} / Year`). Not related to billing table `invoices`.
+**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (`Purchase invoices / Year`; other types: `Other documents / {type} / Year`). Not related to billing table `invoices`.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -318,13 +318,14 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ## letterhead_letters
 
-**Purpose:** Index of typed station letters. The Word/HTML document is stored in Google Drive (`02 Correspondence / Official letters / Year / Month`); subject/body remain for in-app preview.
+**Purpose:** Index of typed station letters. The PDF is stored in Google Drive (`Letters / Year`). `body` is held only until archive succeeds, then cleared so Postgres stays small.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
 | letter_date | date | Letter date |
-| subject, body | text | In-app preview / compose reload |
+| subject | text | History list title (not the full letter) |
+| body | text | Temporary; cleared after the Drive PDF is stored |
 | export_type | text | `save` \| `print` \| `word` |
 | include_sign | boolean | Signature footer on the letter |
 | drive_file_id, drive_folder_id, drive_file_name, mime_type | text | Google Drive archive |
@@ -433,8 +434,8 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | pf_contribution | numeric | Fixed monthly PF deduction (₹) — set in Settings → Staff salaries; shown on salary slips |
 | blood_group | text | Optional: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-` (required for ID card print) |
 | photo_url | text | Optional; Drive image URL for ID card (required for ID card print) |
-| photo_drive_file_id | text | Google Drive file ID for the staff photo |
-| aadhaar_drive_file_id | text | Google Drive file ID for the Aadhaar card scan (private) |
+| photo_drive_file_id | text | Google Drive file ID for the staff photo image (ID cards). A letterhead PDF copy is stored as `Photo (letterhead).pdf` in the same folder |
+| aadhaar_drive_file_id | text | Google Drive file ID for the Aadhaar card (private letterhead PDF, or original PDF) |
 | aadhaar_file_name | text | Stored Aadhaar file name |
 | date_of_birth | date | Optional; shown on staff ID card |
 | id_valid_from | date | ID card validity start (back of card) |

@@ -81,6 +81,14 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   width: 100%;
 }
 
+.letterhead-pdf-frame {
+  display: block;
+  width: 100%;
+  min-height: 70vh;
+  border: 0;
+  background: #fff;
+}
+
 .letterhead-compose-layout {
   display: grid;
   gap: var(--space-4);

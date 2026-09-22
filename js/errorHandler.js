@@ -469,11 +469,19 @@ const AdminDelete = (function () {
     if (!confirm(confirmMessage)) return;
 
     if (btn) btn.disabled = true;
+    const progress = window.ActionProgress;
+    progress?.start({
+      title: "Deleting",
+      status: "Removing this record…",
+      steps: 1,
+    });
     try {
+      progress?.setStep(0, "Removing from the app and Google Drive…");
       const result = await deleteFn();
       const error = result?.error ?? null;
       if (error) {
         if (btn) btn.disabled = false;
+        progress?.close();
         alert(window.AppError.getUserMessage(error));
         window.AppError.report(error, errorContext || {});
         return;
@@ -481,11 +489,15 @@ const AdminDelete = (function () {
       if (typeof window.CacheInvalidation !== "undefined") {
         window.CacheInvalidation.invalidate(cacheScope);
       }
+      progress?.succeed("Deleted");
       if (onSuccess) await onSuccess();
+      await new Promise((resolve) => setTimeout(resolve, 220));
     } catch (err) {
       if (btn) btn.disabled = false;
       alert(window.AppError.getUserMessage(err));
       window.AppError.report(err, errorContext || {});
+    } finally {
+      progress?.close();
     }
   }
 

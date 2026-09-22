@@ -9,7 +9,7 @@
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v189";
+const CACHE_VERSION = "v190";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
 
@@ -38,7 +38,7 @@ const STATIC_ASSET_PATHS = [
   "css/fonts.css",
   "css/landing.css",
   "css/login.css",
-  "css/app-core.css?v=17",
+  "css/app-core.css?v=18",
   "css/app-dashboard.css",
   "assets/favicon-32.png",
   "assets/apple-touch-icon.png",
@@ -53,16 +53,16 @@ const STATIC_ASSET_PATHS = [
   "fonts/source-serif-4-latin.woff2",
   "js/vendor/supabase-login.min.js",
   "js/vendor/supabase.min.js",
-  "js/roleBootstrap.js?v=17",
-  "js/appNav.js?v=17",
+  "js/roleBootstrap.js?v=18",
+  "js/appNav.js?v=18",
   "js/errorHandler.js",
-  "js/pwa.js?v=17",
-  "js/cache.js?v=17",
+  "js/pwa.js?v=18",
+  "js/cache.js?v=18",
   "js/appConfig.js",
-  "js/utils.js?v=17",
+  "js/utils.js?v=18",
   "js/pumpSettings.js",
-  "js/supabase.js?v=17",
-  "js/auth.js?v=17",
+  "js/supabase.js?v=18",
+  "js/auth.js?v=18",
   "js/pageSections.js",
 ];
 

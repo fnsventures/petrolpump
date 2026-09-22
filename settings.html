@@ -13,20 +13,20 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
-    <script src="js/roleBootstrap.js?v=17"></script>
-    <script src="js/appNav.js?v=17"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=17" />
+    <script src="js/roleBootstrap.js?v=18"></script>
+    <script src="js/appNav.js?v=18"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=18" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
-    <script defer src="js/cache.js?v=17"></script>
+    <script defer src="js/cache.js?v=18"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=17"></script>
-    <script defer src="js/pwa.js?v=17"></script>
-    <script defer src="js/supabase.js?v=17"></script>
+    <script defer src="js/utils.js?v=18"></script>
+    <script defer src="js/pwa.js?v=18"></script>
+    <script defer src="js/supabase.js?v=18"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/pageSections.js"></script>
-    <script defer src="js/auth.js?v=17"></script>
+    <script defer src="js/auth.js?v=18"></script>
     <script defer src="js/staffEmployees.js?v=4"></script>
     <script defer src="js/settings.js"></script>
   </head>
@@ -591,13 +591,13 @@
         <!-- Integrations -->
         <section id="settings-panel-integrations" class="settings-panel card" data-panel="integrations" hidden>
           <h2>Google Drive</h2>
-          <p class="muted">Created billing invoices, official letters, staff photos, Aadhaar cards, and vault documents are stored in this Drive folder using:</p>
+          <p class="muted">Created billing invoices and Letter Desk letters are archived as station-letterhead <strong>PDFs</strong> (same layout as print). Staff photos stay as images for ID cards, with a letterhead PDF copy. Aadhaar scans are filed as letterhead PDFs. Vault documents use:</p>
           <ul class="muted">
-            <li><code>01 Finance / Purchase invoices / Year / Month</code></li>
-            <li><code>01 Finance / Sales invoices / Year / Month</code></li>
-            <li><code>02 Correspondence / Official letters / Year / Month</code></li>
-            <li><code>03 Compliance / {type} / Year</code></li>
-            <li><code>04 People / Staff records / {Name}</code></li>
+            <li><code>Billing invoices / 2026</code></li>
+            <li><code>Letters / 2026</code></li>
+            <li><code>Purchase invoices / 2026</code></li>
+            <li><code>Other documents / {type} / 2026</code></li>
+            <li><code>Staff / {Name}</code></li>
           </ul>
           <p class="muted"><strong>Personal Gmail:</strong> use OAuth (below). Service accounts cannot upload to My Drive — they have no storage quota.</p>
           <h3 class="settings-subheading">One-time OAuth setup</h3>
