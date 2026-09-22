@@ -13,25 +13,25 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
-    <script src="js/roleBootstrap.js?v=17"></script>
-    <script src="js/appNav.js?v=17"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=17" />
-    <link rel="stylesheet" href="css/app-letterhead.css?v=6" />
+    <script src="js/roleBootstrap.js?v=18"></script>
+    <script src="js/appNav.js?v=18"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=18" />
+    <link rel="stylesheet" href="css/app-letterhead.css?v=7" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
-    <script defer src="js/cache.js?v=17"></script>
+    <script defer src="js/cache.js?v=18"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=17"></script>
+    <script defer src="js/utils.js?v=18"></script>
     <script defer src="js/dateRangeFilter.js?v=10"></script>
-    <script defer src="js/pwa.js?v=17"></script>
-    <script defer src="js/supabase.js?v=17"></script>
+    <script defer src="js/pwa.js?v=18"></script>
+    <script defer src="js/supabase.js?v=18"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/pageSections.js"></script>
-    <script defer src="js/auth.js?v=17"></script>
+    <script defer src="js/auth.js?v=18"></script>
     <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/driveFiles.js?v=1"></script>
-    <script defer src="js/letterhead.js?v=12"></script>
+    <script defer src="js/driveFiles.js?v=5"></script>
+    <script defer src="js/letterhead.js?v=16"></script>
   </head>
   <body class="letterhead-page">
     <header class="topbar no-print" data-build-topbar>
@@ -106,7 +106,7 @@
                 <div class="letterhead-export" aria-label="Export options">
                   <div class="letterhead-export-group letterhead-export-group--save">
                     <p class="letterhead-export-label">Save</p>
-                    <p class="muted letterhead-export-hint">Stores the letter in Google Drive and Letter history so you can view or print it later.</p>
+                    <p class="muted letterhead-export-hint">Saves a PDF to Google Drive. History keeps only the date, subject, and Drive link — not the letter text.</p>
                     <div class="letterhead-export-actions">
                       <button type="button" id="letterhead-save" class="button-primary">Save letter</button>
                     </div>
@@ -151,7 +151,7 @@
             <div>
               <h2 class="dashboard-section-title">Letter history</h2>
               <p class="muted panel-lead">
-                Saved and printed letters, archived in Google Drive. View opens the letter here; blank stationery is not saved.
+                Saved letters as PDFs in Google Drive. The database keeps only the date, subject, and Drive link.
               </p>
             </div>
             <div class="snapshot-controls">
@@ -237,11 +237,11 @@
             </article>
             <article class="letterhead-guide-item">
               <h3>Typed letter</h3>
-              <p class="muted">Enter an optional date and subject, type the body, then <strong>Save letter</strong>, <strong>Print letter</strong>, or <strong>Download letter</strong>. Use the signature checkbox if you want the From … / Authorised Signatory footer. Saved and printed letters appear under <strong>Letter history</strong>.</p>
+              <p class="muted">Enter a date and subject, type the body, then <strong>Save letter</strong>, <strong>Print letter</strong>, or <strong>Download letter</strong>. Save stores a PDF in Google Drive. The database keeps only the date, subject, and Drive link.</p>
             </article>
             <article class="letterhead-guide-item">
               <h3>Letter history</h3>
-              <p class="muted"><strong>View</strong> opens the letter on this page (like E-20 reports). From there you can print or load it into Compose to edit. Only admins can delete history rows.</p>
+              <p class="muted"><strong>View</strong> opens the Drive PDF on this page. Print opens that PDF. Letter text is not kept in the database after archive. Only admins can delete history rows (and the Drive file).</p>
             </article>
             <article class="letterhead-guide-item">
               <h3>PDF files</h3>

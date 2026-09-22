@@ -175,7 +175,7 @@ supabase/
     ├── get-reports-data/     # Edge: batched reports page data
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
-    ├── drive-files/          # Edge: sales invoices, letters, staff photos/Aadhaar ↔ Google Drive
+    ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
     └── _shared/googleDrive.ts
 ```
 
@@ -338,7 +338,7 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `get-reports-data` | Batched reports page payload | GitHub Actions or Supabase CLI |
 | `get-pl-data` | Batched P&amp;L (DSR + receipt history, expenses, lube sales) | GitHub Actions or Supabase CLI |
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
-| `drive-files` | Sales invoices, letters, staff photos, Aadhaar cards ↔ Google Drive | GitHub Actions or Supabase CLI |
+| `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
 
 Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`. Requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` per environment. See [Development guide §2.5](DEVELOPMENT.md#25-edge-functions).
 

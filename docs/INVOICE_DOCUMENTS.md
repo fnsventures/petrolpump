@@ -37,7 +37,7 @@ These are separate features. This document covers **invoice documents** only.
 ## 1. What the feature does
 
 - Staff upload **supplier invoices** (PDF, JPEG, PNG, WebP; max 15 MB) from **Finance → Invoices** (`invoices.html`).
-- Files are stored in **Google Drive** under a professional tree (`01 Finance`, `02 Correspondence`, `03 Compliance`, `04 People`). Purchase invoices go to `01 Finance / Purchase invoices / Year / Month`.
+- Files are stored in **Google Drive** under short folders (`Billing invoices`, `Letters`, `Purchase invoices`, `Staff`, `Other documents`). Purchase invoices go to `Purchase invoices / Year`.
 - Metadata (date, vendor, amount, Drive file ID, etc.) is stored in PostgreSQL table `invoice_documents`.
 - The library lists documents by date range; users can **view** (Drive link), **download** (via edge function), or **delete** (admin only).
 - Configuration lives in **Settings → Integrations** (admin only): enable flag + root folder ID.
@@ -438,7 +438,7 @@ Enforcement:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| Invoice date | Yes | `YYYY-MM-DD`; drives year (and month for purchase) folder placement |
+| Invoice date | Yes | `YYYY-MM-DD`; drives year folder placement |
 | File | Yes | PDF, JPEG, PNG, WebP; 1 byte – 15 MB |
 | Vendor | No | Free text |
 | Title | No | Free text |
@@ -449,28 +449,22 @@ Enforcement:
 
 ```
 Root folder (from Settings)
-├── 01 Finance/
-│   ├── Purchase invoices/
-│   │   └── 2026/
-│   │       ├── January/
-│   │       └── September/
-│   └── Sales invoices/
-│       └── 2026/
-│           └── September/
-├── 02 Correspondence/
-│   └── Official letters/
-│       └── 2026/
-│           └── September/
-├── 03 Compliance/
+├── Billing invoices/
+│   └── 2026/
+├── Letters/
+│   └── 2026/
+├── Purchase invoices/
+│   └── 2026/
+├── Other documents/
 │   ├── License / permit/
 │   │   └── 2026/
 │   └── Insurance/
 │       └── 2026/
-└── 04 People/
-    └── Staff records/
-        └── Ramesh Kumar (a1b2c3d4)/
-            ├── 01 Photo.jpg
-            └── 02 Aadhaar.pdf
+└── Staff/
+    └── Ramesh Kumar · A1B2/
+        ├── Photo.jpg
+        ├── Aadhaar.pdf
+        └── Photo (letterhead).pdf
 ```
 
 New uploads use this layout. Existing vault files stay at their previous Drive IDs (download still works). Folders are created automatically on first upload.
@@ -719,6 +713,7 @@ Repeat for each Supabase project (staging and prod).
 | `js/appConfig.js` | Default `integrations.googleDrive` |
 | `supabase/functions/invoice-documents/index.ts` | Vault documents ↔ Google Drive |
 | `supabase/functions/drive-files/index.ts` | Sales invoices, letters, staff photos/Aadhaar ↔ Google Drive |
+| `supabase/functions/_shared/archivePdf.ts` | Print-style letterhead PDFs for billing, letters, and staff files |
 | `supabase/functions/_shared/googleDrive.ts` | Shared Drive auth, folders, upload |
 | `js/driveFiles.js` | Browser client for `drive-files` |
 | `supabase/migrations/20260619120000_invoice_documents_google_drive.sql` | Table, RLS, page access |

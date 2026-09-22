@@ -2,13 +2,19 @@
 // Upload/download/delete sales invoices, letters, staff photos, and Aadhaar scans in Google Drive.
 
 import {
+  buildInvoicePdf,
+  buildLetterPdf,
+  buildStaffAttachmentPdf,
+  canEmbedRaster,
+} from "../_shared/archivePdf.ts";
+import {
   buildDriveStatus,
   corsHeaders,
   deleteFromDrive,
+  deleteNamedFilesInFolder,
   downloadFromDrive,
   ensureFolderPath,
   getDriveAccessToken,
-  getDriveConfig,
   httpErrorStatus,
   jsonResponse,
   letterFolderSegments,
@@ -25,19 +31,8 @@ import {
   type AuthUser,
 } from "../_shared/googleDrive.ts";
 
-const MAX_DOC_BYTES = 15 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 const MAX_AADHAAR_BYTES = 10 * 1024 * 1024;
-
-const DOC_MIME = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/html",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
 const PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const AADHAAR_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
 
@@ -121,6 +116,15 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ...buildDriveStatus(settings), ...authResult });
     }
 
+    if (action === "archive") {
+      const kind = parseKind(String(body.kind || "").trim());
+      if (!kind) return jsonResponse({ error: "kind is required" }, 400);
+      const auth = await verifyKindAuth(req, kind);
+      if (kind === "sales_invoice") return handleSalesInvoiceArchive(String(body.invoiceId || ""));
+      if (kind === "letter") return handleLetterArchive(String(body.letterId || ""), auth);
+      return jsonResponse({ error: "kind does not support archive" }, 400);
+    }
+
     const kind = parseKind(String(body.kind || "").trim());
     if (!kind) return jsonResponse({ error: "kind is required" }, 400);
     const auth = await verifyKindAuth(req, kind);
@@ -146,104 +150,26 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function handleSalesInvoiceUpload(auth: AuthUser, form: FormData, file: File) {
+async function handleSalesInvoiceUpload(_auth: AuthUser, form: FormData, _file: File) {
   const invoiceId = String(form.get("invoiceId") || "").trim();
-  const invoiceDate = String(form.get("invoiceDate") || "").slice(0, 10);
-  const parsed = parseIsoDate(invoiceDate);
   if (!invoiceId) return jsonResponse({ error: "invoiceId is required" }, 400);
-  if (!parsed) return jsonResponse({ error: "invoiceDate is required (YYYY-MM-DD)" }, 400);
-  if (file.size <= 0 || file.size > MAX_DOC_BYTES) {
-    return jsonResponse({ error: `File must be between 1 byte and ${MAX_DOC_BYTES / (1024 * 1024)} MB` }, 400);
-  }
-  if (!DOC_MIME.has(file.type)) {
-    return jsonResponse({ error: "Allowed types: PDF, Word, HTML, JPEG, PNG, WebP" }, 400);
-  }
-
-  const { data: invoice, error: invError } = await supabaseAdmin
-    .from("invoices")
-    .select("id, invoice_number, party_name, drive_file_id")
-    .eq("id", invoiceId)
-    .maybeSingle();
-  if (invError) throw new Error(invError.message);
-  if (!invoice) throw new Error("Invoice not found");
-
-  const invoiceNumber = String(form.get("invoiceNumber") || invoice.invoice_number || "invoice");
-  const partyName = String(form.get("partyName") || invoice.party_name || "party");
-  const fallbackName = `${invoiceNumber} — ${partyName} — ${invoiceDate}.doc`;
-  const safeName = sanitizeFileName(file.name || fallbackName, fallbackName);
-
-  const bytesPromise = file.arrayBuffer();
-  const [token, rootFolderId] = await Promise.all([getDriveAccessToken(), getDriveConfig()]);
-  const folderId = await ensureFolderPath(token, rootFolderId, salesInvoiceFolderSegments(parsed.year, parsed.month));
-  if (invoice.drive_file_id) await deleteFromDrive(token, invoice.drive_file_id).catch(() => {});
-  const { fileId, webViewLink } = await uploadToDrive(
-    token,
-    folderId,
-    safeName,
-    file.type,
-    new Uint8Array(await bytesPromise)
-  );
-
-  const { error: updateError } = await supabaseAdmin
-    .from("invoices")
-    .update({
-      drive_file_id: fileId,
-      drive_folder_id: folderId,
-      drive_web_view_link: webViewLink,
-      drive_file_name: safeName,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", invoiceId);
-  if (updateError) {
-    await deleteFromDrive(token, fileId).catch(() => {});
-    throw new Error(updateError.message);
-  }
-
-  return jsonResponse({
-    ok: true,
-    file: {
-      id: invoiceId,
-      kind: "sales_invoice",
-      drive_file_id: fileId,
-      drive_web_view_link: webViewLink,
-      file_name: safeName,
-      uploaded_by: auth.userId,
-    },
-  });
+  return handleSalesInvoiceArchive(invoiceId);
 }
 
-async function handleLetterUpload(auth: AuthUser, form: FormData, file: File) {
+async function handleLetterUpload(auth: AuthUser, form: FormData, _file: File) {
   const letterDate = String(form.get("letterDate") || "").slice(0, 10);
   const parsed = parseIsoDate(letterDate);
   if (!parsed) return jsonResponse({ error: "letterDate is required (YYYY-MM-DD)" }, 400);
-  const subject = String(form.get("subject") || "").trim();
+  const subjectRaw = String(form.get("subject") || "").trim();
   const body = String(form.get("body") || "");
-  if (!subject && !body.trim()) return jsonResponse({ error: "Subject or body is required" }, 400);
-  if (file.size <= 0 || file.size > MAX_DOC_BYTES) {
-    return jsonResponse({ error: `File must be between 1 byte and ${MAX_DOC_BYTES / (1024 * 1024)} MB` }, 400);
-  }
-  if (!DOC_MIME.has(file.type)) {
-    return jsonResponse({ error: "Allowed types: PDF, Word, HTML, JPEG, PNG, WebP" }, 400);
-  }
+  if (!subjectRaw && !body.trim()) return jsonResponse({ error: "Subject or body is required" }, 400);
+  const subject = subjectRaw || "Letter";
 
   const exportTypeRaw = String(form.get("exportType") || "save").trim();
   const exportType = exportTypeRaw === "word" || exportTypeRaw === "print" || exportTypeRaw === "save"
     ? exportTypeRaw
     : "save";
   const includeSign = String(form.get("includeSign") || "true") !== "false";
-  const fallbackName = `${letterDate} — ${subject || "letter"}.doc`;
-  const safeName = sanitizeFileName(file.name || fallbackName, fallbackName);
-
-  const bytesPromise = file.arrayBuffer();
-  const [token, rootFolderId] = await Promise.all([getDriveAccessToken(), getDriveConfig()]);
-  const folderId = await ensureFolderPath(token, rootFolderId, letterFolderSegments(parsed.year, parsed.month));
-  const { fileId, webViewLink } = await uploadToDrive(
-    token,
-    folderId,
-    safeName,
-    file.type,
-    new Uint8Array(await bytesPromise)
-  );
 
   const { data: row, error: insertError } = await supabaseAdmin
     .from("letterhead_letters")
@@ -254,21 +180,214 @@ async function handleLetterUpload(auth: AuthUser, form: FormData, file: File) {
       export_type: exportType,
       include_sign: includeSign,
       created_by: auth.userId,
+    })
+    .select("id")
+    .single();
+  if (insertError) throw new Error(insertError.message);
+  return handleLetterArchive(String(row.id), auth);
+}
+
+async function handleSalesInvoiceArchive(invoiceIdRaw: string) {
+  const invoiceId = invoiceIdRaw.trim();
+  if (!invoiceId) return jsonResponse({ error: "invoiceId is required" }, 400);
+
+  const [{ data: invoice, error: invError }, { data: items, error: itemsError }, settings] = await Promise.all([
+    supabaseAdmin
+      .from("invoices")
+      .select(
+        "id, invoice_number, invoice_date, invoice_type, party_name, party_address, party_gstin, vehicle_no, mobile, km_reading, subtotal, discount, round_off, total_amount, drive_file_id"
+      )
+      .eq("id", invoiceId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("invoice_items")
+      .select("sl_no, item_name, quantity, unit, rate, gst_percent, amount")
+      .eq("invoice_id", invoiceId)
+      .order("sl_no"),
+    readPumpSettings(),
+  ]);
+  if (invError) throw new Error(invError.message);
+  if (itemsError) throw new Error(itemsError.message);
+  if (!invoice) throw new Error("Invoice not found");
+  if (!settings.settingsEnabled || !settings.rootFolderId) {
+    return jsonResponse({ ok: true, skipped: true, reason: "drive_disabled" });
+  }
+  if (invoice.drive_file_id) {
+    return jsonResponse({ ok: true, skipped: true, file: { id: invoiceId, drive_file_id: invoice.drive_file_id } });
+  }
+
+  const invoiceDate = String(invoice.invoice_date || "").slice(0, 10);
+  const parsed = parseIsoDate(invoiceDate);
+  if (!parsed) return jsonResponse({ error: "invoice date is invalid" }, 400);
+
+  const [token, pdfBytes] = await Promise.all([
+    getDriveAccessToken(),
+    buildInvoicePdf(invoice, items || [], settings.station),
+  ]);
+  const folderId = await ensureFolderPath(
+    token,
+    settings.rootFolderId,
+    salesInvoiceFolderSegments(parsed.year, parsed.month)
+  );
+  const fallbackName = `${invoice.invoice_number || "invoice"} - ${invoice.party_name || "Cash"} - ${invoiceDate}.pdf`;
+  const safeName = sanitizeFileName(fallbackName, `${invoiceDate}.pdf`);
+  const { fileId, webViewLink } = await uploadToDrive(token, folderId, safeName, "application/pdf", pdfBytes, {
+    makePublic: false,
+  });
+
+  const { data: claimed, error: updateError } = await supabaseAdmin
+    .from("invoices")
+    .update({
       drive_file_id: fileId,
       drive_folder_id: folderId,
       drive_web_view_link: webViewLink,
       drive_file_name: safeName,
-      mime_type: file.type,
+      updated_at: new Date().toISOString(),
     })
-    .select("id, letter_date, subject, body, export_type, include_sign, created_at, drive_file_id, drive_web_view_link, drive_file_name")
-    .single();
-
-  if (insertError) {
+    .eq("id", invoiceId)
+    .is("drive_file_id", null)
+    .select("drive_file_id")
+    .maybeSingle();
+  if (updateError) {
     await deleteFromDrive(token, fileId).catch(() => {});
-    throw new Error(insertError.message);
+    throw new Error(updateError.message);
+  }
+  if (!claimed) {
+    await deleteFromDrive(token, fileId).catch(() => {});
+    return jsonResponse({ ok: true, skipped: true, file: { id: invoiceId } });
   }
 
-  return jsonResponse({ ok: true, letter: row });
+  return jsonResponse({
+    ok: true,
+    file: {
+      id: invoiceId,
+      kind: "sales_invoice",
+      drive_file_id: fileId,
+      drive_web_view_link: webViewLink,
+      file_name: safeName,
+    },
+  });
+}
+
+async function handleLetterArchive(letterIdRaw: string, _auth: AuthUser) {
+  const letterId = letterIdRaw.trim();
+  if (!letterId) return jsonResponse({ error: "letterId is required" }, 400);
+
+  const [{ data: letter, error: letterError }, settings] = await Promise.all([
+    supabaseAdmin
+      .from("letterhead_letters")
+      .select("id, letter_date, subject, body, include_sign, drive_file_id")
+      .eq("id", letterId)
+      .maybeSingle(),
+    readPumpSettings(),
+  ]);
+  if (letterError) throw new Error(letterError.message);
+  if (!letter) throw new Error("Letter not found");
+  if (!settings.settingsEnabled || !settings.rootFolderId) {
+    return jsonResponse({ ok: true, skipped: true, reason: "drive_disabled" });
+  }
+
+  if (letter.drive_file_id) {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      letter: { id: letterId, drive_file_id: letter.drive_file_id },
+    });
+  }
+
+  if (!String(letter.body || "").trim()) {
+    throw new Error("Letter text is missing");
+  }
+
+  const letterDate = String(letter.letter_date || "").slice(0, 10);
+  const parsed = parseIsoDate(letterDate);
+  if (!parsed) return jsonResponse({ error: "letter date is invalid" }, 400);
+
+  const [token, pdfBytes] = await Promise.all([
+    getDriveAccessToken(),
+    buildLetterPdf(letter, settings.station),
+  ]);
+  const folderId = await ensureFolderPath(
+    token,
+    settings.rootFolderId,
+    letterFolderSegments(parsed.year, parsed.month)
+  );
+  const fallbackName = `${letterDate} - ${letter.subject || "letter"}.pdf`;
+  const safeName = sanitizeFileName(fallbackName, `${letterDate}.pdf`);
+  const { fileId, webViewLink } = await uploadToDrive(token, folderId, safeName, "application/pdf", pdfBytes, {
+    makePublic: false,
+  });
+
+  const { data: claimed, error: updateError } = await supabaseAdmin
+    .from("letterhead_letters")
+    .update({
+      drive_file_id: fileId,
+      drive_folder_id: folderId,
+      drive_web_view_link: webViewLink,
+      drive_file_name: safeName,
+      mime_type: "application/pdf",
+      body: "",
+    })
+    .eq("id", letterId)
+    .is("drive_file_id", null)
+    .select("drive_file_id")
+    .maybeSingle();
+  if (updateError) {
+    await deleteFromDrive(token, fileId).catch(() => {});
+    throw new Error(updateError.message);
+  }
+  if (!claimed) {
+    await deleteFromDrive(token, fileId).catch(() => {});
+    return jsonResponse({ ok: true, skipped: true, letter: { id: letterId } });
+  }
+
+  return jsonResponse({
+    ok: true,
+    letter: {
+      id: letterId,
+      drive_file_id: fileId,
+      drive_web_view_link: webViewLink,
+      drive_file_name: safeName,
+    },
+  });
+}
+
+const STAFF_PHOTO_PDF_NAME = "Photo (letterhead).pdf";
+const STAFF_PHOTO_PDF_ALIASES = ["Photo (letterhead).pdf", "03 Photograph.pdf"];
+
+async function deleteStaffPhotoPdfs(token: string, folderId: string) {
+  for (const name of STAFF_PHOTO_PDF_ALIASES) {
+    await deleteNamedFilesInFolder(token, folderId, name);
+  }
+}
+
+async function archiveStaffPhotoPdf(
+  token: string,
+  folderId: string,
+  station: Awaited<ReturnType<typeof readPumpSettings>>["station"],
+  employeeName: string,
+  imageBytes: Uint8Array,
+  imageMime: string
+) {
+  await deleteStaffPhotoPdfs(token, folderId);
+  if (!canEmbedRaster(imageMime)) return;
+  try {
+    const pdfBytes = await buildStaffAttachmentPdf(
+      {
+        title: "Staff photograph",
+        personName: employeeName,
+        caption: "ID-card photograph on station letterhead.",
+        imageBytes,
+        imageMime,
+      },
+      station
+    );
+    await uploadToDrive(token, folderId, STAFF_PHOTO_PDF_NAME, "application/pdf", pdfBytes, {
+      makePublic: false,
+    });
+  } catch {
+    // Keep the original photo even if the letterhead PDF cannot be built.
+  }
 }
 
 async function handleStaffPhotoUpload(form: FormData, file: File) {
@@ -280,25 +399,23 @@ async function handleStaffPhotoUpload(form: FormData, file: File) {
   }
 
   const employee = await loadEmployee(employeeId);
-  const fileName = `01 Photo.${photoExtension(file.type)}`;
-  const bytesPromise = file.arrayBuffer();
-  const [token, rootFolderId] = await Promise.all([getDriveAccessToken(), getDriveConfig()]);
+  const fileName = `Photo.${photoExtension(file.type)}`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const [token, settings] = await Promise.all([getDriveAccessToken(), readPumpSettings()]);
+  if (!settings.settingsEnabled) throw new Error("Google Drive integration is disabled in Settings.");
+  if (!settings.rootFolderId) throw new Error("Google Drive root folder ID is not configured in Settings.");
   const folderId = await ensureFolderPath(
     token,
-    rootFolderId,
+    settings.rootFolderId,
     staffRecordFolderSegments(staffFolderName(employee.name, employee.id))
   );
   if (employee.photo_drive_file_id) {
     await deleteFromDrive(token, employee.photo_drive_file_id).catch(() => {});
   }
-  const { fileId, webViewLink } = await uploadToDrive(
-    token,
-    folderId,
-    fileName,
-    file.type,
-    new Uint8Array(await bytesPromise),
-    { makePublic: true }
-  );
+  const { fileId, webViewLink } = await uploadToDrive(token, folderId, fileName, file.type, bytes, {
+    makePublic: true,
+  });
+  await archiveStaffPhotoPdf(token, folderId, settings.station, employee.name, bytes, file.type);
   const photoUrl = `${publicDriveImageUrl(fileId)}?v=${Date.now()}`;
 
   const { error: updateError } = await supabaseAdmin
@@ -336,25 +453,44 @@ async function handleStaffAadhaarUpload(form: FormData, file: File) {
   }
 
   const employee = await loadEmployee(employeeId);
-  const fileName = `02 Aadhaar.${aadhaarExtension(file.type, file.name)}`;
-  const bytesPromise = file.arrayBuffer();
-  const [token, rootFolderId] = await Promise.all([getDriveAccessToken(), getDriveConfig()]);
+  const originalBytes = new Uint8Array(await file.arrayBuffer());
+  const [token, settings] = await Promise.all([getDriveAccessToken(), readPumpSettings()]);
+  if (!settings.settingsEnabled) throw new Error("Google Drive integration is disabled in Settings.");
+  if (!settings.rootFolderId) throw new Error("Google Drive root folder ID is not configured in Settings.");
   const folderId = await ensureFolderPath(
     token,
-    rootFolderId,
+    settings.rootFolderId,
     staffRecordFolderSegments(staffFolderName(employee.name, employee.id))
   );
   if (employee.aadhaar_drive_file_id) {
     await deleteFromDrive(token, employee.aadhaar_drive_file_id).catch(() => {});
   }
-  const { fileId } = await uploadToDrive(
-    token,
-    folderId,
-    fileName,
-    file.type,
-    new Uint8Array(await bytesPromise),
-    { makePublic: false }
-  );
+
+  let fileName = `Aadhaar.${aadhaarExtension(file.type, file.name)}`;
+  let mimeType = file.type;
+  let bytes = originalBytes;
+  if (canEmbedRaster(file.type)) {
+    try {
+      bytes = await buildStaffAttachmentPdf(
+        {
+          title: "Aadhaar card",
+          personName: employee.name,
+          imageBytes: originalBytes,
+          imageMime: file.type,
+        },
+        settings.station
+      );
+      mimeType = "application/pdf";
+      fileName = "Aadhaar.pdf";
+    } catch {
+      bytes = originalBytes;
+      mimeType = file.type;
+    }
+  }
+
+  const { fileId } = await uploadToDrive(token, folderId, fileName, mimeType, bytes, {
+    makePublic: false,
+  });
 
   const { error: updateError } = await supabaseAdmin
     .from("employees")
@@ -393,7 +529,7 @@ async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
     if (!data?.drive_file_id) throw new Error("Invoice not found");
     const { bytes, mimeType, fileName } = await downloadFromDrive(token, data.drive_file_id, {
       fileName: data.drive_file_name,
-      mimeType: "application/msword",
+      mimeType: "application/pdf",
     });
     return fileResponse(bytes, mimeType, fileName);
   }
@@ -420,7 +556,7 @@ async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
   const employee = await loadEmployee(employeeId);
   const fileId = kind === "staff_photo" ? employee.photo_drive_file_id : employee.aadhaar_drive_file_id;
   if (!fileId) throw new Error("Document not found");
-  const fallbackName = kind === "staff_photo" ? "01 Photo.jpg" : employee.aadhaar_file_name || "02 Aadhaar.pdf";
+  const fallbackName = kind === "staff_photo" ? "Photo.jpg" : employee.aadhaar_file_name || "Aadhaar.pdf";
   const { bytes, mimeType, fileName } = await downloadFromDrive(token, fileId, { fileName: fallbackName });
   return fileResponse(bytes, mimeType, fileName);
 }
@@ -481,6 +617,17 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
 
   if (kind === "staff_photo") {
     if (token && employee.photo_drive_file_id) await deleteFromDrive(token, employee.photo_drive_file_id);
+    if (token) {
+      const settings = await readPumpSettings().catch(() => null);
+      if (settings?.rootFolderId) {
+        const folderId = await ensureFolderPath(
+          token,
+          settings.rootFolderId,
+          staffRecordFolderSegments(staffFolderName(employee.name, employee.id))
+        ).catch(() => null);
+        if (folderId) await deleteStaffPhotoPdfs(token, folderId);
+      }
+    }
     const { error: updateError } = await supabaseAdmin
       .from("employees")
       .update({ photo_url: null, photo_drive_file_id: null })
@@ -499,11 +646,13 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
 }
 
 function fileResponse(bytes: Uint8Array, mimeType: string, fileName: string) {
+  const safeName = String(fileName || "download").replace(/[\r\n"]/g, "").trim() || "download";
   return new Response(bytes, {
     headers: {
       ...corsHeaders,
       "Content-Type": mimeType || "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${fileName || "download"}"`,
+      "Content-Disposition": `attachment; filename="${safeName}"`,
+      "Access-Control-Expose-Headers": "Content-Disposition, Content-Type",
     },
   });
 }

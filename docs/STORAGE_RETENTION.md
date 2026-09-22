@@ -177,7 +177,10 @@ limit 15;
 | Content | Where |
 |---------|--------|
 | Supplier / purchase PDFs | Google Drive only |
-| Operator / staff photos | Storage buckets; compressed; overwrite, no versioning |
+| Billing cash-memo PDFs | Google Drive only (GST totals/items stay in Postgres) |
+| Official letter PDFs | Google Drive only (`letterhead_letters` = date, subject, Drive ids) |
+| Staff photos / Aadhaar scans | Google Drive (`employees` keeps ids + public photo URL) |
+| Operator avatars | Storage buckets; compressed; overwrite, no versioning |
 | DB backups | Google Drive |
 
 **Never** add `bytea` or “store PDF in table”.

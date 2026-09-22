@@ -14,7 +14,7 @@ export const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 const TOKEN_CACHE_MS = 50 * 60 * 1000;
 const SETTINGS_CACHE_MS = 30 * 1000;
-const FOLDER_CACHE_MS = 10 * 60 * 1000;
+const FOLDER_CACHE_MS = 6 * 60 * 60 * 1000;
 
 interface ServiceAccount {
   client_email: string;
@@ -31,23 +31,63 @@ export interface AuthUser {
   role: string;
 }
 
+export interface StationBranding {
+  displayName: string;
+  brandShort: string;
+  brandAccent: string;
+  legalName: string;
+  tagline: string;
+  address: string;
+  email: string;
+  mobile: string;
+  gstin: string;
+  license: string;
+}
+
 export interface PumpDriveSettings {
   rootFolderId: string | null;
   settingsEnabled: boolean;
+  station: StationBranding;
 }
 
 export type DriveAuthMode = "oauth" | "service_account";
 
 export const DRIVE_TREE = {
-  finance: "01 Finance",
-  correspondence: "02 Correspondence",
-  compliance: "03 Compliance",
-  people: "04 People",
+  billing: "Billing invoices",
+  letters: "Letters",
   purchaseInvoices: "Purchase invoices",
-  salesInvoices: "Sales invoices",
-  officialLetters: "Official letters",
-  staffRecords: "Staff records",
+  staff: "Staff",
+  otherDocuments: "Other documents",
 } as const;
+
+const DEFAULT_STATION: StationBranding = {
+  displayName: "Bishnupriya Fuels",
+  brandShort: "Bishnu Priya",
+  brandAccent: "Fuels",
+  legalName: "BISHNU PRIYA FUELS",
+  tagline: "Authorized Dealer - Bharat Petroleum Corporation Ltd.",
+  address: "",
+  email: "",
+  mobile: "",
+  gstin: "",
+  license: "",
+};
+
+function parseStation(config: Record<string, unknown> | null | undefined): StationBranding {
+  const s = (config?.station || {}) as Partial<StationBranding>;
+  return {
+    displayName: String(s.displayName || DEFAULT_STATION.displayName),
+    brandShort: String(s.brandShort || DEFAULT_STATION.brandShort),
+    brandAccent: String(s.brandAccent || DEFAULT_STATION.brandAccent),
+    legalName: String(s.legalName || DEFAULT_STATION.legalName),
+    tagline: String(s.tagline || DEFAULT_STATION.tagline),
+    address: String(s.address || ""),
+    email: String(s.email || ""),
+    mobile: String(s.mobile || ""),
+    gstin: String(s.gstin || ""),
+    license: String(s.license || ""),
+  };
+}
 
 let tokenCache: { value: string; mode: DriveAuthMode; expiresAt: number } | null = null;
 let settingsCache: (PumpDriveSettings & { expiresAt: number }) | null = null;
@@ -213,7 +253,7 @@ async function createFolder(token: string, parentId: string, name: string): Prom
 }
 
 export function monthFolderName(year: number, month: number): string {
-  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", { month: "long" });
+  return `${year}-${String(month).padStart(2, "0")}`;
 }
 
 export async function ensureChildFolder(token: string, parentId: string, name: string): Promise<string> {
@@ -222,20 +262,48 @@ export async function ensureChildFolder(token: string, parentId: string, name: s
   return folderId;
 }
 
-export async function ensureFolderPath(token: string, rootFolderId: string, segments: string[]): Promise<string> {
-  const cacheKey = `${rootFolderId}:${segments.join("/")}`;
+async function readCachedFolderId(cacheKey: string): Promise<string | null> {
   const now = Date.now();
-  const cached = folderCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) return cached.id;
+  const mem = folderCache.get(cacheKey);
+  if (mem && mem.expiresAt > now) return mem.id;
+  const { data, error } = await supabaseAdmin
+    .from("drive_folder_cache")
+    .select("folder_id")
+    .eq("cache_key", cacheKey)
+    .maybeSingle();
+  if (error || !data?.folder_id) return null;
+  folderCache.set(cacheKey, { id: data.folder_id, expiresAt: now + FOLDER_CACHE_MS });
+  return data.folder_id;
+}
+
+async function writeCachedFolderId(cacheKey: string, folderId: string): Promise<void> {
+  folderCache.set(cacheKey, { id: folderId, expiresAt: Date.now() + FOLDER_CACHE_MS });
+  await supabaseAdmin.from("drive_folder_cache").upsert({
+    cache_key: cacheKey,
+    folder_id: folderId,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function ensureFolderPath(token: string, rootFolderId: string, segments: string[]): Promise<string> {
+  const trimmed = segments.map((name) => String(name || "").trim()).filter(Boolean);
+  const fullKey = `${rootFolderId}:${trimmed.join("/")}`;
+  const hit = await readCachedFolderId(fullKey);
+  if (hit) return hit;
 
   let parentId = rootFolderId;
-  for (const name of segments) {
-    const trimmed = String(name || "").trim();
-    if (!trimmed) continue;
-    parentId = await ensureChildFolder(token, parentId, trimmed);
+  let path = "";
+  for (const name of trimmed) {
+    path = path ? `${path}/${name}` : name;
+    const key = `${rootFolderId}:${path}`;
+    const cached = await readCachedFolderId(key);
+    if (cached) {
+      parentId = cached;
+      continue;
+    }
+    parentId = await ensureChildFolder(token, parentId, name);
+    await writeCachedFolderId(key, parentId);
   }
-
-  folderCache.set(cacheKey, { id: parentId, expiresAt: now + FOLDER_CACHE_MS });
   return parentId;
 }
 
@@ -243,25 +311,25 @@ export function vaultDocumentFolderSegments(
   categoryName: string,
   categoryLabel: string,
   year: number,
-  month: number
+  _month: number
 ): string[] {
   if (categoryName === "purchase") {
-    return [DRIVE_TREE.finance, DRIVE_TREE.purchaseInvoices, String(year), monthFolderName(year, month)];
+    return [DRIVE_TREE.purchaseInvoices, String(year)];
   }
   const label = (categoryLabel || "Other").trim() || "Other";
-  return [DRIVE_TREE.compliance, label, String(year)];
+  return [DRIVE_TREE.otherDocuments, label, String(year)];
 }
 
-export function salesInvoiceFolderSegments(year: number, month: number): string[] {
-  return [DRIVE_TREE.finance, DRIVE_TREE.salesInvoices, String(year), monthFolderName(year, month)];
+export function salesInvoiceFolderSegments(year: number, _month: number): string[] {
+  return [DRIVE_TREE.billing, String(year)];
 }
 
-export function letterFolderSegments(year: number, month: number): string[] {
-  return [DRIVE_TREE.correspondence, DRIVE_TREE.officialLetters, String(year), monthFolderName(year, month)];
+export function letterFolderSegments(year: number, _month: number): string[] {
+  return [DRIVE_TREE.letters, String(year)];
 }
 
 export function staffRecordFolderSegments(staffFolderName: string): string[] {
-  return [DRIVE_TREE.people, DRIVE_TREE.staffRecords, staffFolderName];
+  return [DRIVE_TREE.staff, staffFolderName];
 }
 
 export function staffFolderName(name: string, employeeId: string): string {
@@ -270,8 +338,8 @@ export function staffFolderName(name: string, employeeId: string): string {
     .trim()
     .replace(/\s+/g, " ")
     .slice(0, 80) || "Staff";
-  const short = String(employeeId || "").replace(/-/g, "").slice(0, 8);
-  return short ? `${safe} (${short})` : safe;
+  const short = String(employeeId || "").replace(/-/g, "").slice(0, 4).toUpperCase();
+  return short ? `${safe} · ${short}` : safe;
 }
 
 export function sanitizeFileName(name: string, fallback = "file"): string {
@@ -333,9 +401,13 @@ export async function downloadFromDrive(
   const fileRes = await driveFetch(`/files/${fileId}?alt=media`, token);
   if (!fileRes.ok) throw new Error(`Drive download error: ${await fileRes.text()}`);
 
+  const headerType = (fileRes.headers.get("content-type") || "").split(";")[0].trim();
+  const preferred =
+    fallback?.mimeType && fallback.mimeType !== "application/octet-stream" ? fallback.mimeType : "";
+
   return {
     bytes: new Uint8Array(await fileRes.arrayBuffer()),
-    mimeType: fallback?.mimeType || "application/octet-stream",
+    mimeType: preferred || headerType || "application/octet-stream",
     fileName: fallback?.fileName || "download",
   };
 }
@@ -344,6 +416,25 @@ export async function deleteFromDrive(token: string, fileId: string): Promise<vo
   if (!fileId) return;
   const res = await driveFetch(`/files/${fileId}`, token, { method: "DELETE" });
   if (!res.ok && res.status !== 404) throw new Error(`Drive delete error: ${await res.text()}`);
+}
+
+export async function deleteNamedFilesInFolder(
+  token: string,
+  folderId: string,
+  fileName: string
+): Promise<void> {
+  if (!folderId || !fileName) return;
+  const escaped = fileName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = encodeURIComponent(`name = '${escaped}' and '${folderId}' in parents and trashed = false`);
+  const res = await driveFetch(
+    `/files?q=${q}&fields=files(id)&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    token
+  );
+  if (!res.ok) return;
+  const data = await res.json();
+  for (const file of data.files || []) {
+    if (file?.id) await deleteFromDrive(token, file.id).catch(() => {});
+  }
 }
 
 export function publicDriveImageUrl(fileId: string): string {
@@ -356,17 +447,20 @@ export async function readPumpSettings(): Promise<PumpDriveSettings> {
     return {
       rootFolderId: settingsCache.rootFolderId,
       settingsEnabled: settingsCache.settingsEnabled,
+      station: settingsCache.station,
     };
   }
 
   const { data, error } = await supabaseAdmin.from("pump_settings").select("config").eq("id", 1).maybeSingle();
   if (error) throw new Error(error.message);
 
-  const gd = (data?.config as { integrations?: { googleDrive?: GoogleDriveConfig } })?.integrations?.googleDrive;
+  const config = (data?.config || {}) as Record<string, unknown>;
+  const gd = (config.integrations as { googleDrive?: GoogleDriveConfig } | undefined)?.googleDrive;
   const rootFolderId = gd?.rootFolderId?.trim() || null;
   const settingsEnabled = gd?.enabled === true;
-  settingsCache = { rootFolderId, settingsEnabled, expiresAt: now + SETTINGS_CACHE_MS };
-  return { rootFolderId, settingsEnabled };
+  const station = parseStation(config);
+  settingsCache = { rootFolderId, settingsEnabled, station, expiresAt: now + SETTINGS_CACHE_MS };
+  return { rootFolderId, settingsEnabled, station };
 }
 
 export async function getDriveConfig(): Promise<string> {

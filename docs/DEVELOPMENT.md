@@ -176,7 +176,7 @@ Repeat for **staging** and **prod** Supabase projects.
 | `get-reports-data` | Batched reports page data (DSR, stock, expenses, invoices) |
 | `get-pl-data` | Batched P&amp;L data (DSR + receipt history, expenses, lube sales) |
 | `invoice-documents` | Upload/download/delete supplier invoices in Google Drive |
-| `drive-files` | Sales invoices, letters, staff photos, and Aadhaar cards in Google Drive |
+| `drive-files` | Archive print-style billing/letter PDFs plus staff photos (image + letterhead PDF) and Aadhaar PDFs in Google Drive |
 
 Deploy functions **before or with** frontend merges that depend on them. The client falls back to direct queries if a function is unavailable.
 

@@ -1,8 +1,9 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles */
 
 let productsCache = [];
 let currentAuth = null;
 let printAfterSave = false;
+let invoiceSaveBusy = false;
 
 const PAGE_SIZE = 20;
 let invoicesPagination = { offset: 0, hasMore: true, totalCount: 0, isLoading: false };
@@ -152,64 +153,6 @@ function refreshBillingDriveBanner() {
   banner.textContent = `Google Drive is not fully configured. Invoices still save for GST reports. ${hint}`;
 }
 
-async function logoAsPngDataUrl() {
-  const src =
-    (typeof PrintUtils !== "undefined" && PrintUtils.getStationLogoPrintUrl
-      ? PrintUtils.getStationLogoPrintUrl()
-      : null) || "assets/logo-print.webp";
-  try {
-    const url = PrintUtils.resolveAssetUrl(src);
-    const img = await new Promise((resolve, reject) => {
-      const el = new Image();
-      el.decoding = "async";
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("logo load failed"));
-      el.src = url;
-    });
-    const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth || img.width || 128;
-    canvas.height = img.naturalHeight || img.height || 128;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return "";
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/png");
-  } catch {
-    return "";
-  }
-}
-
-async function buildInvoiceArchiveFile(invoice) {
-  const printRoot = document.getElementById("print-invoice");
-  const cssText = await PrintUtils.resolveCssHrefWithImports("css/invoice-print.css?v=3");
-  const logo = await logoAsPngDataUrl();
-  let inner = PrintUtils.applyPrintLogos(printRoot.innerHTML);
-  if (logo) {
-    inner = inner.replace(
-      /(<img[^>]*class="[^"]*invoice-bpcl-logo[^"]*"[^>]*src=")[^"]*"/i,
-      `$1${logo}"`
-    );
-    inner = inner.replace(
-      /(src=")[^"]*("[^>]*class="[^"]*invoice-bpcl-logo)/i,
-      `$1${logo}$2`
-    );
-  }
-  const title = `${invoice.invoice_number} — ${invoice.party_name || "Cash A/c"}`;
-  const html = `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>${cssText}</style>
-</head>
-<body>
-  <div class="print-invoice-container">${inner}</div>
-</body>
-</html>`;
-  const blob = new Blob(["\ufeff", html], { type: "application/msword" });
-  const fileName = `${PrintUtils.buildPrintFilename("tax-invoice", invoice.invoice_number, invoice.invoice_date)}.doc`;
-  return new File([blob], fileName, { type: "application/msword" });
-}
-
 async function loadInvoiceWithItems(invoiceId) {
   const { data: invoice, error } = await window.supabaseClient
     .from("invoices")
@@ -228,26 +171,6 @@ async function loadInvoiceWithItems(invoiceId) {
     .order("sl_no");
 
   return { invoice, items: items || [] };
-}
-
-async function archiveSavedInvoice(invoiceId) {
-  if (typeof DriveFiles === "undefined") throw new Error("Google Drive helper is not loaded.");
-  const loaded = await loadInvoiceWithItems(invoiceId);
-  if (!loaded) throw new Error("Could not load invoice for Drive archive.");
-  populatePrintInvoice(loaded.invoice, loaded.items);
-  const file = await buildInvoiceArchiveFile(loaded.invoice);
-  await DriveFiles.upload({
-    kind: "sales_invoice",
-    file,
-    fields: {
-      invoiceId: loaded.invoice.id,
-      invoiceDate: loaded.invoice.invoice_date,
-      invoiceNumber: loaded.invoice.invoice_number,
-      partyName: loaded.invoice.party_name,
-      fileName: file.name,
-    },
-  });
-  return { ok: true, invoice: loaded.invoice, items: loaded.items };
 }
 
 async function populatePartyDatalist() {
@@ -506,6 +429,8 @@ function initFormHandlers() {
 }
 
 async function saveInvoice() {
+  if (invoiceSaveBusy) return;
+  invoiceSaveBusy = true;
   const successEl = document.getElementById("invoice-success");
   const errorEl = document.getElementById("invoice-error");
   const saveBtn = document.getElementById("save-invoice-btn");
@@ -520,6 +445,7 @@ async function saveInvoice() {
   if (!items.length) {
     if (errorEl) { errorEl.textContent = "Add at least one item."; errorEl.classList.remove("hidden"); }
     resetSaveButtons();
+    invoiceSaveBusy = false;
     return;
   }
 
@@ -527,6 +453,7 @@ async function saveInvoice() {
   if (invalidItem) {
     if (errorEl) { errorEl.textContent = "Each item needs a name and a rate > 0."; errorEl.classList.remove("hidden"); }
     resetSaveButtons();
+    invoiceSaveBusy = false;
     return;
   }
 
@@ -536,45 +463,65 @@ async function saveInvoice() {
   if (!invoiceDate) {
     if (errorEl) { errorEl.textContent = "Date is required."; errorEl.classList.remove("hidden"); }
     resetSaveButtons();
+    invoiceSaveBusy = false;
     return;
   }
 
-  showProgress();
+  const driveConfigured = DriveFiles?.localSettings?.()?.enabled && DriveFiles?.localSettings?.()?.rootFolderId;
+  const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
 
   try {
-    const { data, error } = await window.supabaseClient.rpc("save_invoice", {
-      p_invoice_date: invoiceDate,
-      p_invoice_type: document.getElementById("invoice-type")?.value || "CASH",
-      p_party_name: partyName,
-      p_party_address: document.getElementById("party-address")?.value?.trim() || null,
-      p_party_gstin: document.getElementById("party-gstin")?.value?.trim() || null,
-      p_vehicle_no: document.getElementById("vehicle-no")?.value?.trim() || null,
-      p_mobile: document.getElementById("mobile")?.value?.trim() || null,
-      p_km_reading: document.getElementById("km-reading")?.value?.trim() || null,
-      p_discount: parseFloat(document.getElementById("discount")?.value) || 0,
-      p_notes: document.getElementById("notes")?.value?.trim() || null,
-      p_items: items,
-    });
+    const data = await (progress
+      ? progress.run(
+          {
+            title: "Saving invoice",
+            status: "Saving invoice…",
+            steps: driveConfigured ? 2 : 1,
+            doneStatus: "Invoice saved",
+          },
+          async (p) => {
+            p.setStep(0, "Saving invoice…");
+            const result = await window.supabaseClient.rpc("save_invoice", {
+              p_invoice_date: invoiceDate,
+              p_invoice_type: document.getElementById("invoice-type")?.value || "CASH",
+              p_party_name: partyName,
+              p_party_address: document.getElementById("party-address")?.value?.trim() || null,
+              p_party_gstin: document.getElementById("party-gstin")?.value?.trim() || null,
+              p_vehicle_no: document.getElementById("vehicle-no")?.value?.trim() || null,
+              p_mobile: document.getElementById("mobile")?.value?.trim() || null,
+              p_km_reading: document.getElementById("km-reading")?.value?.trim() || null,
+              p_discount: parseFloat(document.getElementById("discount")?.value) || 0,
+              p_notes: document.getElementById("notes")?.value?.trim() || null,
+              p_items: items,
+            });
+            if (result.error) throw result.error;
+            if (driveConfigured && result.data?.id && DriveFiles?.waitUntilArchived) {
+              p.setStep(1, "Filing PDF to Google Drive…");
+              await DriveFiles.waitUntilArchived({ table: "invoices", id: result.data.id });
+            }
+            return result.data;
+          }
+        )
+      : (async () => {
+          const result = await window.supabaseClient.rpc("save_invoice", {
+            p_invoice_date: invoiceDate,
+            p_invoice_type: document.getElementById("invoice-type")?.value || "CASH",
+            p_party_name: partyName,
+            p_party_address: document.getElementById("party-address")?.value?.trim() || null,
+            p_vehicle_no: document.getElementById("vehicle-no")?.value?.trim() || null,
+            p_mobile: document.getElementById("mobile")?.value?.trim() || null,
+            p_km_reading: document.getElementById("km-reading")?.value?.trim() || null,
+            p_discount: parseFloat(document.getElementById("discount")?.value) || 0,
+            p_notes: document.getElementById("notes")?.value?.trim() || null,
+            p_items: items,
+          });
+          if (result.error) throw result.error;
+          return result.data;
+        })());
 
-    if (error) {
-      AppError.handle(error, { target: errorEl });
-      resetSaveButtons();
-      hideProgress();
-      return;
-    }
-
-    let driveNote = "";
-    let loadedForPrint = null;
-    try {
-      const archived = await archiveSavedInvoice(data.id);
-      loadedForPrint = { invoice: archived.invoice, items: archived.items };
-      driveNote = " Archived to Google Drive.";
-    } catch (driveErr) {
-      AppError.report(driveErr, { context: "archiveSavedInvoice" });
-      driveNote = DriveFiles?.isNotConfiguredError?.(driveErr)
-        ? " Google Drive is not configured — invoice is still in billing history."
-        : " Could not archive the invoice file to Google Drive.";
-    }
+    const driveNote = driveConfigured
+      ? " PDF filed to Google Drive."
+      : " Google Drive is not configured — invoice is still in billing history.";
 
     if (successEl) {
       successEl.textContent = `Invoice ${data.invoice_number} saved. Total: ${formatCurrency(data.total_amount)}.${driveNote}`;
@@ -582,12 +529,7 @@ async function saveInvoice() {
     }
 
     if (printAfterSave) {
-      if (loadedForPrint?.invoice) {
-        populatePrintInvoice(loadedForPrint.invoice, loadedForPrint.items || []);
-        await runInvoicePrint(loadedForPrint.invoice.invoice_number);
-      } else {
-        await showPrintInvoice(data.id);
-      }
+      await showPrintInvoice(data.id);
     }
 
     resetForm();
@@ -599,6 +541,7 @@ async function saveInvoice() {
   } catch (err) {
     AppError.handle(err, { target: errorEl });
   } finally {
+    invoiceSaveBusy = false;
     resetSaveButtons();
     hideProgress();
   }
