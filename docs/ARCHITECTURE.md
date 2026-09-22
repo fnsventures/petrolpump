@@ -174,7 +174,9 @@ supabase/
     ├── get-dashboard-data/   # Edge: batched dashboard DSR summary payload
     ├── get-reports-data/     # Edge: batched reports page data
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
-    └── invoice-documents/    # Edge: supplier invoices ↔ Google Drive
+    ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
+    ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
+    └── _shared/googleDrive.ts
 ```
 
 ### 3.6 Documentation
@@ -268,7 +270,7 @@ docs/
 | `reports.html` | `reports.js` | Printable DSR, GST, trading account, P&amp;L (admin) |
 | `settings.html` | `settings.js` | Station, billing, pumps, users, salaries, shifts, alerts, categories, integrations |
 
-**Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
+**Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Created **billing invoices**, **letters**, **staff photos**, and **Aadhaar cards** use `drive-files`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
 
 **Dashboard sections** (side nav via `pageSections.js`): `snapshot` (all roles, loads on init), `dsr` summary (loaded when section opened), `pl` (**admin only** — loaded when section opened via `get-pl-data` edge function with client fallback), `notifications` (alerts). Aside rail **At a glance** shows MS/HSD selling rates and animated tank fill % from `pump_settings.config.pumps` capacities.
 
@@ -324,7 +326,7 @@ docs/
 | Bucket | Purpose | Upload policy |
 |--------|---------|---------------|
 | `user-avatars` | Operator profile photos (`users.avatar_url`) | Authenticated user writes to own folder (`my_avatar_storage_folder()`) |
-| `staff-photos` | Employee ID card photos (`employees.photo_url`) | Admin only; RPC `set_employee_photo` updates DB after upload |
+| `staff-photos` | Legacy employee ID photos (`employees.photo_url`) | New uploads go to Google Drive via `drive-files`; old files may remain |
 
 Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `20260528500000_employee_photo.sql`.
 
@@ -336,6 +338,7 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `get-reports-data` | Batched reports page payload | GitHub Actions or Supabase CLI |
 | `get-pl-data` | Batched P&amp;L (DSR + receipt history, expenses, lube sales) | GitHub Actions or Supabase CLI |
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
+| `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
 
 Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`. Requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` per environment. See [Development guide §2.5](DEVELOPMENT.md#25-edge-functions).
 

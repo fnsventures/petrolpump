@@ -1,15 +1,18 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete */
+/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css?v=4";
   const PAGE_SIZE = 20;
   const HISTORY_COLSPAN = 5;
-  const LETTER_SELECT = "id, letter_date, subject, body, export_type, include_sign, created_at";
+  const LETTER_LIST_SELECT =
+    "id, letter_date, subject, export_type, include_sign, created_at, drive_file_id, drive_web_view_link, drive_file_name";
+  const LETTER_DETAIL_SELECT = `${LETTER_LIST_SELECT}, body`;
 
   let currentAuth = null;
   let letterheadPrintBusy = false;
   let letterheadPrintCssCache = null;
   let historyReportLetter = null;
+  let historyPdfObjectUrl = null;
   let reportSeq = 0;
   let historyPagination = {
     offset: 0,
@@ -196,6 +199,26 @@
     setStatus("letterhead-success", msg);
   }
 
+  function refreshLetterheadDriveBanner() {
+    const banner = document.getElementById("letterhead-drive-banner");
+    if (!banner || typeof DriveFiles === "undefined") return;
+    const local = DriveFiles.localSettings();
+    if (local.enabled && local.rootFolderId) {
+      banner.classList.add("hidden");
+      banner.hidden = true;
+      banner.textContent = "";
+      return;
+    }
+    const hint =
+      currentAuth?.role === "admin"
+        ? "Enable it in Settings → Integrations so created letters are archived to Drive."
+        : "Ask an admin to enable Google Drive in Settings.";
+    banner.className = "smart-alert smart-alert--warning";
+    banner.hidden = false;
+    banner.classList.remove("hidden");
+    banner.textContent = `Google Drive is not fully configured. Letters can still save in history. ${hint}`;
+  }
+
   function clearMessages() {
     showError("");
     showSuccess("");
@@ -216,14 +239,12 @@
     return "Print";
   }
 
-  async function saveLetterHistory(values, exportType) {
-    if (!hasLetterContent(values)) return { ok: true, skipped: true };
-
+  async function saveLetterHistoryToDatabase(values, exportType) {
     const payload = {
       letter_date:
         values.date ||
         (typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10)),
-      subject: values.subject || "",
+      subject: (values.subject || "").trim() || previewSnippet(values.body, 80).replace(/^—$/, "") || "Letter",
       body: values.body || "",
       export_type: exportType === "word" ? "word" : exportType === "save" ? "save" : "print",
       include_sign: Boolean(values.includeSign),
@@ -232,12 +253,27 @@
       payload.created_by = currentAuth.session.user.id;
     }
 
-    const { error } = await window.supabaseClient.from("letterhead_letters").insert(payload);
+    const { data, error } = await window.supabaseClient
+      .from("letterhead_letters")
+      .insert(payload)
+      .select(LETTER_DETAIL_SELECT)
+      .single();
     if (error) {
       AppError?.report?.(error, { context: "letterheadSaveHistory" });
       return { ok: false, error };
     }
-    return { ok: true };
+    return { ok: true, letter: data };
+  }
+
+  function driveConfiguredLocally() {
+    const local = typeof DriveFiles !== "undefined" ? DriveFiles.localSettings?.() : null;
+    return Boolean(local?.enabled && local?.rootFolderId);
+  }
+
+  async function saveLetterHistory(values, exportType) {
+    if (!hasLetterContent(values)) return { ok: true, skipped: true };
+    const saved = await saveLetterHistoryToDatabase(values, exportType);
+    return saved;
   }
 
   async function saveLetterOnly() {
@@ -256,13 +292,40 @@
     }
 
     try {
-      const saved = await saveLetterHistory(values, "save");
-      if (!saved.ok) {
-        showError(AppError?.getUserMessage?.(saved.error) || "Could not save the letter. Try again.");
+      const saved = await (typeof ActionProgress !== "undefined"
+        ? ActionProgress.run(
+            {
+              title: "Saving letter",
+              status: "Saving letter…",
+              steps: driveConfiguredLocally() ? 2 : 1,
+              doneStatus: "Letter saved",
+            },
+            async (p) => {
+              p.setStep(0, "Saving letter…");
+              const result = await saveLetterHistory(values, "save");
+              if (!result.ok) {
+                throw result.error || new Error("Could not save the letter.");
+              }
+              if (driveConfiguredLocally() && result.letter?.id && DriveFiles?.waitUntilArchived) {
+                p.setStep(1, "Filing PDF to Google Drive…");
+                await DriveFiles.waitUntilArchived({ table: "letterhead_letters", id: result.letter.id });
+              }
+              return result;
+            }
+          )
+        : saveLetterHistory(values, "save"));
+      if (!saved?.ok) {
+        showError(AppError?.getUserMessage?.(saved?.error) || "Could not save the letter. Try again.");
         return;
       }
-      showSuccess("Letter saved. Open Letter history to view it.");
+      showSuccess(
+        driveConfiguredLocally()
+          ? "Letter saved. PDF filed to Google Drive."
+          : "Letter saved. Open Letter history to view it."
+      );
       if (location.hash === "#history") loadHistory(true);
+    } catch (err) {
+      showError(AppError?.getUserMessage?.(err) || "Could not save the letter. Try again.");
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -318,7 +381,9 @@
       if (useContent && saveHistory) {
         const saved = await saveLetterHistory(values, "print");
         if (saved.ok && !saved.skipped) {
-          historyNote = " Saved to letter history.";
+          historyNote = driveConfiguredLocally()
+            ? " Saved. PDF is being archived to Google Drive."
+            : " Saved to history.";
           if (location.hash === "#history") loadHistory(true);
         } else if (!saved.ok) {
           historyNote = " (Could not save to history — print still opened.)";
@@ -448,6 +513,24 @@
 </html>`;
   }
 
+  async function buildLetterDocFile(values) {
+    const logoSrc = await logoAsPngDataUrl();
+    const html = buildWordHtml({
+      date: values.date,
+      subject: values.subject,
+      body: values.body,
+      logoSrc,
+      includeSign: hasLetterContent(values) && values.includeSign,
+    });
+    const blob = new Blob(["\ufeff", html], { type: "application/msword" });
+    const name = PrintUtils.buildPrintFilename(
+      "letterhead",
+      values.subject || "letter",
+      values.date
+    );
+    return new File([blob], `${name}.doc`, { type: "application/msword" });
+  }
+
   function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -478,27 +561,21 @@
     });
 
     try {
-      const logoSrc = await logoAsPngDataUrl();
-      const html = buildWordHtml({
+      const file = await buildLetterDocFile({
         date: useContent ? values.date : "",
         subject: useContent ? values.subject : "",
         body: useContent ? values.body : "",
-        logoSrc,
         includeSign: useContent && hasLetterContent(values) && values.includeSign,
       });
-      const blob = new Blob(["\ufeff", html], {
-        type: "application/msword",
-      });
-      const name = useContent
-        ? PrintUtils.buildPrintFilename("letterhead", values.subject || "letter", values.date)
-        : PrintUtils.buildPrintFilename("letterhead", "blank");
-      downloadBlob(`${name}.doc`, blob);
+      downloadBlob(file.name, file);
 
       let historyNote = "";
       if (useContent) {
         const saved = await saveLetterHistory(values, "word");
         if (saved.ok && !saved.skipped) {
-          historyNote = " Saved to letter history.";
+          historyNote = driveConfiguredLocally()
+            ? " Saved. PDF is being archived to Google Drive."
+            : " Saved to history.";
           if (location.hash === "#history") loadHistory(true);
         } else if (!saved.ok) {
           historyNote = " (Could not save to history — file still downloaded.)";
@@ -592,6 +669,10 @@
   function closeHistoryReport() {
     reportSeq += 1;
     historyReportLetter = null;
+    if (historyPdfObjectUrl) {
+      URL.revokeObjectURL(historyPdfObjectUrl);
+      historyPdfObjectUrl = null;
+    }
     setHistoryReportError("");
     const reportView = document.getElementById("letterhead-report-view");
     const sheetPreview = document.getElementById("letterhead-sheet-preview");
@@ -609,7 +690,46 @@
     if (historyHead) historyHead.classList.remove("hidden");
   }
 
-  function showHistoryReport(row) {
+  function letterHasBody(row) {
+    return Boolean(String(row?.body || "").trim());
+  }
+
+  async function renderLetterPreview(row, sheetPreview) {
+    if (historyPdfObjectUrl) {
+      URL.revokeObjectURL(historyPdfObjectUrl);
+      historyPdfObjectUrl = null;
+    }
+    if (!sheetPreview) return;
+    if (row.drive_file_id && typeof DriveFiles !== "undefined") {
+      try {
+        const { blob } = await DriveFiles.download({ kind: "letter", id: row.id });
+        historyPdfObjectUrl = URL.createObjectURL(blob);
+        const driveHref = row.drive_web_view_link
+          ? `<p class="muted"><a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Open in Google Drive</a></p>`
+          : "";
+        sheetPreview.innerHTML = `${driveHref}<iframe class="letterhead-pdf-frame" title="Letter PDF" src="${historyPdfObjectUrl}"></iframe>`;
+        return;
+      } catch (err) {
+        AppError?.report?.(err, { context: "letterheadPreviewPdf" });
+      }
+    }
+    const values = valuesFromLetterRow(row);
+    if (letterHasBody(row)) {
+      sheetPreview.innerHTML = `<div class="letterhead-preview-sheet">${buildSheetHtml({
+        ...values,
+        includeSign: hasLetterContent(values) && values.includeSign,
+      })}</div>`;
+      return;
+    }
+    sheetPreview.innerHTML =
+      `<p class="muted">The letter file is stored in Google Drive, not the database.${
+        row.drive_web_view_link
+          ? ` <a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Open PDF</a>`
+          : ""
+      }</p>`;
+  }
+
+  async function showHistoryReport(row) {
     historyReportLetter = row;
     setHistoryReportError("");
     const reportView = document.getElementById("letterhead-report-view");
@@ -617,6 +737,7 @@
     const reportSubtitle = document.getElementById("letterhead-report-subtitle");
     const historyList = document.getElementById("letterhead-history-list");
     const historyHead = document.getElementById("letterhead-history-head");
+    const editBtn = document.getElementById("letterhead-report-edit-btn");
 
     if (historyList) historyList.classList.add("hidden");
     if (historyHead) historyHead.classList.add("hidden");
@@ -624,24 +745,39 @@
       reportView.classList.remove("hidden");
       reportView.setAttribute("aria-hidden", "false");
     }
+    if (editBtn) {
+      editBtn.hidden = Boolean(row.drive_file_id) && !letterHasBody(row);
+    }
 
     const values = valuesFromLetterRow(row);
-    if (sheetPreview) {
-      sheetPreview.innerHTML = `<div class="letterhead-preview-sheet">${buildSheetHtml({
-        ...values,
-        includeSign: hasLetterContent(values) && values.includeSign,
-      })}</div>`;
-    }
     if (reportSubtitle) {
       reportSubtitle.textContent = [
         formatNumericDate(row.letter_date) || row.letter_date,
         row.subject?.trim() || "(No subject)",
         exportTypeLabel(row.export_type),
-        values.includeSign ? "With signature" : "No signature",
+        row.drive_file_id ? "Drive PDF" : values.includeSign ? "With signature" : "No signature",
       ]
         .filter(Boolean)
         .join(" · ");
     }
+    await renderLetterPreview(row, sheetPreview);
+  }
+
+  async function printArchivedLetter(row) {
+    if (row.drive_file_id && typeof DriveFiles !== "undefined") {
+      await DriveFiles.openBlob({ kind: "letter", id: row.id });
+      showSuccess("Opened the Drive PDF. Use the browser print dialog for a paper copy.");
+      return;
+    }
+    if (!letterHasBody(row)) {
+      showError("This letter is stored in Google Drive. Open the Drive link to print it.");
+      return;
+    }
+    await printLetterhead({
+      includeContent: true,
+      saveHistory: false,
+      values: valuesFromLetterRow(row),
+    });
   }
 
   async function openHistoryReport(id) {
@@ -673,7 +809,7 @@
         if (sheetPreview) sheetPreview.innerHTML = "";
         return;
       }
-      showHistoryReport(row);
+      await showHistoryReport(row);
     } catch (err) {
       if (seq !== reportSeq) return;
       AppError.report(err, { context: "letterheadHistoryReport" });
@@ -684,15 +820,15 @@
 
   async function printHistoryReport() {
     if (!historyReportLetter) return;
-    await printLetterhead({
-      includeContent: true,
-      saveHistory: false,
-      values: valuesFromLetterRow(historyReportLetter),
-    });
+    await printArchivedLetter(historyReportLetter);
   }
 
   function editHistoryReportInCompose() {
     if (!historyReportLetter) return;
+    if (!letterHasBody(historyReportLetter)) {
+      showError("Letter text is not kept in the database. Open the Drive PDF, or compose a new letter.");
+      return;
+    }
     setComposeValues(valuesFromLetterRow(historyReportLetter));
     closeHistoryReport();
     location.hash = "#compose";
@@ -733,7 +869,7 @@
 
       let listQuery = window.supabaseClient
         .from("letterhead_letters")
-        .select(LETTER_SELECT)
+        .select(LETTER_LIST_SELECT)
         .order("created_at", { ascending: false })
         .range(historyPagination.offset, historyPagination.offset + PAGE_SIZE - 1);
       if (start) listQuery = listQuery.gte("letter_date", start);
@@ -776,18 +912,23 @@
             })}`
           : "";
 
+        const driveLink = row.drive_web_view_link
+          ? ` <a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Drive</a>`
+          : "";
+
         tr.innerHTML = `
           <td>${formatNumericDate(row.letter_date)}</td>
           <td><strong>${escapeHtml(subjectLabel)}</strong></td>
-          <td class="letterhead-history-preview">${escapeHtml(previewSnippet(row.body || row.subject))}</td>
+          <td class="letterhead-history-preview">${escapeHtml(
+            row.drive_file_name || (row.drive_file_id ? "Drive PDF" : previewSnippet(row.subject))
+          )}</td>
           <td>${escapeHtml(exportTypeLabel(row.export_type))}</td>
           <td class="table-actions">
             <button type="button" class="link" data-view-letter="${row.id}">View</button>
-            <button type="button" class="link" data-print-letter="${row.id}">Print</button>${deleteBtn}
+            <button type="button" class="link" data-print-letter="${row.id}">Print</button>${driveLink}${deleteBtn}
           </td>
         `;
         tr.dataset.letterId = row.id;
-        tr._letterRow = row;
         tbody.appendChild(tr);
       });
 
@@ -817,20 +958,10 @@
     }
   }
 
-  function findLoadedLetter(id) {
-    const tbody = document.getElementById("letterhead-history-body");
-    if (!tbody) return null;
-    const tr = [...tbody.querySelectorAll("tr")].find((row) => row.dataset.letterId === id);
-    return tr?._letterRow || null;
-  }
-
   async function fetchLetterById(id) {
-    const cached = findLoadedLetter(id);
-    if (cached) return cached;
-
     const { data, error } = await window.supabaseClient
       .from("letterhead_letters")
-      .select(LETTER_SELECT)
+      .select(LETTER_DETAIL_SELECT)
       .eq("id", id)
       .maybeSingle();
 
@@ -860,11 +991,7 @@
       showError("Could not load that letter to print.");
       return;
     }
-    await printLetterhead({
-      includeContent: true,
-      saveHistory: false,
-      values: valuesFromLetterRow(row),
-    });
+    await printArchivedLetter(row);
   }
 
   async function deleteLetter(btn) {
@@ -877,7 +1004,15 @@
       auth: currentAuth,
       actionLabel: "delete letterhead history",
       confirmMessage: `Delete letter “${subject}” dated ${formatNumericDate(letterDate)}?\n\nThis cannot be undone.`,
-      deleteFn: () => window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId),
+      deleteFn: async () => {
+        try {
+          await DriveFiles.remove({ kind: "letter", id: letterId });
+          return { error: null };
+        } catch (err) {
+          AppError?.report?.(err, { context: "letterheadDeleteDrive", letterId });
+          return window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId);
+        }
+      },
       cacheScope: "operational",
       onSuccess: () => {
         if (historyReportLetter?.id === letterId) closeHistoryReport();
@@ -960,6 +1095,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     await loadPumpSettings();
+    refreshLetterheadDriveBanner();
     bindUi();
     initHistoryFilters();
     refreshPreview();

@@ -13,11 +13,12 @@ This document describes the main **user and data flows** in the Petrol Pump appl
 | Daily operations | §2 | meter-reading → credit → expenses → day-closing (+ night-cash collection) |
 | Credit ledger | §3 | credit_customers (amount_due + prepaid_balance), entries, payments |
 | DSR & stock | §4 | dsr_petrol, dsr_diesel, dsr_stock view |
-| Billing | §5 | products, invoices, save_invoice |
+| Billing | §5 | products, invoices, save_invoice, Google Drive archive |
 | Invoice documents | §5b | invoice_documents, invoice-documents edge function, Google Drive |
+| Letter Desk | §5c | letterhead_letters, drive-files, Google Drive |
 | Reports | §6 | reports.html (admin); DSR, GST, trading/P&amp;L catalog |
 | Analysis | §6b | analysis.html (admin); KPIs, charts, insights |
-| HR | §7 | staff.html, employees, attendance, salary, expense linkage |
+| HR | §7 | staff.html, employees, attendance, salary, Google Drive staff files |
 | Admin & config | §8 | pump_settings, settings, audit_log |
 
 ---
@@ -202,7 +203,10 @@ Create invoice (billing.html)
    → Line items with GST slabs (from AppConfig.GST_SLABS)
    → save_invoice(date, type, party, …, items jsonb)
    → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
-   → Print layout: css/invoice-print.css
+   → Save returns immediately after the save overlay finishes (DB + Drive PDF)
+      (Billing invoices / 2026)
+   → Drive PDF uses the same letterhead, tax summary, and payment layout as print
+      (css/invoice-print.css)
 
 Reports
    → GST sales summary/detail reads invoices when billing.includeInGstReports is true
@@ -223,7 +227,7 @@ Admin one-time setup (Settings → Integrations + Supabase secrets + edge functi
 
 Upload (invoices.html → Upload tab)
    → multipart POST to edge function invoice-documents
-   → file → Google Drive (purchase: Root/YYYY/Purchase invoices/Month; other: Root/YYYY); metadata → invoice_documents
+   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/{type}/Year); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
    → SELECT invoice_documents (this year / last year / all time)
@@ -233,6 +237,26 @@ Library (invoices.html → Library tab)
 **Roles:** Admin and supervisor can upload, list, view, download. **Delete** (Drive file + DB row) is **admin only**.
 
 **Setup guide:** [Invoice documents](INVOICE_DOCUMENTS.md).
+
+---
+
+## 5c. Letter Desk (letterhead.html)
+
+```
+Compose (letterhead.html)
+   → Save (DB metadata first) / Print letter / Download Word (local only)
+   → A DB trigger queues a Drive PDF archive, then letter body is cleared
+      (Letters / 2026)
+   → Drive PDF uses the same station letterhead as print (css/letterhead-print.css)
+   → letterhead_letters stores date, subject, Drive file ID (not the letter text)
+
+History
+   → View / Print from saved body
+   → Drive link opens the archived file
+   → Admin delete removes Drive file + history row
+```
+
+Blank stationery is not stored.
 
 ---
 
@@ -295,9 +319,11 @@ Staff (staff.html) — admin + supervisor (inactive toggle: admin only)
    → requireAuth({ pageName: 'staff', allowedRoles: ['admin', 'supervisor'] })
    → Roster sidebar + profile panel
    → CRUD on employees table (direct Supabase client)
-   → Fields: name, job title, DOB, ID validity dates, photo, blood group,
-             phone, Aadhaar, PAN, PF/UAN, address
-   → Photo upload → staff-photos bucket → set_employee_photo RPC
+   → Fields: name, job title, DOB, ID validity dates, photo, Aadhaar card scan, blood group,
+             phone, Aadhaar number, PAN, PF/UAN, address
+   → Photo + Aadhaar upload → Google Drive (Staff / {Name}) via drive-files
+   → Photo: original image (public, for ID cards) plus a letterhead PDF copy
+   → Aadhaar: JPEG/PNG scans filed as a letterhead PDF; native PDFs stored as-is
    → BPCL-style ID card preview + print (requires photo, blood group, DOB)
    → PF contribution amount edited in Settings → Staff salaries (not on staff form)
    → Deep link: staff.html#{employee_uuid}
@@ -353,7 +379,7 @@ Side nav sections (hash routing via `pageSections.js`):
 | `attendance` | Morning/afternoon shift names and times |
 | `alerts` | Dashboard notification toggles & thresholds (stock, credit, day-closing, night cash, readings, aging, payroll, attendance, expense ratio, invoices) |
 | `expenses` | Expense category add/delete |
-| `integrations` | Google Drive enable + root folder ID (see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md)) |
+| `integrations` | Google Drive enable + root folder ID (billing, letters, staff files, vault documents) |
 | `access` | Read-only list of provisioned `users` |
 
 Persists to `pump_settings.config` (and direct table writes for `users`, `employees`, `expense_categories`, `products`).
@@ -381,11 +407,12 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman) |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
-| Billing | products, invoices, save_invoice |
+| Billing | products, invoices, save_invoice, drive-files (sales invoice archive) |
 | Invoice documents | invoice_documents, edge function invoice-documents, pump_settings.integrations.googleDrive |
+| Letter Desk | letterhead_letters, drive-files |
 | Expenses | expenses, expense_categories |
 | Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, set_day_closing_certified, collect_night_cash, delete_day_closing |
-| Staff | employees, set_employee_photo, staff-photos bucket (admin) |
+| Staff | employees, drive-files (photo + Aadhaar), set_employee_photo |
 | Attendance | employee_attendance, list_employees_roster, save_employee_attendance_batch |
 | Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees |
 | Reports | dsr_*, invoices, expenses, pump_settings (admin) |

@@ -1,6 +1,6 @@
 {
-  "version": "17",
-  "swCacheVersion": "v189",
+    "version": "18",
+    "swCacheVersion": "v190",
   "shared": [
     "js/roleBootstrap.js",
     "js/appNav.js",

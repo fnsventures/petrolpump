@@ -35,7 +35,7 @@ jobs:
             echo "SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF must be set in the GitHub environment." >&2
             exit 1
           fi
-          for fn in get-dashboard-data get-reports-data get-pl-data invoice-documents; do
+          for fn in get-dashboard-data get-reports-data get-pl-data invoice-documents drive-files; do
             if [ -d "supabase/functions/${fn}" ]; then
               echo "Deploying ${fn}…"
               supabase functions deploy "${fn}" --project-ref "${SUPABASE_PROJECT_REF}"
