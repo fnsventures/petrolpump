@@ -27,6 +27,7 @@
       </nav>
 
       <div class="settings-panels staff-main">
+        <p id="staff-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
         <section id="staff-empty-state" class="settings-panel card staff-empty-state is-visible">
           <div class="card-head snapshot-head">
             <div>
@@ -78,9 +79,10 @@
                     <img id="emp-photo-img" class="hidden" alt="" />
                   </div>
                   <div class="emp-photo-actions">
-                    <input id="emp-photo-file" type="file" accept="image/jpeg,image/png,image/webp" />
+                    <input id="emp-photo-file" class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" />
+                    <label class="button-secondary" for="emp-photo-file">Choose photo</label>
                     <button type="button" id="emp-photo-clear" class="button-secondary hidden">Remove photo</button>
-                    <small class="muted">Passport-style, JPG/PNG/WebP, max 2 MB.</small>
+                    <small class="muted">Passport-style, JPG/PNG/WebP, max 2 MB. Stored in Google Drive.</small>
                   </div>
                 </div>
               </div>
@@ -105,6 +107,18 @@
               <div class="form-field">
                 <label for="emp-aadhar">Aadhaar</label>
                 <input id="emp-aadhar" type="text" inputmode="numeric" maxlength="12" pattern="[0-9]{12}" placeholder="12 digits" />
+              </div>
+              <div class="form-field form-field-full">
+                <label>Aadhaar card <span class="optional-label">(scan / photo)</span></label>
+                <div class="emp-aadhaar-field">
+                  <p id="emp-aadhaar-status" class="emp-aadhaar-status muted">No card attached.</p>
+                  <div class="emp-aadhaar-actions">
+                    <input id="emp-aadhaar-file" class="sr-only" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" />
+                    <label class="button-secondary" for="emp-aadhaar-file">Choose file</label>
+                    <button type="button" id="emp-aadhaar-clear" class="button-secondary hidden">Remove card</button>
+                    <small class="muted">PDF, JPG, PNG or WebP, max 10 MB. Stored privately in Google Drive.</small>
+                  </div>
+                </div>
               </div>
               <div class="form-field">
                 <label for="emp-pan">PAN</label>
@@ -150,6 +164,10 @@
                 <div><dt>ID validity</dt><dd id="staff-profile-validity">—</dd></div>
                 <div><dt>Phone</dt><dd id="staff-profile-phone">—</dd></div>
                 <div><dt>Aadhaar</dt><dd id="staff-profile-aadhar">—</dd></div>
+                <div class="staff-profile-aadhaar-file">
+                  <dt>Aadhaar card</dt>
+                  <dd id="staff-profile-aadhaar-file">—</dd>
+                </div>
                 <div><dt>PAN</dt><dd id="staff-profile-pan">—</dd></div>
                 <div><dt>PF / UAN</dt><dd id="staff-profile-pf">—</dd></div>
                 <div><dt>PF contribution</dt><dd id="staff-profile-pf-contribution">—</dd></div>
@@ -199,6 +217,25 @@
         </div>
         <div class="staff-id-modal-actions">
           <button type="button" id="id-card-print-btn" disabled>Print ID card</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="staff-aadhaar-modal" class="staff-id-modal hidden" hidden role="dialog" aria-modal="true" aria-labelledby="staff-aadhaar-modal-title">
+      <div class="staff-id-modal-backdrop" data-aadhaar-close tabindex="-1" aria-hidden="true"></div>
+      <div class="staff-id-modal-panel card staff-aadhaar-modal-panel">
+        <div class="card-head snapshot-head staff-id-modal-head">
+          <div>
+            <h2 id="staff-aadhaar-modal-title">Aadhaar card</h2>
+            <p id="staff-aadhaar-modal-subtitle" class="muted staff-id-modal-subtitle"></p>
+          </div>
+          <button type="button" id="staff-aadhaar-modal-close" class="staff-id-modal-close" aria-label="Close">×</button>
+        </div>
+        <div id="staff-aadhaar-modal-body" class="staff-aadhaar-preview">
+          <p class="staff-id-modal-loading">Opening…</p>
+        </div>
+        <div class="staff-id-modal-actions">
+          <button type="button" id="staff-aadhaar-modal-download" class="button-secondary">Download</button>
         </div>
       </div>
     </div>

@@ -43,14 +43,14 @@
     "css/app-credit.css": "14",
     "css/app-reminders.css": "13",
     "css/app-day-closing.css": "12",
-    "css/app-billing.css": "10",
+    "css/app-billing.css": "11",
     "css/app-attendance.css": "12",
     "css/app-salary.css": "13",
-    "css/app-staff.css": "14",
+    "css/app-staff.css": "16",
     "css/app-analysis.css": "9",
     "css/app-reports.css": "15",
     "css/app-e20-register.css": "9",
-    "css/app-letterhead.css": "6",
+    "css/app-letterhead.css": "7",
     "css/report-watermark.css": "7",
     "js/dashboard.js": "23",
     "js/meterReading.js": "33",
@@ -67,12 +67,14 @@
     "js/day-closing.js": "25",
     "js/attendance.js": "12",
     "js/salary.js": "19",
-    "js/staff.js": "16",
-    "js/staffEmployees.js": "4",
+    "js/staff.js": "19",
+    "js/staffEmployees.js": "5",
     "js/analysis.js": "9",
     "js/reports.js": "20",
     "js/e20Register.js": "14",
-    "js/letterhead.js": "11",
+    "js/letterhead.js": "16",
+    "js/billing.js": "5",
+    "js/driveFiles.js": "5",
     "js/printUtils.js": "20",
     "js/dateRangeFilter.js": "10",
     "js/purchaseTaxUtils.js": "7"
@@ -167,7 +169,7 @@
       "noPrint": true,
       "css": ["css/app-billing.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
-      "afterAuth": ["js/printUtils.js"],
+      "afterAuth": ["js/printUtils.js", "js/driveFiles.js"],
       "page": "js/billing.js"
     },
     "invoices.html": {
@@ -200,7 +202,7 @@
       "pageTitle": "Staff",
       "bodyClass": "staff-page",
       "css": ["css/app-staff.css"],
-      "afterAuth": ["js/staffEmployees.js", "js/printUtils.js"],
+      "afterAuth": ["js/staffEmployees.js", "js/printUtils.js", "js/driveFiles.js"],
       "page": "js/staff.js"
     },
     "letterhead.html": {
@@ -210,7 +212,7 @@
       "noPrint": true,
       "css": ["css/app-letterhead.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
-      "afterAuth": ["js/printUtils.js"],
+      "afterAuth": ["js/printUtils.js", "js/driveFiles.js"],
       "page": "js/letterhead.js"
     },
     "analysis.html": {

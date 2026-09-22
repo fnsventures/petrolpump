@@ -17,9 +17,10 @@
         <div class="panel-head">
           <div>
             <h2 class="dashboard-section-title">Create invoice</h2>
-            <p class="muted panel-lead">Issue cash or credit memos with station letterhead. Saved invoices appear in Invoice history.</p>
+            <p class="muted panel-lead">Issue cash or credit memos with station letterhead. The invoice is saved for GST reports and the document is archived to Google Drive.</p>
           </div>
         </div>
+        <p id="billing-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
         <form id="invoice-form" class="form">
           <div class="form-grid billing-header-grid">
             <div class="form-field">
@@ -64,8 +65,8 @@
           <!-- Line Items -->
           <div class="billing-items-section">
             <div class="billing-items-header">
-              <h3>Items</h3>
-              <button type="button" id="add-item-btn" class="button-secondary button-sm">+ Add Item</button>
+              <h3 class="dashboard-subtitle">Items</h3>
+              <button type="button" id="add-item-btn" class="button-secondary button-small">+ Add Item</button>
             </div>
             <div class="table-wrap billing-items-wrap">
               <table class="billing-items-table" id="items-table">

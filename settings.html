@@ -556,8 +556,15 @@
 
         <!-- Integrations -->
         <section id="settings-panel-integrations" class="settings-panel card" data-panel="integrations" hidden>
-          <h2>Google Drive (invoice documents)</h2>
-          <p class="muted">Supplier invoices are stored in your Google Drive under <strong>Year → Month</strong> folders.</p>
+          <h2>Google Drive</h2>
+          <p class="muted">Created billing invoices and Letter Desk letters are archived as station-letterhead <strong>PDFs</strong> (same layout as print). Staff photos stay as images for ID cards, with a letterhead PDF copy. Aadhaar scans are filed as letterhead PDFs. Vault documents use:</p>
+          <ul class="muted">
+            <li><code>Billing invoices / 2026</code></li>
+            <li><code>Letters / 2026</code></li>
+            <li><code>Purchase invoices / 2026</code></li>
+            <li><code>Other documents / {type} / 2026</code></li>
+            <li><code>Staff / {Name}</code></li>
+          </ul>
           <p class="muted"><strong>Personal Gmail:</strong> use OAuth (below). Service accounts cannot upload to My Drive — they have no storage quota.</p>
           <h3 class="settings-subheading">One-time OAuth setup</h3>
           <ol class="muted margin-bottom">
@@ -574,7 +581,7 @@
             <div class="form-field form-field-checkbox">
               <label class="checkbox-label">
                 <input id="gdrive-enabled" type="checkbox" />
-                Enable Google Drive storage for invoice documents
+                Enable Google Drive storage for invoices, letters, and staff files
               </label>
             </div>
             <div class="form-field">

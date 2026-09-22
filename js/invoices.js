@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -281,9 +281,11 @@ function bindUploadForm() {
       submitBtn.disabled = true;
       submitBtn.textContent = "Uploading…";
     }
-    showProgress();
+    const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
+    progress?.start({ title: "Uploading document", status: "Uploading to Google Drive…", steps: 1 });
 
     try {
+      progress?.setStep(0, "Uploading to Google Drive…");
       const res = await fetch(invoiceFunctionUrl(), {
         method: "POST",
         headers: await invoiceFunctionHeaders(false),
@@ -299,11 +301,13 @@ function bindUploadForm() {
         invoiceDate: RECORD_DATE_KEYS.invoiceUpload,
       });
       if (fileInput) fileInput.value = "";
+      progress?.succeed("Uploaded");
       loadInvoices();
     } catch (err) {
       AppError.report(err, { context: "invoiceUpload" });
       showFormError(errorEl, err.message || "Upload failed.");
     } finally {
+      progress?.close();
       hideProgress();
       if (submitBtn) {
         submitBtn.disabled = !driveConfigured;
@@ -463,14 +467,19 @@ async function deleteInvoice(id) {
   if (!id || currentAuth?.role !== "admin") return;
   if (!confirm("Delete this document from Google Drive and the app?")) return;
 
+  const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
+  progress?.start({ title: "Deleting", status: "Removing from Google Drive…", steps: 1 });
   showProgress();
   try {
+    progress?.setStep(0, "Removing from Google Drive…");
     await invokeInvoiceFunction({ action: "delete", id });
+    progress?.succeed("Deleted");
     loadInvoices();
   } catch (err) {
     AppError.report(err, { context: "invoiceDelete" });
     alert(err.message || "Delete failed.");
   } finally {
+    progress?.close();
     hideProgress();
   }
 }

@@ -37,9 +37,7 @@ These are separate features. This document covers **invoice documents** only.
 ## 1. What the feature does
 
 - Staff upload **supplier invoices** (PDF, JPEG, PNG, WebP; max 15 MB) from **Finance → Invoices** (`invoices.html`).
-- Files are stored in **Google Drive** under:
-  - **Purchase invoices:** `RootFolder → YYYY → Purchase invoices → MonthName`
-  - **Other types** (license, insurance, etc.): `RootFolder → YYYY` (flat under the year)
+- Files are stored in **Google Drive** under short folders (`Billing invoices`, `Letters`, `Purchase invoices`, `Staff`, `Other documents`). Purchase invoices go to `Purchase invoices / Year`.
 - Metadata (date, vendor, amount, Drive file ID, etc.) is stored in PostgreSQL table `invoice_documents`.
 - The library lists documents by date range; users can **view** (Drive link), **download** (via edge function), or **delete** (admin only).
 - Configuration lives in **Settings → Integrations** (admin only): enable flag + root folder ID.
@@ -440,7 +438,7 @@ Enforcement:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| Invoice date | Yes | `YYYY-MM-DD`; drives year (and month for purchase) folder placement |
+| Invoice date | Yes | `YYYY-MM-DD`; drives year folder placement |
 | File | Yes | PDF, JPEG, PNG, WebP; 1 byte – 15 MB |
 | Vendor | No | Free text |
 | Title | No | Free text |
@@ -451,20 +449,25 @@ Enforcement:
 
 ```
 Root folder (from Settings)
-├── 2026/
-│   ├── Purchase invoices/
-│   │   ├── January/
-│   │   │   └── supplier-bill.pdf
-│   │   └── July/
-│   │       └── iocl-scan.png
-│   ├── explosive-license.pdf          ← license / other types (flat under year)
-│   └── insurance-policy.pdf
-└── 2025/
-    └── Purchase invoices/
-        └── December/
+├── Billing invoices/
+│   └── 2026/
+├── Letters/
+│   └── 2026/
+├── Purchase invoices/
+│   └── 2026/
+├── Other documents/
+│   ├── License / permit/
+│   │   └── 2026/
+│   └── Insurance/
+│       └── 2026/
+└── Staff/
+    └── Ramesh Kumar · A1B2/
+        ├── Photo.jpg
+        ├── Aadhaar.pdf
+        └── Photo (letterhead).pdf
 ```
 
-Layout is controlled by `document_categories.folder_layout` (`year_month` for purchase, `year` for other types). Folders are created automatically on first upload.
+New uploads use this layout. Existing vault files stay at their previous Drive IDs (download still works). Folders are created automatically on first upload.
 
 ### Library filtering
 
@@ -686,13 +689,14 @@ If uploads start failing with OAuth token errors, generate a new refresh token (
 
 ### Edge function updates
 
-After editing `supabase/functions/invoice-documents/index.ts`, either:
+After editing Drive edge functions, either:
 
 - Push to `main` / `staging` (Actions deploys when `supabase/functions/**` changes), or
 - Deploy manually:
 
 ```bash
 supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
 ```
 
 Repeat for each Supabase project (staging and prod).
@@ -707,7 +711,11 @@ Repeat for each Supabase project (staging and prod).
 | `settings.html` | Integrations panel (short OAuth steps in UI) |
 | `js/settings.js` | Saves `integrations.googleDrive` to pump_settings |
 | `js/appConfig.js` | Default `integrations.googleDrive` |
-| `supabase/functions/invoice-documents/index.ts` | Drive API + auth + upload/download/delete |
+| `supabase/functions/invoice-documents/index.ts` | Vault documents ↔ Google Drive |
+| `supabase/functions/drive-files/index.ts` | Sales invoices, letters, staff photos/Aadhaar ↔ Google Drive |
+| `supabase/functions/_shared/archivePdf.ts` | Print-style letterhead PDFs for billing, letters, and staff files |
+| `supabase/functions/_shared/googleDrive.ts` | Shared Drive auth, folders, upload |
+| `js/driveFiles.js` | Browser client for `drive-files` |
 | `supabase/migrations/20260619120000_invoice_documents_google_drive.sql` | Table, RLS, page access |
 | `sw.js` | Caches `invoices.html` and `js/invoices.js` |
 

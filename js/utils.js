@@ -701,12 +701,112 @@ function hideProgress() {
   if (bar) bar.classList.remove("loading");
 }
 
+const ActionProgress = (function () {
+  const WATCHDOG_MS = 60000;
+  let active = false;
+  let stepCount = 1;
+  let watchdog = null;
+
+  function ensure() {
+    let root = document.getElementById("action-progress");
+    if (root) return root;
+    root = document.createElement("div");
+    root.id = "action-progress";
+    root.className = "action-progress";
+    root.hidden = true;
+    root.setAttribute("role", "alertdialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", "action-progress-title");
+    root.setAttribute("aria-describedby", "action-progress-status");
+    root.innerHTML =
+      '<div class="action-progress-card">' +
+      '<p id="action-progress-title" class="action-progress-title"></p>' +
+      '<p id="action-progress-status" class="action-progress-status"></p>' +
+      '<div class="action-progress-track" aria-hidden="true"><div id="action-progress-fill" class="action-progress-fill"></div></div>' +
+      '<p id="action-progress-pct" class="action-progress-pct">0%</p>' +
+      "</div>";
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function setFill(pct) {
+    const fill = document.getElementById("action-progress-fill");
+    const pctEl = document.getElementById("action-progress-pct");
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    if (fill) fill.style.width = `${clamped}%`;
+    if (pctEl) pctEl.textContent = `${clamped}%`;
+  }
+
+  function start(options) {
+    const opts = options || {};
+    const root = ensure();
+    active = true;
+    stepCount = Math.max(1, Number(opts.steps) || 1);
+    document.getElementById("action-progress-title").textContent = opts.title || "Working";
+    document.getElementById("action-progress-status").textContent = opts.status || "Please wait…";
+    setFill(10);
+    root.hidden = false;
+    document.body.classList.add("action-progress-open");
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      if (active) {
+        console.warn("[ActionProgress] Watchdog closed a stuck overlay.");
+        close();
+      }
+    }, WATCHDOG_MS);
+  }
+
+  function setStep(index, status) {
+    if (!active) return;
+    const step = Math.max(0, Number(index) || 0);
+    if (status) {
+      const el = document.getElementById("action-progress-status");
+      if (el) el.textContent = status;
+    }
+    setFill(((step + 0.5) / stepCount) * 100);
+  }
+
+  function succeed(status) {
+    if (!active) return;
+    if (status) {
+      const el = document.getElementById("action-progress-status");
+      if (el) el.textContent = status;
+    }
+    setFill(100);
+  }
+
+  function close() {
+    active = false;
+    clearTimeout(watchdog);
+    watchdog = null;
+    const root = document.getElementById("action-progress");
+    if (root) root.hidden = true;
+    document.body.classList.remove("action-progress-open");
+    setFill(0);
+  }
+
+  async function run(options, fn) {
+    start(options);
+    try {
+      const result = await fn({ setStep, succeed });
+      succeed((options && options.doneStatus) || "Done");
+      await new Promise((resolve) => setTimeout(resolve, 280));
+      return result;
+    } finally {
+      close();
+    }
+  }
+
+  return { start, setStep, succeed, close, run };
+})();
+
 /** Recover from stuck UI after background/freeze (PWA resume hook). */
 function recoverStuckUi() {
   _progressDepth = 0;
   clearTimeout(_progressWatchdog);
   _progressWatchdog = null;
   hideProgress();
+  ActionProgress.close();
   document.querySelectorAll(".loading").forEach((el) => el.classList.remove("loading"));
   document.querySelectorAll("[aria-busy='true']").forEach((el) => el.removeAttribute("aria-busy"));
   document.querySelectorAll("button[disabled], input[disabled]").forEach((el) => {
@@ -810,6 +910,7 @@ window.resetFormKeepingFields = resetFormKeepingFields;
 window.finishRecordFormSave = finishRecordFormSave;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
+window.ActionProgress = ActionProgress;
 window.recoverStuckUi = recoverStuckUi;
 window.createRequestGuard = createRequestGuard;
 window.withProgress = withProgress;

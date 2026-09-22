@@ -21,7 +21,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [products](#products) | Product master for lube/accessory billing |
 | [invoices](#invoices) | Sales invoices / cash memos |
 | [invoice_items](#invoice_items) | Line items per invoice |
-| [invoice_documents](#invoice_documents) | Supplier/purchase invoice files (metadata; files in Google Drive) |
+| [letterhead_letters](#letterhead_letters) | Official letters (metadata; files in Google Drive) |
 | [pump_settings](#pump_settings) | Single-row JSON station config |
 | [expenses](#expenses) | Daily operating expenses |
 | [expense_categories](#expense_categories) | User-managed expense categories |
@@ -37,7 +37,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 
 For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
-**Storage buckets** (Supabase Storage, not PostgreSQL tables): `user-avatars` (operator profile photos), `staff-photos` (employee ID card photos). See [Architecture §6.4](ARCHITECTURE.md#64-supabase-storage-buckets).
+**Storage buckets** (Supabase Storage, not PostgreSQL tables): `user-avatars` (operator profile photos). Staff photos and Aadhaar scans are stored in Google Drive (see `drive-files` edge function). Legacy `staff-photos` bucket may still hold older ID photos.
 
 ---
 
@@ -256,6 +256,8 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | notes | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
+| drive_file_id, drive_folder_id, drive_file_name | text | Archived cash memo PDF in Google Drive (`Billing invoices / Year`) |
+| drive_web_view_link | text | Drive view link |
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
@@ -287,7 +289,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ## invoice_documents
 
-**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (purchase: `Root/YYYY/Purchase invoices/Month`; other types: `Root/YYYY`). Not related to billing table `invoices`.
+**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (`Purchase invoices / Year`; other types: `Other documents / {type} / Year`). Not related to billing table `invoices`.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -314,9 +316,32 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 ---
 
+## letterhead_letters
+
+**Purpose:** Index of typed station letters. The PDF is stored in Google Drive (`Letters / Year`). `body` is held only until archive succeeds, then cleared so Postgres stays small.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| letter_date | date | Letter date |
+| subject | text | History list title (not the full letter) |
+| body | text | Temporary; cleared after the Drive PDF is stored |
+| export_type | text | `save` \| `print` \| `word` |
+| include_sign | boolean | Signature footer on the letter |
+| drive_file_id, drive_folder_id, drive_file_name, mime_type | text | Google Drive archive |
+| drive_web_view_link | text | Drive view link |
+| created_by | uuid | auth.users.id |
+| created_at | timestamptz | Created at |
+
+**RLS:** SELECT supervisor/admin; INSERT own rows; DELETE admin only. Drive uploads insert via `drive-files` (service role).
+
+**Page:** `letterhead.html` (Letter Desk).
+
+---
+
 ## pump_settings
 
-**Purpose:** **Single-row** JSON configuration (`id = 1`): station branding, billing defaults, pump/tank layout, report tanks, purchase VAT %, alerts, attendance shifts, **integrations (Google Drive for invoice documents)**. Seeded from `js/appConfig.js` defaults when empty.
+**Purpose:** **Single-row** JSON configuration (`id = 1`): station branding, billing defaults, pump/tank layout, report tanks, purchase VAT %, alerts, attendance shifts, **integrations (Google Drive for invoices, letters, and staff files)**. Seeded from `js/appConfig.js` defaults when empty.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -333,7 +358,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 
 | Key | Type | Description |
 |-----|------|-------------|
-| enabled | boolean | When true, invoice uploads allowed |
+| enabled | boolean | When true, Drive uploads are allowed |
 | rootFolderId | string | Google Drive folder ID (URL `…/folders/ID`) |
 
 **Other notable config keys** (see `js/appConfig.js` defaults):
@@ -408,7 +433,10 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | pf_number | text | Optional PF / UAN (max 30 chars) |
 | pf_contribution | numeric | Fixed monthly PF deduction (₹) — set in Settings → Staff salaries; shown on salary slips |
 | blood_group | text | Optional: `A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-` (required for ID card print) |
-| photo_url | text | Optional; public URL in `staff-photos` bucket (required for ID card print) |
+| photo_url | text | Optional; Drive image URL for ID card (required for ID card print) |
+| photo_drive_file_id | text | Google Drive file ID for the staff photo image (ID cards). A letterhead PDF copy is stored as `Photo (letterhead).pdf` in the same folder |
+| aadhaar_drive_file_id | text | Google Drive file ID for the Aadhaar card (private letterhead PDF, or original PDF) |
+| aadhaar_file_name | text | Stored Aadhaar file name |
 | date_of_birth | date | Optional; shown on staff ID card |
 | id_valid_from | date | ID card validity start (back of card) |
 | id_valid_to | date | ID card validity end (back of card) |
@@ -423,9 +451,9 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 - `list_employees_roster()` / `list_employees_salary()` — active staff only
 - `set_employee_active(id, is_active)` — admin soft-deactivate / reactivate
 - `get_employees_by_ids(ids)` — lookup including inactive (history display)
-- `set_employee_photo(employee_id, photo_url)` — active employees only
+- `set_employee_photo(employee_id, photo_url)` — active employees only (clears Drive file id when URL is empty)
 
-**Page:** `staff.html` (admin + supervisor) — roster with Active/Inactive filter (admin), profile, photo upload, ID card. Deep link: `staff.html#{employee_uuid}`.
+**Page:** `staff.html` (admin + supervisor) — roster with Active/Inactive filter (admin), profile, photo + Aadhaar card upload to Google Drive, ID card. Deep link: `staff.html#{employee_uuid}`.
 
 ---
 

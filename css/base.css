@@ -1938,7 +1938,7 @@ select:focus {
   box-shadow: var(--focus-ring);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item) {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.remove-item-btn):not(.staff-status-chip):not(.staff-id-teaser):not(.staff-id-modal-close):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item) {
   border: none;
   background: linear-gradient(180deg, #0088d1 0%, var(--color-primary) 100%);
   color: #fff;
@@ -1947,12 +1947,12 @@ button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):no
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item):hover {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.remove-item-btn):not(.staff-status-chip):not(.staff-id-teaser):not(.staff-id-modal-close):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item):hover {
   background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   box-shadow: 0 2px 8px rgba(0, 112, 192, 0.28);
 }
 
-button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item):active {
+button:not(.button-secondary):not(.button-delete):not(.link):not(.nav-logout):not(.nav-toggle):not(.app-error-banner-close):not(.app-toast-close):not(.settings-nav-item):not(.app-section-item):not(.reports-pick):not(.dc-breakdown-toggle):not(.shift-ledger-amount-btn):not(.shift-ledger-remove):not(.shift-ledger-tab):not(.shift-coll-add-btn):not(.credit-unhide-btn):not(.remove-item-btn):not(.staff-status-chip):not(.staff-id-teaser):not(.staff-id-modal-close):not(.app-sidebar-group-toggle):not(.app-sidebar-pin):not(.app-sections-toggle):not(.topbar-icon-btn):not(.topbar-user-menu-toggle):not(.topbar-user-menu-item):active {
   transform: translateY(1px);
 }
 
@@ -2297,6 +2297,70 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   40% { transform: scaleX(0.4); }
   60% { transform: scaleX(0.6); }
   100% { transform: scaleX(1); }
+}
+
+body.action-progress-open {
+  overflow: hidden;
+}
+
+.action-progress {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.action-progress[hidden] {
+  display: none;
+}
+
+.action-progress-card {
+  width: min(22rem, 100%);
+  padding: 1.2rem 1.3rem 1.1rem;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+}
+
+.action-progress-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--inv-text, #1a2332);
+}
+
+.action-progress-status {
+  margin: 0.4rem 0 0.85rem;
+  font-size: 0.9rem;
+  color: var(--text-muted, #4a5f7a);
+}
+
+.action-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.action-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary, #0070c0);
+  transition: width 0.28s ease;
+}
+
+.action-progress-pct {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-primary, #0070c0);
+  text-align: right;
 }
 
 /* Empty state with CTA */

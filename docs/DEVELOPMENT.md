@@ -171,11 +171,12 @@ supabase functions deploy get-dashboard-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy get-reports-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy get-pl-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
 ```
 
 Repeat for **staging** and **prod** Supabase projects.
 
-**Secrets for `invoice-documents`:** Google OAuth and other function secrets are set in Supabase Dashboard → **Edge Functions → Secrets**, not in GitHub.
+**Secrets for `invoice-documents` and `drive-files`:** Google OAuth and other function secrets are set in Supabase Dashboard → **Edge Functions → Secrets**, not in GitHub.
 
 | Function | Purpose |
 |----------|---------|
@@ -183,6 +184,7 @@ Repeat for **staging** and **prod** Supabase projects.
 | `get-reports-data` | Batched reports page data (DSR, stock, expenses, invoices) |
 | `get-pl-data` | Batched P&amp;L data (DSR + receipt history, expenses, lube sales) |
 | `invoice-documents` | Upload/download/delete supplier invoices in Google Drive |
+| `drive-files` | Archive print-style billing/letter PDFs plus staff photos (image + letterhead PDF) and Aadhaar PDFs in Google Drive |
 
 Deploy functions **before or with** frontend merges that depend on them. The client falls back to direct queries if a function is unavailable.
 
