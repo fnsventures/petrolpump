@@ -1,6 +1,6 @@
 // Shared Google Drive helpers for invoice-documents and drive-files edge functions.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.94.1?target=denonext";
 
 export const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
