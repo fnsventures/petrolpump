@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Tasks · Bishnupriya Fuels</title>
+    <title>Reminders · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link rel="manifest" href="manifest.json" />
@@ -29,20 +29,20 @@
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=18"></script>
-    <script defer src="js/reminders.js?v=17"></script>
+    <script defer src="js/reminders.js?v=18"></script>
   </head>
   <body class="reminders-page">
     <header class="topbar" data-build-topbar>
       <div class="brand">
         <a href="dashboard.html">Bishnupriya Fuels</a>
-        <span class="page-subtitle">Tasks</span>
+        <span class="page-subtitle">Reminders</span>
       </div>
       <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
       <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
     </header>
 
     <main class="settings-layout">
-      <nav class="settings-nav card" aria-label="Task sections">
+      <nav class="settings-nav card" aria-label="Reminder sections">
         <p class="settings-nav-title">Sections</p>
         <button type="button" class="settings-nav-item is-active" data-section="credit">
           Credit collection
@@ -52,8 +52,7 @@
           Todo
           <span id="reminders-todo-nav-badge" class="reminders-nav-badge reminders-nav-badge--muted hidden" aria-hidden="true">0</span>
         </button>
-        <button type="button" class="settings-nav-item" data-section="add">Add task</button>
-        <button type="button" class="settings-nav-item" data-section="done">Completed</button>
+        <button type="button" class="settings-nav-item" data-section="add">Add reminder</button>
       </nav>
 
       <div class="settings-panels">
@@ -62,7 +61,7 @@
             <div>
               <h2 class="dashboard-section-title">Credit collection</h2>
               <p class="muted panel-lead">
-                Call or WhatsApp, then Done when settled. Use <strong>+3 days</strong> when they need time — or More… for other options.
+                Call or WhatsApp, then Done to clear it. Use <strong>+3 days</strong> when they need time — or More… for other options.
               </p>
             </div>
             <div class="filter-actions">
@@ -91,10 +90,10 @@
           </div>
         </section>
 
-        <section class="settings-panel card dashboard-card" data-panel="add" aria-label="Add task" hidden>
+        <section class="settings-panel card dashboard-card" data-panel="add" aria-label="Add reminder" hidden>
           <header class="panel-head">
             <div>
-              <h2 class="dashboard-section-title">Add task</h2>
+              <h2 class="dashboard-section-title">Add reminder</h2>
               <p class="muted panel-lead" id="reminder-form-lead">
                 Schedule a collection call. Customer is required; due date defaults to today.
               </p>
@@ -195,33 +194,6 @@
           </form>
         </section>
 
-        <section class="settings-panel card dashboard-card" data-panel="done" aria-label="Completed tasks" hidden>
-          <header class="panel-head">
-            <div>
-              <h2 class="dashboard-section-title">Completed</h2>
-              <p class="muted panel-lead">Recently finished tasks. Reopen one if it still needs attention.</p>
-            </div>
-          </header>
-
-          <div class="reminders-done-groups">
-            <div class="reminders-done-group">
-              <h3 class="reminders-group-title">Credit collection</h3>
-              <div id="reminders-done-credit-list" class="reminders-list" aria-live="polite">
-                <p class="muted">Loading…</p>
-              </div>
-            </div>
-            <div class="reminders-done-group">
-              <h3 class="reminders-group-title">Todo</h3>
-              <div id="reminders-done-todo-list" class="reminders-list" aria-live="polite">
-                <p class="muted">Loading…</p>
-              </div>
-            </div>
-          </div>
-          <div class="pagination-controls">
-            <span id="reminders-done-pagination-info" class="muted"></span>
-            <button type="button" id="reminders-done-load-more" class="button-secondary hidden">Load more</button>
-          </div>
-        </section>
       </div>
     </main>
 

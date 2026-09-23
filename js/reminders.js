@@ -1,19 +1,14 @@
 /* global window.supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
 
 (function () {
-  const PAGE_SIZE = 30;
   const OPEN_SELECT =
     "id, title, notes, due_date, priority, reminder_type, status, credit_customer_id, created_at, credit_customers(customer_name, mobile, amount_due)";
-  const DONE_SELECT =
-    "id, title, notes, due_date, priority, reminder_type, status, credit_customer_id, completed_at, created_at, credit_customers(customer_name, mobile, amount_due)";
 
   let currentAuth = null;
   let customersById = new Map();
   let customerIndex = [];
   let customersLoaded = false;
   let customersLoading = null;
-  let doneLoadedOnce = false;
-  let donePagination = { offset: 0, hasMore: true, totalCount: 0, isLoading: false };
   let customerComboboxMatches = [];
   let customerComboboxActiveIndex = -1;
 
@@ -31,11 +26,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initPageSections === "function") {
       initPageSections({
         defaultSection: "credit",
-        validSections: ["credit", "todo", "add", "done"],
-        hashAliases: { due: "credit", backlog: "todo", upcoming: "todo" },
+        validSections: ["credit", "todo", "add"],
+        hashAliases: { due: "credit", backlog: "todo", upcoming: "todo", done: "credit" },
         onSectionChange: (section) => {
           if (section === "add" && getTaskKind() === "credit") void ensureCustomers();
-          if (section === "done") void loadDoneTasks(true);
         },
       });
     }
@@ -44,7 +38,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     bindDueShortcuts();
     bindKindToggle();
     bindListActions();
-    bindDonePagination();
     bindAddLinks();
 
     const prefillNeedsCustomers = applyUrlPrefillNeedsCustomers();
@@ -484,7 +477,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         successEl.classList.remove("hidden");
       }
       TaskUtils.notifyTasksUpdated();
-      doneLoadedOnce = false;
       await loadOpenBoard();
       // Keep credit form open for back-to-back collection scheduling
       if (kind === "credit") {
@@ -706,95 +698,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     fillList(todoList, todo, {
       today,
       emptyTitle: "No todos yet",
-      emptyCopy: 'Add one from <a href="#add">Add task</a>.',
-    });
-  }
-
-  async function loadDoneTasks(reset) {
-    if (!reset && doneLoadedOnce && !donePagination.hasMore) return;
-    if (donePagination.isLoading) return;
-    if (reset) {
-      donePagination = { offset: 0, hasMore: true, totalCount: 0, isLoading: false };
-      doneLoadedOnce = false;
-    }
-    if (!donePagination.hasMore && !reset) return;
-
-    donePagination.isLoading = true;
-    const creditList = document.getElementById("reminders-done-credit-list");
-    const todoList = document.getElementById("reminders-done-todo-list");
-    const loadMoreBtn = document.getElementById("reminders-done-load-more");
-    const infoEl = document.getElementById("reminders-done-pagination-info");
-    if (loadMoreBtn) loadMoreBtn.disabled = true;
-
-    const from = donePagination.offset;
-    const to = from + PAGE_SIZE - 1;
-
-    try {
-      const { data, error, count } = await runAppRequest("Done reminders", () =>
-        supabaseClient
-          .from("reminders")
-          .select(DONE_SELECT, { count: "exact" })
-          .eq("status", "done")
-          .order("completed_at", { ascending: false })
-          .range(from, to)
-      );
-
-      if (error) {
-        AppError.report(error, { context: "tasksLoadDone" });
-        if (from === 0) {
-          const msg = `<p class="error">Could not load completed tasks.</p>`;
-          if (creditList) creditList.innerHTML = msg;
-          if (todoList) todoList.innerHTML = msg;
-        }
-        return;
-      }
-
-      const rows = data || [];
-      donePagination.totalCount = count ?? donePagination.totalCount;
-      donePagination.offset = from + rows.length;
-      donePagination.hasMore = donePagination.offset < (donePagination.totalCount || 0);
-      doneLoadedOnce = true;
-
-      const today = getLocalDateString();
-      const { credit, todo } = TaskUtils.splitCreditTodo(rows);
-
-      appendDoneGroup(creditList, credit, { today, reset: from === 0, empty: "No completed credit calls" });
-      appendDoneGroup(todoList, todo, { today, reset: from === 0, empty: "No completed todos" });
-
-      if (infoEl) {
-        const shown = Math.min(donePagination.offset, donePagination.totalCount || 0);
-        infoEl.textContent =
-          donePagination.totalCount > 0 ? `Showing ${shown} of ${donePagination.totalCount}` : "";
-      }
-      if (loadMoreBtn) loadMoreBtn.classList.toggle("hidden", !donePagination.hasMore);
-    } catch (err) {
-      if (!isCancelledRequestError(err)) {
-        AppError.report(err, { context: "tasksLoadDone" });
-      }
-    } finally {
-      resetPaginationLoading(donePagination, loadMoreBtn);
-    }
-  }
-
-  function appendDoneGroup(list, rows, { today, reset, empty }) {
-    if (!list) return;
-    if (reset) {
-      list.innerHTML = rows.length
-        ? rows.map((r) => renderTaskCard(r, { today, mode: "done" })).join("")
-        : emptyState(empty, "Finished items will show here.");
-      return;
-    }
-    if (!rows.length) return;
-    if (list.querySelector(".reminders-empty")) list.innerHTML = "";
-    list.insertAdjacentHTML(
-      "beforeend",
-      rows.map((r) => renderTaskCard(r, { today, mode: "done" })).join("")
-    );
-  }
-
-  function bindDonePagination() {
-    document.getElementById("reminders-done-load-more")?.addEventListener("click", () => {
-      loadDoneTasks(false);
+      emptyCopy: 'Add one from <a href="#add">Add reminder</a>.',
     });
   }
 
@@ -808,12 +712,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const id = btn.getAttribute("data-id");
       const action = btn.getAttribute("data-reminder-action");
       if (!id || !action) return;
-      if (inFlight.has(id) && (action === "done" || action === "reschedule" || action === "reschedule-pick" || action === "reopen" || action === "delete")) {
+      if (inFlight.has(id) && (action === "done" || action === "reschedule" || action === "reschedule-pick" || action === "delete")) {
         return;
       }
 
       if (action === "done") await completeTask(id, btn, inFlight);
-      else if (action === "reopen") await reopenTask(id, btn, inFlight);
       else if (action === "delete") await deleteTask(id, btn, inFlight);
       else if (action === "later-toggle") toggleLaterPanel(id, btn);
       else if (action === "later-cancel") closeLaterPanel(id, btn);
@@ -976,62 +879,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function completeTask(id, btn, inFlight) {
     inFlight?.add(id);
     btn.disabled = true;
-    const { data: doneRow, error } = await window.supabaseClient
+    const { data: deleted, error } = await window.supabaseClient
       .from("reminders")
-      .update({
-        status: "done",
-        completed_at: new Date().toISOString(),
-        completed_by: currentAuth.session?.user?.id || null,
-        updated_at: new Date().toISOString(),
-      })
+      .delete()
       .eq("id", id)
       .eq("status", "open")
-      .select("id")
-      .maybeSingle();
+      .select("id");
 
-    if (error || !doneRow?.id) {
+    if (error || !deleted?.length) {
       inFlight?.delete(id);
       btn.disabled = false;
-      AppError.handle(error || new Error("Could not mark done — task may already be closed."), {
+      AppError.handle(error || new Error("Could not remove this reminder."), {
         context: { source: "completeTask" },
       });
       return;
     }
 
     removeCard(id);
-    toast("Marked done");
-    TaskUtils.notifyTasksUpdated();
-    doneLoadedOnce = false;
-    await loadOpenBoard();
-    inFlight?.delete(id);
-  }
-
-  async function reopenTask(id, btn, inFlight) {
-    inFlight?.add(id);
-    btn.disabled = true;
-    const { data: openRow, error } = await window.supabaseClient
-      .from("reminders")
-      .update({
-        status: "open",
-        completed_at: null,
-        completed_by: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("status", "done")
-      .select("id")
-      .maybeSingle();
-
-    if (error || !openRow?.id) {
-      inFlight?.delete(id);
-      btn.disabled = false;
-      AppError.handle(error || new Error("Could not reopen task."), {
-        context: { source: "reopenTask" },
-      });
-      return;
-    }
-
-    removeCard(id);
+    toast("Reminder removed");
     TaskUtils.notifyTasksUpdated();
     await loadOpenBoard();
     inFlight?.delete(id);
@@ -1049,7 +914,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       onSuccess: async () => {
         removeCard(id);
         TaskUtils.notifyTasksUpdated();
-        doneLoadedOnce = false;
         await loadOpenBoard();
       },
       errorContext: { source: "deleteTask", id },
@@ -1188,8 +1052,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   bindLiveRefresh(
     () => {
-      resetPaginationLoading(donePagination, document.getElementById("reminders-done-load-more"));
-      if (isSettingsPanelActive("done")) void loadDoneTasks(true);
+      void loadOpenBoard();
     },
     { match: () => document.body.classList.contains("reminders-page") }
   );

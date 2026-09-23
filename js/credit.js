@@ -135,7 +135,7 @@ function applyCustomerBalanceHero(netBalance, prepaidBalance) {
     if (customerName) params.set("name", customerName);
     if (customerId) params.set("customer", customerId);
     reminderCta.href = `reminders.html?${params.toString()}#add`;
-    reminderCta.textContent = "Schedule call";
+    reminderCta.textContent = "Add reminder";
     reminderCta.classList.remove("hidden");
   }
 
@@ -693,7 +693,7 @@ function initOutstandingTab() {
 
 async function ensureCreditCustomer() {
   await loadCreditModule("js/creditCustomerDetail.js");
-  await loadCreditModule("js/creditCustomer.js");
+  await loadCreditModule("js/creditCustomer.js?v=15");
   return window.CreditCustomer.init();
 }
 

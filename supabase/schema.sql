@@ -2378,9 +2378,10 @@ create policy "reminders_update_staff" on public.reminders
   with check (public.is_supervisor_or_admin());
 
 drop policy if exists "reminders_delete_admin" on public.reminders;
-create policy "reminders_delete_admin" on public.reminders
+drop policy if exists "reminders_delete_staff" on public.reminders;
+create policy "reminders_delete_staff" on public.reminders
   for delete to authenticated
-  using (public.is_admin());
+  using (public.is_supervisor_or_admin());
 
 -- ============================================================================
 -- E-20 TESTING REGISTER (daily quality monitoring — Part A water dip + Part B 2-hourly)
