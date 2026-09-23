@@ -11,7 +11,7 @@
         { href: "meter-reading.html#shift-readings", label: "Meter Reading" },
         { href: "dsr.html", label: "DSR" },
         { href: "e20-register.html", label: "E-20 testing" },
-        { href: "reminders.html", label: "Tasks" },
+        { href: "reminders.html", label: "Reminders" },
       ],
     },
     {
