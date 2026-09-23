@@ -86,7 +86,6 @@ let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
 let dashboardRole = null;
-let dashboardUserId = null;
 
 const DAY_CLOSING_LOOKBACK_DAYS = 7;
 
@@ -734,7 +733,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const { session, role } = auth;
   dashboardRole = role;
-  dashboardUserId = session?.user?.id || null;
   applyRoleVisibility(role);
 
   if (typeof initPageSections === "function") {
@@ -1993,27 +1991,21 @@ function bindReminderDoneButtons(container) {
     if (inFlight.has(id)) return;
     inFlight.add(id);
     btn.disabled = true;
-    const { data: doneRow, error } = await window.supabaseClient
+    const { data: deleted, error } = await window.supabaseClient
       .from("reminders")
-      .update({
-        status: "done",
-        completed_at: new Date().toISOString(),
-        completed_by: dashboardUserId,
-        updated_at: new Date().toISOString(),
-      })
+      .delete()
       .eq("id", id)
       .eq("status", "open")
-      .select("id")
-      .maybeSingle();
-    if (error || !doneRow?.id) {
+      .select("id");
+    if (error || !deleted?.length) {
       inFlight.delete(id);
       btn.disabled = false;
-      AppError.handle(error || new Error("Could not mark done — task may already be closed."), {
+      AppError.handle(error || new Error("Could not remove this reminder."), {
         context: { source: "dashboardCompleteReminder" },
       });
       return;
     }
-    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast("Marked done");
+    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast("Reminder removed");
     removeDashboardTaskCard(id);
     TaskUtils.notifyTasksUpdated();
     await loadRemindersBanners();

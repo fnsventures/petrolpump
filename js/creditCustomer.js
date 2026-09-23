@@ -129,6 +129,16 @@ async function initCustomerView() {
   document.getElementById("customer-summary-print-btn")?.addEventListener("click", () => {
     void handleCreditSummaryPrintClick();
   });
+  document.getElementById("customer-whatsapp-btn")?.addEventListener("click", (event) => {
+    if (event.currentTarget.getAttribute("href")) return;
+    event.preventDefault();
+    const mobile = String(page().state.customerContact?.mobile || "").trim();
+    showCreditShareNotice(
+      mobile
+        ? "Load the customer account first, then send on WhatsApp."
+        : "Add this customer's mobile number, then send on WhatsApp."
+    );
+  });
 
   await loadCustomerDetail();
 }
@@ -254,19 +264,35 @@ function pickCustomerContact(rows) {
   };
 }
 
+function setHiddenEl(el, hidden) {
+  if (!el) return;
+  el.hidden = hidden;
+  el.classList.toggle("hidden", hidden);
+}
+
+function setContactLine(el, text) {
+  if (!el) return;
+  el.textContent = text;
+  setHiddenEl(el, !text);
+}
+
 function renderCustomerMeta(rows) {
   const vehicles = [...new Set(rows.map((r) => r.vehicle_no).filter(Boolean))];
   page().state.customerVehicleNos = vehicles;
-  const meta = document.getElementById("customer-meta");
-  if (!meta) return;
-  const parts = [];
-  if (page().state.customerContact.mobile) parts.push(`Mobile: ${page().state.customerContact.mobile}`);
-  if (page().state.customerContact.address) parts.push(page().state.customerContact.address);
-  if (vehicles.length) parts.push(`Vehicle: ${vehicles.join(", ")}`);
-  const text = parts.join(" · ");
-  meta.textContent = text;
-  meta.classList.toggle("hidden", !text);
-  meta.hidden = !text;
+  const mobile = String(page().state.customerContact.mobile || "").trim();
+  const rest = [
+    page().state.customerContact.address,
+    vehicles.length ? `Vehicle: ${vehicles.join(", ")}` : "",
+  ]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" · ");
+  setContactLine(document.getElementById("customer-meta"), mobile ? `Mobile: ${mobile}` : "");
+  setContactLine(
+    document.getElementById("customer-meta-rest"),
+    rest ? (mobile ? `· ${rest}` : rest) : ""
+  );
+  syncCustomerContactActions();
 }
 
 function setCustomerNameEditable(editable) {
@@ -532,10 +558,102 @@ function entryDateBounds(entries) {
 }
 
 function updateCreditSummaryPrintButton() {
-  const btn = document.getElementById("customer-summary-print-btn");
-  if (!btn) return;
-  const canPrint = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
-  btn.disabled = !canPrint;
+  const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
+  const printBtn = document.getElementById("customer-summary-print-btn");
+  if (printBtn) printBtn.disabled = !canShare;
+  syncCustomerContactActions();
+}
+
+/** Icons sit on the mobile line. href is set only when the link can open. */
+function syncCustomerContactActions() {
+  const actions = document.getElementById("customer-contact-actions");
+  const callBtn = document.getElementById("customer-call-btn");
+  const waBtn = document.getElementById("customer-whatsapp-btn");
+  const mobile = String(page().state.customerContact?.mobile || "").trim();
+  const tel = creditCustomerTelHref(mobile);
+  setHiddenEl(actions, !tel);
+  if (callBtn) {
+    if (tel) {
+      callBtn.href = tel;
+      callBtn.setAttribute("aria-label", `Call ${mobile}`);
+      callBtn.title = `Call ${mobile}`;
+    } else {
+      callBtn.removeAttribute("href");
+    }
+  }
+  if (!waBtn) return;
+  const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
+  const waHref = tel && canShare ? creditCustomerWaHref(mobile, buildCreditWhatsAppText()) : "";
+  if (waHref) {
+    waBtn.href = waHref;
+    waBtn.classList.remove("is-disabled");
+    waBtn.removeAttribute("aria-disabled");
+    waBtn.setAttribute("aria-label", `WhatsApp ${mobile}`);
+  } else {
+    waBtn.removeAttribute("href");
+    waBtn.classList.add("is-disabled");
+    waBtn.setAttribute("aria-disabled", "true");
+    waBtn.setAttribute("aria-label", "Send statement on WhatsApp");
+  }
+}
+
+/** Digits for tel: and wa.me. 10-digit Indian mobiles get 91. */
+function creditCustomerPhoneDigits(mobile) {
+  const digits = String(mobile || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.startsWith("0") && digits.length === 11) return `91${digits.slice(1)}`;
+  return digits;
+}
+
+function creditCustomerTelHref(mobile) {
+  const e164 = creditCustomerPhoneDigits(mobile);
+  return e164 ? `tel:+${e164}` : "";
+}
+
+function creditCustomerWaHref(mobile, text) {
+  const e164 = creditCustomerPhoneDigits(mobile);
+  if (!e164) return "";
+  const params = new URLSearchParams();
+  if (text) params.set("text", text);
+  const query = params.toString();
+  return `https://wa.me/${e164}${query ? `?${query}` : ""}`;
+}
+
+function buildCreditWhatsAppText() {
+  const station =
+    (typeof PumpSettings?.getStationLegalName === "function" && PumpSettings.getStationLegalName()) ||
+    "Bishnupriya Fuels";
+  const asOf = formatDisplayDate(getLocalDateString());
+  const net = Number(page().state.customerNetBalance) || 0;
+  const prepaid = Number(page().state.customerPrepaidBalance) || 0;
+  const hasAdvance = prepaid > 0 && net <= 0;
+  const cleared = !hasAdvance && net <= 0.009;
+  const balanceLabel = hasAdvance ? "Credit balance" : "Outstanding";
+  const balanceValue = hasAdvance ? prepaid : Math.max(0, net);
+  const closing = hasAdvance
+    ? "This account has an advance. Reply if you need anything else."
+    : cleared
+      ? "This account has no outstanding balance."
+      : "Please clear this at the pump, or reply to this chat.";
+  return [
+    "Hello,",
+    "",
+    `This is ${station} with your credit statement.`,
+    "",
+    `As on ${asOf}`,
+    `${balanceLabel}: ${formatCurrency(balanceValue)}`,
+    "",
+    closing,
+  ].join("\n");
+}
+
+function showCreditShareNotice(message) {
+  if (typeof AppError?.showGlobalBanner === "function") {
+    AppError.showGlobalBanner(message);
+  } else {
+    alert(message);
+  }
 }
 
 /** One pass: sorted ledger rows + total (avoids a second sort for footer totals). */
