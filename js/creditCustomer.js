@@ -287,11 +287,15 @@ function renderCustomerMeta(rows) {
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .join(" · ");
-  setContactLine(document.getElementById("customer-meta"), mobile ? `Mobile: ${mobile}` : "");
-  setContactLine(
-    document.getElementById("customer-meta-rest"),
-    rest ? (mobile ? `· ${rest}` : rest) : ""
-  );
+  const meta = document.getElementById("customer-meta");
+  setContactLine(meta, mobile);
+  if (meta) {
+    const tel = creditCustomerTelHref(mobile);
+    if (tel) meta.href = tel;
+    else meta.removeAttribute("href");
+    meta.setAttribute("aria-label", mobile ? `Call ${mobile}` : "Customer mobile");
+  }
+  setContactLine(document.getElementById("customer-meta-rest"), rest);
   syncCustomerContactActions();
 }
 

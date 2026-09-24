@@ -2107,4 +2107,104 @@ tr.is-editing .expense-cat-drag-handle {
   }
 }
 
+/* Number and actions share one line and scale with the surrounding text. */
+.contact-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+  line-height: 1.2;
+}
+
+.contact-line:has(.contact-line-number[hidden]):has(.contact-line-actions[hidden]) {
+  display: none;
+}
+
+.contact-line a.contact-line-number.contact-line-number {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.contact-line a.contact-line-number.contact-line-number:is(:hover, :focus-visible) {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.contact-line-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22em;
+  flex: 0 0 auto;
+}
+
+.contact-line a.contact-line-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: max(1.7em, 1.35rem);
+  height: max(1.7em, 1.35rem);
+  min-width: max(1.7em, 1.35rem);
+  min-height: max(1.7em, 1.35rem);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.38em;
+  background: transparent;
+  line-height: 0;
+  text-decoration: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.contact-line a.contact-line-btn svg {
+  width: 0.95em;
+  height: 0.95em;
+  fill: currentColor;
+}
+
+.contact-line a.contact-line-btn.contact-line-btn--call {
+  color: #0b6cb0;
+  background: #f4f8fb;
+  border-color: #d5e4f0;
+}
+
+.contact-line a.contact-line-btn.contact-line-btn--whatsapp {
+  color: #0e8a70;
+  background: #f3faf7;
+  border-color: #d0e7de;
+}
+
+.contact-line a.contact-line-btn.contact-line-btn--call:is(:hover, :focus-visible) {
+  color: #005a9c;
+  background: #e7f2fa;
+  border-color: #b9d4ea;
+  text-decoration: none;
+}
+
+.contact-line a.contact-line-btn.contact-line-btn--whatsapp:is(:hover, :focus-visible):not(.is-disabled) {
+  color: #0b6b58;
+  background: #e7f6f1;
+  border-color: #b7ddd0;
+  text-decoration: none;
+}
+
+.contact-line a.contact-line-btn:focus-visible {
+  outline: 2px solid rgba(12, 74, 110, 0.35);
+  outline-offset: 1px;
+}
+
+.contact-line a.contact-line-btn.is-disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 
