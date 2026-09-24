@@ -1468,20 +1468,11 @@ function buildDashboardLaterPanel(id, { credit = false } = {}) {
 }
 
 function taskContactHtml(row) {
-  if (!TaskUtils.isCreditTask(row)) return "";
+  if (!TaskUtils.isCreditTask(row) || typeof TaskUtils.contactRowHtml !== "function") return "";
   const mobile = row.credit_customers?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
-  const tel = TaskUtils.telHref(mobile);
-  const waText =
-    typeof TaskUtils.waMessageForCustomer === "function"
-      ? TaskUtils.waMessageForCustomer(customerName)
-      : "";
-  const wa = TaskUtils.waHref(mobile, waText);
-  if (!tel && !wa) return "";
-  return `<div class="task-dash-contact">
-    ${tel ? `<a class="button-secondary button-small" href="${escapeHtml(tel)}">Call</a>` : ""}
-    ${wa ? `<a class="button-secondary button-small" href="${escapeHtml(wa)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ""}
-  </div>`;
+  const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
+  return TaskUtils.contactRowHtml(mobile, waText);
 }
 
 function buildDashboardNotifTaskHtml(row, todayStr) {
@@ -1522,9 +1513,9 @@ function buildDashboardNotifTaskHtml(row, todayStr) {
           ? `<p class="notif-item-amount">${escapeHtml(outstanding)}</p>`
           : ""
       }
-      <span class="notif-item-meta">${escapeHtml(when)}${
-        customerName ? ` · ${escapeHtml(customerName)}` : ""
-      } · ${accountLink}</span>
+      <span class="notif-item-meta"><span>${escapeHtml(when)}</span>${
+        customerName ? `<span>${escapeHtml(customerName)}</span>` : ""
+      }${accountLink}</span>
       ${taskContactHtml(row)}
     </div>
     <div class="notif-item-actions task-action-bar">
@@ -1567,9 +1558,9 @@ function buildLandingTaskHtml(row, todayStr) {
     <div class="reminders-landing-item-main">
       <h3 class="reminders-landing-item-title">${escapeHtml(row.title)}</h3>
       ${amountHtml}
-      <p class="reminders-landing-item-meta">${escapeHtml([when, customerName || null].filter(Boolean).join(" · "))}${
-        accountLink ? ` · ${accountLink}` : ""
-      }</p>
+      <p class="reminders-landing-item-meta"><span>${escapeHtml(when)}</span>${
+        customerName ? `<span>${escapeHtml(customerName)}</span>` : ""
+      }${accountLink}</p>
       ${taskContactHtml(row)}
     </div>
     <div class="reminders-landing-item-actions task-action-bar">

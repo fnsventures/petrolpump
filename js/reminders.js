@@ -976,23 +976,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const customerHtml =
       credit && customerName
-        ? `<a class="reminder-card-link" href="${escapeHtml(TaskUtils.customerHref(customerName))}">${escapeHtml(customerName)}${
-            mobile ? ` · ${escapeHtml(mobile)}` : ""
-          }</a>`
+        ? `<a class="reminder-card-link" href="${escapeHtml(TaskUtils.customerHref(customerName))}">${escapeHtml(customerName)}</a>`
         : "";
 
-    const tel = TaskUtils.telHref(mobile);
-    const waText =
-      typeof TaskUtils.waMessageForCustomer === "function"
-        ? TaskUtils.waMessageForCustomer(customerName)
-        : "";
-    const wa = TaskUtils.waHref(mobile, waText);
     const contactHtml =
-      credit && mode === "open" && (tel || wa)
-        ? `<div class="reminder-card-contact">
-            ${tel ? `<a class="button-secondary button-small" href="${escapeHtml(tel)}">Call</a>` : ""}
-            ${wa ? `<a class="button-secondary button-small" href="${escapeHtml(wa)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ""}
-          </div>`
+      credit && mode === "open" && typeof TaskUtils.contactRowHtml === "function"
+        ? TaskUtils.contactRowHtml(mobile, TaskUtils.waMessageForCustomer(customerName, amountDue))
         : "";
 
     const metaBits = [
@@ -1035,8 +1024,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <h3 class="reminder-card-title">${escapeHtml(row.title)}</h3>
         <div class="reminder-card-meta">${metaBits.join("")}</div>
         ${notesHtml}
-        ${customerHtml}
-        ${contactHtml}
+        <div class="reminder-contact-line">${customerHtml}${contactHtml}</div>
       </div>
       <div class="reminder-card-actions">${actions}</div>
       ${laterPanel}

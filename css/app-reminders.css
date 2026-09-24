@@ -394,8 +394,20 @@
   word-break: break-word;
 }
 
-.reminder-card-link {
+.reminder-contact-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   font-size: var(--text-sm);
+}
+
+.reminder-contact-line:not(:has(*)) {
+  display: none;
+}
+
+.reminder-card-link {
+  font-size: 1em;
   font-weight: 600;
 }
 

@@ -693,7 +693,7 @@ function initOutstandingTab() {
 
 async function ensureCreditCustomer() {
   await loadCreditModule("js/creditCustomerDetail.js");
-  await loadCreditModule("js/creditCustomer.js?v=15");
+  await loadCreditModule("js/creditCustomer.js?v=16");
   return window.CreditCustomer.init();
 }
 
