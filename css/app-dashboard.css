@@ -1420,6 +1420,33 @@ body.modal-open {
   color: var(--text-muted);
 }
 
+.notif-item--task .notif-item-meta,
+.reminders-landing-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0;
+  row-gap: 0.2rem;
+}
+
+.notif-item--task .notif-item-meta > :not(:first-child)::before,
+.reminders-landing-item-meta > :not(:first-child)::before {
+  content: "·";
+  margin: 0 0.35rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.notif-item--task .contact-line,
+.reminders-landing-item .contact-line {
+  display: flex;
+  width: 100%;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
 .notif-customer-expand {
   margin-top: var(--space-2);
   border-top: 1px dashed var(--border);

@@ -726,85 +726,18 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   transition: color 0.15s ease;
 }
 
-.customer-meta-row {
+.customer-balance-hero .contact-line {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.45rem 0.75rem;
+  width: 100%;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
   margin-top: 0.15rem;
 }
 
-.customer-meta-row .customer-balance-meta {
-  margin: 0;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: -0.01em;
-  color: #1e3a4c;
-}
-
-.customer-contact-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-main a.customer-contact-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  line-height: 0;
-  text-decoration: none;
-  cursor: pointer;
-  flex-shrink: 0;
-  touch-action: manipulation;
-  -webkit-tap-highlight-color: transparent;
-}
-
-main a.customer-contact-icon svg {
-  width: 1.375rem;
-  height: 1.375rem;
-  fill: currentColor;
-}
-
-main a.customer-contact-icon.customer-contact-icon--call {
-  color: #0070c0;
-  background: rgba(0, 112, 192, 0.12);
-}
-
-main a.customer-contact-icon.customer-contact-icon--whatsapp {
-  color: #128c7e;
-  background: rgba(18, 140, 126, 0.14);
-}
-
-main a.customer-contact-icon.customer-contact-icon--call:is(:hover, :focus-visible) {
-  color: #005a9c;
-  background: rgba(0, 112, 192, 0.2);
-  text-decoration: none;
-}
-
-main a.customer-contact-icon.customer-contact-icon--whatsapp:is(:hover, :focus-visible):not(.is-disabled) {
-  color: #0d6b60;
-  background: rgba(18, 140, 126, 0.22);
-  text-decoration: none;
-}
-
-main a.customer-contact-icon:focus-visible {
-  outline: 2px solid rgba(12, 74, 110, 0.35);
-  outline-offset: 2px;
-}
-
-main a.customer-contact-icon.is-disabled {
-  opacity: 0.4;
-  cursor: default;
+.customer-balance-hero #customer-meta-rest {
+  display: block;
+  margin-top: 0.28rem;
 }
 
 .customer-name-row {

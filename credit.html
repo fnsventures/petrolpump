@@ -13,24 +13,24 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="stylesheet" href="css/base.css" />
-    <script src="js/roleBootstrap.js?v=18"></script>
-    <script src="js/appNav.js?v=18"></script>
-    <link rel="stylesheet" href="css/app-core.css?v=18" />
-    <link rel="stylesheet" href="css/app-credit.css?v=21" />
+    <script src="js/roleBootstrap.js?v=21"></script>
+    <script src="js/appNav.js?v=21"></script>
+    <link rel="stylesheet" href="css/app-core.css?v=21" />
+    <link rel="stylesheet" href="css/app-credit.css?v=23" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
-    <script defer src="js/cache.js?v=18"></script>
+    <script defer src="js/cache.js?v=21"></script>
     <script defer src="js/appConfig.js"></script>
-    <script defer src="js/utils.js?v=18"></script>
-    <script defer src="js/pwa.js?v=18"></script>
-    <script defer src="js/supabase.js?v=18"></script>
+    <script defer src="js/utils.js?v=21"></script>
+    <script defer src="js/pwa.js?v=21"></script>
+    <script defer src="js/supabase.js?v=21"></script>
     <script defer src="js/pumpSettings.js"></script>
     <script defer src="js/dateRangeFilter.js?v=10"></script>
     <script defer src="js/pageSections.js"></script>
-    <script defer src="js/auth.js?v=18"></script>
+    <script defer src="js/auth.js?v=21"></script>
     <script defer src="js/printUtils.js?v=20"></script>
-    <script defer src="js/credit.js?v=15"></script>
+    <script defer src="js/credit.js?v=16"></script>
   </head>
   <body class="credit-list-view">
     <header class="topbar" data-build-topbar>
@@ -421,19 +421,19 @@
                 <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
                 <span class="customer-name-edit-hint" aria-hidden="true">Edit</span>
               </div>
-              <div class="customer-meta-row">
-                <p id="customer-meta" class="customer-balance-meta muted hidden" hidden></p>
-                <div class="customer-contact-actions hidden" id="customer-contact-actions" hidden>
+              <div class="contact-line" id="customer-contact-line">
+                <a id="customer-meta" class="contact-line-number hidden" hidden></a>
+                <div class="contact-line-actions hidden" id="customer-contact-actions" hidden>
                   <a
                     id="customer-call-btn"
-                    class="customer-contact-icon customer-contact-icon--call"
+                    class="contact-line-btn contact-line-btn--call"
                     aria-label="Call customer"
                   >
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z"/></svg>
                   </a>
                   <a
                     id="customer-whatsapp-btn"
-                    class="customer-contact-icon customer-contact-icon--whatsapp is-disabled"
+                    class="contact-line-btn contact-line-btn--whatsapp is-disabled"
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-disabled="true"
@@ -443,8 +443,8 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0-7.74 13.61L3 21l4.52-1.19A9 9 0 1 0 12 3zm0 2a7 7 0 1 1-3.57 13.03l-.3-.18-2.11.56.56-2.06-.2-.32A7 7 0 0 1 12 5zm3.15 9.64c-.17-.08-1-.49-1.16-.54-.16-.06-.27-.08-.39.08-.12.17-.45.54-.55.65-.1.11-.2.12-.37.04-.17-.08-.71-.26-1.35-.82-.5-.45-.83-1-.93-1.17-.1-.17-.01-.27.07-.35.08-.08.17-.2.25-.3.08-.1.11-.17.17-.28.06-.11.03-.21-.01-.3-.04-.08-.39-.94-.53-1.29-.14-.35-.28-.3-.39-.3h-.33c-.11 0-.3.04-.46.21-.16.17-.6.59-.6 1.45 0 .86.62 1.7.7 1.82.08.11 1.22 1.86 2.96 2.61.41.18.73.29.98.37.41.13.79.11 1.08.07.33-.05 1-.41 1.14-.81.14-.4.14-.74.1-.81-.04-.07-.15-.11-.32-.19z"/></svg>
                   </a>
                 </div>
-                <p id="customer-meta-rest" class="customer-balance-meta muted hidden" hidden></p>
               </div>
+              <p id="customer-meta-rest" class="customer-balance-meta muted hidden" hidden></p>
             </div>
             <div class="customer-balance-hero-amount" aria-live="polite">
               <span class="customer-balance-label">Outstanding</span>
