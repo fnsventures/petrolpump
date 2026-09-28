@@ -340,9 +340,10 @@ Supervisors can open `staff.html` (view/edit profiles). Only admins may mark ina
 Attendance (attendance.html)
    → list_employees_roster() for employee picker
    → save_employee_attendance_batch(date, jsonb) or per-row upsert
-   → status: present | absent | half_day | leave
+   → status: present | half_day | leave (older absent rows count as leave)
    → optional shift (from pump_settings.config.shifts), check_in/out, note
-   → History tab with date filter
+   → optional over_duty on a present day (extra day's pay when the rule is on)
+   → History tab: month grid plus pay-effect table (loss of pay and over duty)
 ```
 
 ### 7.3 Salary
@@ -356,8 +357,8 @@ Salary (salary.html)
    → Select salary_month (pay period — first of month) separate from payment date
    → Record installment → salary_payments (date = when paid, salary_month = period)
    → Auto-creates linked expenses row (category Salary, salary_payment_id FK)
-   → Monthly summary: paid vs monthly_salary per employee for selected month
-   → Printable salary slips (css/salary-slip-print.css) with PF, establishment code
+   → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
+   → Printable salary slips (css/salary-slip-print.css) with PF, loss of pay, over duty, establishment code
    → Admin can delete payment → removes linked expense
 ```
 
@@ -376,7 +377,7 @@ Side nav sections (hash routing via `pageSections.js`):
 | `pumps` | Petrol/diesel pump count, nozzles, tank labels/capacities |
 | `users` | Email, display name, role, password → `upsert_staff` |
 | `salaries` | Per-employee monthly salary + **fixed PF contribution (₹/month)** |
-| `attendance` | Morning/afternoon shift names and times |
+| `attendance` | Morning/afternoon shift names and times; **leave allowance, loss of pay, over-duty pay** (on/off, paid leave days, day-rate basis) |
 | `alerts` | Dashboard notification toggles & thresholds (stock, credit, day-closing, night cash, readings, aging, payroll, attendance, expense ratio, invoices) |
 | `expenses` | Expense category add/delete |
 | `integrations` | Google Drive enable + root folder ID (billing, letters, staff files, vault documents) |

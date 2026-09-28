@@ -16,7 +16,8 @@
     <script src="js/roleBootstrap.js?v=21"></script>
     <script src="js/appNav.js?v=21"></script>
     <link rel="stylesheet" href="css/app-core.css?v=21" />
-    <link rel="stylesheet" href="css/app-attendance.css?v=12" />
+    <link rel="stylesheet" href="css/app-attendance.css?v=13" />
+    <link rel="stylesheet" href="css/payroll.css?v=1" />
     <script defer src="js/vendor/supabase.min.js"></script>
     <script defer src="js/env.js"></script>
     <script defer src="js/errorHandler.js"></script>
@@ -26,10 +27,11 @@
     <script defer src="js/pwa.js?v=21"></script>
     <script defer src="js/supabase.js?v=21"></script>
     <script defer src="js/pumpSettings.js"></script>
+    <script defer src="js/payrollRules.js?v=3"></script>
     <script defer src="js/pageSections.js"></script>
     <script defer src="js/auth.js?v=21"></script>
     <script defer src="js/staffEmployees.js?v=4"></script>
-    <script defer src="js/attendance.js?v=12"></script>
+    <script defer src="js/attendance.js?v=15"></script>
   </head>
   <body>
     <header class="topbar" data-build-topbar>
@@ -52,7 +54,7 @@
         <div class="panel-head att-mark-head">
           <div>
             <h2 class="dashboard-section-title">Mark attendance</h2>
-            <p class="muted panel-lead">Select a date and set status (Present / Absent / Half-day / Leave) for each staff.</p>
+            <p class="muted panel-lead">Select a date and set status for each staff. Over duty is an extra day’s pay on a present day. Loss of pay is only leave past the monthly allowance, plus half-days.</p>
           </div>
           <div class="att-mark-filter">
             <div class="form-field att-date-field">
@@ -64,21 +66,24 @@
             </div>
           </div>
         </div>
+        <div id="attendance-policy" class="payroll-policy" hidden></div>
         <div id="attendance-summary" class="muted margin-top" aria-live="polite"></div>
         <div class="table-wrap margin-top">
-        <table class="attendance-mark-table">
+        <table class="attendance-mark-table show-month-effect show-od" id="attendance-mark-table">
           <thead>
             <tr>
               <th>Staff</th>
+              <th class="att-col-month">This month</th>
               <th>Status</th>
               <th>Shift</th>
+              <th class="att-col-od">Over duty</th>
               <th>Note</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="attendance-body">
             <tr>
-              <td colspan="5" class="muted">Loading…</td>
+              <td colspan="7" class="muted">Loading…</td>
             </tr>
           </tbody>
         </table>
@@ -91,7 +96,7 @@
         <div class="panel-head att-history-head">
           <div>
             <h2 class="dashboard-section-title">Attendance history</h2>
-            <p class="muted panel-lead">Month grid: each column is a day; scan across a row to see that staff member’s month at a glance. Hover a cell for shift and note. Use Download CSV for a detailed list.</p>
+            <p class="muted panel-lead">Month grid: each column is a day. <strong>OD</strong> under a present day is over duty. The pay effect under the grid uses the same rules as salary.</p>
           </div>
           <div class="att-history-filter">
             <div class="form-field att-month-field">
@@ -111,11 +116,12 @@
         <div id="attendance-matrix-wrap" class="table-wrap attendance-matrix-wrap margin-top" role="region" aria-label="Attendance by day"></div>
         <ul class="attendance-matrix-legend" aria-label="Status legend">
           <li><span class="att-legend-swatch att-cell-present" aria-hidden="true">P</span> Present</li>
-          <li><span class="att-legend-swatch att-cell-absent" aria-hidden="true">A</span> Absent</li>
           <li><span class="att-legend-swatch att-cell-half" aria-hidden="true">H</span> Half-day</li>
           <li><span class="att-legend-swatch att-cell-leave" aria-hidden="true">L</span> Leave</li>
+          <li><span class="att-legend-swatch att-cell-present" aria-hidden="true">OD</span> Over duty</li>
           <li><span class="att-legend-swatch att-cell-empty" aria-hidden="true">—</span> Not marked</li>
         </ul>
+        <div id="attendance-pay-panel" class="att-pay-panel"></div>
         <p class="attendance-matrix-shift-note muted margin-top">
           When a shift is saved: <strong>Mo</strong> = morning shift, <strong>Af</strong> = afternoon shift (small text under the letter; hover still shows your custom shift names).
         </p>

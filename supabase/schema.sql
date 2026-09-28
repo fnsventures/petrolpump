@@ -1973,6 +1973,7 @@ create table if not exists public.employee_attendance (
   date date not null,
   status text not null check (status in ('present', 'absent', 'half_day', 'leave')),
   shift text,
+  over_duty boolean not null default false,
   check_in time,
   check_out time,
   note text check (char_length(note) <= 200),
@@ -1985,7 +1986,10 @@ create table if not exists public.employee_attendance (
 create index if not exists employee_attendance_date_idx on public.employee_attendance (date desc);
 create index if not exists employee_attendance_employee_date_idx on public.employee_attendance (employee_id, date desc);
 
-comment on table public.employee_attendance is 'Daily attendance for employees (present/absent/half_day/leave with optional check-in/out).';
+comment on table public.employee_attendance is 'Daily attendance for employees (present/absent/half_day/leave, optional shift, over_duty on a present day).';
+
+comment on column public.employee_attendance.over_duty is
+  'Extra duty on a present day. When payroll over-duty pay is enabled, adds one day of salary.';
 
 alter table public.employee_attendance enable row level security;
 
@@ -2021,6 +2025,8 @@ declare
   v_count int := 0;
   v_emp_id uuid;
   v_bad_count int;
+  v_status text;
+  v_over_duty boolean;
 begin
   if not public.is_supervisor_or_admin() then
     raise exception 'Supervisor or admin access required';
@@ -2050,16 +2056,19 @@ begin
     end if;
 
     v_emp_id := (v_row->>'employee_id')::uuid;
+    v_status := coalesce(nullif(trim(v_row->>'status'), ''), 'present');
+    v_over_duty := v_status = 'present' and coalesce((v_row->>'over_duty')::boolean, false);
 
     insert into public.employee_attendance (
-      employee_id, date, status, shift, note, created_by, updated_at
+      employee_id, date, status, shift, note, over_duty, created_by, updated_at
     )
     values (
       v_emp_id,
       p_date,
-      coalesce(nullif(trim(v_row->>'status'), ''), 'present'),
+      v_status,
       nullif(trim(v_row->>'shift'), ''),
       nullif(trim(v_row->>'note'), ''),
+      v_over_duty,
       auth.uid(),
       timezone('utc'::text, now())
     )
@@ -2067,6 +2076,7 @@ begin
       status = excluded.status,
       shift = excluded.shift,
       note = excluded.note,
+      over_duty = excluded.over_duty,
       updated_at = excluded.updated_at;
     v_count := v_count + 1;
   end loop;
@@ -2076,7 +2086,7 @@ end;
 $$;
 
 comment on function public.save_employee_attendance_batch(date, jsonb) is
-  'Upsert attendance rows for one date. Supervisor or admin only. Rejects inactive employees.';
+  'Upsert attendance rows for one date, including over_duty on present days. Supervisor or admin only. Rejects inactive employees.';
 
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 

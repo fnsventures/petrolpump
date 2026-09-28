@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -37,16 +37,17 @@ function isMissingSalaryPaymentIdColumn(error) {
   return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
 }
 
-function getStaffSalaryMonthContext(staff, paid) {
-  const status = salaryStatusInfo(staff.monthly_salary, paid, staff);
-  const { salary: payable, pending } = computeSalaryBalance(staff.monthly_salary, paid, staff);
+function getStaffSalaryMonthContext(staff, paid, monthValue, records) {
+  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records);
+  const status = salaryStatusFromBalance(balance);
   return {
     label: status.label,
     className: status.className,
-    payable,
+    payable: balance.salary,
     pending: status.pending,
     advance: status.advance,
     paid: Number(paid ?? 0),
+    balance,
   };
 }
 
@@ -61,7 +62,7 @@ function formatMonthLabel(monthValue) {
   return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 }
 
-const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=2";
+const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=3";
 
 function slipAssetUrl(path) {
   return new URL(path, window.location.href).href;
@@ -76,7 +77,7 @@ function getPfSettings() {
 }
 
 function roundMoney(value) {
-  return Math.round(Number(value) * 100) / 100;
+  return PayrollRules.roundMoney(value);
 }
 
 /** Fixed monthly PF from HR → Staff (e.g. ₹200 or ₹150 per employee). */
@@ -179,19 +180,42 @@ function amountInWordsINR(amount) {
   return `${words} Only`;
 }
 
-function computeSalaryBalance(monthlySalary, paid, staff) {
+function monthPayFor(monthlySalary, monthValue, records) {
+  if (typeof PayrollRules === "undefined") return null;
+  return PayrollRules.computeMonthPay(monthlySalary, records || [], monthValue);
+}
+
+function computeSalaryBalance(monthlySalary, paid, staff, monthValue, records) {
   const gross = Number(monthlySalary ?? 0);
-  const payable = staff ? computePfBreakdown(gross, staff).netSalary : gross;
+  const pf = staff ? computePfBreakdown(gross, staff) : { employeePf: 0, employerPf: 0, netSalary: gross, gross, fixedAmount: 0 };
+  const pay = monthPayFor(gross, monthValue, records);
+  const settled =
+    typeof PayrollRules !== "undefined"
+      ? PayrollRules.settleTakeHome(gross, pay?.lopAmount || 0, pay?.overDutyAmount || 0, pf.employeePf)
+      : {
+          gross,
+          earnings: gross,
+          lopAmount: 0,
+          overDutyAmount: 0,
+          beforePf: gross,
+          employeePf: pf.employeePf,
+          net: pf.netSalary,
+        };
+  const payable = settled.net;
   const totalPaid = Number(paid ?? 0);
   const pending = Math.max(0, payable - totalPaid);
   const advance = Math.max(0, totalPaid - payable);
-  return { salary: payable, gross, totalPaid, pending, advance };
+  return { salary: payable, gross, totalPaid, pending, advance, pf, pay, settled };
 }
 
-function salaryStatusInfo(monthlySalary, paid, staff) {
-  const { salary, totalPaid, pending, advance } = computeSalaryBalance(monthlySalary, paid, staff);
-  if (salary <= 0) {
+function salaryStatusFromBalance(balance) {
+  const { salary, gross, totalPaid, pending, advance, settled } = balance;
+  const hasEarnings = gross > 0 || (settled?.overDutyAmount || 0) > 0;
+  if (!hasEarnings) {
     return { label: "No salary set", className: "salary-status--none", pending, advance };
+  }
+  if (salary <= 0.009 && totalPaid <= 0.009) {
+    return { label: "Nothing payable", className: "salary-status--none", pending, advance };
   }
   if (advance > 0.009) {
     return { label: "Advance paid", className: "salary-status--advance", pending, advance };
@@ -232,17 +256,17 @@ function salaryDeleteButtonHtml(payment, staff, isAdmin) {
   });
 }
 
-function getStaffBalanceForMonth(staffId, payments, employees) {
+function getStaffBalanceForMonth(staffId, payments, employees, monthValue, records) {
   const staff = (employees || []).find((s) => s.id === staffId);
   if (!staff) return null;
   const paidMap = paidByStaffInRange(payments);
   const paid = paidMap.get(staffId) || 0;
-  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff);
+  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records);
   return {
     staff,
     paid,
     ...balance,
-    status: salaryStatusInfo(staff.monthly_salary, paid, staff),
+    status: salaryStatusFromBalance(balance),
   };
 }
 
@@ -260,16 +284,31 @@ function buildSlipRef(employeeId, monthValue) {
   return `SAL-${monthValue.replace("-", "")}-${compact}`;
 }
 
-function buildSalarySlipHtml(staff, staffPayments, monthValue) {
+function slipAttendanceBlock(pay) {
+  if (!pay || typeof PayrollRules === "undefined") return "";
+  if (!pay.lossOfPayEnabled && !pay.overDutyEnabled) return "";
+  const counts = pay.counts || {};
+  const leave = pay.lossOfPayEnabled
+    ? `Leave ${PayrollRules.leaveUsageLabel(pay)}`
+    : `Leave ${PayrollRules.formatDayCount(counts.leave)}`;
+  const bits = [`Present ${counts.present}`, `Half-day ${counts.half}`, leave];
+  if (pay.overDutyEnabled) bits.push(`Over duty ${PayrollRules.formatDayCount(pay.overDutyDays)}`);
+  const basis = pay.config?.dayRateBasis === "fixed" ? "fixed" : "calendar";
+  bits.push(`Day rate ₹ ${formatNumberPlain(pay.perDay)} (${pay.divisor} ${basis} days)`);
+  const detail = pay.lossOfPayEnabled ? PayrollRules.lopBreakdownLabel(pay) : "";
+  return `<div class="salary-slip-attendance"><strong>Attendance.</strong> ${escapeHtml(bits.join(" · "))}.${
+    detail ? ` ${escapeHtml(detail)}.` : ""
+  }</div>`;
+}
+
+function buildSalarySlipHtml(staff, staffPayments, monthValue, records) {
   const monthLabel = formatMonthLabel(monthValue);
   const payPeriod = getPayPeriodLabel(monthValue);
   const totalPaid = staffPayments.reduce((s, p) => s + Number(p.amount ?? 0), 0);
-  const pf = computePfBreakdown(staff.monthly_salary, staff);
-  const { pending: netPending, advance: netAdvance } = computeSalaryBalance(
-    staff.monthly_salary,
-    totalPaid,
-    staff
-  );
+  const balance = computeSalaryBalance(staff.monthly_salary, totalPaid, staff, monthValue, records);
+  const pf = balance.pf;
+  const { pending: netPending, advance: netAdvance, pay, settled } = balance;
+  const netSalary = settled.net;
   const gstin = PumpSettings.getStationGstin();
   const pfSettings = getPfSettings();
   const address = PumpSettings.getStationAddress();
@@ -381,6 +420,8 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
         </div>
       </dl>
 
+      ${slipAttendanceBlock(pay)}
+
       <div class="salary-slip-pay-grid">
         <div class="salary-slip-pay-col">
           <p class="salary-slip-pay-col-title">Earnings</p>
@@ -389,22 +430,32 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
               <td>Gross salary</td>
               <td>₹ ${formatNumberPlain(pf.gross)}</td>
             </tr>
+            ${
+              pay?.overDutyAmount > 0
+                ? `<tr><td>Over duty (${escapeHtml(PayrollRules.formatDayCount(pay.overDutyDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.overDutyAmount)}</td></tr>`
+                : ""
+            }
             <tr class="salary-slip-pay-total">
               <td>Total earnings</td>
-              <td>₹ ${formatNumberPlain(pf.gross)}</td>
+              <td>₹ ${formatNumberPlain(settled.earnings)}</td>
             </tr>
           </table>
         </div>
         <div class="salary-slip-pay-col salary-slip-pay-col--deductions">
           <p class="salary-slip-pay-col-title">Deductions</p>
           <table class="salary-slip-pay-table">
+            ${
+              pay?.lopAmount > 0
+                ? `<tr><td>Loss of pay (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.lopAmount)}</td></tr>`
+                : ""
+            }
             <tr>
               <td>Employee PF (fixed monthly)</td>
-              <td>₹ ${formatNumberPlain(pf.employeePf)}</td>
+              <td>₹ ${formatNumberPlain(settled.employeePf)}</td>
             </tr>
             <tr class="salary-slip-pay-total">
               <td>Total deductions</td>
-              <td>₹ ${formatNumberPlain(pf.employeePf)}</td>
+              <td>₹ ${formatNumberPlain(roundMoney((pay?.lopAmount || 0) + settled.employeePf))}</td>
             </tr>
           </table>
         </div>
@@ -414,9 +465,9 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
 
       <div class="salary-slip-net-box">
         <span class="salary-slip-net-label">Net salary (take-home)</span>
-        <span class="salary-slip-net-amount">₹ ${formatNumberPlain(pf.netSalary)}</span>
+        <span class="salary-slip-net-amount">₹ ${formatNumberPlain(netSalary)}</span>
       </div>
-      <p class="salary-slip-words"><strong>In words:</strong> ${escapeHtml(amountInWordsINR(pf.netSalary))}</p>
+      <p class="salary-slip-words"><strong>In words:</strong> ${escapeHtml(amountInWordsINR(netSalary))}</p>
 
       <p class="salary-slip-section-title">Salary disbursements (${escapeHtml(monthLabel)})</p>
       <table class="salary-slip-payments">
@@ -441,7 +492,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
       <table class="salary-slip-summary">
         <tr class="salary-slip-summary-net">
           <td>Net salary for month</td>
-          <td>₹ ${formatNumberPlain(pf.netSalary)}</td>
+          <td>₹ ${formatNumberPlain(netSalary)}</td>
         </tr>
         <tr class="salary-slip-summary-total">
           <td>Total disbursed this month</td>
@@ -460,7 +511,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue) {
           <span class="salary-slip-sign-label">For ${escapeHtml(PumpSettings.getStationLegalName())}<br />Authorised signatory</span>
         </div>
       </footer>
-      <p class="salary-slip-note">Computer-generated salary slip. PF amounts are fixed per employee (set in HR → Staff). Disbursement rows reflect actual payments recorded for ${escapeHtml(monthLabel)}.</p>
+      <p class="salary-slip-note">Computer-generated salary slip. PF is the fixed monthly amount, capped so take-home is not negative. Loss of pay and over duty use marked attendance only; unmarked days are ignored. Disbursement rows are payments recorded for ${escapeHtml(monthLabel)}.</p>
     </article>`;
 }
 
@@ -475,9 +526,14 @@ async function getSalarySlipPrintCssText() {
   return salarySlipPrintCssCache;
 }
 
-async function runSalarySlipPrint(staff, staffPayments, monthValue) {
+async function runSalarySlipPrint(staff, staffPayments, monthValue, records) {
+  let rows = records;
+  if (!rows && typeof PayrollRules !== "undefined") {
+    const bundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue);
+    rows = bundle.byEmployee.get(staff.id) || [];
+  }
   const [sheetHtml, cssText] = await Promise.all([
-    Promise.resolve(buildSalarySlipHtml(staff, staffPayments, monthValue)),
+    Promise.resolve(buildSalarySlipHtml(staff, staffPayments, monthValue, rows || [])),
     getSalarySlipPrintCssText(),
   ]);
 
@@ -546,7 +602,49 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let staffList = [];
   let monthPayments = [];
+  let attendanceByEmployee = new Map();
+  let attendanceMonthLoaded = "";
+  let attendanceNote = "";
   let detailStaffId = null;
+
+  async function loadMonthAttendanceMap(monthValue) {
+    attendanceNote = "";
+    if (typeof PayrollRules === "undefined") {
+      attendanceByEmployee = new Map();
+      return attendanceByEmployee;
+    }
+    try {
+      const bundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue, { force: true });
+      attendanceByEmployee = bundle.byEmployee;
+      attendanceMonthLoaded = monthValue;
+      if (bundle.overDutyColumnReady === false && PayrollRules.getPayrollConfig().overDutyEnabled) {
+        attendanceNote =
+          "Over duty is turned on, but the database update for over duty is not applied yet. Loss of pay still uses attendance.";
+      }
+    } catch (error) {
+      attendanceByEmployee = new Map();
+      attendanceMonthLoaded = monthValue;
+      attendanceNote = "Attendance could not be loaded, so loss of pay and over duty are not included.";
+      AppError.report(error, { context: "loadMonthAttendanceMap" });
+    }
+    return attendanceByEmployee;
+  }
+
+  function recordsFor(staffId) {
+    return attendanceByEmployee.get(staffId) || [];
+  }
+
+  async function attendanceRecordsFor(staffId, monthValue) {
+    if (attendanceMonthLoaded === monthValue) return recordsFor(staffId);
+    if (typeof PayrollRules === "undefined") return [];
+    try {
+      const bundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue);
+      return bundle.byEmployee.get(staffId) || [];
+    } catch (error) {
+      AppError.report(error, { context: "attendanceRecordsFor" });
+      return [];
+    }
+  }
 
   const historyActionsHead = document.getElementById("salary-history-actions-head");
   const detailActionsHead = document.getElementById("salary-detail-actions-head");
@@ -699,7 +797,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const paidMap = paidByStaffInRange(monthPayments);
     const paid = paidMap.get(staffId) || 0;
-    const ctx = getStaffSalaryMonthContext(staff, paid);
+    const ctx = getStaffSalaryMonthContext(staff, paid, monthValue, recordsFor(staffId));
     const list = paymentsForEmployee(monthPayments, staffId);
     const monthLabel = formatMonthLabel(monthValue);
 
@@ -717,16 +815,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const balanceClass =
       ctx.pending <= 0.009 ? "salary-detail-balance is-clear" : "salary-detail-balance";
 
-    const pf = computePfBreakdown(staff.monthly_salary, staff);
+    const pf = ctx.balance.pf;
     const pfNo = staff.pf_number?.trim();
+    const pay = ctx.balance?.pay;
+    const settled = ctx.balance?.settled;
 
     if (statsEl) {
       statsEl.innerHTML = `
         <div><dt>Gross salary</dt><dd>${formatCurrency(staff.monthly_salary)}</dd></div>
-        <div><dt>Net (after PF)</dt><dd>${formatCurrency(pf.netSalary)}</dd></div>
+        <div><dt>Payable</dt><dd>${formatCurrency(ctx.payable)}</dd></div>
         <div><dt>PF contribution</dt><dd>${
           pf.fixedAmount > 0
-            ? formatCurrency(pf.fixedAmount)
+            ? formatCurrency(settled?.employeePf ?? pf.employeePf)
             : '<span class="muted">Not set — <a href="staff.html">Staff</a></span>'
         }</dd></div>
         <div><dt>Employer PF</dt><dd>${formatCurrency(pf.employerPf)}</dd></div>
@@ -736,6 +836,41 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div><dt>Remaining</dt><dd class="${balanceClass}">${balanceValue}</dd></div>
         <div><dt>Status</dt><dd><span class="salary-status ${ctx.className}">${escapeHtml(ctx.label)}</span></dd></div>
       `;
+    }
+
+    const adjustEl = document.getElementById("salary-detail-adjust");
+    if (adjustEl) {
+      if (!pay || (!pay.lossOfPayEnabled && !pay.overDutyEnabled)) {
+        adjustEl.hidden = true;
+        adjustEl.innerHTML = "";
+      } else {
+        const counts = pay.counts || {};
+        adjustEl.hidden = false;
+        adjustEl.innerHTML = `
+          <div class="salary-adjust-head">
+            <h3>Attendance this month</h3>
+            <span class="muted">${escapeHtml(PayrollRules.dayRateLabel(pay))} · ${escapeHtml(formatCurrency(pay.perDay))} / day</span>
+          </div>
+          <dl class="salary-adjust-grid">
+            <div><dt>Present</dt><dd>${counts.present}</dd></div>
+            <div><dt>Half-day</dt><dd>${counts.half}</dd></div>
+            <div><dt>Leave</dt><dd>${escapeHtml(PayrollRules.leaveUsageLabel(pay))}</dd></div>
+            <div><dt>Loss of pay</dt><dd class="${pay.lopAmount > 0 ? "salary-money-deduct" : ""}">${
+              !pay.lossOfPayEnabled
+                ? "Off"
+                : pay.lopAmount > 0
+                  ? `${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} · ${escapeHtml(formatCurrency(pay.lopAmount))}`
+                  : "—"
+            }</dd></div>
+            <div><dt>Over duty</dt><dd class="${pay.overDutyAmount > 0 ? "salary-money-earn" : ""}">${
+              pay.overDutyEnabled
+                ? `${escapeHtml(PayrollRules.formatDayCount(pay.overDutyDays))} · ${escapeHtml(formatCurrency(pay.overDutyAmount))}`
+                : "Off"
+            }</dd></div>
+          </dl>
+          <p class="salary-adjust-note">${escapeHtml(pay.lossOfPayEnabled ? PayrollRules.lopBreakdownLabel(pay) : "Loss of pay is off.")} Unmarked days are ignored.</p>
+        `;
+      }
     }
 
     if (tbody) {
@@ -887,13 +1022,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!staff) return;
 
     const payments = await getPaymentsForSalaryMonth(monthVal);
-    const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+    const records = await attendanceRecordsFor(staffId, monthVal);
+    const balance = getStaffBalanceForMonth(staffId, payments, staffList, monthVal, records);
     if (!balance) return;
 
-    const pf = computePfBreakdown(staff.monthly_salary, staff);
     const monthLabel = formatMonthLabel(monthVal);
     let remainingText;
-    if (balance.salary <= 0) {
+    if ((balance.gross || 0) <= 0 && !(balance.pay?.overDutyAmount > 0)) {
       remainingText = "no salary configured";
     } else if (balance.status.advance > 0.009) {
       remainingText = `advance ${formatCurrency(balance.status.advance)} paid`;
@@ -902,8 +1037,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
       remainingText = `${formatCurrency(balance.pending)} remaining`;
     }
+    const extras = [];
+    if (balance.pay?.lossOfPayEnabled && balance.pay.lopAmount > 0) {
+      extras.push(`loss of pay ${formatCurrency(balance.pay.lopAmount)}`);
+    }
+    if (balance.pay?.overDutyEnabled) extras.push(`over duty ${formatCurrency(balance.pay.overDutyAmount)}`);
+    const extraText = extras.length ? ` · ${extras.join(" · ")}` : "";
 
-    paymentMonthHint.textContent = `${monthLabel}: net ${formatCurrency(pf.netSalary)} · ${formatCurrency(balance.paid)} paid · ${remainingText}`;
+    paymentMonthHint.textContent = `${monthLabel}: payable ${formatCurrency(balance.salary)}${extraText} · ${formatCurrency(balance.paid)} paid · ${remainingText}`;
     paymentMonthHint.classList.remove("hidden");
   }
 
@@ -920,7 +1061,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const monthVal = getPaymentSalaryMonth();
     const payments = await getPaymentsForSalaryMonth(monthVal);
-    const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+    const records = await attendanceRecordsFor(staffId, monthVal);
+    const balance = getStaffBalanceForMonth(staffId, payments, staffList, monthVal, records);
     if (!balance || balance.pending <= 0.009) {
       if (paymentAmountInput) paymentAmountInput.value = "";
       return;
@@ -937,56 +1079,61 @@ document.addEventListener("DOMContentLoaded", async () => {
     const kpiPending = document.getElementById("salary-kpi-pending");
     if (!tbody) return;
 
+    const kpiLop = document.getElementById("salary-kpi-lop");
+    const kpiOd = document.getElementById("salary-kpi-od");
+    const summaryTable = document.getElementById("salary-summary-table");
+    const payrollNote = document.getElementById("salary-payroll-note");
+    const payCfg = typeof PayrollRules !== "undefined" ? PayrollRules.getPayrollConfig() : null;
+    summaryTable?.classList.toggle("show-lop", Boolean(payCfg?.lossOfPayEnabled));
+    summaryTable?.classList.toggle("show-od", Boolean(payCfg?.overDutyEnabled));
+    document.getElementById("salary-kpi-lop-card")?.classList.toggle("hidden", !payCfg?.lossOfPayEnabled);
+    document.getElementById("salary-kpi-od-card")?.classList.toggle("hidden", !payCfg?.overDutyEnabled);
+
     if (!staffList.length) {
       tbody.innerHTML =
-        '<tr><td colspan="7" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first.</td></tr>';
+        '<tr><td colspan="9" class="muted">Add staff in <a href="staff.html">HR → Staff</a> first.</td></tr>';
       if (kpiPayroll) kpiPayroll.textContent = "—";
       if (kpiPaid) kpiPaid.textContent = "—";
       if (kpiPending) kpiPending.textContent = "—";
+      if (kpiLop) kpiLop.textContent = "—";
+      if (kpiOd) kpiOd.textContent = "—";
       return;
     }
 
     monthPayments = await loadPaymentsForSalaryMonth(monthValue);
+    await loadMonthAttendanceMap(monthValue);
     const paidMap = paidByStaffInRange(monthPayments);
 
     let totalPayroll = 0;
     let totalPaid = 0;
     let totalPending = 0;
+    let totalLop = 0;
+    let totalOd = 0;
 
-    staffList.forEach((s) => {
-      const gross = Number(s.monthly_salary ?? 0);
+    const summaryRows = staffList.map((s) => {
       const paid = paidMap.get(s.id) || 0;
-      const { salary: payable, pending } = computeSalaryBalance(gross, paid, s);
-      totalPayroll += payable;
+      const ctx = getStaffSalaryMonthContext(s, paid, monthValue, recordsFor(s.id));
+      const pay = ctx.balance?.pay;
+      totalPayroll += ctx.payable;
       totalPaid += paid;
-      totalPending += pending;
-    });
-
-    if (kpiPayroll) kpiPayroll.textContent = formatCurrency(totalPayroll);
-    if (kpiPaid) kpiPaid.textContent = formatCurrency(totalPaid);
-    if (kpiPending) kpiPending.textContent = formatCurrency(totalPending);
-
-    const kpiNote = document.getElementById("salary-kpi-note");
-    if (kpiNote) {
-      kpiNote.classList.add("hidden");
-      kpiNote.textContent = "";
-    }
-
-    tbody.innerHTML = staffList
-      .map((s) => {
-        const paid = paidMap.get(s.id) || 0;
-        const ctx = getStaffSalaryMonthContext(s, paid);
-        const remaining =
-          ctx.advance > 0.009
-            ? `<span class="muted">Advance ${formatCurrency(ctx.advance)}</span>`
-            : formatCurrency(ctx.pending);
-        const name = escapeHtml(s.name);
-        const role = escapeHtml(s.role_display ?? "—");
-        return `
+      totalPending += ctx.pending;
+      totalLop += pay?.lopAmount || 0;
+      totalOd += pay?.overDutyAmount || 0;
+      const remaining =
+        ctx.advance > 0.009
+          ? `<span class="muted">Advance ${formatCurrency(ctx.advance)}</span>`
+          : formatCurrency(ctx.pending);
+      const name = escapeHtml(s.name);
+      const role = escapeHtml(s.role_display ?? "—");
+      const lopText = !pay?.lossOfPayEnabled ? "Off" : pay.lopAmount > 0 ? formatCurrency(pay.lopAmount) : "—";
+      const odText = pay?.overDutyEnabled ? formatCurrency(pay.overDutyAmount) : "Off";
+      return `
           <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
             <td class="num">${formatSalaryAmount(ctx.payable)}</td>
+            <td class="num salary-col-lop${pay?.lopAmount > 0 ? " salary-money-deduct" : ""}">${lopText}</td>
+            <td class="num salary-col-od${pay?.overDutyAmount > 0 ? " salary-money-earn" : ""}">${odText}</td>
             <td class="num">${formatCurrency(paid)}</td>
             <td class="num">${remaining}</td>
             <td><span class="salary-status ${ctx.className}">${escapeHtml(ctx.label)}</span></td>
@@ -997,8 +1144,27 @@ document.addEventListener("DOMContentLoaded", async () => {
             </td>
           </tr>
         `;
-      })
-      .join("");
+    });
+
+    if (kpiPayroll) kpiPayroll.textContent = formatCurrency(totalPayroll);
+    if (kpiPaid) kpiPaid.textContent = formatCurrency(totalPaid);
+    if (kpiPending) kpiPending.textContent = formatCurrency(totalPending);
+    if (kpiLop) kpiLop.textContent = formatCurrency(totalLop);
+    if (kpiOd) kpiOd.textContent = formatCurrency(totalOd);
+    if (payrollNote) {
+      const summary = payCfg && PayrollRules.rulesAffectPay(payCfg) ? PayrollRules.policySummary(payCfg) : null;
+      const text = [attendanceNote, summary?.rate].filter(Boolean).join(" ");
+      payrollNote.textContent = text;
+      payrollNote.classList.toggle("hidden", !text);
+    }
+
+    const kpiNote = document.getElementById("salary-kpi-note");
+    if (kpiNote) {
+      kpiNote.classList.add("hidden");
+      kpiNote.textContent = "";
+    }
+
+    tbody.innerHTML = summaryRows.join("");
 
     tbody.querySelectorAll("tr[data-staff-id]").forEach((row) => {
       const staffId = row.getAttribute("data-staff-id");
@@ -1194,7 +1360,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const staff = staffList.find((s) => s.id === staffId);
 
       const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
-      const balance = getStaffBalanceForMonth(staffId, payments, staffList);
+      const records = await attendanceRecordsFor(staffId, salaryMonthVal);
+      const balance = getStaffBalanceForMonth(staffId, payments, staffList, salaryMonthVal, records);
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
         const overBy = roundMoney(amount - balance.pending);
         const msg =
@@ -1348,23 +1515,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       await loadStaffMembers();
       const payments = await loadPaymentsForSalaryMonth(monthVal);
       const paidMap = paidByStaffInRange(payments);
+      await loadMonthAttendanceMap(monthVal);
       const headers = [
         "Name",
         "Role",
-        "Net monthly (₹)",
+        "Payable (₹)",
+        "Loss of pay (₹)",
+        "Loss of pay days",
+        "Over duty (₹)",
+        "Over duty days",
         "Paid this month (₹)",
         "Remaining (₹)",
         "Status",
       ];
       const rows = staffList.map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const ctx = getStaffSalaryMonthContext(s, paid);
+        const ctx = getStaffSalaryMonthContext(s, paid, monthVal, recordsFor(s.id));
+        const pay = ctx.balance?.pay;
         const remaining =
           ctx.advance > 0.009 ? `Advance ${ctx.advance}` : String(ctx.pending);
         return [
           String(s.name ?? "").replace(/"/g, '""'),
           String(s.role_display ?? "").replace(/"/g, '""'),
           String(ctx.payable),
+          String(pay?.lopAmount ?? 0),
+          String(pay?.lopDays ?? 0),
+          String(pay?.overDutyAmount ?? 0),
+          String(pay?.overDutyDays ?? 0),
           String(paid),
           remaining,
           ctx.label,
