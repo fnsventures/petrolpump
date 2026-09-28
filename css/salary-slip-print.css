@@ -204,6 +204,17 @@ body {
   background: #475569;
 }
 
+.salary-slip-attendance {
+  margin: 0 0 6pt;
+  padding: 4pt 7pt;
+  border: 0.6pt solid #e2e8f0;
+  border-radius: 2pt;
+  background: #f8fafc;
+  font-size: 7.4pt;
+  line-height: 1.35;
+  color: #334155;
+}
+
 .salary-slip-pay-table {
   width: 100%;
   border-collapse: collapse;

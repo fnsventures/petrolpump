@@ -904,12 +904,6 @@ function currentSalaryMonthValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function approxNetMonthlySalary(emp) {
-  const gross = Math.max(0, Number(emp?.monthly_salary ?? 0));
-  const pf = Math.max(0, Number(emp?.pf_contribution ?? 0));
-  return Math.max(0, gross - Math.min(pf, gross));
-}
-
 /**
  * One day_closing window for banners (date) + shortage/surplus alert (short_today).
  */
@@ -1328,8 +1322,30 @@ async function updateSmartAlerts(options = {}) {
       }
       let unpaidCount = 0;
       let pendingTotal = 0;
+      let salaryAttendance = null;
+      const payrollActive = typeof PayrollRules !== "undefined" && PayrollRules.rulesAffectPay();
+      if (payrollActive) {
+        try {
+          salaryAttendance = await PayrollRules.fetchMonthAttendance(window.supabaseClient, salaryMonth);
+        } catch (err) {
+          AppError.report(err, { context: "updateSmartAlerts", type: "salary_attendance" });
+        }
+      }
       for (const emp of salaryEmpRes.data ?? []) {
-        const payable = approxNetMonthlySalary(emp);
+        const gross = Math.max(0, Number(emp.monthly_salary ?? 0));
+        const pfFixed = Math.min(Math.max(0, Number(emp.pf_contribution ?? 0)), gross);
+        let lopAmount = 0;
+        let overDutyAmount = 0;
+        if (salaryAttendance) {
+          const records = salaryAttendance.byEmployee.get(emp.id) || [];
+          const pay = PayrollRules.computeMonthPay(gross, records, salaryMonth);
+          lopAmount = pay.lopAmount;
+          overDutyAmount = pay.overDutyAmount;
+        }
+        const payable =
+          typeof PayrollRules !== "undefined"
+            ? PayrollRules.settleTakeHome(gross, lopAmount, overDutyAmount, pfFixed).net
+            : Math.max(0, gross - pfFixed);
         if (payable <= 0) continue;
         const pending = Math.max(0, payable - (paidMap.get(emp.id) || 0));
         if (pending > 0.009) {
