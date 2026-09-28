@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules */
 
 let currentAuth = null;
 
@@ -21,6 +21,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindBillingDefaultsForm(auth);
   bindPumpsForm(auth);
   bindShiftsForm(auth);
+  bindPayrollForm(auth);
   bindAlertsForm(auth);
   bindIntegrationsForm(auth);
   initProducts();
@@ -430,6 +431,88 @@ function bindShiftsForm(auth) {
       AppError.handle(err, { target: errorEl });
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = "Save shifts"; }
+    }
+  });
+}
+
+function bindPayrollForm(auth) {
+  const form = document.getElementById("payroll-form");
+  if (!form || typeof PayrollRules === "undefined") return;
+
+  const lopInput = document.getElementById("payroll-lop-enabled");
+  const leaveDaysInput = document.getElementById("payroll-paid-leave-days");
+  const leaveDaysField = document.getElementById("payroll-leave-days-field");
+  const odInput = document.getElementById("payroll-od-enabled");
+  const basisInput = document.getElementById("payroll-day-basis");
+  const fixedDaysInput = document.getElementById("payroll-fixed-days");
+  const fixedDaysField = document.getElementById("payroll-fixed-days-field");
+  const exampleEl = document.getElementById("payroll-example");
+  const def = AppConfig.DEFAULT_PAYROLL;
+
+  function readDraft() {
+    return {
+      lossOfPayEnabled: Boolean(lopInput?.checked),
+      paidLeaveDaysPerMonth: PayrollRules.clampInt(leaveDaysInput?.value, 0, 31, def.paidLeaveDaysPerMonth),
+      overDutyEnabled: Boolean(odInput?.checked),
+      dayRateBasis: basisInput?.value === "fixed" ? "fixed" : "calendar",
+      fixedDaysInMonth: PayrollRules.clampInt(fixedDaysInput?.value, 1, 31, def.fixedDaysInMonth),
+    };
+  }
+
+  function syncPayrollFields() {
+    const lopOn = Boolean(lopInput?.checked);
+    const fixed = basisInput?.value === "fixed";
+    if (leaveDaysInput) leaveDaysInput.disabled = !lopOn;
+    leaveDaysField?.classList.toggle("payroll-field-dim", !lopOn);
+    if (fixedDaysField) fixedDaysField.hidden = !fixed;
+    if (!exampleEl) return;
+    const draft = readDraft();
+    const sample = PayrollRules.computeMonthPay(15000, [], "2000-04", draft);
+    const days = sample.divisor;
+    const rate = sample.perDay;
+    const lopText = draft.lossOfPayEnabled
+      ? `one leave day past the ${draft.paidLeaveDaysPerMonth}-day allowance deducts ${formatCurrency(rate)}`
+      : "extra leave does not change pay";
+    const odText = draft.overDutyEnabled
+      ? `one over-duty day adds ${formatCurrency(rate)}`
+      : "over duty does not change pay";
+    const basisText =
+      draft.dayRateBasis === "fixed" ? `${days} fixed days` : "30 days in this example month";
+    exampleEl.textContent = `Example on a ${formatCurrency(15000)} salary (${basisText}, ${formatCurrency(rate)} per day): ${lopText}; ${odText}. Leave inside the allowance is not deducted. A half-day deducts half a day when loss of pay is on.`;
+  }
+
+  const saved = PayrollRules.getPayrollConfig();
+  setCheckboxState(lopInput, saved.lossOfPayEnabled);
+  setCheckboxState(odInput, saved.overDutyEnabled);
+  if (leaveDaysInput) leaveDaysInput.value = String(saved.paidLeaveDaysPerMonth);
+  if (basisInput) basisInput.value = saved.dayRateBasis;
+  if (fixedDaysInput) fixedDaysInput.value = String(saved.fixedDaysInMonth);
+  syncPayrollFields();
+
+  form.addEventListener("change", syncPayrollFields);
+  form.addEventListener("input", syncPayrollFields);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const successEl = document.getElementById("payroll-success");
+    const errorEl = document.getElementById("payroll-error");
+    successEl?.classList.add("hidden");
+    errorEl?.classList.add("hidden");
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+    }
+    try {
+      await PumpSettings.savePumpSettings({ payroll: readDraft() }, auth.session?.user?.id);
+      syncPayrollFields();
+      successEl?.classList.remove("hidden");
+    } catch (err) {
+      AppError.handle(err, { target: errorEl });
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Save pay rules";
+      }
     }
   });
 }
