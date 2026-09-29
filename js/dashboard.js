@@ -1514,7 +1514,8 @@ function buildDashboardLaterPanel(id, { credit = false } = {}) {
 
 function taskContactHtml(row) {
   if (!TaskUtils.isCreditTask(row) || typeof TaskUtils.contactRowHtml !== "function") return "";
-  const mobile = row.credit_customers?.mobile || "";
+  const embedded = Array.isArray(row.credit_customers) ? row.credit_customers[0] : row.credit_customers;
+  const mobile = embedded?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
   const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
   return TaskUtils.contactRowHtml(mobile, waText);

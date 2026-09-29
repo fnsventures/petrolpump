@@ -18,7 +18,6 @@
           <span id="reminders-todo-nav-badge" class="reminders-nav-badge reminders-nav-badge--muted hidden" aria-hidden="true">0</span>
         </button>
         <button type="button" class="settings-nav-item" data-section="add">Add task</button>
-        <button type="button" class="settings-nav-item" data-section="done">Completed</button>
       </nav>
 
       <div class="settings-panels">
@@ -27,7 +26,7 @@
             <div>
               <h2 class="dashboard-section-title">Credit collection</h2>
               <p class="muted panel-lead">
-                Call or WhatsApp, then Done when settled. Use <strong>+3 days</strong> when they need time — or More… for other options.
+                Call or WhatsApp, then Done to clear it. Use <strong>+3 days</strong> when they need time — or More… for other options.
               </p>
             </div>
             <div class="filter-actions">
@@ -158,34 +157,6 @@
             <p id="reminder-success" class="success hidden" role="status"></p>
             <p id="reminder-error" class="error hidden" role="alert"></p>
           </form>
-        </section>
-
-        <section class="settings-panel card dashboard-card" data-panel="done" aria-label="Completed tasks" hidden>
-          <header class="panel-head">
-            <div>
-              <h2 class="dashboard-section-title">Completed</h2>
-              <p class="muted panel-lead">Recently finished tasks. Reopen one if it still needs attention.</p>
-            </div>
-          </header>
-
-          <div class="reminders-done-groups">
-            <div class="reminders-done-group">
-              <h3 class="reminders-group-title">Credit collection</h3>
-              <div id="reminders-done-credit-list" class="reminders-list" aria-live="polite">
-                <p class="muted">Loading…</p>
-              </div>
-            </div>
-            <div class="reminders-done-group">
-              <h3 class="reminders-group-title">Todo</h3>
-              <div id="reminders-done-todo-list" class="reminders-list" aria-live="polite">
-                <p class="muted">Loading…</p>
-              </div>
-            </div>
-          </div>
-          <div class="pagination-controls">
-            <span id="reminders-done-pagination-info" class="muted"></span>
-            <button type="button" id="reminders-done-load-more" class="button-secondary hidden">Load more</button>
-          </div>
         </section>
       </div>
     </main>

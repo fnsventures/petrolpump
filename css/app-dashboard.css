@@ -1453,9 +1453,11 @@ body.modal-open {
 }
 
 .notif-item--task .contact-line,
-.reminders-landing-item .contact-line {
-  display: flex;
-  width: 100%;
+.reminders-landing-item .contact-line,
+.topbar-notifications-popup .contact-line {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
   font-size: var(--text-sm);
   font-weight: 400;
   color: var(--text-muted);

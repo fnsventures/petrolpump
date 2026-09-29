@@ -1186,8 +1186,9 @@ tr.is-editing .expense-cat-drag-handle {
 /* Number and actions share one line and scale with the surrounding text. */
 .contact-line {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4em;
+  gap: 0.35rem 0.4rem;
   max-width: 100%;
   min-width: 0;
   vertical-align: middle;
@@ -1217,7 +1218,7 @@ tr.is-editing .expense-cat-drag-handle {
 .contact-line-actions {
   display: inline-flex;
   align-items: center;
-  gap: 0.22em;
+  gap: 0.35rem;
   flex: 0 0 auto;
 }
 
@@ -1225,56 +1226,58 @@ tr.is-editing .expense-cat-drag-handle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: max(1.7em, 1.35rem);
-  height: max(1.7em, 1.35rem);
-  min-width: max(1.7em, 1.35rem);
-  min-height: max(1.7em, 1.35rem);
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 0.38em;
+  border-radius: 0.4rem;
   background: transparent;
   line-height: 0;
   text-decoration: none;
   cursor: pointer;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
 
 .contact-line a.contact-line-btn svg {
-  width: 0.95em;
-  height: 0.95em;
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
   fill: currentColor;
+  flex-shrink: 0;
 }
 
 .contact-line a.contact-line-btn.contact-line-btn--call {
-  color: #0b6cb0;
-  background: #f4f8fb;
-  border-color: #d5e4f0;
+  color: var(--bpcl-blue-dark);
+  background: var(--bpcl-blue-soft);
+  border-color: var(--fuel-petrol-border);
 }
 
 .contact-line a.contact-line-btn.contact-line-btn--whatsapp {
-  color: #0e8a70;
-  background: #f3faf7;
-  border-color: #d0e7de;
+  color: var(--bpcl-green);
+  background: rgba(0, 122, 51, 0.08);
+  border-color: rgba(0, 122, 51, 0.22);
 }
 
 .contact-line a.contact-line-btn.contact-line-btn--call:is(:hover, :focus-visible) {
-  color: #005a9c;
-  background: #e7f2fa;
-  border-color: #b9d4ea;
+  color: var(--bpcl-blue-dark);
+  background: rgba(0, 112, 192, 0.16);
+  border-color: var(--bpcl-blue);
   text-decoration: none;
 }
 
 .contact-line a.contact-line-btn.contact-line-btn--whatsapp:is(:hover, :focus-visible):not(.is-disabled) {
-  color: #0b6b58;
-  background: #e7f6f1;
-  border-color: #b7ddd0;
+  color: var(--bpcl-green);
+  background: rgba(0, 122, 51, 0.14);
+  border-color: var(--bpcl-green);
   text-decoration: none;
 }
 
 .contact-line a.contact-line-btn:focus-visible {
-  outline: 2px solid rgba(12, 74, 110, 0.35);
+  outline: 2px solid var(--bpcl-blue);
   outline-offset: 1px;
 }
 

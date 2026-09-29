@@ -1,4 +1,4 @@
-/* Nested auto-collapsing sidebar: layer 1 groups, layer 2 items. Layer 3 stays on the page. */
+/* Nested sidebar: icon rail by default. Hover expands the rail; only the section under the pointer opens. Leaving collapses it again. Layer 3 stays in the sections drawer, which also opens on hover while collapsed. */
 
 :root {
   --app-sidebar-collapsed: 4.5rem;
@@ -95,13 +95,11 @@ body.has-app-sidebar .table-wrap {
 html.app-sidebar-pinned .app-sidebar,
 body.has-app-sidebar.app-sidebar-pinned .app-sidebar,
 body.app-sidebar-open .app-sidebar,
-body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:hover,
-body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:focus-within {
+body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
   width: var(--app-sidebar-expanded);
 }
 
-body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:hover,
-body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:focus-within {
+body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
   box-shadow:
     inset -3px 0 0 var(--app-sidebar-active),
     12px 0 28px rgba(0, 64, 112, 0.28);
@@ -259,7 +257,9 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:focus-within {
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.app-sidebar-group.is-open > .app-sidebar-group-toggle > .app-sidebar-chevron {
+.app-sidebar-group.is-open > .app-sidebar-group-toggle > .app-sidebar-chevron,
+.app-sidebar.is-expanded .app-sidebar-group:is(:hover, :focus-within) > .app-sidebar-group-toggle > .app-sidebar-chevron,
+body.app-sidebar-pinned .app-sidebar .app-sidebar-group:is(:hover, :focus-within) > .app-sidebar-group-toggle > .app-sidebar-chevron {
   transform: rotate(90deg);
 }
 
@@ -272,9 +272,24 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:focus-within {
     opacity 0.22s ease;
 }
 
-.app-sidebar-group.is-open > .app-sidebar-group-body {
+.app-sidebar-group.is-open > .app-sidebar-group-body,
+.app-sidebar.is-expanded .app-sidebar-group:is(:hover, :focus-within) > .app-sidebar-group-body,
+body.app-sidebar-pinned .app-sidebar .app-sidebar-group:is(:hover, :focus-within) > .app-sidebar-group-body {
   grid-template-rows: 1fr;
   opacity: 1;
+}
+
+.app-sidebar.is-expanded .app-sidebar-group:not(:hover):not(:focus-within):not(.is-open) > .app-sidebar-group-body,
+body.app-sidebar-pinned .app-sidebar .app-sidebar-group:not(:hover):not(:focus-within):not(.is-open) > .app-sidebar-group-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.app-sidebar.is-expanded .app-sidebar-group:not(:hover):not(:focus-within):not(.is-open) .app-sidebar-group-items,
+body.app-sidebar-pinned .app-sidebar .app-sidebar-group:not(:hover):not(:focus-within):not(.is-open) .app-sidebar-group-items {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
 }
 
 .app-sidebar-group-items {
@@ -333,15 +348,21 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar:focus-within {
   display: none;
 }
 
-body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(:hover):not(:focus-within) .app-sidebar-label,
-body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(:hover):not(:focus-within) .app-sidebar-chevron {
+body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(.is-expanded) .app-sidebar-label,
+body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(.is-expanded) .app-sidebar-chevron {
   opacity: 0;
   pointer-events: none;
 }
 
-body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(:hover):not(:focus-within) .app-sidebar-group-body {
+body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(.is-expanded) .app-sidebar-group-body {
   grid-template-rows: 0fr;
   opacity: 0;
+}
+
+body.has-app-sidebar:not(.app-sidebar-pinned):not(.app-sidebar-open) .app-sidebar:not(.is-expanded) .app-sidebar-group-items {
+  margin: 0;
+  padding: 0;
+  border-width: 0;
 }
 
 body.has-app-sidebar .topbar {
@@ -593,6 +614,42 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
 
   body.has-app-sections .settings-layout.dashboard-page-layout > .dashboard-context-rail {
     grid-column: 1 / -1;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 961px) {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) {
+    width: var(--app-sections-width);
+    background: #f4f8fc;
+    cursor: default;
+    z-index: 260;
+    box-shadow: 10px 0 24px rgba(0, 90, 156, 0.16);
+  }
+
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-body {
+    display: flex;
+  }
+
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-head {
+    flex: 0 0 auto;
+    flex-direction: row;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: var(--topbar-height);
+    padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+    box-shadow: inset 0 -3px 0 var(--bpcl-yellow);
+  }
+
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-heading {
+    flex: 1 1 auto;
+    writing-mode: horizontal-tb;
+    transform: none;
+    letter-spacing: 0.1em;
+  }
+
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-toggle {
+    transform: none;
   }
 }
 

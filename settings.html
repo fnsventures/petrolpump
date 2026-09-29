@@ -14,7 +14,7 @@
         <button type="button" class="settings-nav-item" data-section="pumps">Pumps &amp; tanks</button>
         <button type="button" class="settings-nav-item" data-section="users">Users &amp; roles</button>
         <button type="button" class="settings-nav-item" data-section="salaries">Staff salaries</button>
-        <button type="button" class="settings-nav-item" data-section="attendance">Attendance shifts</button>
+        <button type="button" class="settings-nav-item" data-section="attendance">Attendance &amp; pay</button>
         <button type="button" class="settings-nav-item" data-section="alerts">Alerts &amp; thresholds</button>
         <button type="button" class="settings-nav-item" data-section="expenses">Expense categories</button>
         <button type="button" class="settings-nav-item" data-section="documents">Document types</button>
@@ -315,8 +315,8 @@
 
         <!-- Attendance -->
         <section id="settings-panel-attendance" class="settings-panel card" data-panel="attendance" hidden>
-          <h2>Attendance shifts</h2>
-          <p class="muted">Shift names appear on the Attendance page. Times are stored for future check-in/out features.</p>
+          <h2>Attendance &amp; pay</h2>
+          <p class="muted">Shift names appear on the Attendance page. Leave and over-duty rules below adjust monthly salary from marked attendance.</p>
           <form id="shifts-form" class="form">
             <div class="form-grid">
               <div class="form-field">
@@ -347,6 +347,50 @@
             <button type="submit">Save shifts</button>
             <p id="shifts-success" class="success hidden">Shifts saved.</p>
             <p id="shifts-error" class="error hidden"></p>
+          </form>
+
+          <h3 class="settings-subheading">Leave and over duty</h3>
+          <p class="muted">Turn each rule on or off. The day rate is monthly salary divided by the days you choose. Only marked attendance changes pay — a day left blank is ignored.</p>
+          <form id="payroll-form" class="form">
+            <div class="payroll-rule-grid">
+              <div class="payroll-rule-card">
+                <label class="checkbox-label" for="payroll-lop-enabled">
+                  <input id="payroll-lop-enabled" type="checkbox" />
+                  <span>
+                    Loss of pay
+                    <span class="payroll-rule-copy">Only leave past the monthly allowance is deducted. A half-day counts as half a day. Leave inside the allowance is not loss of pay.</span>
+                  </span>
+                </label>
+                <div class="form-field" id="payroll-leave-days-field">
+                  <label for="payroll-paid-leave-days">Paid leave days each month</label>
+                  <input id="payroll-paid-leave-days" type="number" min="0" max="31" step="1" inputmode="numeric" />
+                </div>
+              </div>
+              <div class="payroll-rule-card">
+                <label class="checkbox-label" for="payroll-od-enabled">
+                  <input id="payroll-od-enabled" type="checkbox" />
+                  <span>
+                    Over-duty pay
+                    <span class="payroll-rule-copy">A present day marked as over duty adds one extra day of salary. Half-days cannot be over duty.</span>
+                  </span>
+                </label>
+                <div class="form-field">
+                  <label for="payroll-day-basis">Day rate</label>
+                  <select id="payroll-day-basis">
+                    <option value="calendar">Divide by the days in that month</option>
+                    <option value="fixed">Divide by a fixed number of days</option>
+                  </select>
+                </div>
+                <div class="form-field" id="payroll-fixed-days-field">
+                  <label for="payroll-fixed-days">Fixed days</label>
+                  <input id="payroll-fixed-days" type="number" min="1" max="31" step="1" inputmode="numeric" />
+                </div>
+              </div>
+            </div>
+            <p id="payroll-example" class="payroll-example" aria-live="polite"></p>
+            <button type="submit">Save pay rules</button>
+            <p id="payroll-success" class="success hidden">Pay rules saved.</p>
+            <p id="payroll-error" class="error hidden"></p>
           </form>
         </section>
 

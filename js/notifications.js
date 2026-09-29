@@ -331,19 +331,25 @@
     return `Outstanding ${formatCurrency(amountDue)}`;
   }
 
+  function embeddedCustomer(row) {
+    const rel = row?.credit_customers;
+    if (Array.isArray(rel)) return rel[0] || null;
+    return rel || null;
+  }
+
   function taskContactHtml(row) {
-    if (!TaskUtils?.isCreditTask(row)) return "";
-    const mobile = row.credit_customers?.mobile || "";
-    const customerName = TaskUtils.customerNameOf(row);
-    const tel = TaskUtils.telHref(mobile);
+    if (!TaskUtils?.isCreditTask(row) || typeof TaskUtils.contactRowHtml !== "function") return "";
+    const customer = embeddedCustomer(row);
+    const mobile = customer?.mobile || "";
+    const customerName = TaskUtils.customerNameOf(row) || customer?.customer_name || "";
+    const amountDue = TaskUtils.amountDueOf
+      ? TaskUtils.amountDueOf({ ...row, credit_customers: customer })
+      : customer?.amount_due;
     const waText =
-      typeof TaskUtils.waMessageForCustomer === "function" ? TaskUtils.waMessageForCustomer(customerName) : "";
-    const wa = TaskUtils.waHref(mobile, waText);
-    if (!tel && !wa) return "";
-    return `<div class="task-dash-contact">
-    ${tel ? `<a class="button-secondary button-small" href="${esc(tel)}">Call</a>` : ""}
-    ${wa ? `<a class="button-secondary button-small" href="${esc(wa)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ""}
-  </div>`;
+      typeof TaskUtils.waMessageForCustomer === "function"
+        ? TaskUtils.waMessageForCustomer(customerName, amountDue)
+        : "";
+    return TaskUtils.contactRowHtml(mobile, waText);
   }
 
   function laterPanel(id, credit) {

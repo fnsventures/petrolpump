@@ -1,5 +1,5 @@
 /**
- * Nested auto-collapsing sidebar (layers 1–2).
+ * Nested sidebar (layers 1–2). Desktop: hover expands the rail and opens only the section under the pointer.
  *   layer 1 — Operations / Finance / HR / Admin
  *   layer 2 — Dashboard / Meter Reading / …
  * Layer 3 (Daily snapshot, DSR summary, …) stays in the in-page section nav.
@@ -194,6 +194,35 @@
     }
   }
 
+  function canHoverExpand() {
+    return isDesktop() && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  }
+
+  function sidebarPanelsVisible(sidebar) {
+    return Boolean(
+      sidebar?.classList.contains("is-expanded") ||
+        document.body.classList.contains("app-sidebar-pinned") ||
+        document.body.classList.contains("app-sidebar-open")
+    );
+  }
+
+  function syncGroupAria(sidebar) {
+    if (!sidebar) return;
+    const panels = sidebarPanelsVisible(sidebar);
+    sidebar.querySelectorAll(".app-sidebar-group").forEach((group) => {
+      const open = panels && group.classList.contains("is-open");
+      group.querySelector(".app-sidebar-group-toggle")?.setAttribute("aria-expanded", String(open));
+    });
+  }
+
+  function openOnlyGroup(sidebar, group) {
+    sidebar.querySelectorAll(".app-sidebar-group").forEach((other) => {
+      const open = other === group;
+      other.classList.toggle("is-open", open);
+      other.querySelector(".app-sidebar-group-toggle")?.setAttribute("aria-expanded", String(open));
+    });
+  }
+
   function setPinned(next) {
     try {
       localStorage.setItem(PIN_KEY, next ? "1" : "0");
@@ -208,6 +237,11 @@
     const label = pin?.querySelector(".app-sidebar-label");
     if (label) label.textContent = next ? "Unpin sidebar" : "Pin sidebar";
     pin?.setAttribute("title", next ? "Unpin sidebar" : "Pin sidebar open");
+    const sidebar = document.getElementById("app-sidebar");
+    if (!next && sidebar && canHoverExpand() && !sidebar.matches(":hover") && !sidebar.contains(document.activeElement)) {
+      sidebar.classList.remove("is-expanded");
+    }
+    syncGroupAria(sidebar);
     markActive();
   }
 
@@ -282,8 +316,11 @@
       e.stopPropagation();
       setSectionsOpen(document.documentElement.classList.contains("app-sections-collapsed"));
     });
-    drawer.addEventListener("click", () => {
-      if (drawer.classList.contains("is-collapsed")) setSectionsOpen(true);
+    drawer.addEventListener("click", (e) => {
+      if (!drawer.classList.contains("is-collapsed")) return;
+      if (e.target.closest("a, button")) return;
+      if (window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 961px)").matches) return;
+      setSectionsOpen(true);
     });
 
     setSectionsOpen(isSectionsOpen());
@@ -387,14 +424,92 @@
         return;
       }
       group.classList.toggle("is-open", current);
-      group.querySelector(".app-sidebar-group-toggle")?.setAttribute("aria-expanded", String(current));
+      group.querySelector(".app-sidebar-group-toggle")?.setAttribute("aria-expanded", String(current && sidebarPanelsVisible(sidebar)));
     });
   }
 
   function bindSidebar(sidebar) {
+    const COLLAPSE_MS = 160;
+    let collapseTimer = 0;
+    let pointerInside = false;
+    let openedByKeyboard = false;
+
+    function expandSidebar() {
+      window.clearTimeout(collapseTimer);
+      sidebar.classList.add("is-expanded");
+      syncGroupAria(sidebar);
+    }
+
+    function collapseSidebar() {
+      if (pointerInside || document.body.classList.contains("app-sidebar-pinned")) return;
+      if (openedByKeyboard && sidebar.contains(document.activeElement)) return;
+      sidebar.classList.remove("is-expanded");
+      syncGroupAria(sidebar);
+    }
+
+    function scheduleCollapse() {
+      window.clearTimeout(collapseTimer);
+      collapseTimer = window.setTimeout(collapseSidebar, COLLAPSE_MS);
+    }
+
+    sidebar.addEventListener("pointerenter", (e) => {
+      pointerInside = true;
+      if (!canHoverExpand()) return;
+      expandSidebar();
+      openOnlyGroup(sidebar, e.target.closest(".app-sidebar-group"));
+    });
+
+    sidebar.querySelectorAll(".app-sidebar-group").forEach((group) => {
+      group.addEventListener("pointerenter", () => {
+        if (!canHoverExpand()) return;
+        if (!sidebar.classList.contains("is-expanded") && !document.body.classList.contains("app-sidebar-pinned")) return;
+        openOnlyGroup(sidebar, group);
+      });
+    });
+
+    sidebar.addEventListener("pointerleave", () => {
+      pointerInside = false;
+      if (!canHoverExpand() || openedByKeyboard) return;
+      scheduleCollapse();
+    });
+
+    sidebar.addEventListener("focusin", (e) => {
+      if (!isDesktop() || pointerInside) return;
+      openedByKeyboard = true;
+      expandSidebar();
+      openOnlyGroup(sidebar, e.target.closest(".app-sidebar-group"));
+    });
+
+    sidebar.addEventListener("focusout", (e) => {
+      if (sidebar.contains(e.relatedTarget)) return;
+      openedByKeyboard = false;
+      if (!canHoverExpand() || pointerInside) return;
+      scheduleCollapse();
+    });
+
+    if (isDesktop() && !canHoverExpand()) expandSidebar();
+
+    window.addEventListener("resize", () => {
+      if (!isDesktop()) {
+        window.clearTimeout(collapseTimer);
+        sidebar.classList.remove("is-expanded");
+        syncGroupAria(sidebar);
+        return;
+      }
+      if (!canHoverExpand()) {
+        expandSidebar();
+        return;
+      }
+      if (!sidebar.matches(":hover") && !sidebar.contains(document.activeElement)) {
+        sidebar.classList.remove("is-expanded");
+        syncGroupAria(sidebar);
+      }
+    });
+
     sidebar.addEventListener("click", (e) => {
       const groupToggle = e.target.closest(".app-sidebar-group-toggle");
       if (groupToggle) {
+        if (canHoverExpand()) return;
         const group = groupToggle.closest(".app-sidebar-group");
         if (!group) return;
         const willOpen = !group.classList.contains("is-open");
