@@ -193,10 +193,61 @@
 </details>`;
   }
 
-  function waMessageForCustomer(customerName) {
-    return customerName
-      ? `Hello ${customerName}, this is Bishnupriya Fuels regarding your credit balance.`
-      : "Hello, this is Bishnupriya Fuels regarding your credit balance.";
+  function waMessageForCustomer(customerName, amountDue) {
+    const station =
+      (typeof PumpSettings !== "undefined" &&
+        typeof PumpSettings.getStationLegalName === "function" &&
+        PumpSettings.getStationLegalName()) ||
+      "Bishnupriya Fuels";
+    const asOf =
+      typeof formatDisplayDate === "function" && typeof getLocalDateString === "function"
+        ? formatDisplayDate(getLocalDateString())
+        : "";
+    const n = Number(amountDue);
+    const hasAmount = Number.isFinite(n) && n > 0 && typeof formatCurrency === "function";
+    const lines = ["Hello,", "", `This is ${station} with your credit statement.`];
+    if (asOf || hasAmount) {
+      lines.push("");
+      if (asOf) lines.push(`As on ${asOf}`);
+      if (hasAmount) lines.push(`Outstanding: ${formatCurrency(n)}`);
+    } else if (customerName) {
+      lines.push("", `Regarding ${customerName}.`);
+    }
+    lines.push("", "Please clear this at the pump, or reply to this chat.");
+    return lines.join("\n");
+  }
+
+  const CONTACT_CALL_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z"/></svg>';
+  const CONTACT_WA_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0-7.74 13.61L3 21l4.52-1.19A9 9 0 1 0 12 3zm0 2a7 7 0 1 1-3.57 13.03l-.3-.18-2.11.56.56-2.06-.2-.32A7 7 0 0 1 12 5zm3.15 9.64c-.17-.08-1-.49-1.16-.54-.16-.06-.27-.08-.39.08-.12.17-.45.54-.55.65-.1.11-.2.12-.37.04-.17-.08-.71-.26-1.35-.82-.5-.45-.83-1-.93-1.17-.1-.17-.01-.27.07-.35.08-.08.17-.2.25-.3.08-.1.11-.17.17-.28.06-.11.03-.21-.01-.3-.04-.08-.39-.94-.53-1.29-.14-.35-.28-.3-.39-.3h-.33c-.11 0-.3.04-.46.21-.16.17-.6.59-.6 1.45 0 .86.62 1.7.7 1.82.08.11 1.22 1.86 2.96 2.61.41.18.73.29.98.37.41.13.79.11 1.08.07.33-.05 1-.41 1.14-.81.14-.4.14-.74.1-.81-.04-.07-.15-.11-.32-.19z"/></svg>';
+
+  /** Same mobile line, call icon, and WhatsApp icon as the credit customer header. */
+  function contactRowHtml(mobile, waText) {
+    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s ?? "");
+    const shown = String(mobile || "").trim();
+    const tel = telHref(shown);
+    const wa = waHref(shown, waText);
+    if (!tel && !wa) return "";
+    return `<span class="contact-line">
+      ${
+        tel
+          ? `<a class="contact-line-number" href="${esc(tel)}" aria-label="Call ${esc(shown)}">${esc(shown)}</a>`
+          : `<span class="contact-line-number">${esc(shown)}</span>`
+      }
+      <span class="contact-line-actions">
+        ${
+          tel
+            ? `<a class="contact-line-btn contact-line-btn--call" href="${esc(tel)}" aria-label="Call ${esc(shown)}">${CONTACT_CALL_ICON}</a>`
+            : ""
+        }
+        ${
+          wa
+            ? `<a class="contact-line-btn contact-line-btn--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
+            : ""
+        }
+      </span>
+    </span>`;
   }
 
   /**
@@ -321,6 +372,7 @@
     telHref,
     waHref,
     waMessageForCustomer,
+    contactRowHtml,
     amountDueOf,
     urgencyRank,
     sortTasks,

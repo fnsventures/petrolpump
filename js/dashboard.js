@@ -86,7 +86,6 @@ let lastCreditTotalRupees = null;
 let lastPetrolVariation = null;
 let lastDieselVariation = null;
 let dashboardRole = null;
-let dashboardUserId = null;
 
 const DAY_CLOSING_LOOKBACK_DAYS = 7;
 
@@ -742,7 +741,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const { session, role } = auth;
   dashboardRole = role;
-  dashboardUserId = session?.user?.id || null;
   applyRoleVisibility(role);
 
   if (typeof initPageSections === "function") {
@@ -925,12 +923,6 @@ function isPastLocalHm(hhmm) {
 
 function currentSalaryMonthValue(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function approxNetMonthlySalary(emp) {
-  const gross = Math.max(0, Number(emp?.monthly_salary ?? 0));
-  const pf = Math.max(0, Number(emp?.pf_contribution ?? 0));
-  return Math.max(0, gross - Math.min(pf, gross));
 }
 
 /**
@@ -1359,8 +1351,30 @@ async function updateSmartAlerts(options = {}) {
       }
       let unpaidCount = 0;
       let pendingTotal = 0;
+      let salaryAttendance = null;
+      const payrollActive = typeof PayrollRules !== "undefined" && PayrollRules.rulesAffectPay();
+      if (payrollActive) {
+        try {
+          salaryAttendance = await PayrollRules.fetchMonthAttendance(window.supabaseClient, salaryMonth);
+        } catch (err) {
+          AppError.report(err, { context: "updateSmartAlerts", type: "salary_attendance" });
+        }
+      }
       for (const emp of salaryEmpRes.data ?? []) {
-        const payable = approxNetMonthlySalary(emp);
+        const gross = Math.max(0, Number(emp.monthly_salary ?? 0));
+        const pfFixed = Math.min(Math.max(0, Number(emp.pf_contribution ?? 0)), gross);
+        let lopAmount = 0;
+        let overDutyAmount = 0;
+        if (salaryAttendance) {
+          const records = salaryAttendance.byEmployee.get(emp.id) || [];
+          const pay = PayrollRules.computeMonthPay(gross, records, salaryMonth);
+          lopAmount = pay.lopAmount;
+          overDutyAmount = pay.overDutyAmount;
+        }
+        const payable =
+          typeof PayrollRules !== "undefined"
+            ? PayrollRules.settleTakeHome(gross, lopAmount, overDutyAmount, pfFixed).net
+            : Math.max(0, gross - pfFixed);
         if (payable <= 0) continue;
         const pending = Math.max(0, payable - (paidMap.get(emp.id) || 0));
         if (pending > 0.009) {
@@ -1499,20 +1513,11 @@ function buildDashboardLaterPanel(id, { credit = false } = {}) {
 }
 
 function taskContactHtml(row) {
-  if (!TaskUtils.isCreditTask(row)) return "";
+  if (!TaskUtils.isCreditTask(row) || typeof TaskUtils.contactRowHtml !== "function") return "";
   const mobile = row.credit_customers?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
-  const tel = TaskUtils.telHref(mobile);
-  const waText =
-    typeof TaskUtils.waMessageForCustomer === "function"
-      ? TaskUtils.waMessageForCustomer(customerName)
-      : "";
-  const wa = TaskUtils.waHref(mobile, waText);
-  if (!tel && !wa) return "";
-  return `<div class="task-dash-contact">
-    ${tel ? `<a class="button-secondary button-small" href="${escapeHtml(tel)}">Call</a>` : ""}
-    ${wa ? `<a class="button-secondary button-small" href="${escapeHtml(wa)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ""}
-  </div>`;
+  const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
+  return TaskUtils.contactRowHtml(mobile, waText);
 }
 
 function buildDashboardNotifTaskHtml(row, todayStr) {
@@ -1553,9 +1558,9 @@ function buildDashboardNotifTaskHtml(row, todayStr) {
           ? `<p class="notif-item-amount">${escapeHtml(outstanding)}</p>`
           : ""
       }
-      <span class="notif-item-meta">${escapeHtml(when)}${
-        customerName ? ` · ${escapeHtml(customerName)}` : ""
-      } · ${accountLink}</span>
+      <span class="notif-item-meta"><span>${escapeHtml(when)}</span>${
+        customerName ? `<span>${escapeHtml(customerName)}</span>` : ""
+      }${accountLink}</span>
       ${taskContactHtml(row)}
     </div>
     <div class="notif-item-actions task-action-bar">
@@ -1598,9 +1603,9 @@ function buildLandingTaskHtml(row, todayStr) {
     <div class="reminders-landing-item-main">
       <h3 class="reminders-landing-item-title">${escapeHtml(row.title)}</h3>
       ${amountHtml}
-      <p class="reminders-landing-item-meta">${escapeHtml([when, customerName || null].filter(Boolean).join(" · "))}${
-        accountLink ? ` · ${accountLink}` : ""
-      }</p>
+      <p class="reminders-landing-item-meta"><span>${escapeHtml(when)}</span>${
+        customerName ? `<span>${escapeHtml(customerName)}</span>` : ""
+      }${accountLink}</p>
       ${taskContactHtml(row)}
     </div>
     <div class="reminders-landing-item-actions task-action-bar">
@@ -2026,27 +2031,21 @@ function bindReminderDoneButtons(container) {
     if (inFlight.has(id)) return;
     inFlight.add(id);
     btn.disabled = true;
-    const { data: doneRow, error } = await window.supabaseClient
+    const { data: deleted, error } = await window.supabaseClient
       .from("reminders")
-      .update({
-        status: "done",
-        completed_at: new Date().toISOString(),
-        completed_by: dashboardUserId,
-        updated_at: new Date().toISOString(),
-      })
+      .delete()
       .eq("id", id)
       .eq("status", "open")
-      .select("id")
-      .maybeSingle();
-    if (error || !doneRow?.id) {
+      .select("id");
+    if (error || !deleted?.length) {
       inFlight.delete(id);
       btn.disabled = false;
-      AppError.handle(error || new Error("Could not mark done — task may already be closed."), {
+      AppError.handle(error || new Error("Could not remove this reminder."), {
         context: { source: "dashboardCompleteReminder" },
       });
       return;
     }
-    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast("Marked done");
+    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast("Reminder removed");
     removeDashboardTaskCard(id);
     TaskUtils.notifyTasksUpdated();
     await loadRemindersBanners();

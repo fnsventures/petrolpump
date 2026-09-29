@@ -106,6 +106,18 @@
     afternoon: { name: "Afternoon shift", start: "14:00", end: "22:00" },
   };
 
+  /**
+   * Attendance-based pay. Stored on pump_settings.config.payroll.
+   * Day rate = monthly salary ÷ calendar days, unless dayRateBasis is "fixed".
+   */
+  const DEFAULT_PAYROLL = {
+    lossOfPayEnabled: true,
+    paidLeaveDaysPerMonth: 2,
+    overDutyEnabled: true,
+    dayRateBasis: "calendar",
+    fixedDaysInMonth: 30,
+  };
+
   const DEFAULT_REPORTS = {
     tanks: DEFAULT_REPORT_TANKS,
     fuelGstPct: 18,
@@ -157,6 +169,7 @@
     reports: DEFAULT_REPORTS,
     alerts: DEFAULT_ALERTS,
     shifts: DEFAULT_SHIFTS,
+    payroll: DEFAULT_PAYROLL,
     integrations: DEFAULT_INTEGRATIONS,
   };
 
@@ -202,6 +215,7 @@
     DEFAULT_BILLING,
     DEFAULT_ALERTS,
     DEFAULT_SHIFTS,
+    DEFAULT_PAYROLL,
     DEFAULT_REPORTS,
     DEFAULT_REPORT_TANKS,
     DEFAULT_INTEGRATIONS,

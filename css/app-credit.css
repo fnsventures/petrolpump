@@ -722,7 +722,22 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #0c4a6e;
+  overflow-wrap: anywhere;
   transition: color 0.15s ease;
+}
+
+.customer-balance-hero .contact-line {
+  display: flex;
+  width: 100%;
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.customer-balance-hero #customer-meta-rest {
+  display: block;
+  margin-top: 0.28rem;
 }
 
 .customer-name-row {

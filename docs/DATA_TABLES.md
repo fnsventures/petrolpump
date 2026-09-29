@@ -372,6 +372,10 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
 | `alerts.*` | Low stock, credit/variation, day-closing, shortage/surplus, night cash, missing meter/rate/dip, stale credit, unpaid salary, attendance, expense ratio, missing invoice |
 | `shifts.*` | Morning/afternoon shift names and times for attendance |
+| `payroll.lossOfPayEnabled` | Deduct pay for leave beyond the monthly allowance, and half-days |
+| `payroll.paidLeaveDaysPerMonth` | Paid leave days allowed each month (default 2) |
+| `payroll.overDutyEnabled` | Add one day of salary for each present day marked over duty |
+| `payroll.dayRateBasis` / `payroll.fixedDaysInMonth` | Day rate divisor: calendar days in the month, or a fixed count |
 
 Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` for upload path. Full setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
 
@@ -489,8 +493,9 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | id | uuid | Primary key |
 | employee_id | uuid | FK → employees.id |
 | date | date | Attendance date |
-| status | text | `present` \| `absent` \| `half_day` \| `leave` |
+| status | text | `present` \| `half_day` \| `leave`. Older `absent` rows are treated as leave |
 | shift | text | Optional shift label |
+| over_duty | boolean | Extra duty on a present day. Adds one day of salary when over-duty pay is on |
 | check_in | time | Optional |
 | check_out | time | Optional |
 | note | text | Optional |
