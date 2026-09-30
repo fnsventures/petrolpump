@@ -1,22 +1,15 @@
 /* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
 
 (function () {
-  const QUALITY_SLOTS = [
-    { no: 1, time: "06:00" },
-    { no: 2, time: "08:00" },
-    { no: 3, time: "10:00" },
-    { no: 4, time: "12:00" },
-    { no: 5, time: "14:00" },
-    { no: 6, time: "16:00" },
-    { no: 7, time: "18:00" },
-    { no: 8, time: "20:00" },
-    { no: 9, time: "22:00" },
-    { no: 10, time: "00:00" },
-    { no: 11, time: "02:00" },
-    { no: 12, time: "04:00" },
-  ];
+  /** Part B checks every 2 hours, from morning-shift start through afternoon-shift end. */
+  const QUALITY_SLOT_MINUTES = 120;
+  const QUALITY_SLOT_CAP = 12;
 
-  const DEFAULT_TANKS = ["MS Tank-1", "MS Tank-2"];
+  /** Dip (mm) from today's MS / HSD meter sheets, keyed by product. */
+  let meterDips = { petrol: "", diesel: "" };
+  /** Tank labels from Settings → Pumps & tanks. Null until first read. */
+  let pumpTanks = null;
+
   const PRINT_CSS = "css/e20-register-print.css?v=5";
   const HISTORY_PAGE_SIZE = 25;
 
@@ -160,7 +153,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     dom.form?.addEventListener("submit", onSave);
     dom.addTankBtn?.addEventListener("click", () => {
       if (formLocked) return;
-      appendWaterRow({ tank_no: "", check_time: "06:10" });
+      const used = new Set(
+        Array.from(dom.waterBody?.querySelectorAll('select[name="tank_no"]') || [])
+          .map((el) => el.value.trim().toLowerCase())
+          .filter(Boolean)
+      );
+      const next = pumpTankOptions().find((tank) => !used.has(tank.label.toLowerCase()));
+      appendWaterRow({ tank_no: next?.label || "", check_time: "06:00" });
     });
     dom.fillSlotsBtn?.addEventListener("click", () => {
       if (formLocked) return;
@@ -171,6 +170,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       const btn = e.target.closest("[data-remove-water]");
       if (!btn) return;
       btn.closest("tr")?.remove();
+    });
+    dom.waterBody?.addEventListener("change", (e) => {
+      if (formLocked) return;
+      const tank = e.target.closest('select[name="tank_no"]');
+      if (tank) {
+        applyMeterDipToRow(tank.closest("tr"));
+        return;
+      }
+      const dip = e.target.closest('input[name="opening_dip_mm"]');
+      if (!dip || dip.value) return;
+      delete dip.dataset.autoDip;
+      applyMeterDipToRow(dip.closest("tr"), { onlyIfEmpty: true });
     });
     dom.printBtn?.addEventListener("click", () => void printRegister());
     dom.reportPrintBtn?.addEventListener("click", () => void printHistoryReport());
@@ -249,6 +260,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (unlock && currentSnapshot?.certified && currentAuth?.role === "admin") {
         adminUnlocked = true;
         refreshLockUi();
+        applyMeterDips();
         setFeedback(true, "Unlocked. Make corrections, then save.");
       }
     });
@@ -454,6 +466,134 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function hmToMinutes(value, fallback) {
+    const match = /^(\d{1,2}):(\d{2})/.exec(String(value || "").trim());
+    if (!match) return fallback;
+    const hours = Number(match[1]);
+    const mins = Number(match[2]);
+    if (hours > 23 || mins > 59) return fallback;
+    return hours * 60 + mins;
+  }
+
+  function minutesToHm(total) {
+    const hours = Math.floor(total / 60);
+    const mins = total % 60;
+    return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+  }
+
+  /**
+   * Quality slots follow the shift window: morning start through afternoon end
+   * (default 06:00–22:00), every two hours. Overnight slots after shift end are omitted.
+   */
+  function getQualitySlots() {
+    const shifts =
+      typeof PumpSettings !== "undefined" && PumpSettings.getShiftConfig
+        ? PumpSettings.getShiftConfig()
+        : null;
+    const start = hmToMinutes(shifts?.morningStart, 6 * 60);
+    const end = hmToMinutes(shifts?.afternoonEnd, 22 * 60);
+    const slots = [];
+    if (end >= start) {
+      for (let t = start; t <= end && slots.length < QUALITY_SLOT_CAP; t += QUALITY_SLOT_MINUTES) {
+        slots.push({ no: slots.length + 1, time: minutesToHm(t) });
+      }
+    }
+    return slots.length ? slots : [{ no: 1, time: "06:00" }];
+  }
+
+  /** Settings → Pumps & tanks. One entry per saved label (MS, then HSD). */
+  function pumpTankOptions() {
+    if (pumpTanks) return pumpTanks;
+    const pumps =
+      typeof PumpSettings !== "undefined" && PumpSettings.getPumpConfig
+        ? PumpSettings.getPumpConfig()
+        : {};
+    const seen = new Set();
+    pumpTanks = [
+      { product: "petrol", label: String(pumps?.petrol?.tankLabel || "").trim() },
+      { product: "diesel", label: String(pumps?.diesel?.tankLabel || "").trim() },
+    ].filter((tank) => {
+      if (!tank.label) return false;
+      const key = tank.label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return pumpTanks;
+  }
+
+  function productFromTank(tankNo) {
+    const name = String(tankNo || "").trim().toLowerCase();
+    if (!name) return "";
+    const hit = pumpTankOptions().find((tank) => tank.label.toLowerCase() === name);
+    if (hit) return hit.product;
+    if (/\bhsd\b|\bdiesel\b|high\s*speed|\bhs\b/.test(name)) return "diesel";
+    if (/\bms\b|\bpetrol\b|motor\s*spirit|\be-?20\b/.test(name)) return "petrol";
+    return "";
+  }
+
+  function formatDipMm(raw) {
+    if (raw === null || raw === undefined || raw === "") return "";
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n === 0) return "";
+    return String(n);
+  }
+
+  async function fetchProductDip(table, dateStr) {
+    const { data, error } = await window.supabaseClient
+      .from(table)
+      .select("dip_reading")
+      .eq("date", dateStr)
+      .maybeSingle();
+    if (error) throw error;
+    return formatDipMm(data?.dip_reading);
+  }
+
+  async function loadMeterDips(dateStr, seq) {
+    if (!dateStr) {
+      if (seq === loadSeq) meterDips = { petrol: "", diesel: "" };
+      return;
+    }
+    try {
+      const [petrol, diesel] = await Promise.all([
+        fetchProductDip("dsr_petrol", dateStr),
+        fetchProductDip("dsr_diesel", dateStr),
+      ]);
+      if (seq !== loadSeq) return;
+      meterDips = { petrol, diesel };
+    } catch (err) {
+      if (seq !== loadSeq) return;
+      meterDips = { petrol: "", diesel: "" };
+      AppError.report(err, { context: "e20MeterDip" });
+    }
+  }
+
+  function applyMeterDipToRow(tr, { onlyIfEmpty = false } = {}) {
+    if (!tr) return;
+    const tankInput = fieldValue(tr, "tank_no");
+    const dipInput = fieldValue(tr, "opening_dip_mm");
+    if (!tankInput || !dipInput) return;
+    const selected = tankInput.selectedOptions?.[0];
+    const product = selected?.dataset?.product || productFromTank(tankInput.value);
+    const next = product ? meterDips[product] || "" : "";
+    const current = dipInput.value;
+    const auto = dipInput.dataset.autoDip ?? "";
+    if (onlyIfEmpty && current) return;
+    if (current && current !== auto) return;
+    dipInput.value = next;
+    dipInput.dataset.autoDip = next;
+    dipInput.title = next
+      ? `From today's ${product === "diesel" ? "HSD" : "MS"} meter dip`
+      : "";
+  }
+
+  function applyMeterDips() {
+    if (formLocked) return;
+    Array.from(dom.waterBody?.querySelectorAll("tr") || []).forEach((tr) => {
+      applyMeterDipToRow(tr, { onlyIfEmpty: true });
+    });
+  }
+
   function yesNoValue(value) {
     if (value === true || value === "yes" || value === "true") return "yes";
     if (value === false || value === "no" || value === "false") return "no";
@@ -490,15 +630,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     return Number.isFinite(n) ? String(n) : "";
   }
 
+  function optionListHtml(names, current, blankLabel) {
+    const value = String(current || "").trim();
+    const known = names.some((name) => name.toLowerCase() === value.toLowerCase());
+    const list = value && !known ? names.concat(value) : names;
+    const html = [`<option value="">${escapeHtml(blankLabel)}</option>`];
+    list.forEach((name) => {
+      const selected = value && name.toLowerCase() === value.toLowerCase() ? " selected" : "";
+      html.push(`<option value="${escapeHtml(name)}"${selected}>${escapeHtml(name)}</option>`);
+    });
+    return html.join("");
+  }
+
+  function tankSelectHtml(value) {
+    const current = String(value || "").trim();
+    const tanks = pumpTankOptions();
+    const match = tanks.find((tank) => tank.label.toLowerCase() === current.toLowerCase());
+    const options = tanks
+      .map((tank) => {
+        const selected = match && match.label === tank.label ? " selected" : "";
+        return `<option value="${escapeHtml(tank.label)}" data-product="${tank.product}"${selected}>${escapeHtml(tank.label)}</option>`;
+      })
+      .join("");
+    const legacy =
+      current && !match
+        ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>`
+        : "";
+    return `<select name="tank_no" aria-label="Product tank"><option value="">Select tank</option>${options}${legacy}</select>`;
+  }
+
+  function staffNames() {
+    return Array.from(dom.staffList?.options || [])
+      .map((opt) => String(opt.value || "").trim())
+      .filter(Boolean);
+  }
+
+  function setSelectValue(el, value) {
+    if (!el || !value) return;
+    if (el.tagName === "SELECT" && !Array.from(el.options).some((opt) => opt.value === value)) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = value;
+      el.appendChild(opt);
+    }
+    el.value = value;
+  }
+
+  function testedByField(value) {
+    const names = staffNames();
+    const current = String(value || "").trim();
+    if (!names.length) {
+      return `<input type="text" class="e20-tested-by" name="tested_by" maxlength="120" list="e20-staff-list" value="${escapeHtml(current)}" aria-label="Tested by" />`;
+    }
+    return `<select class="e20-tested-by" name="tested_by" aria-label="Tested by">${optionListHtml(names, current, "Select")}</select>`;
+  }
+
   function waterRowHtml(row = {}) {
     return `<tr>
-      <td><input type="time" name="check_time" value="${escapeHtml(timeInputValue(row.check_time) || "06:10")}" /></td>
-      <td><input type="text" name="tank_no" maxlength="64" value="${escapeHtml(row.tank_no || "")}" placeholder="MS Tank-1" /></td>
+      <td><input type="time" name="check_time" value="${escapeHtml(timeInputValue(row.check_time) || "06:00")}" /></td>
+      <td>${tankSelectHtml(row.tank_no)}</td>
       <td><input type="number" name="opening_dip_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.opening_dip_mm)}" /></td>
       <td><input type="number" name="water_finding_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.water_finding_mm)}" /></td>
       <td>${yesNoSelect("water_present", row.water_present)}</td>
       <td><input type="text" name="corrective_action" maxlength="500" value="${escapeHtml(row.corrective_action || "")}" /></td>
-      <td><input type="text" name="tested_by" maxlength="120" list="e20-staff-list" value="${escapeHtml(row.tested_by || "")}" /></td>
+      <td>${testedByField(row.tested_by)}</td>
       <td class="e20-cell-check"><input type="checkbox" name="manager_signed" ${isSignedFlag(row.manager_signed) ? "checked" : ""} aria-label="Manager signed" /></td>
       <td class="e20-col-actions"><button type="button" class="e20-row-remove" data-remove-water title="Remove row" aria-label="Remove row">×</button></td>
     </tr>`;
@@ -506,14 +701,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function defaultWaterRowsFromTemplate() {
     const prior = sortWater(templateRegister?.e20_water_checks || []);
-    if (prior.length) {
-      return prior.map((r) => ({
-        tank_no: r.tank_no || "",
-        check_time: timeInputValue(r.check_time) || "06:10",
-        tested_by: r.tested_by || "",
-      }));
-    }
-    return DEFAULT_TANKS.map((tank) => ({ tank_no: tank, check_time: "06:10" }));
+    const testedBy = prior.find((row) => row.tested_by)?.tested_by || "";
+    const ms = pumpTankOptions().find((tank) => tank.product === "petrol");
+    return [{
+      tank_no: ms?.label || "",
+      check_time: "06:00",
+      tested_by: testedBy,
+    }];
   }
 
   function renderWaterRows(rows) {
@@ -530,7 +724,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderQualityRows(savedRows) {
     if (!dom.qualityBody) return;
     const bySlot = new Map((savedRows || []).map((r) => [Number(r.slot_no), r]));
-    dom.qualityBody.innerHTML = QUALITY_SLOTS.map((slot) => {
+    dom.qualityBody.innerHTML = getQualitySlots().map((slot) => {
       const row = bySlot.get(slot.no) || {};
       return `<tr data-slot="${slot.no}">
         <td class="e20-slot-no">${slot.no}</td>
@@ -538,7 +732,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td>${appearanceSelect(row.visual_appearance)}</td>
         <td>${yesNoSelect("water_separation", row.water_separation)}</td>
         <td><input type="text" name="action_taken" maxlength="500" value="${escapeHtml(row.action_taken || "")}" /></td>
-        <td><input type="text" name="tested_by" maxlength="120" list="e20-staff-list" value="${escapeHtml(row.tested_by || "")}" /></td>
+        <td>${testedByField(row.tested_by)}</td>
         <td class="e20-cell-check"><input type="checkbox" name="tester_signed" ${isSignedFlag(row.tester_signed) ? "checked" : ""} aria-label="Signed" /></td>
       </tr>`;
     }).join("");
@@ -676,6 +870,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!ok) return;
     adminUnlocked = true;
     refreshLockUi();
+    applyMeterDips();
     setFeedback(true, "Unlocked. Make corrections, then save.");
   }
 
@@ -742,6 +937,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       visual_appearance: template.visual_appearance || "clear_bright",
       water_separation: template.water_separation || "no",
       tested_by: template.tested_by || "",
+      tester_signed: filled.some((row) => isSignedFlag(row.tester_signed)),
     };
 
     let filledCount = 0;
@@ -758,16 +954,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (g("visual_appearance")) g("visual_appearance").value = defaults.visual_appearance;
       if (g("water_separation")) g("water_separation").value = defaults.water_separation;
-      if (g("tested_by") && defaults.tested_by) g("tested_by").value = defaults.tested_by;
+      if (g("tested_by") && defaults.tested_by) setSelectValue(g("tested_by"), defaults.tested_by);
+      if (g("tester_signed") && defaults.tester_signed) g("tester_signed").checked = true;
       filledCount += 1;
     });
 
-    setFeedback(
-      true,
-      filledCount
-        ? `Filled ${filledCount} empty slot(s) with Clear & Bright / No water${defaults.tested_by ? ` · ${defaults.tested_by}` : ""}. Review, then save.`
-        : "All slots already have data."
-    );
+    let signedCount = 0;
+    if (defaults.tester_signed) {
+      Array.from(dom.qualityBody?.querySelectorAll('input[name="tester_signed"]') || []).forEach((box) => {
+        if (box.checked) return;
+        box.checked = true;
+        signedCount += 1;
+      });
+    }
+
+    if (!filledCount && !signedCount) {
+      setFeedback(true, "All slots already have data.");
+      return;
+    }
+
+    const parts = [];
+    if (filledCount) {
+      parts.push(
+        `Filled ${filledCount} empty slot(s) with Clear & Bright / No water${defaults.tested_by ? ` · ${defaults.tested_by}` : ""}`
+      );
+    }
+    if (defaults.tester_signed) parts.push("signature applied to the remaining slots");
+    setFeedback(true, `${parts.join(". ")}. Review, then save.`);
   }
 
   function toDatetimeLocalValue(date) {
@@ -845,13 +1058,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     adminUnlocked = false;
 
     try {
-      const header = await fetchRegister(dateStr);
+      const [header] = await Promise.all([fetchRegister(dateStr), loadMeterDips(dateStr, seq)]);
       if (seq !== loadSeq) return;
 
       if (!header) {
         applyNewDayDefaults();
         setStatus(`New register · ${formatDisplayDate(dateStr)} · fields auto-filled`);
         refreshLockUi();
+        applyMeterDips();
         return;
       }
 
@@ -865,6 +1079,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         `${header.certified ? "Certified" : "Draft"} · ${formatDisplayDate(header.register_date)}`
       );
       refreshLockUi();
+      applyMeterDips();
     } catch (err) {
       if (seq !== loadSeq) return;
       AppError.handle(err, { target: dom.error });
@@ -1163,11 +1378,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
     while (waterRows.length < 2) waterRows.push(EMPTY_WATER_ROW);
 
-    const qualityRows = QUALITY_SLOTS.map((slot) => {
+    const qualityRows = getQualitySlots().map((slot) => {
       const r = qualityBySlot.get(slot.no) || {};
       return `<tr>
         <td class="ctr">${slot.no}</td>
-        <td class="ctr">${slot.time}</td>
+        <td class="ctr">${escapeHtml(timeInputValue(r.check_time) || slot.time)}</td>
         <td>${escapeHtml(formatAppearance(r.visual_appearance))}</td>
         <td class="ctr">${escapeHtml(formatYesNo(r.water_separation))}</td>
         <td>${escapeHtml(r.action_taken || "")}</td>
