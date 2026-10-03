@@ -11,7 +11,7 @@
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v204";
+const CACHE_VERSION = "v205";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `bpf-runtime-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
@@ -116,10 +116,10 @@ const STATIC_ASSET_PATHS = [
   "css/app-core.css?v=27",
   "css/app-layout.css?v=27",
   "css/app-dashboard.css?v=32",
-  "js/payrollRules.js?v=3",
+  "js/payrollRules.js?v=6",
   "js/purchaseTaxUtils.js?v=7",
   "js/dateRangeFilter.js?v=10",
-  "js/dashboard.js?v=24",
+  "js/dashboard.js?v=29",
   "css/app-dsr.css?v=19",
   "css/app-meter-reading.css?v=48",
   "js/buyingPriceEntry.js?v=6",
@@ -131,9 +131,9 @@ const STATIC_ASSET_PATHS = [
   "js/dsrSummary.js?v=3",
   "js/dsrSalesBreakdown.js?v=10",
   "js/dsr.js?v=7",
-  "css/app-e20-register.css?v=9",
+  "css/app-e20-register.css?v=16",
   "css/report-watermark.css?v=7",
-  "js/e20Register.js?v=14",
+  "js/e20Register.js?v=19",
   "css/app-reminders.css?v=14",
   "js/reminders.js?v=18",
   "css/app-credit.css?v=15",
@@ -144,10 +144,10 @@ const STATIC_ASSET_PATHS = [
   "js/driveFiles.js?v=5",
   "js/billing.js?v=5",
   "css/app-attendance.css?v=12",
-  "css/payroll.css?v=1",
-  "js/attendance.js?v=12",
+  "css/payroll.css?v=3",
+  "js/attendance.js?v=18",
   "css/app-salary.css?v=14",
-  "js/salary.js?v=19",
+  "js/salary.js?v=25",
   "css/app-staff.css?v=16",
   "js/staff.js?v=19",
   "css/app-letterhead.css?v=7",
