@@ -312,9 +312,24 @@
     document.documentElement.classList.add("has-app-sections");
     document.body.classList.add("has-app-sections");
 
-    drawer.querySelector(".app-sections-toggle")?.addEventListener("click", (e) => {
+    const toggle = drawer.querySelector(".app-sections-toggle");
+    toggle?.addEventListener("click", (e) => {
       e.stopPropagation();
-      setSectionsOpen(document.documentElement.classList.contains("app-sections-collapsed"));
+      const willOpen = document.documentElement.classList.contains("app-sections-collapsed");
+      // Clicking collapse focuses the toggle. Hover and :focus-within peek the
+      // rail back open, so hold the collapsed layout until the pointer leaves.
+      if (willOpen) drawer.classList.remove("is-hold-collapsed");
+      else drawer.classList.add("is-hold-collapsed");
+      setSectionsOpen(willOpen);
+      if (!willOpen) {
+        toggle.blur();
+        requestAnimationFrame(() => {
+          if (!drawer.matches(":hover")) drawer.classList.remove("is-hold-collapsed");
+        });
+      }
+    });
+    drawer.addEventListener("pointerleave", () => {
+      drawer.classList.remove("is-hold-collapsed");
     });
     drawer.addEventListener("click", (e) => {
       if (!drawer.classList.contains("is-collapsed")) return;

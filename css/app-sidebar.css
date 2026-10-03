@@ -618,7 +618,7 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
 }
 
 @media (hover: hover) and (pointer: fine) and (min-width: 961px) {
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) {
     width: var(--app-sections-width);
     background: #f4f8fc;
     cursor: default;
@@ -626,11 +626,11 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
     box-shadow: 10px 0 24px rgba(0, 90, 156, 0.16);
   }
 
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-body {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-body {
     display: flex;
   }
 
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-head {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-head {
     flex: 0 0 auto;
     flex-direction: row;
     justify-content: flex-start;
@@ -641,14 +641,14 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
     box-shadow: inset 0 -3px 0 var(--bpcl-yellow);
   }
 
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-heading {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-heading {
     flex: 1 1 auto;
     writing-mode: horizontal-tb;
     transform: none;
     letter-spacing: 0.1em;
   }
 
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within) .app-sections-toggle {
+  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-toggle {
     transform: none;
   }
 }
