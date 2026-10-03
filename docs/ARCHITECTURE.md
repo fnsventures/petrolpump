@@ -72,24 +72,39 @@ petrolPump/
 
 ```
 css/
-├── base.css                 # Layout, typography, shared components (imports fonts.css)
 ├── fonts.css                # Self-hosted @font-face (DM Sans, Source Serif 4, Caveat)
-├── app-core.css             # Shared shell, nav, panels
+├── base.css                 # Tokens, reset, forms, tables, topbar (imports fonts.css + app-sidebar.css)
+├── app-sidebar.css          # Layer 1–2 nav (injected by js/appNav.js)
+├── app-layout.css           # Page shell: app-layout / section nav / panels
+├── app-core.css             # Shared components (panel-head, fuel badges, toasts, …)
 ├── app-{route}.css          # Per-page styles (dashboard, dsr, credit, reports, …)
-├── app.css                  # Legacy aggregator (imports all app-*.css; not linked in HTML)
+├── app.css                  # Legacy aggregator (not linked in HTML)
 ├── login.css                # Login page
 ├── landing.css              # Public landing (index.html)
-├── invoice-print.css        # Billing invoice print layout
-├── salary-slip-print.css    # Salary slip print layout
-├── staff-id-print.css       # Staff ID card print layout
-├── reports-print.css        # Reports print layout
-└── credit-summary-print.css # Credit customer summary print layout
+└── *-print.css              # Print layouts (invoice, salary slip, reports, …)
 ```
 
 ```
-fonts/                       # Self-hosted woff2 subsets (latin + latin-ext)
-_partials/                   # Nunjucks partials (app-topbar.njk) — expanded at build time
+_partials/
+├── app-pages.json           # Source of truth for each app page’s CSS/JS
+├── app-head.njk             # Shared <head> (expanded at build)
+└── app-topbar.njk           # Shared topbar (expanded at build)
 ```
+
+**Page convention:** Authenticated HTML keeps unique body markup only. Chrome is:
+
+```html
+<head>
+  <!-- @partial app-head -->
+</head>
+<body class="{page}-page">
+  <!-- @partial app-topbar title="Dashboard" -->
+  <main class="app-layout settings-layout">
+```
+
+`npm run dev` / CI run `scripts/build-html.mjs`, which fills head + topbar from `_partials/app-pages.json`. To add a page: create the HTML body, add an entry to `app-pages.json`, and add a link in `js/appNav.js` (`NAV_GROUPS`).
+
+`settings-*` class names are legacy aliases of `app-layout` / `app-sections` / `app-panel`. New markup may use either; both are styled.
 
 ### 3.3 Scripts
 
@@ -139,17 +154,23 @@ js/
 └── settings.js         # pump_settings, users, salaries, products, integrations (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js` (hash-based in-page tabs on dashboard, reports, credit, billing, salary, attendance, invoices, analysis, settings).
+**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js`. **Do not copy `<head>` or script lists between HTML files** — add CSS/JS to `_partials/app-pages.json` instead.
 
 ### 3.4 Navigation (authenticated pages)
 
-Top navigation is grouped and role-aware (`js/auth.js` → `applyRoleVisibility()`). Links marked `data-role="admin-only"` are hidden for supervisors; empty groups are removed.
+Three layers, all role-aware (`js/auth.js` → `applyRoleVisibility()`). Links marked `data-role="admin-only"` are hidden for supervisors; empty groups are removed.
+
+| Layer | Where | Source |
+|-------|--------|--------|
+| **1** Groups | Sidebar | `js/appNav.js` → `NAV_GROUPS` |
+| **2** Pages | Sidebar | same |
+| **3** Sections | In-page nav / sections drawer | each HTML page + `js/pageSections.js` |
 
 | Group | Pages | Supervisor | Admin |
 |-------|-------|------------|-------|
-| **Operations** | Dashboard, Tasks (`reminders.html`), Meter Reading (`meter-reading.html`), DSR (`dsr.html`) | ✓ | ✓ |
-| **Finance** | Credit, Expenses, Day closing, Billing, Invoices | ✓ | ✓ |
-| **HR** | Attendance, Salary, **Staff** | Attendance + Salary only | ✓ (incl. Staff) |
+| **Operations** | Dashboard, Meter Reading, DSR, E-20 testing, Tasks | ✓ | ✓ |
+| **Finance** | Credit, Expenses, Day closing, Billing | ✓ | ✓ |
+| **HR** | Attendance, Salary, Staff, Vault, Letter Desk | ✓ (Staff hidden unless permitted) | ✓ |
 | **Admin** | Analysis, Reports, Settings | ✗ | ✓ |
 
 Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `credit.html` with query/hash preserved.

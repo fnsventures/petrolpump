@@ -552,6 +552,10 @@ function getLowStockThresholds() {
 }
 
 function updateLowStockAlert(petrolStock, dieselStock) {
+  if (window.AppNotifications?.updateLowStock) {
+    window.AppNotifications.updateLowStock(petrolStock, dieselStock);
+    return;
+  }
   const wrap = document.getElementById("low-stock-alert");
   const msg = document.getElementById("low-stock-message");
   if (!wrap || !msg) return;
@@ -599,6 +603,10 @@ function countVisibleNotificationItems() {
 }
 
 function updateNotificationsPanelState() {
+  if (window.AppNotifications?.updateBadge) {
+    window.AppNotifications.updateBadge();
+    return;
+  }
   const feed = document.getElementById("notifications-feed");
   const empty = document.getElementById("notifications-empty");
   const countBadge = document.getElementById("notifications-count-badge");
@@ -737,9 +745,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (typeof initPageSections === "function") {
     const dashboardSections =
-      role === "admin"
-        ? ["snapshot", "dsr", "pl", "notifications"]
-        : ["snapshot", "dsr", "notifications"];
+      role === "admin" ? ["snapshot", "dsr", "pl"] : ["snapshot", "dsr"];
     initPageSections({
       defaultSection: "snapshot",
       validSections: dashboardSections,
@@ -749,6 +755,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       },
     });
   }
+
+  const notificationsPanel = document.querySelector(".notifications-panel");
+  const notificationsBody = document.getElementById("topbar-notifications-body");
+  if (notificationsPanel && notificationsBody && !window.AppNotifications) {
+    document.getElementById("topbar-notifications-fallback")?.remove();
+    document.querySelector(".topbar-notifications-head")?.setAttribute("hidden", "");
+    notificationsPanel.hidden = false;
+    notificationsPanel.classList.add("is-visible");
+    notificationsPanel.removeAttribute("data-panel");
+    notificationsBody.appendChild(notificationsPanel);
+  }
+
+  window.AppNotifications?.mount?.();
 
   const operatorNameEl = document.getElementById("operator-name");
   const operatorRoleEl = document.getElementById("operator-role");
@@ -837,14 +856,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       await ensurePlSectionLoaded();
     }
 
-    const closingWindow = await fetchDayClosingWindow();
-    await Promise.all([
-      updateSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
-      loadDayClosingBanners(closingWindow),
-      loadRemindersBanners(),
-      role === "admin" ? refreshMissingBuyingPriceUi() : Promise.resolve(),
-    ]);
-    updateDashboardAlertsVisibility();
+    if (!window.AppNotifications) {
+      const closingWindow = await fetchDayClosingWindow();
+      await Promise.all([
+        updateSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
+        loadDayClosingBanners(closingWindow),
+        loadRemindersBanners(),
+        role === "admin" ? refreshMissingBuyingPriceUi() : Promise.resolve(),
+      ]);
+      updateDashboardAlertsVisibility();
+    }
     scheduleAutoFitStats();
   } catch (error) {
     AppError.handle(error, { context: { source: "dashboardInit" } });
@@ -933,6 +954,10 @@ async function fetchDayClosingWindow() {
  * Used when credit SWR refreshes so the inbox stays in sync.
  */
 function syncCreditSmartAlert() {
+  if (window.AppNotifications?.syncCreditTotal) {
+    window.AppNotifications.syncCreditTotal(lastCreditTotalRupees);
+    return;
+  }
   const panel = document.getElementById("smart-alerts-panel");
   if (!panel) return;
   const th = getAlertThresholds();
@@ -970,6 +995,10 @@ function syncCreditSmartAlert() {
 }
 
 async function updateSmartAlerts(options = {}) {
+  if (window.AppNotifications?.refreshSmartAlerts) {
+    await window.AppNotifications.refreshSmartAlerts(options);
+    return;
+  }
   const panel = document.getElementById("smart-alerts-panel");
   if (!panel) return;
   const alerts = [];
@@ -1497,7 +1526,8 @@ function buildDashboardLaterPanel(id, { credit = false } = {}) {
 
 function taskContactHtml(row) {
   if (!TaskUtils.isCreditTask(row) || typeof TaskUtils.contactRowHtml !== "function") return "";
-  const mobile = row.credit_customers?.mobile || "";
+  const embedded = Array.isArray(row.credit_customers) ? row.credit_customers[0] : row.credit_customers;
+  const mobile = embedded?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
   const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
   return TaskUtils.contactRowHtml(mobile, waText);
@@ -1613,6 +1643,10 @@ function renderTaskGroupHtml(rows, todayStr, builder) {
 }
 
 async function loadRemindersBanners() {
+  if (window.AppNotifications?.refreshReminders) {
+    await window.AppNotifications.refreshReminders();
+    return;
+  }
   const todayStr = getLocalDateString();
   const loadGen = ++remindersLoadGen;
   const { data, error } = await window.supabaseClient
@@ -2044,6 +2078,10 @@ function bindReminderDoneButtons(container) {
 }
 
 async function loadDayClosingBanners(prefetched = null) {
+  if (window.AppNotifications?.refreshDayClosing) {
+    await window.AppNotifications.refreshDayClosing(prefetched);
+    return;
+  }
   const block = document.getElementById("day-closing-block");
   const container = document.getElementById("day-closing-banners");
   if (!block || !container) return;
@@ -2833,6 +2871,9 @@ function renderDsrSummary(data, elements, range) {
  * Fetch missing buying-price rows and update the notifications banner.
  */
 async function refreshMissingBuyingPriceUi() {
+  if (window.AppNotifications?.refreshBuyingPrice) {
+    return window.AppNotifications.refreshBuyingPrice();
+  }
   const bannerEl = document.getElementById("pl-todo-banner");
   const countEl = document.getElementById("pl-todo-count");
 
@@ -2930,6 +2971,13 @@ function renderProfitLossFromData(plData, { plValueEl, plLabelEl, plProfitHintEl
 window.addEventListener("resize", () => {
   clearTimeout(statFitResizeTimer);
   statFitResizeTimer = setTimeout(() => scheduleAutoFitStats(), 200);
+});
+
+document.addEventListener("app-notifications:reminders", (e) => {
+  dueRemindersCache = e.detail?.rows || [];
+  const todayStr = e.detail?.todayStr || getLocalDateString();
+  renderSnapshotRemindersStrip(dueRemindersCache, todayStr);
+  maybeShowRemindersLanding(dueRemindersCache, todayStr);
 });
 
 // Listen for credit / reminder updates from other pages/tabs
