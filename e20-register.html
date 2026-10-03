@@ -19,9 +19,7 @@
             <div>
               <h1 class="dashboard-section-title">Daily E-20 Testing Register</h1>
               <p class="muted panel-lead">
-                One register per day. Station details and tanks fill automatically from the last entry.
-                Keep saving through the day; certify once at close — then the form locks.
-                Open the RO sheet from History &amp; certified → View (stays on that page).
+                One register per day. Save through the shift, then certify at close.
               </p>
             </div>
             <div class="e20-head-actions">
@@ -54,11 +52,25 @@
 
             <section class="e20-part" aria-labelledby="e20-part-a-title">
               <div class="e20-part-head">
-                <h2 id="e20-part-a-title" class="e20-part-title">Part A — Morning water check through tank dip</h2>
+                <div class="e20-part-copy">
+                  <h2 id="e20-part-a-title" class="e20-part-title">Part A — Morning water check</h2>
+                  <p class="muted e20-part-note">MS tank at 6:00 am. Add a tank only if you need another.</p>
+                </div>
                 <button type="button" id="e20-add-tank" class="button-secondary button-sm">Add tank</button>
               </div>
-              <div class="table-scroll">
-                <table class="e20-table" id="e20-water-table">
+              <div class="e20-grid">
+                <table class="e20-table e20-table--water" id="e20-water-table">
+                  <colgroup>
+                    <col class="e20-w-time" />
+                    <col class="e20-w-tank" />
+                    <col class="e20-w-num" />
+                    <col class="e20-w-num" />
+                    <col class="e20-w-yesno" />
+                    <col class="e20-w-note" />
+                    <col class="e20-w-tester" />
+                    <col class="e20-w-sign" />
+                    <col class="e20-w-row" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th scope="col">Time</th>
@@ -79,13 +91,25 @@
 
             <section class="e20-part" aria-labelledby="e20-part-b-title">
               <div class="e20-part-head">
-                <h2 id="e20-part-b-title" class="e20-part-title">Part B — E-20 petrol quality monitoring (every 2 hours)</h2>
-                <button type="button" id="e20-fill-slots" class="button-secondary button-sm" title="Copy tester and Clear &amp; Bright / No water into empty slots">
+                <div class="e20-part-copy">
+                  <h2 id="e20-part-b-title" class="e20-part-title">Part B — Quality check every 2 hours</h2>
+                  <p class="muted e20-part-note">From the morning shift through 10:00 pm.</p>
+                </div>
+                <button type="button" id="e20-fill-slots" class="button-secondary button-sm" title="Copy tester, signature, and Clear &amp; Bright / No water into empty slots">
                   Fill empty slots
                 </button>
               </div>
-              <div class="table-scroll">
+              <div class="e20-grid">
                 <table class="e20-table e20-table--quality" id="e20-quality-table">
+                  <colgroup>
+                    <col class="e20-w-slot" />
+                    <col class="e20-w-slot-time" />
+                    <col class="e20-w-appearance" />
+                    <col class="e20-w-yesno" />
+                    <col class="e20-w-note" />
+                    <col class="e20-w-tester" />
+                    <col class="e20-w-sign" />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th scope="col">Sl.</th>

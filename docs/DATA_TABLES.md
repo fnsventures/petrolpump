@@ -27,6 +27,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [expense_categories](#expense_categories) | User-managed expense categories |
 | [employees](#employees) | Pump employees (for salary and attendance) |
 | [salary_payments](#salary_payments) | Salary installments per employee |
+| [salary_lop_exclusions](#salary_lop_exclusions) | Admin exclusion of calculated loss of pay for one employee and month |
 | [employee_attendance](#employee_attendance) | Daily attendance (present/absent/half_day/leave) |
 | [credit_customers](#credit_customers) | Credit ledger: customer master, amount_due, prepaid_balance |
 | [credit_entries](#credit_entries) | One row per credit sale (transaction date = DSR date) |
@@ -87,7 +88,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **RLS:** SELECT only for admin; no direct INSERT/UPDATE/DELETE (only via triggers).
 
-**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices.
+**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, expenses, credit_customers, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
 
 ---
 
@@ -372,7 +373,7 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
 | `alerts.*` | Low stock, credit/variation, day-closing, shortage/surplus, night cash, missing meter/rate/dip, stale credit, unpaid salary, attendance, expense ratio, missing invoice |
 | `shifts.*` | Morning/afternoon shift names and times for attendance |
-| `payroll.lossOfPayEnabled` | Deduct pay for leave beyond the monthly allowance, and half-days |
+| `payroll.lossOfPayEnabled` | Deduct pay for leave beyond the monthly allowance, and half-days. An admin can exclude that deduction for one employee and month (`salary_lop_exclusions`) |
 | `payroll.paidLeaveDaysPerMonth` | Paid leave days allowed each month (default 2) |
 | `payroll.overDutyEnabled` | Add one day of salary for each present day marked over duty |
 | `payroll.dayRateBasis` / `payroll.fixedDaysInMonth` | Day rate divisor: calendar days in the month, or a fixed count |
@@ -481,6 +482,27 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 **RLS:** Default operational pattern; DELETE admin only.
 
 **Client:** `salary.html` groups payments by `salary_month`, shows monthly summary vs `employees.monthly_salary`, prints salary slips (`css/salary-slip-print.css`), and creates linked `expenses` row on payment.
+
+---
+
+## salary_lop_exclusions
+
+**Purpose:** Admin choice to leave a calculated loss of pay out of one employee's salary for one month. No row means the calculated amount is deducted.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| employee_id | uuid | FK → employees.id |
+| salary_month | date | Pay period — first day of the month |
+| note | text | Optional |
+| created_by | uuid | auth.users.id (admin) |
+| created_at | timestamptz | Created at |
+
+**Unique:** `(employee_id, salary_month)`.
+
+**RLS:** SELECT supervisor or admin. INSERT and DELETE admin only.
+
+**Client:** `salary.html` — **Exclude from salary** / **Include in salary** on the month summary and staff detail. Payable, slips, and the unpaid-salary alert use the exclusion.
 
 ---
 
@@ -678,7 +700,7 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 ```
 users (app login)
   └── created_by on: dsr_petrol, dsr_diesel, expenses, credit_*, employees,
-                    salary_payments, employee_attendance, day_closing, invoices
+                    salary_payments, salary_lop_exclusions, employee_attendance, day_closing, invoices
 
 dsr_petrol / dsr_diesel
   └── dsr (view), dsr_stock (view)
@@ -697,6 +719,7 @@ invoice_documents
 
 employees
   ├── salary_payments.employee_id
+  ├── salary_lop_exclusions.employee_id
   └── employee_attendance.employee_id
 
 credit_customers

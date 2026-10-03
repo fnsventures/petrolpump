@@ -174,8 +174,90 @@
     return { gross, earnings, lopAmount: lop, overDutyAmount: overDuty, beforePf, employeePf, net };
   }
 
+  /**
+   * Default keeps the calculated deduction. An admin exclusion zeros it for payable pay
+   * and keeps the calculated amount on suggestedLopAmount.
+   */
+  function applyLopExclusion(pay, excluded) {
+    if (!pay) return pay;
+    const suggestedLopAmount = roundMoney(Math.max(0, Number(pay.suggestedLopAmount ?? pay.lopAmount) || 0));
+    const lopExcluded = excluded === true && suggestedLopAmount > 0;
+    return {
+      ...pay,
+      suggestedLopAmount,
+      lopExcluded,
+      lopAmount: lopExcluded ? 0 : suggestedLopAmount,
+    };
+  }
+
+  function isMissingLopExclusionTable(error) {
+    const msg = String(error?.message || error?.details || "");
+    return error?.code === "PGRST205" || error?.code === "42P01" || /salary_lop_exclusions/i.test(msg);
+  }
+
+  let lopExclusionCacheKey = "";
+  let lopExclusionCacheValue = null;
+
+  function emptyLopExclusions() {
+    return { ids: new Set(), ready: true };
+  }
+
+  /**
+   * Employee ids whose calculated loss of pay is excluded for this salary month.
+   * One month is cached. Skips the query when loss of pay is off.
+   */
+  async function fetchLopExclusions(client, monthValue, options) {
+    if (!getPayrollConfig().lossOfPayEnabled) return emptyLopExclusions();
+    const parsed = parseMonth(monthValue);
+    if (!client || !parsed) return emptyLopExclusions();
+    const force = options?.force === true;
+    if (!force && lopExclusionCacheKey === parsed.key && lopExclusionCacheValue) {
+      return lopExclusionCacheValue;
+    }
+    const { data, error } = await client
+      .from("salary_lop_exclusions")
+      .select("employee_id")
+      .eq("salary_month", `${parsed.key}-01`);
+    if (error) {
+      if (isMissingLopExclusionTable(error)) return { ids: new Set(), ready: false };
+      const err = error;
+      err.payrollContext = "lop-exclusion";
+      throw err;
+    }
+    const ids = new Set();
+    (data || []).forEach((row) => {
+      if (row.employee_id) ids.add(row.employee_id);
+    });
+    const value = { ids, ready: true };
+    lopExclusionCacheKey = parsed.key;
+    lopExclusionCacheValue = value;
+    return value;
+  }
+
+  function invalidateLopExclusionCache() {
+    lopExclusionCacheKey = "";
+    lopExclusionCacheValue = null;
+  }
+
+  /** Keep the cached month in step after an exclude or include, without another read. */
+  function setCachedLopExclusion(monthValue, employeeId, excluded) {
+    const parsed = parseMonth(monthValue);
+    if (!parsed || !employeeId) return;
+    if (lopExclusionCacheKey !== parsed.key || !lopExclusionCacheValue?.ids) {
+      invalidateLopExclusionCache();
+      return;
+    }
+    const ids = new Set(lopExclusionCacheValue.ids);
+    if (excluded) ids.add(employeeId);
+    else ids.delete(employeeId);
+    lopExclusionCacheValue = { ids, ready: lopExclusionCacheValue.ready !== false };
+  }
+
   function lopBreakdownLabel(pay) {
     if (!pay?.lossOfPayEnabled) return "Loss of pay is off";
+    if (pay.lopExcluded) {
+      return `${formatDayCount(pay.lopDays)} day calculated, excluded from this month's salary`;
+    }
     const parts = [];
     if (pay.excessLeave > 0) {
       parts.push(
@@ -212,7 +294,7 @@
         : "monthly salary ÷ days in that month";
     return {
       lossOfPay: cfg.lossOfPayEnabled
-        ? `${cfg.paidLeaveDaysPerMonth} paid leave day${cfg.paidLeaveDaysPerMonth === 1 ? "" : "s"} a month. Only leave past that is loss of pay. A half-day counts as half.`
+        ? `${cfg.paidLeaveDaysPerMonth} paid leave day${cfg.paidLeaveDaysPerMonth === 1 ? "" : "s"} a month. Only leave past that is loss of pay. A half-day counts as half. An admin can exclude that deduction for one person and month.`
         : "Loss of pay is off.",
       overDuty: cfg.overDutyEnabled
         ? "Each present day marked over duty adds one day’s salary."
@@ -301,6 +383,11 @@
     formatDayCount,
     computeMonthPay,
     settleTakeHome,
+    applyLopExclusion,
+    isMissingLopExclusionTable,
+    fetchLopExclusions,
+    invalidateLopExclusionCache,
+    setCachedLopExclusion,
     lopBreakdownLabel,
     leaveUsageLabel,
     dayRateLabel,
