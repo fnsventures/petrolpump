@@ -175,6 +175,35 @@ document.addEventListener("DOMContentLoaded", async () => {
   let staffList = [];
   let attendanceByDate = new Map();
   let monthBundle = { byEmployee: new Map(), rows: [], overDutyColumnReady: true, monthValue: "" };
+  let lopExcludedIds = new Set();
+  let lopExcludedMonth = "";
+
+  async function loadLopExcludedIds(monthValue) {
+    lopExcludedMonth = String(monthValue || "").slice(0, 7);
+    if (
+      typeof PayrollRules === "undefined" ||
+      !lopExcludedMonth ||
+      !PayrollRules.getPayrollConfig().lossOfPayEnabled
+    ) {
+      lopExcludedIds = new Set();
+      return lopExcludedIds;
+    }
+    try {
+      const result = await PayrollRules.fetchLopExclusions(window.supabaseClient, lopExcludedMonth);
+      lopExcludedIds = result.ids;
+    } catch (error) {
+      lopExcludedIds = new Set();
+      AppError.report(error, { context: "loadLopExcludedIds" });
+    }
+    return lopExcludedIds;
+  }
+
+  function payWithExclusion(staff, records, monthValue) {
+    const pay = PayrollRules.computeMonthPay(staff.monthly_salary, records, monthValue);
+    const key = String(monthValue || "").slice(0, 7);
+    const excluded = key === lopExcludedMonth && lopExcludedIds.has(staff.id);
+    return PayrollRules.applyLopExclusion(pay, excluded);
+  }
 
   function payrollConfig() {
     return typeof PayrollRules !== "undefined" ? PayrollRules.getPayrollConfig() : null;
@@ -209,9 +238,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function monthEffectHtml(staff, records, monthValue) {
     if (typeof PayrollRules === "undefined") return "";
-    const pay = PayrollRules.computeMonthPay(staff.monthly_salary, records, monthValue);
+    const pay = payWithExclusion(staff, records, monthValue);
     const lines = [`<span>Leave ${escapeHtml(PayrollRules.leaveUsageLabel(pay))}</span>`];
-    if (pay.lossOfPayEnabled && pay.lopAmount > 0) {
+    if (pay.lossOfPayEnabled && pay.lopExcluded) {
+      lines.push(`<span class="salary-lop-excluded">LOP excluded</span>`);
+    } else if (pay.lossOfPayEnabled && pay.lopAmount > 0) {
       lines.push(`<span class="is-deduct">LOP ${escapeHtml(formatCurrency(pay.lopAmount))}</span>`);
     }
     if (pay.overDutyEnabled) {
@@ -267,9 +298,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       return [];
     }
     try {
-      monthBundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, date.slice(0, 7), {
-        force: true,
-      });
+      const monthValue = date.slice(0, 7);
+      const [bundle] = await Promise.all([
+        PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue, { force: true }),
+        loadLopExcludedIds(monthValue),
+      ]);
+      monthBundle = bundle;
     } catch (error) {
       AppError.report(error, { context: "loadAttendanceForDate" });
       attendanceByDate = new Map();
@@ -548,7 +582,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const [year, month] = monthValue.split("-").map(Number);
     let bundle;
     try {
-      bundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue, { force: true });
+      const [attendance] = await Promise.all([
+        PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue, { force: true }),
+        loadLopExcludedIds(monthValue),
+      ]);
+      bundle = attendance;
     } catch (error) {
       if (historyMatrixSummary) historyMatrixSummary.textContent = "";
       historyMatrixWrap.innerHTML = `<p class="error att-matrix-placeholder">${escapeHtml(AppError.getUserMessage(error))}</p>`;
@@ -634,16 +672,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     let excessPeople = 0;
     const body = staffList
       .map((staff) => {
-        const pay = PayrollRules.computeMonthPay(staff.monthly_salary, byEmployee.get(staff.id) || [], monthValue);
+        const pay = payWithExclusion(staff, byEmployee.get(staff.id) || [], monthValue);
         lopTotal += pay.lopAmount;
         odTotal += pay.overDutyAmount;
         if (pay.lopAmount > 0) excessPeople += 1;
         const lopCell =
           Number(staff.monthly_salary) <= 0
             ? "No salary"
-            : pay.lopAmount > 0
-              ? `${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} · ${escapeHtml(formatCurrency(pay.lopAmount))}`
-              : "—";
+            : pay.lopExcluded
+              ? `Excluded · ${escapeHtml(formatCurrency(pay.suggestedLopAmount))}`
+              : pay.lopAmount > 0
+                ? `${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} · ${escapeHtml(formatCurrency(pay.lopAmount))}`
+                : "—";
         const odCell =
           Number(staff.monthly_salary) > 0
             ? `${escapeHtml(PayrollRules.formatDayCount(pay.overDutyDays))} · ${escapeHtml(formatCurrency(pay.overDutyAmount))}`
@@ -653,7 +693,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td class="num">${pay.counts.present}</td>
           <td class="num">${pay.counts.half}</td>
           <td class="num">${escapeHtml(PayrollRules.leaveUsageLabel(pay))}</td>
-          <td class="num att-col-lop${pay.lopAmount > 0 ? " salary-money-deduct" : ""}">${lopCell}</td>
+          <td class="num att-col-lop${pay.lopExcluded ? " salary-lop-excluded" : pay.lopAmount > 0 ? " salary-money-deduct" : ""}">${lopCell}</td>
           <td class="num att-col-od${pay.overDutyAmount > 0 ? " salary-money-earn" : ""}">${odCell}</td>
         </tr>`;
       })

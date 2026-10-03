@@ -227,6 +227,22 @@
   font-weight: 700;
 }
 
+.salary-lop-excluded {
+  color: var(--muted, #64748b);
+  font-weight: 600;
+}
+
+.salary-lop-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.salary-lop-actions {
+  margin-top: 0.55rem;
+}
+
 .salary-money-earn {
   color: #047857;
   font-weight: 700;
