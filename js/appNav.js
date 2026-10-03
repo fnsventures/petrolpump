@@ -7,7 +7,7 @@
  */
 (function () {
   const PIN_KEY = "bpf.appSidebar.pinned";
-  const SECTIONS_KEY = "bpf.appSections.open";
+  const SECTIONS_KEY = "bpf.appSections.expanded";
   document.documentElement.classList.add("has-app-sidebar");
   try {
     if (localStorage.getItem(PIN_KEY) === "1") {
@@ -257,7 +257,25 @@
     } catch {
       /* ignore */
     }
-    return window.matchMedia("(min-width: 1280px)").matches;
+    return true;
+  }
+
+  let sectionsSettleTimer = 0;
+
+  function settleSectionsDrawer(drawer, open) {
+    if (!drawer) return;
+    window.clearTimeout(sectionsSettleTimer);
+    if (open) {
+      drawer.classList.remove("is-settled");
+      return;
+    }
+    if (!document.documentElement.classList.contains("app-chrome-ready")) {
+      drawer.classList.add("is-settled");
+      return;
+    }
+    sectionsSettleTimer = window.setTimeout(() => {
+      if (drawer.classList.contains("is-collapsed")) drawer.classList.add("is-settled");
+    }, 280);
   }
 
   function setSectionsOpen(open) {
@@ -270,6 +288,9 @@
     document.body.classList.toggle("app-sections-collapsed", !open);
     const drawer = document.getElementById("app-sections-drawer");
     drawer?.classList.toggle("is-collapsed", !open);
+    settleSectionsDrawer(drawer, open);
+    const sectionBody = drawer?.querySelector(".app-sections-body");
+    if (sectionBody) sectionBody.inert = !open;
     const btn = drawer?.querySelector(".app-sections-toggle");
     btn?.setAttribute("aria-expanded", String(open));
     btn?.setAttribute("title", open ? "Collapse sections" : "Show sections");
@@ -315,26 +336,12 @@
     const toggle = drawer.querySelector(".app-sections-toggle");
     toggle?.addEventListener("click", (e) => {
       e.stopPropagation();
-      const willOpen = document.documentElement.classList.contains("app-sections-collapsed");
-      // Clicking collapse focuses the toggle. Hover and :focus-within peek the
-      // rail back open, so hold the collapsed layout until the pointer leaves.
-      if (willOpen) drawer.classList.remove("is-hold-collapsed");
-      else drawer.classList.add("is-hold-collapsed");
-      setSectionsOpen(willOpen);
-      if (!willOpen) {
-        toggle.blur();
-        requestAnimationFrame(() => {
-          if (!drawer.matches(":hover")) drawer.classList.remove("is-hold-collapsed");
-        });
-      }
-    });
-    drawer.addEventListener("pointerleave", () => {
-      drawer.classList.remove("is-hold-collapsed");
+      const open = !document.documentElement.classList.contains("app-sections-collapsed");
+      setSectionsOpen(!open);
     });
     drawer.addEventListener("click", (e) => {
       if (!drawer.classList.contains("is-collapsed")) return;
       if (e.target.closest("a, button")) return;
-      if (window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 961px)").matches) return;
       setSectionsOpen(true);
     });
 
@@ -590,7 +597,10 @@
     setPinned(isPinned());
     markActive({ deferOpen: true });
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => markActive());
+      requestAnimationFrame(() => {
+        markActive();
+        document.documentElement.classList.add("app-chrome-ready");
+      });
     });
     initSectionDrawer();
     syncPageLayer();

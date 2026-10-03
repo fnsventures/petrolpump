@@ -1,12 +1,30 @@
-/* Nested sidebar: icon rail by default. Hover expands the rail; only the section under the pointer opens. Leaving collapses it again. Layer 3 stays in the sections drawer, which also opens on hover while collapsed. */
+/* Nested sidebar: icon rail by default. Hover expands the rail; only the section under the pointer opens. Leaving collapses it again. Layer 3 is the sections drawer: open by default, and a click collapses it so the page takes the freed space. */
+
+/* Unitless so the value can interpolate. rem lengths snap. Widths are units × 1rem. */
+@property --app-sidebar-units {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 4.5;
+}
+
+@property --app-sections-units {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 13.25;
+}
 
 :root {
   --app-sidebar-collapsed: 4.5rem;
   --app-sidebar-expanded: 17.5rem;
-  --app-sidebar-width: var(--app-sidebar-collapsed);
+  --app-sidebar-units: 4.5;
+  --app-sidebar-width: calc(var(--app-sidebar-units) * 1rem);
+  --app-sections-units: 13.25;
   --app-sections-width: 13.25rem;
   --app-sections-collapsed: 2.25rem;
+  --app-sections-span: calc(var(--app-sections-units) * 1rem);
   --app-chrome-left: var(--app-sidebar-width);
+  --app-chrome-duration: 0.28s;
+  --app-chrome-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --app-sidebar-bg: #005a9c;
   --app-sidebar-bg-2: #0070c0;
   --app-sidebar-text: #ffffff;
@@ -17,27 +35,25 @@
 
 html.has-app-sidebar body,
 body.has-app-sidebar {
-  --app-sidebar-width: var(--app-sidebar-collapsed);
-  --app-chrome-left: var(--app-sidebar-width);
-  padding-left: var(--app-chrome-left);
+  --app-sidebar-units: 4.5;
+  --app-chrome-left: calc(var(--app-sidebar-units) * 1rem);
+  padding-left: calc(var(--app-sidebar-units) * 1rem);
 }
 
 html.app-sidebar-pinned body,
 body.has-app-sidebar.app-sidebar-pinned {
-  --app-sidebar-width: var(--app-sidebar-expanded);
-  --app-chrome-left: var(--app-sidebar-width);
+  --app-sidebar-units: 17.5;
 }
 
 html.has-app-sections body,
 body.has-app-sections {
-  --app-chrome-left: calc(var(--app-sidebar-width) + var(--app-sections-width));
-  padding-left: var(--app-chrome-left);
+  --app-sections-units: 13.25;
+  --app-chrome-left: calc((var(--app-sidebar-units) + var(--app-sections-units)) * 1rem);
+  padding-left: calc((var(--app-sidebar-units) + var(--app-sections-units)) * 1rem);
 }
 
-html.has-app-sections.app-sections-collapsed body,
 body.has-app-sections.app-sections-collapsed {
-  --app-chrome-left: calc(var(--app-sidebar-width) + var(--app-sections-collapsed));
-  padding-left: var(--app-chrome-left);
+  --app-sections-units: 2.25;
 }
 
 html.has-app-sidebar .topbar .nav-wrap,
@@ -88,7 +104,7 @@ body.has-app-sidebar .table-wrap {
     linear-gradient(180deg, var(--app-sidebar-bg-2) 0%, var(--app-sidebar-bg) 48%, #00487c 100%);
   box-shadow: inset -3px 0 0 var(--app-sidebar-active);
   overflow: hidden;
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width var(--app-chrome-duration) var(--app-chrome-ease);
   contain: layout style;
 }
 
@@ -422,28 +438,26 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
   position: fixed;
   top: 0;
   bottom: 0;
-  left: var(--app-sidebar-width);
+  left: calc(var(--app-sidebar-units) * 1rem);
   z-index: 240;
   display: flex;
   flex-direction: column;
-  width: var(--app-sections-width);
+  width: calc(var(--app-sections-units) * 1rem);
+  overflow: clip;
+  contain: layout paint;
   background: #f4f8fc;
   border-right: 1px solid rgba(0, 112, 192, 0.16);
   box-shadow: 6px 0 18px rgba(0, 90, 156, 0.06);
 }
 
-.app-sections-drawer.is-collapsed {
-  width: var(--app-sections-collapsed);
-  background: var(--bpcl-blue);
-  cursor: pointer;
-}
-
 .app-sections-head {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.35rem;
   min-height: var(--topbar-height);
   padding: 0.55rem 0.65rem 0.55rem 0.9rem;
+  overflow: hidden;
   background: linear-gradient(180deg, var(--bpcl-blue) 0%, var(--bpcl-blue-dark) 100%);
   box-shadow: inset 0 -3px 0 var(--bpcl-yellow);
 }
@@ -451,11 +465,15 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
 .app-sections-heading {
   flex: 1 1 auto;
   margin: 0;
+  overflow: hidden;
   color: #fff;
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.1em;
+  white-space: nowrap;
   text-transform: uppercase;
+  opacity: 1;
+  transition: opacity 0.18s ease;
 }
 
 .app-sections-toggle {
@@ -484,31 +502,23 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
 .app-sections-toggle svg {
   width: 1rem;
   height: 1rem;
-}
-
-.app-sections-drawer.is-collapsed .app-sections-body {
-  display: none;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .app-sections-drawer.is-collapsed .app-sections-head {
-  flex: 1 1 auto;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 0.85rem;
-  min-height: 0;
-  padding: 0.85rem 0.2rem;
-  box-shadow: none;
+  justify-content: center;
+  gap: 0;
+  padding-right: 0.28rem;
+  padding-left: 0.28rem;
 }
 
 .app-sections-drawer.is-collapsed .app-sections-heading {
-  flex: 0 0 auto;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  letter-spacing: 0.18em;
+  flex: 0 0 0;
+  width: 0;
+  opacity: 0;
 }
 
-.app-sections-drawer.is-collapsed .app-sections-toggle {
+.app-sections-drawer.is-collapsed .app-sections-toggle svg {
   transform: rotate(180deg);
 }
 
@@ -518,6 +528,25 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.2s ease 0.06s,
+    visibility 0s linear 0s;
+}
+
+.app-sections-drawer.is-collapsed .app-sections-body {
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.12s ease,
+    visibility 0s linear 0.12s;
+}
+
+.app-sections-drawer.is-collapsed.is-settled .app-sections-body {
+  content-visibility: hidden;
 }
 
 .app-sections-drawer .app-sections,
@@ -617,40 +646,10 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
   }
 }
 
-@media (hover: hover) and (pointer: fine) and (min-width: 961px) {
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) {
-    width: var(--app-sections-width);
-    background: #f4f8fc;
-    cursor: default;
-    z-index: 260;
-    box-shadow: 10px 0 24px rgba(0, 90, 156, 0.16);
-  }
-
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-body {
-    display: flex;
-  }
-
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-head {
-    flex: 0 0 auto;
-    flex-direction: row;
-    justify-content: flex-start;
-    align-items: center;
-    gap: 0.35rem;
-    min-height: var(--topbar-height);
-    padding: 0.55rem 0.65rem 0.55rem 0.9rem;
-    box-shadow: inset 0 -3px 0 var(--bpcl-yellow);
-  }
-
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-heading {
-    flex: 1 1 auto;
-    writing-mode: horizontal-tb;
-    transform: none;
-    letter-spacing: 0.1em;
-  }
-
-  body.has-app-sections.app-sections-collapsed .app-sections-drawer.is-collapsed:is(:hover, :focus-within):not(.is-hold-collapsed) .app-sections-toggle {
-    transform: none;
-  }
+html.app-chrome-ready body.has-app-sidebar {
+  transition:
+    --app-sidebar-units var(--app-chrome-duration) var(--app-chrome-ease),
+    --app-sections-units var(--app-chrome-duration) var(--app-chrome-ease);
 }
 
 @media (max-width: 960px) {
@@ -753,13 +752,15 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
 
   .app-sections-drawer.is-collapsed .app-sections-head {
     flex-direction: row;
-    align-items: center;
+    justify-content: flex-start;
+    gap: 0.35rem;
     padding: 0.45rem 0.75rem;
   }
 
   .app-sections-drawer.is-collapsed .app-sections-heading {
-    writing-mode: horizontal-tb;
-    transform: none;
+    flex: 1 1 auto;
+    width: auto;
+    opacity: 1;
   }
 
   .app-sections-drawer.is-collapsed .app-sections-body {
@@ -800,7 +801,12 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
 @media (prefers-reduced-motion: reduce) {
   .app-sidebar,
   .app-sidebar-chevron,
+  .app-sections-drawer,
   .app-sections-toggle,
+  .app-sections-toggle svg,
+  .app-sections-heading,
+  .app-sections-body,
+  html.app-chrome-ready body.has-app-sidebar,
   .app-sidebar-group-body {
     transition: none;
   }
