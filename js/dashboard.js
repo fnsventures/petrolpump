@@ -1323,10 +1323,19 @@ async function updateSmartAlerts(options = {}) {
       let unpaidCount = 0;
       let pendingTotal = 0;
       let salaryAttendance = null;
+      let lopExcludedIds = new Set();
       const payrollActive = typeof PayrollRules !== "undefined" && PayrollRules.rulesAffectPay();
       if (payrollActive) {
         try {
-          salaryAttendance = await PayrollRules.fetchMonthAttendance(window.supabaseClient, salaryMonth);
+          const lopOn = PayrollRules.getPayrollConfig().lossOfPayEnabled;
+          const [attendance, exclusions] = await Promise.all([
+            PayrollRules.fetchMonthAttendance(window.supabaseClient, salaryMonth),
+            lopOn
+              ? PayrollRules.fetchLopExclusions(window.supabaseClient, salaryMonth)
+              : Promise.resolve({ ids: new Set() }),
+          ]);
+          salaryAttendance = attendance;
+          lopExcludedIds = exclusions.ids;
         } catch (err) {
           AppError.report(err, { context: "updateSmartAlerts", type: "salary_attendance" });
         }
@@ -1338,7 +1347,10 @@ async function updateSmartAlerts(options = {}) {
         let overDutyAmount = 0;
         if (salaryAttendance) {
           const records = salaryAttendance.byEmployee.get(emp.id) || [];
-          const pay = PayrollRules.computeMonthPay(gross, records, salaryMonth);
+          const pay = PayrollRules.applyLopExclusion(
+            PayrollRules.computeMonthPay(gross, records, salaryMonth),
+            lopExcludedIds.has(emp.id)
+          );
           lopAmount = pay.lopAmount;
           overDutyAmount = pay.overDutyAmount;
         }

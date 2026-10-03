@@ -37,8 +37,10 @@ function isMissingSalaryPaymentIdColumn(error) {
   return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
 }
 
-function getStaffSalaryMonthContext(staff, paid, monthValue, records) {
-  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records);
+function getStaffSalaryMonthContext(staff, paid, monthValue, records, lopExcluded) {
+  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records, {
+    lopExcluded,
+  });
   const status = salaryStatusFromBalance(balance);
   return {
     label: status.label,
@@ -185,10 +187,14 @@ function monthPayFor(monthlySalary, monthValue, records) {
   return PayrollRules.computeMonthPay(monthlySalary, records || [], monthValue);
 }
 
-function computeSalaryBalance(monthlySalary, paid, staff, monthValue, records) {
+function computeSalaryBalance(monthlySalary, paid, staff, monthValue, records, options) {
   const gross = Number(monthlySalary ?? 0);
   const pf = staff ? computePfBreakdown(gross, staff) : { employeePf: 0, employerPf: 0, netSalary: gross, gross, fixedAmount: 0 };
-  const pay = monthPayFor(gross, monthValue, records);
+  const payRaw = monthPayFor(gross, monthValue, records);
+  const pay =
+    payRaw && typeof PayrollRules !== "undefined"
+      ? PayrollRules.applyLopExclusion(payRaw, options?.lopExcluded === true)
+      : payRaw;
   const settled =
     typeof PayrollRules !== "undefined"
       ? PayrollRules.settleTakeHome(gross, pay?.lopAmount || 0, pay?.overDutyAmount || 0, pf.employeePf)
@@ -256,12 +262,12 @@ function salaryDeleteButtonHtml(payment, staff, isAdmin) {
   });
 }
 
-function getStaffBalanceForMonth(staffId, payments, employees, monthValue, records) {
+function getStaffBalanceForMonth(staffId, payments, employees, monthValue, records, lopExcluded) {
   const staff = (employees || []).find((s) => s.id === staffId);
   if (!staff) return null;
   const paidMap = paidByStaffInRange(payments);
   const paid = paidMap.get(staffId) || 0;
-  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records);
+  const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records, { lopExcluded });
   return {
     staff,
     paid,
@@ -301,11 +307,11 @@ function slipAttendanceBlock(pay) {
   }</div>`;
 }
 
-function buildSalarySlipHtml(staff, staffPayments, monthValue, records) {
+function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options) {
   const monthLabel = formatMonthLabel(monthValue);
   const payPeriod = getPayPeriodLabel(monthValue);
   const totalPaid = staffPayments.reduce((s, p) => s + Number(p.amount ?? 0), 0);
-  const balance = computeSalaryBalance(staff.monthly_salary, totalPaid, staff, monthValue, records);
+  const balance = computeSalaryBalance(staff.monthly_salary, totalPaid, staff, monthValue, records, options);
   const pf = balance.pf;
   const { pending: netPending, advance: netAdvance, pay, settled } = balance;
   const netSalary = settled.net;
@@ -445,9 +451,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records) {
           <p class="salary-slip-pay-col-title">Deductions</p>
           <table class="salary-slip-pay-table">
             ${
-              pay?.lopAmount > 0
-                ? `<tr><td>Loss of pay (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.lopAmount)}</td></tr>`
-                : ""
+              pay?.lopExcluded
+                ? `<tr><td>Loss of pay excluded (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day, not deducted)</td><td>₹ 0.00</td></tr>`
+                : pay?.lopAmount > 0
+                  ? `<tr><td>Loss of pay (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.lopAmount)}</td></tr>`
+                  : ""
             }
             <tr>
               <td>Employee PF (fixed monthly)</td>
@@ -511,7 +519,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records) {
           <span class="salary-slip-sign-label">For ${escapeHtml(PumpSettings.getStationLegalName())}<br />Authorised signatory</span>
         </div>
       </footer>
-      <p class="salary-slip-note">Computer-generated salary slip. PF is the fixed monthly amount, capped so take-home is not negative. Loss of pay and over duty use marked attendance only; unmarked days are ignored. Disbursement rows are payments recorded for ${escapeHtml(monthLabel)}.</p>
+      <p class="salary-slip-note">Computer-generated salary slip. PF is the fixed monthly amount, capped so take-home is not negative. Loss of pay and over duty use marked attendance only; unmarked days are ignored.${
+        pay?.lopExcluded
+          ? ` Calculated loss of pay (${escapeHtml(formatCurrency(pay.suggestedLopAmount))}) was excluded from this month's salary.`
+          : ""
+      } Disbursement rows are payments recorded for ${escapeHtml(monthLabel)}.</p>
     </article>`;
 }
 
@@ -528,12 +540,23 @@ async function getSalarySlipPrintCssText() {
 
 async function runSalarySlipPrint(staff, staffPayments, monthValue, records) {
   let rows = records;
-  if (!rows && typeof PayrollRules !== "undefined") {
-    const bundle = await PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue);
-    rows = bundle.byEmployee.get(staff.id) || [];
+  let lopExcluded = false;
+  if (typeof PayrollRules !== "undefined") {
+    const exclusionPromise = PayrollRules.fetchLopExclusions(window.supabaseClient, monthValue).catch((error) => {
+      AppError.report(error, { context: "printSalarySlipExclusions" });
+      return { ids: new Set(), ready: true };
+    });
+    const [bundle, exclusions] = await Promise.all([
+      rows ? Promise.resolve(null) : PayrollRules.fetchMonthAttendance(window.supabaseClient, monthValue),
+      exclusionPromise,
+    ]);
+    if (!rows) rows = bundle?.byEmployee.get(staff.id) || [];
+    lopExcluded = exclusions.ids.has(staff.id);
   }
   const [sheetHtml, cssText] = await Promise.all([
-    Promise.resolve(buildSalarySlipHtml(staff, staffPayments, monthValue, rows || [])),
+    Promise.resolve(
+      buildSalarySlipHtml(staff, staffPayments, monthValue, rows || [], { lopExcluded })
+    ),
     getSalarySlipPrintCssText(),
   ]);
 
@@ -606,6 +629,111 @@ document.addEventListener("DOMContentLoaded", async () => {
   let attendanceMonthLoaded = "";
   let attendanceNote = "";
   let detailStaffId = null;
+  let lopExclusionIds = new Set();
+  let lopExclusionMonth = "";
+  let lopExclusionReady = true;
+
+  function isLopExcluded(staffId) {
+    return lopExclusionIds.has(staffId);
+  }
+
+  function lopExcludeControlHtml(staffId, pay) {
+    if (!isAdmin || !pay?.lossOfPayEnabled) return "";
+    const suggested = Number(pay.suggestedLopAmount ?? pay.lopAmount) || 0;
+    if (suggested <= 0 || !lopExclusionReady) return "";
+    const excludeNext = pay.lopExcluded ? "0" : "1";
+    const label = pay.lopExcluded ? "Include in salary" : "Exclude from salary";
+    return `<div class="salary-lop-actions"><button type="button" class="button-secondary button-small salary-lop-toggle" data-staff-id="${escapeHtml(staffId)}" data-exclude="${excludeNext}" data-amount="${suggested}">${label}</button></div>`;
+  }
+
+  function appendLopExclusionNote() {
+    if (lopExclusionReady) return;
+    const extra =
+      "Loss-of-pay exclusions need the latest database update. Calculated loss of pay is still deducted.";
+    attendanceNote = attendanceNote ? `${attendanceNote} ${extra}` : extra;
+  }
+
+  async function loadLopExclusions(monthValue, options) {
+    lopExclusionMonth = salaryMonthKey(monthValue);
+    lopExclusionReady = true;
+    if (typeof PayrollRules === "undefined" || !PayrollRules.getPayrollConfig().lossOfPayEnabled) {
+      lopExclusionIds = new Set();
+      return lopExclusionIds;
+    }
+    try {
+      const result = await PayrollRules.fetchLopExclusions(window.supabaseClient, monthValue, options);
+      lopExclusionIds = result.ids;
+      lopExclusionReady = result.ready !== false;
+    } catch (error) {
+      lopExclusionIds = new Set();
+      lopExclusionReady = false;
+      AppError.report(error, { context: "loadLopExclusions" });
+    }
+    return lopExclusionIds;
+  }
+
+  async function excludedForStaff(staffId, monthValue) {
+    if (salaryMonthKey(monthValue) === lopExclusionMonth) return lopExclusionIds.has(staffId);
+    if (typeof PayrollRules === "undefined") return false;
+    try {
+      const result = await PayrollRules.fetchLopExclusions(window.supabaseClient, monthValue);
+      return result.ids.has(staffId);
+    } catch (error) {
+      AppError.report(error, { context: "excludedForStaff" });
+      return false;
+    }
+  }
+
+  async function setLopExcluded(staffId, monthValue, exclude) {
+    const salaryMonth = normalizeSalaryMonth(monthValue);
+    const userId = auth.session?.user?.id;
+    if (!salaryMonth || !staffId || !userId) {
+      throw new Error("Could not save the loss-of-pay exclusion.");
+    }
+    if (exclude) {
+      const { error } = await window.supabaseClient.from("salary_lop_exclusions").insert({
+        employee_id: staffId,
+        salary_month: salaryMonth,
+        created_by: userId,
+      });
+      if (error && error.code !== "23505") throw error;
+      return;
+    }
+    const { error } = await window.supabaseClient
+      .from("salary_lop_exclusions")
+      .delete()
+      .eq("employee_id", staffId)
+      .eq("salary_month", salaryMonth);
+    if (error) throw error;
+  }
+
+  async function toggleLopExclusion(staffId, monthValue, exclude, suggestedAmount) {
+    const staff = staffList.find((s) => s.id === staffId);
+    const suggested = Number(suggestedAmount) || 0;
+    const monthLabel = formatMonthLabel(monthValue);
+    const name = staff?.name || "this employee";
+    const ok = exclude
+      ? confirm(
+          `Exclude ${formatCurrency(suggested)} loss of pay from ${name}'s ${monthLabel} salary? Payable will not be reduced by that amount.`
+        )
+      : confirm(`Include loss of pay in ${name}'s ${monthLabel} salary again?`);
+    if (!ok) return;
+    try {
+      await setLopExcluded(staffId, monthValue, exclude);
+      if (exclude) lopExclusionIds.add(staffId);
+      else lopExclusionIds.delete(staffId);
+      PayrollRules.setCachedLopExclusion(monthValue, staffId, exclude);
+      const selected = getSelectedMonth();
+      if (salaryMonthKey(selected) === salaryMonthKey(monthValue)) {
+        await renderSummary(selected, { refresh: false });
+      } else {
+        await renderSummary(selected);
+      }
+    } catch (error) {
+      AppError.report(error, { context: "toggleLopExclusion" });
+      alert(AppError.getUserMessage(error) || "Could not update loss of pay.");
+    }
+  }
 
   async function loadMonthAttendanceMap(monthValue) {
     attendanceNote = "";
@@ -797,7 +925,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const paidMap = paidByStaffInRange(monthPayments);
     const paid = paidMap.get(staffId) || 0;
-    const ctx = getStaffSalaryMonthContext(staff, paid, monthValue, recordsFor(staffId));
+    const ctx = getStaffSalaryMonthContext(staff, paid, monthValue, recordsFor(staffId), isLopExcluded(staffId));
     const list = paymentsForEmployee(monthPayments, staffId);
     const monthLabel = formatMonthLabel(monthValue);
 
@@ -855,12 +983,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             <div><dt>Present</dt><dd>${counts.present}</dd></div>
             <div><dt>Half-day</dt><dd>${counts.half}</dd></div>
             <div><dt>Leave</dt><dd>${escapeHtml(PayrollRules.leaveUsageLabel(pay))}</dd></div>
-            <div><dt>Loss of pay</dt><dd class="${pay.lopAmount > 0 ? "salary-money-deduct" : ""}">${
+            <div><dt>Loss of pay</dt><dd class="${pay.lopExcluded ? "salary-lop-excluded" : pay.lopAmount > 0 ? "salary-money-deduct" : ""}">${
               !pay.lossOfPayEnabled
                 ? "Off"
-                : pay.lopAmount > 0
-                  ? `${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} · ${escapeHtml(formatCurrency(pay.lopAmount))}`
-                  : "—"
+                : pay.lopExcluded
+                  ? `Excluded · ${escapeHtml(formatCurrency(pay.suggestedLopAmount))}`
+                  : pay.lopAmount > 0
+                    ? `${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} · ${escapeHtml(formatCurrency(pay.lopAmount))}`
+                    : "—"
             }</dd></div>
             <div><dt>Over duty</dt><dd class="${pay.overDutyAmount > 0 ? "salary-money-earn" : ""}">${
               pay.overDutyEnabled
@@ -869,7 +999,13 @@ document.addEventListener("DOMContentLoaded", async () => {
             }</dd></div>
           </dl>
           <p class="salary-adjust-note">${escapeHtml(pay.lossOfPayEnabled ? PayrollRules.lopBreakdownLabel(pay) : "Loss of pay is off.")} Unmarked days are ignored.</p>
+          ${lopExcludeControlHtml(staffId, pay)}
         `;
+        adjustEl.querySelector(".salary-lop-toggle")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const button = e.currentTarget;
+          toggleLopExclusion(staffId, monthValue, button.getAttribute("data-exclude") === "1", button.getAttribute("data-amount"));
+        });
       }
     }
 
@@ -1023,7 +1159,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const payments = await getPaymentsForSalaryMonth(monthVal);
     const records = await attendanceRecordsFor(staffId, monthVal);
-    const balance = getStaffBalanceForMonth(staffId, payments, staffList, monthVal, records);
+    const balance = getStaffBalanceForMonth(
+      staffId,
+      payments,
+      staffList,
+      monthVal,
+      records,
+      await excludedForStaff(staffId, monthVal)
+    );
     if (!balance) return;
 
     const monthLabel = formatMonthLabel(monthVal);
@@ -1038,7 +1181,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       remainingText = `${formatCurrency(balance.pending)} remaining`;
     }
     const extras = [];
-    if (balance.pay?.lossOfPayEnabled && balance.pay.lopAmount > 0) {
+    if (balance.pay?.lopExcluded) {
+      extras.push(`loss of pay excluded ${formatCurrency(balance.pay.suggestedLopAmount)}`);
+    } else if (balance.pay?.lossOfPayEnabled && balance.pay.lopAmount > 0) {
       extras.push(`loss of pay ${formatCurrency(balance.pay.lopAmount)}`);
     }
     if (balance.pay?.overDutyEnabled) extras.push(`over duty ${formatCurrency(balance.pay.overDutyAmount)}`);
@@ -1062,7 +1207,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const monthVal = getPaymentSalaryMonth();
     const payments = await getPaymentsForSalaryMonth(monthVal);
     const records = await attendanceRecordsFor(staffId, monthVal);
-    const balance = getStaffBalanceForMonth(staffId, payments, staffList, monthVal, records);
+    const balance = getStaffBalanceForMonth(
+      staffId,
+      payments,
+      staffList,
+      monthVal,
+      records,
+      await excludedForStaff(staffId, monthVal)
+    );
     if (!balance || balance.pending <= 0.009) {
       if (paymentAmountInput) paymentAmountInput.value = "";
       return;
@@ -1072,7 +1224,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  async function renderSummary(monthValue) {
+  async function renderSummary(monthValue, options) {
     const tbody = document.getElementById("salary-summary-body");
     const kpiPayroll = document.getElementById("salary-kpi-payroll");
     const kpiPaid = document.getElementById("salary-kpi-paid");
@@ -1100,8 +1252,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    monthPayments = await loadPaymentsForSalaryMonth(monthValue);
-    await loadMonthAttendanceMap(monthValue);
+    if (options?.refresh !== false) {
+      const [payments] = await Promise.all([
+        loadPaymentsForSalaryMonth(monthValue),
+        loadMonthAttendanceMap(monthValue),
+        loadLopExclusions(monthValue, { force: true }),
+      ]);
+      monthPayments = payments;
+      appendLopExclusionNote();
+    }
     const paidMap = paidByStaffInRange(monthPayments);
 
     let totalPayroll = 0;
@@ -1112,7 +1271,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const summaryRows = staffList.map((s) => {
       const paid = paidMap.get(s.id) || 0;
-      const ctx = getStaffSalaryMonthContext(s, paid, monthValue, recordsFor(s.id));
+      const ctx = getStaffSalaryMonthContext(s, paid, monthValue, recordsFor(s.id), isLopExcluded(s.id));
       const pay = ctx.balance?.pay;
       totalPayroll += ctx.payable;
       totalPaid += paid;
@@ -1125,14 +1284,22 @@ document.addEventListener("DOMContentLoaded", async () => {
           : formatCurrency(ctx.pending);
       const name = escapeHtml(s.name);
       const role = escapeHtml(s.role_display ?? "—");
-      const lopText = !pay?.lossOfPayEnabled ? "Off" : pay.lopAmount > 0 ? formatCurrency(pay.lopAmount) : "—";
+      const suggestedLop = Number(pay?.suggestedLopAmount ?? pay?.lopAmount) || 0;
+      const lopText = !pay?.lossOfPayEnabled
+        ? "Off"
+        : pay.lopExcluded
+          ? `<span class="salary-lop-excluded">Excluded</span> <span class="muted">${escapeHtml(formatCurrency(suggestedLop))}</span>`
+          : pay.lopAmount > 0
+            ? escapeHtml(formatCurrency(pay.lopAmount))
+            : "—";
+      const lopAction = lopExcludeControlHtml(s.id, pay);
       const odText = pay?.overDutyEnabled ? formatCurrency(pay.overDutyAmount) : "Off";
       return `
           <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
             <td class="num">${formatSalaryAmount(ctx.payable)}</td>
-            <td class="num salary-col-lop${pay?.lopAmount > 0 ? " salary-money-deduct" : ""}">${lopText}</td>
+            <td class="num salary-col-lop${pay?.lopAmount > 0 ? " salary-money-deduct" : ""}"><div class="salary-lop-cell">${lopText}${lopAction}</div></td>
             <td class="num salary-col-od${pay?.overDutyAmount > 0 ? " salary-money-earn" : ""}">${odText}</td>
             <td class="num">${formatCurrency(paid)}</td>
             <td class="num">${remaining}</td>
@@ -1203,6 +1370,15 @@ document.addEventListener("DOMContentLoaded", async () => {
           AppError.report(err, { context: "printSalarySlipQuick" });
           alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
         }
+      });
+    });
+
+    tbody.querySelectorAll(".salary-lop-toggle").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const staffId = btn.getAttribute("data-staff-id");
+        const exclude = btn.getAttribute("data-exclude") === "1";
+        toggleLopExclusion(staffId, monthValue, exclude, btn.getAttribute("data-amount"));
       });
     });
 
@@ -1361,7 +1537,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
       const records = await attendanceRecordsFor(staffId, salaryMonthVal);
-      const balance = getStaffBalanceForMonth(staffId, payments, staffList, salaryMonthVal, records);
+      const balance = getStaffBalanceForMonth(
+        staffId,
+        payments,
+        staffList,
+        salaryMonthVal,
+        records,
+        await excludedForStaff(staffId, salaryMonthVal)
+      );
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
         const overBy = roundMoney(amount - balance.pending);
         const msg =
@@ -1513,15 +1696,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       const monthVal = getSelectedMonth();
       if (!monthVal) return;
       await loadStaffMembers();
-      const payments = await loadPaymentsForSalaryMonth(monthVal);
+      const monthReady =
+        attendanceMonthLoaded === monthVal && lopExclusionMonth === salaryMonthKey(monthVal);
+      const [payments] = await Promise.all([
+        loadPaymentsForSalaryMonth(monthVal),
+        monthReady ? Promise.resolve() : loadMonthAttendanceMap(monthVal),
+        monthReady ? Promise.resolve() : loadLopExclusions(monthVal),
+      ]);
+      if (!monthReady) appendLopExclusionNote();
       const paidMap = paidByStaffInRange(payments);
-      await loadMonthAttendanceMap(monthVal);
       const headers = [
         "Name",
         "Role",
         "Payable (₹)",
         "Loss of pay (₹)",
         "Loss of pay days",
+        "Loss of pay excluded",
         "Over duty (₹)",
         "Over duty days",
         "Paid this month (₹)",
@@ -1530,7 +1720,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       ];
       const rows = staffList.map((s) => {
         const paid = paidMap.get(s.id) || 0;
-        const ctx = getStaffSalaryMonthContext(s, paid, monthVal, recordsFor(s.id));
+        const ctx = getStaffSalaryMonthContext(s, paid, monthVal, recordsFor(s.id), isLopExcluded(s.id));
         const pay = ctx.balance?.pay;
         const remaining =
           ctx.advance > 0.009 ? `Advance ${ctx.advance}` : String(ctx.pending);
@@ -1540,6 +1730,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           String(ctx.payable),
           String(pay?.lopAmount ?? 0),
           String(pay?.lopDays ?? 0),
+          pay?.lopExcluded ? "Yes" : "No",
           String(pay?.overDutyAmount ?? 0),
           String(pay?.overDutyDays ?? 0),
           String(paid),
