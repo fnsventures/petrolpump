@@ -2,7 +2,34 @@
 
 (function () {
   const page = () => window.CreditPage;
-  const { filterEntriesByRange, sumAmount, createBreakdownPager } = CreditCustomerDetail;
+  const {
+    filterEntriesByRange,
+    sumAmount,
+    createBreakdownPager,
+    sortEntriesByDateDesc,
+    buildMonthActivityRows,
+    buildDayActivityRows,
+    openCreditLines,
+  } = CreditCustomerDetail;
+  const SUMMARY_LIST_PAGE = 10;
+  const SUMMARY_MONTHS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const summaryListState = {
+    credit: { entries: [], shown: SUMMARY_LIST_PAGE },
+    payment: { entries: [], shown: SUMMARY_LIST_PAGE },
+  };
   let creditPager = null;
   let paymentPager = null;
   let customerPeriodFilterApi = null;
@@ -126,6 +153,14 @@ async function initCustomerView() {
     });
   }
 
+  document.getElementById("lifetime-credit-more")?.addEventListener("click", () => {
+    summaryListState.credit.shown += SUMMARY_LIST_PAGE;
+    renderSummaryList("credit");
+  });
+  document.getElementById("lifetime-payment-more")?.addEventListener("click", () => {
+    summaryListState.payment.shown += SUMMARY_LIST_PAGE;
+    renderSummaryList("payment");
+  });
   document.getElementById("customer-summary-print-btn")?.addEventListener("click", () => {
     void handleCreditSummaryPrintClick();
   });
@@ -522,10 +557,25 @@ async function resolveCustomerIds() {
 }
 
 
-function sortSummaryEntriesByDate(entries) {
-  return [...(entries || [])].sort((a, b) =>
-    String(a.entry_date || "").localeCompare(String(b.entry_date || ""))
-  );
+function formatSummaryMonth(ym) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(ym || ""));
+  if (!match) return "—";
+  const index = Number(match[2]) - 1;
+  if (index < 0 || index > 11) return "—";
+  return `${SUMMARY_MONTHS[index]} ${match[1]}`;
+}
+
+function formatSummaryQty(value) {
+  if (value == null || value === "") return "—";
+  const qty = Number(value);
+  if (!Number.isFinite(qty)) return "—";
+  return qty.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+}
+
+function creditPrintMode() {
+  const value = document.getElementById("customer-summary-print-mode")?.value;
+  if (value === "activity" || value === "activity-days") return value;
+  return "outstanding";
 }
 
 /** Derive outstanding vs advance from credit − settled (single source of truth for print). */
@@ -564,7 +614,9 @@ function entryDateBounds(entries) {
 function updateCreditSummaryPrintButton() {
   const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
   const printBtn = document.getElementById("customer-summary-print-btn");
+  const printMode = document.getElementById("customer-summary-print-mode");
   if (printBtn) printBtn.disabled = !canShare;
+  if (printMode) printMode.disabled = !canShare;
   syncCustomerContactActions();
 }
 
@@ -636,14 +688,14 @@ function buildCreditWhatsAppText() {
   const balanceLabel = hasAdvance ? "Credit balance" : "Outstanding";
   const balanceValue = hasAdvance ? prepaid : Math.max(0, net);
   const closing = hasAdvance
-    ? "This account has an advance. Reply if you need anything else."
+    ? "Reply if you need anything else."
     : cleared
-      ? "This account has no outstanding balance."
+      ? "Nothing is unpaid on this account."
       : "Please clear this at the pump, or reply to this chat.";
   return [
     "Hello,",
     "",
-    `This is ${station} with your credit statement.`,
+    `This is ${station}.`,
     "",
     `As on ${asOf}`,
     `${balanceLabel}: ${formatCurrency(balanceValue)}`,
@@ -660,29 +712,213 @@ function showCreditShareNotice(message) {
   }
 }
 
-/** One pass: sorted ledger rows + total (avoids a second sort for footer totals). */
-function buildCreditSummaryLedger(entries, emptyLabel) {
-  const sorted = sortSummaryEntriesByDate(entries);
-  if (!sorted.length) {
+function inrPlain(amount) {
+  return `₹ ${formatNumberPlain(amount)}`;
+}
+
+function creditSummaryPartyHtml(name, mobile, vehicleLine, address) {
+  return `
+      <dl class="credit-summary-party">
+        <dt>Customer</dt>
+        <dd class="credit-summary-party-name">${escapeHtml(name)}</dd>
+        <div>
+          <dt>Mobile</dt>
+          <dd>${escapeHtml(mobile)}</dd>
+        </div>
+        <div>
+          <dt>Vehicle no.</dt>
+          <dd>${escapeHtml(vehicleLine)}</dd>
+        </div>
+        <div style="grid-column:1/-1">
+          <dt>Address</dt>
+          <dd>${escapeHtml(address)}</dd>
+        </div>
+      </dl>`;
+}
+
+function creditPrintParty(context) {
+  return {
+    name: context?.customerName || page().state.customerName || "Customer",
+    mobile: context?.mobile?.trim() || "—",
+    vehicleLine: context?.vehicles?.length > 0 ? context.vehicles.join(", ") : "—",
+    address: context?.address?.trim() || "—",
+  };
+}
+
+function activityFocusMonth(context) {
+  return String(context?.asOfDate || getLocalDateString()).slice(0, 7);
+}
+
+function activityAmountCell(amount) {
+  return amount > 0.009 ? inrPlain(amount) : "";
+}
+
+function buildDayTableHtml(rows, emptyLabel, options) {
+  let creditTotal = 0;
+  let settledTotal = 0;
+  if (!rows.length) {
     return {
-      rows: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
-      total: 0,
+      body: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
+      creditTotal: 0,
+      settledTotal: 0,
     };
   }
-  let total = 0;
-  const rows = sorted
-    .map((e, i) => {
-      const amount = Number(e.amount) || 0;
-      total += amount;
+
+  const groupMonths =
+    Boolean(options?.groupMonths) &&
+    rows.length > 1 &&
+    rows[0].date.slice(0, 7) !== rows[rows.length - 1].date.slice(0, 7);
+  const parts = [];
+  let month = "";
+  let monthCredit = 0;
+  let monthSettled = 0;
+
+  const flushMonth = () => {
+    if (!groupMonths || !month) return;
+    parts.push(
+      `<tr class="credit-summary-month-total"><td>${escapeHtml(formatSummaryMonth(month))}</td><td class="num">${inrPlain(monthCredit)}</td><td class="num">${inrPlain(monthSettled)}</td></tr>`
+    );
+  };
+
+  for (const row of rows) {
+    creditTotal += row.credit;
+    settledTotal += row.settled;
+    const key = row.date.slice(0, 7);
+    if (groupMonths && key !== month) {
+      flushMonth();
+      month = key;
+      monthCredit = 0;
+      monthSettled = 0;
+      parts.push(
+        `<tr class="credit-summary-month-row"><td colspan="3">${escapeHtml(formatSummaryMonth(key))}</td></tr>`
+      );
+    }
+    monthCredit += row.credit;
+    monthSettled += row.settled;
+    parts.push(
+      `<tr><td>${escapeHtml(formatDisplayDate(row.date))}</td><td class="num">${activityAmountCell(row.credit)}</td><td class="num">${activityAmountCell(row.settled)}</td></tr>`
+    );
+  }
+  flushMonth();
+  return { body: parts.join(""), creditTotal, settledTotal };
+}
+
+function dayActivityTableHtml(body, totals) {
+  const foot = totals
+    ? `<tfoot><tr class="report-total-row"><td>Total</td><td class="num">${inrPlain(totals.credit)}</td><td class="num">${inrPlain(totals.settled)}</td></tr></tfoot>`
+    : "";
+  return `<table class="report-table report-table-compact credit-summary-table--days">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th class="num">Credit (₹)</th>
+            <th class="num">Settled (₹)</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+        ${foot}
+      </table>`;
+}
+
+function buildActivitySectionsHtml(summary, context) {
+  const credits = summary?.credit_entries || [];
+  const payments = summary?.payment_entries || [];
+  if (context?.printMode === "activity-days") {
+    const dayTable = buildDayTableHtml(buildDayActivityRows(credits, payments, ""), "No credit or settlement in this period.", {
+      groupMonths: true,
+    });
+    return `
+    <section class="credit-summary-block credit-summary-block--flow">
+      ${dayActivityTableHtml(dayTable.body, { credit: dayTable.creditTotal, settled: dayTable.settledTotal })}
+    </section>`;
+  }
+
+  const focusMonth = activityFocusMonth(context);
+  const monthRows = buildMonthActivityRows(credits, payments, focusMonth);
+  const dayRows = buildDayActivityRows(credits, payments, monthRows.length ? focusMonth : "");
+  const focusLabel = formatSummaryMonth(focusMonth);
+  const periodActivity = context?.periodActivity || "";
+
+  let monthSection = "";
+  if (monthRows.length) {
+    let creditTotal = 0;
+    let settledTotal = 0;
+    const body = monthRows
+      .map((row) => {
+        creditTotal += row.credit;
+        settledTotal += row.settled;
+        return `
+          <tr>
+            <td>${escapeHtml(formatSummaryMonth(row.month))}</td>
+            <td class="num">${inrPlain(row.credit)}</td>
+            <td class="num">${inrPlain(row.settled)}</td>
+          </tr>`;
+      })
+      .join("");
+    monthSection = `
+      <section class="credit-summary-block credit-summary-block--flow">
+        <h3 class="credit-summary-block-title">Earlier months</h3>
+        <table class="report-table credit-summary-table--months">
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th class="num">Credit (₹)</th>
+              <th class="num">Settled (₹)</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+          <tfoot>
+            <tr class="report-total-row">
+              <td>Total</td>
+              <td class="num">${inrPlain(creditTotal)}</td>
+              <td class="num">${inrPlain(settledTotal)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </section>`;
+  }
+
+  const dayTable = buildDayTableHtml(
+    dayRows,
+    monthRows.length ? `No credit or settlement in ${focusLabel}.` : "No credit or settlement in this period."
+  );
+  const dayTitle = monthRows.length ? focusLabel : periodActivity || "By day";
+
+  return `
+    ${monthSection}
+    <section class="credit-summary-block credit-summary-block--flow">
+      <h3 class="credit-summary-block-title">${escapeHtml(dayTitle)}</h3>
+      ${dayActivityTableHtml(
+        dayTable.body,
+        monthRows.length ? { credit: dayTable.creditTotal, settled: dayTable.settledTotal } : null
+      )}
+    </section>`;
+}
+
+function buildOutstandingLinesHtml(summary) {
+  const lines = openCreditLines(summary?.credit_entries);
+  if (!lines.length) {
+    return {
+      rows: `<tr><td colspan="4" class="muted" style="text-align:center">No unpaid bills.</td></tr>`,
+      openTotal: 0,
+      count: 0,
+    };
+  }
+  let openTotal = 0;
+  const rows = lines
+    .map((line) => {
+      openTotal += line.open;
+      const fuel = String(line.fuel_type || "").trim();
       return `
         <tr>
-          <td>${i + 1}</td>
-          <td>${escapeHtml(formatDisplayDate(e.entry_date))}</td>
-          <td class="num">₹ ${formatNumberPlain(amount)}</td>
+          <td>${escapeHtml(formatDisplayDate(line.entry_date))}</td>
+          <td>${fuel ? escapeHtml(fuel) : "—"}</td>
+          <td class="num">${escapeHtml(formatSummaryQty(line.quantity))}</td>
+          <td class="num">${inrPlain(line.open)}</td>
         </tr>`;
     })
     .join("");
-  return { rows, total };
+  return { rows, openTotal, count: lines.length };
 }
 
 function creditSummaryReportHeader(title, subtitleLines) {
@@ -707,213 +943,104 @@ function creditSummaryReportHeader(title, subtitleLines) {
 }
 
 function buildCreditSummaryPrintHtml(summary, context) {
+  if (context?.printMode === "activity" || context?.printMode === "activity-days") {
+    return buildActivityStatementHtml(summary, context);
+  }
+  return buildOutstandingStatementHtml(summary, context);
+}
+
+function buildOutstandingStatementHtml(summary, context) {
   const balance = resolveCreditPrintBalance(summary?.credit_taken, summary?.settlement_done);
-  const {
-    credit: creditTaken,
-    settled: settlementDone,
-    outstanding,
-    advancePayment,
-    hasAdvance,
-    cleared,
-    balanceLabel,
-    balanceValue,
-  } = balance;
-  const periodCredit = context?.periodCredit ?? creditTaken;
-  const periodSettled = context?.periodSettled ?? settlementDone;
-  const name = context?.customerName || page().state.customerName || "Customer";
-  const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
-  const generatedOn = formatDisplayDate(getLocalDateString());
-  const periodActivity = context?.periodActivity || "";
-  // "All time" is lifetime through asOf — not a partial period slice.
-  const isPeriodScoped = Boolean(periodActivity) && context?.selection !== "all-time";
-  const netPhrase = hasAdvance
-    ? `advance ₹ ${formatNumberPlain(advancePayment)}`
-    : `outstanding ₹ ${formatNumberPlain(outstanding)}`;
-  const netScopePhrase = isPeriodScoped ? "net for this period" : "net through date";
-
-  let creditMeta = "";
-  if (summary) {
-    const first = summary.first_sale_date ? formatDisplayDate(summary.first_sale_date) : null;
-    const last = summary.last_credit_date ? formatDisplayDate(summary.last_credit_date) : null;
-    if (first && last) creditMeta = `First credit: ${first} · Last credit: ${last}`;
-    else if (first) creditMeta = `First credit: ${first}`;
-    else if (last) creditMeta = `Last credit: ${last}`;
-  }
-
-  let settlementMeta = "";
-  if (summary?.last_payment_date) {
-    settlementMeta = `Last settlement: ${formatDisplayDate(summary.last_payment_date)}`;
-  }
-
-  const vehicleLine =
-    context?.vehicles?.length > 0 ? context.vehicles.join(", ") : "—";
-  const mobile = context?.mobile?.trim() || "—";
-  const address = context?.address?.trim() || "—";
-
-  const creditLedger = buildCreditSummaryLedger(
-    summary?.credit_entries,
-    "No credit entries through this date"
-  );
-  const paymentLedger = buildCreditSummaryLedger(
-    summary?.payment_entries,
-    "No settlements through this date"
-  );
-
-  let balanceMeta;
-  if (hasAdvance) {
-    balanceMeta = isPeriodScoped
-      ? "Settlements exceed credit in this period"
-      : "Prepaid credit on account";
-  } else if (cleared) {
-    balanceMeta = isPeriodScoped ? "No net balance in period" : "Account cleared";
-  } else {
-    balanceMeta = isPeriodScoped
-      ? "Net credit minus settlements in period"
-      : "Amount still owed";
-  }
-
-  const noteBody = isPeriodScoped
-    ? hasAdvance
-      ? "Advance payment shown is settlements minus credit for the selected period only (not the customer&rsquo;s full account balance)."
-      : "Outstanding shown is net credit minus settlements for the selected period only (not the customer&rsquo;s full account balance)."
-    : hasAdvance
-      ? "Advance payment = settlements minus credit taken (prepaid balance on account)."
-      : "Outstanding = credit taken minus settlements (FIFO allocation on payments).";
+  const { outstanding, hasAdvance, cleared, balanceLabel, balanceValue } = balance;
+  const party = creditPrintParty(context);
+  const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : formatDisplayDate(getLocalDateString());
+  const openLines = buildOutstandingLinesHtml(summary);
+  const openGap = Math.abs(openLines.openTotal - (hasAdvance ? 0 : outstanding));
+  const gapNote = !hasAdvance && !cleared && openGap > 0.05 ? ` Account balance is ${inrPlain(outstanding)}.` : "";
 
   return `
     <article class="credit-summary-sheet report-print-sheet">
-      ${creditSummaryReportHeader("Credit customer — account summary", [
-        `Customer: <strong>${escapeHtml(name)}</strong>`,
-        `Totals through: ${escapeHtml(asOfLabel)} · Generated: ${escapeHtml(generatedOn)}`,
-      ])}
+      ${creditSummaryReportHeader("Unpaid credit", [`As on ${escapeHtml(asOfLabel)}`])}
 
-      <div class="credit-summary-title-band">
-        <h2 class="credit-summary-doc-title">Account statement</h2>
-        <p class="credit-summary-doc-meta">
-          ${
-            periodActivity
-              ? `Activity period: ${escapeHtml(periodActivity)}. Credit ₹ ${formatNumberPlain(periodCredit)}, settled ₹ ${formatNumberPlain(periodSettled)}, ${netPhrase} (${netScopePhrase}).`
-              : `Figures below are cumulative through ${escapeHtml(asOfLabel)}.`
-          }
-        </p>
+      ${creditSummaryPartyHtml(party.name, party.mobile, party.vehicleLine, party.address)}
+
+      <div class="credit-summary-due${cleared ? " is-cleared" : ""}${hasAdvance ? " is-advance" : ""}">
+        <span class="credit-summary-due-label">${balanceLabel}</span>
+        <span class="credit-summary-due-value">${inrPlain(balanceValue)}</span>
       </div>
 
-      <dl class="credit-summary-party">
-        <dt>Customer</dt>
-        <dd class="credit-summary-party-name">${escapeHtml(name)}</dd>
-        <div>
-          <dt>Mobile</dt>
-          <dd>${escapeHtml(mobile)}</dd>
-        </div>
-        <div>
-          <dt>Vehicle no.</dt>
-          <dd>${escapeHtml(vehicleLine)}</dd>
-        </div>
-        <div style="grid-column:1/-1">
-          <dt>Address</dt>
-          <dd>${escapeHtml(address)}</dd>
-        </div>
-      </dl>
-
-      <div class="credit-summary-kpis">
-        <div class="credit-summary-kpi credit-summary-kpi--outstanding${cleared ? " is-cleared" : ""}${hasAdvance ? " is-advance" : ""}">
-          <span class="credit-summary-kpi-label">${balanceLabel}</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(balanceValue)}</span>
-          <span class="credit-summary-kpi-meta">${balanceMeta}</span>
-        </div>
-        <div class="credit-summary-kpi">
-          <span class="credit-summary-kpi-label">Credit taken</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(creditTaken)}</span>
-          ${creditMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(creditMeta)}</span>` : ""}
-        </div>
-        <div class="credit-summary-kpi">
-          <span class="credit-summary-kpi-label">Settlement done</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(settlementDone)}</span>
-          ${settlementMeta ? `<span class="credit-summary-kpi-meta">${escapeHtml(settlementMeta)}</span>` : ""}
-        </div>
-      </div>
-
-      ${
-        periodActivity
-          ? `<div class="credit-summary-period-box">
-        <strong>Selected period:</strong> ${escapeHtml(periodActivity)}
-        <div class="credit-summary-period-stats">
-          <span>Credit in period: <strong>₹ ${formatNumberPlain(periodCredit)}</strong></span>
-          <span>Settled in period: <strong>₹ ${formatNumberPlain(periodSettled)}</strong></span>
-        </div>
-      </div>`
-          : ""
-      }
-
-      <section class="credit-summary-block">
-        <h3 class="credit-summary-block-title">${
-          periodActivity
-            ? `Credit taken (${escapeHtml(periodActivity)})`
-            : `All credit taken (through ${escapeHtml(asOfLabel)})`
-        }</h3>
-        <p class="credit-summary-block-lead">${
-          isPeriodScoped
-            ? "Credit sales in the selected activity period."
-            : "Every credit sale recorded up to the through date."
-        }</p>
-        <table class="report-table credit-summary-table--ledger">
+      <section class="credit-summary-block credit-summary-block--flow">
+        <table class="report-table credit-summary-table--open">
           <thead>
             <tr>
-              <th style="width:6%">#</th>
-              <th style="width:28%">Date</th>
-              <th class="num">Amount (₹)</th>
+              <th>Date</th>
+              <th>Fuel</th>
+              <th class="num">Qty (L)</th>
+              <th class="num">Open (₹)</th>
             </tr>
           </thead>
-          <tbody>${creditLedger.rows}</tbody>
-          <tfoot>
-            <tr class="report-total-row">
-              <td colspan="2">Total credit</td>
-              <td class="num">₹ ${formatNumberPlain(creditLedger.total)}</td>
-            </tr>
-          </tfoot>
+          <tbody>${openLines.rows}</tbody>
         </table>
       </section>
 
-      <section class="credit-summary-block">
-        <h3 class="credit-summary-block-title">${
-          periodActivity
-            ? `Settlements (${escapeHtml(periodActivity)})`
-            : `All settlements (through ${escapeHtml(asOfLabel)})`
-        }</h3>
-        <p class="credit-summary-block-lead">${
-          isPeriodScoped
-            ? "Payments received in the selected activity period."
-            : "Every payment received up to the through date."
-        }</p>
-        <table class="report-table credit-summary-table--ledger">
-          <thead>
-            <tr>
-              <th style="width:6%">#</th>
-              <th style="width:28%">Date</th>
-              <th class="num">Amount (₹)</th>
-            </tr>
-          </thead>
-          <tbody>${paymentLedger.rows}</tbody>
-          <tfoot>
-            <tr class="report-total-row">
-              <td colspan="2">Total settled</td>
-              <td class="num">₹ ${formatNumberPlain(paymentLedger.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </section>
-
-      <p class="credit-summary-note">
-        Computer-generated credit account summary.
-        ${noteBody}
-        Hand this copy to the customer or keep for your records.
-      </p>
+      <p class="credit-summary-note">Settled bills are not listed.${gapNote}</p>
 
       <footer class="report-print-foot">
         <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
-        <span>Credit summary · ${escapeHtml(name)} · ${escapeHtml(asOfLabel)}</span>
+        <span>Outstanding · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
       </footer>
     </article>`;
+}
+
+function buildActivityStatementHtml(summary, context) {
+  const creditTaken = Number(summary?.credit_taken) || 0;
+  const settlementDone = Number(summary?.settlement_done) || 0;
+  const party = creditPrintParty(context);
+  const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
+  const periodActivity = context?.periodActivity || "";
+
+  return `
+    <article class="credit-summary-sheet report-print-sheet">
+      ${creditSummaryReportHeader("Credit activity", [
+        periodActivity ? escapeHtml(periodActivity) : `Through ${escapeHtml(asOfLabel)}`,
+      ])}
+
+      ${creditSummaryPartyHtml(party.name, party.mobile, party.vehicleLine, party.address)}
+
+      <div class="credit-summary-kpis credit-summary-kpis--two">
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Credit taken</span>
+          <span class="credit-summary-kpi-value">${inrPlain(creditTaken)}</span>
+        </div>
+        <div class="credit-summary-kpi">
+          <span class="credit-summary-kpi-label">Settled</span>
+          <span class="credit-summary-kpi-value">${inrPlain(settlementDone)}</span>
+        </div>
+      </div>
+
+      ${buildActivitySectionsHtml(summary, context)}
+
+      <footer class="report-print-foot">
+        <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
+        <span>Activity · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
+      </footer>
+    </article>`;
+}
+
+async function summaryForOutstandingPrint() {
+  const today = getLocalDateString();
+  const loadedAsOf = page().state.lastCustomerSummaryContext?.asOfDate || "";
+  const loaded = page().state.lastCustomerSummaryFull;
+  if (loaded && loadedAsOf >= today) return loaded;
+
+  const { data, error } = await window.supabaseClient.rpc("get_customer_credit_detail_as_of", {
+    p_customer_name: page().state.customerName,
+    p_date: today,
+  });
+  if (error) throw error;
+  const summary = Array.isArray(data) && data.length > 0 ? data[0] : loaded;
+  if (summary) page().state.lastCustomerSummaryFull = summary;
+  return summary;
 }
 
 async function runCreditSummaryPrint() {
@@ -927,12 +1054,19 @@ async function runCreditSummaryPrint() {
     return;
   }
 
-  const sheetHtml = buildCreditSummaryPrintHtml(page().state.lastCustomerSummary, page().state.lastCustomerSummaryContext);
+  const mode = creditPrintMode();
   const ctx = page().state.lastCustomerSummaryContext;
+  const summary =
+    mode === "outstanding" ? await summaryForOutstandingPrint() : page().state.lastCustomerSummary;
+  const printContext =
+    mode === "outstanding"
+      ? { ...ctx, asOfDate: getLocalDateString(), printMode: "outstanding" }
+      : { ...ctx, printMode: mode };
+  const sheetHtml = buildCreditSummaryPrintHtml(summary, printContext);
   const title = PrintUtils.buildPrintFilename(
-    "credit-summary",
+    mode === "outstanding" ? "credit-outstanding" : mode === "activity-days" ? "credit-activity-days" : "credit-activity",
     ctx.customerName,
-    ctx.asOfDate
+    printContext.asOfDate
   );
   const cssText = await PrintUtils.getCreditSummaryPrintCssText();
 
@@ -1002,79 +1136,57 @@ function buildPeriodScopedSummary(summary, from, to) {
   };
 }
 
-function renderLifetimeBreakdowns(summary) {
-  const creditRaw = Array.isArray(summary?.credit_entries) ? summary.credit_entries : [];
-  const payRaw = Array.isArray(summary?.payment_entries) ? summary.payment_entries : [];
-  const byDateAsc = (a, b) => String(a.entry_date || "").localeCompare(String(b.entry_date || ""));
-  const credits = [...creditRaw].sort(byDateAsc);
-  const pays = [...payRaw].sort(byDateAsc);
+function renderSummaryList(kind) {
+  const isCredit = kind === "credit";
+  const state = summaryListState[kind];
+  const body = document.getElementById(isCredit ? "lifetime-credit-body" : "lifetime-payment-body");
+  const empty = document.getElementById(isCredit ? "lifetime-credit-empty" : "lifetime-payment-empty");
+  const pager = document.getElementById(isCredit ? "lifetime-credit-pagination" : "lifetime-payment-pagination");
+  const info = document.getElementById(isCredit ? "lifetime-credit-info" : "lifetime-payment-info");
+  const more = document.getElementById(isCredit ? "lifetime-credit-more" : "lifetime-payment-more");
+  const entries = state?.entries || [];
+  if (!body) return;
 
-  const creditBody = document.getElementById("lifetime-credit-body");
-  const payBody = document.getElementById("lifetime-payment-body");
-  const creditEmpty = document.getElementById("lifetime-credit-empty");
-  const payEmpty = document.getElementById("lifetime-payment-empty");
-
-  if (creditBody) {
-    creditBody.innerHTML = credits
-      .map(
-        (e) =>
-          `<tr><td>${escapeHtml(formatDisplayDate(e.entry_date))}</td><td>${formatCurrency(e.amount)}</td></tr>`
-      )
-      .join("");
+  if (!entries.length) {
+    body.innerHTML = "";
+    empty?.classList.remove("hidden");
+    pager?.classList.add("hidden");
+    return;
   }
-  creditEmpty?.classList.toggle("hidden", credits.length > 0);
 
-  if (payBody) {
-    payBody.innerHTML = pays
-      .map(
-        (e) =>
-          `<tr><td>${escapeHtml(formatDisplayDate(e.entry_date))}</td><td>${formatCurrency(e.amount)}</td></tr>`
-      )
-      .join("");
-  }
-  payEmpty?.classList.toggle("hidden", pays.length > 0);
+  const shown = Math.min(state.shown, entries.length);
+  body.innerHTML = entries
+    .slice(0, shown)
+    .map(
+      (entry) =>
+        `<tr><td>${escapeHtml(formatDisplayDate(entry.entry_date))}</td><td>${formatCurrency(entry.amount)}</td></tr>`
+    )
+    .join("");
+  empty?.classList.add("hidden");
+
+  if (!pager || !info || !more) return;
+  const hasMore = shown < entries.length;
+  pager.classList.toggle("hidden", entries.length <= SUMMARY_LIST_PAGE && !hasMore);
+  info.textContent = `${shown} of ${entries.length}`;
+  more.hidden = !hasMore;
+  more.disabled = !hasMore;
 }
 
-function applyLifetimeSummary(row, options = {}) {
+function renderLifetimeBreakdowns(summary) {
+  summaryListState.credit.entries = sortEntriesByDateDesc(summary?.credit_entries);
+  summaryListState.credit.shown = SUMMARY_LIST_PAGE;
+  summaryListState.payment.entries = sortEntriesByDateDesc(summary?.payment_entries);
+  summaryListState.payment.shown = SUMMARY_LIST_PAGE;
+  renderSummaryList("credit");
+  renderSummaryList("payment");
+}
+
+function applyLifetimeSummary(_row, options = {}) {
   page().updateCustomerBalanceState(
     options.heroAmountDue ?? page().state.customerOutstandingDue,
     options.heroPrepaidBalance ?? page().state.customerPrepaidBalance
   );
-
-  const creditTaken = row ? Number(row.credit_taken) : 0;
-  const settlementDone = row ? Number(row.settlement_done) : 0;
-
-  const set = (id, text) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = text;
-  };
-
   page().applyCustomerBalanceHero(page().state.customerNetBalance, page().state.customerPrepaidBalance);
-  set("stat-lifetime-credit", formatCurrency(creditTaken));
-  set("stat-lifetime-settled", formatCurrency(settlementDone));
-
-  const creditWhen = document.getElementById("customer-credit-when");
-  if (creditWhen) {
-    if (row) {
-      const first = row.first_sale_date ? formatDisplayDate(row.first_sale_date) : null;
-      const last = row.last_credit_date ? formatDisplayDate(row.last_credit_date) : null;
-      if (first && last) creditWhen.textContent = `First credit: ${first} · Last credit: ${last}`;
-      else if (first) creditWhen.textContent = `First credit: ${first}`;
-      else if (last) creditWhen.textContent = `Last credit: ${last}`;
-      else creditWhen.textContent = "";
-    } else {
-      creditWhen.textContent = "";
-    }
-  }
-
-  const settlementWhen = document.getElementById("customer-settlement-when");
-  if (settlementWhen) {
-    if (row && row.last_payment_date) {
-      settlementWhen.textContent = `Last settlement: ${formatDisplayDate(row.last_payment_date)}`;
-    } else {
-      settlementWhen.textContent = "";
-    }
-  }
 }
 
 async function loadCustomerDetail() {
@@ -1096,9 +1208,11 @@ async function loadCustomerDetail() {
     if (summaryErr) throw summaryErr;
 
     const summary = Array.isArray(summaryData) && summaryData.length > 0 ? summaryData[0] : null;
+    page().state.lastCustomerSummaryFull = summary;
     const resolvedName = summary?.customer_name != null ? String(summary.customer_name).trim() : "";
     if (!resolvedName) {
       page().state.lastCustomerSummary = null;
+      page().state.lastCustomerSummaryFull = null;
       page().state.lastCustomerSummaryContext = null;
       updateCreditSummaryPrintButton();
       applyLifetimeSummary(null);
@@ -1184,6 +1298,7 @@ async function loadCustomerDetail() {
     updateCreditSummaryPrintButton();
   } catch (err) {
     page().state.lastCustomerSummary = null;
+    page().state.lastCustomerSummaryFull = null;
     page().state.lastCustomerSummaryContext = null;
     updateCreditSummaryPrintButton();
     if (errorEl) {

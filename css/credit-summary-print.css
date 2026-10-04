@@ -182,6 +182,89 @@
   line-height: 1.35;
 }
 
+.credit-summary-due {
+  margin: 0 0 6pt;
+  padding: 6pt 8pt;
+  border: 1pt solid #0070c0;
+  background: #f0f9ff;
+  page-break-inside: avoid;
+}
+
+.credit-summary-due.is-cleared {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.credit-summary-due.is-advance {
+  border-color: #5eead4;
+  background: #f0fdfa;
+}
+
+.credit-summary-due-label {
+  display: block;
+  margin: 0 0 1pt;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--report-muted);
+}
+
+.credit-summary-due-value {
+  display: block;
+  font-size: 16pt;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--report-blue);
+}
+
+.credit-summary-due.is-cleared .credit-summary-due-value {
+  color: #15803d;
+}
+
+.credit-summary-due.is-advance .credit-summary-due-value {
+  color: #0f766e;
+}
+
+.credit-summary-kpis--two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.credit-summary-table--months th:nth-child(1),
+.credit-summary-table--months td:nth-child(1) {
+  width: 40%;
+}
+
+.credit-summary-table--days th:nth-child(1),
+.credit-summary-table--days td:nth-child(1) {
+  width: 40%;
+}
+
+.credit-summary-table--days th,
+.credit-summary-table--days td {
+  padding: 1pt 3pt;
+}
+
+.credit-summary-month-row td {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+
+.credit-summary-month-total td {
+  font-weight: 700;
+  background: #f8fafc;
+}
+
+.credit-summary-table--open th,
+.credit-summary-table--open td {
+  font-size: 7.5pt;
+}
+
+.credit-summary-block--flow {
+  page-break-inside: auto;
+  break-inside: auto;
+}
+
 /* Overview — all-customer period list */
 .credit-overview-print-table th:nth-child(1),
 .credit-overview-print-table td:nth-child(1) {
@@ -230,6 +313,22 @@
   .credit-summary-block {
     page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  .credit-summary-block--flow {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .credit-summary-block--flow tr,
+  .credit-summary-due {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .credit-summary-month-row {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .credit-overview-print-sheet .credit-summary-block {

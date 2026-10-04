@@ -49,6 +49,7 @@ const creditState = {
   customerContact: { mobile: "", address: "" },
   customerVehicleNos: [],
   lastCustomerSummary: null,
+  lastCustomerSummaryFull: null,
   lastCustomerSummaryContext: null,
   creditSummaryPrintBusy: false,
 };
@@ -693,7 +694,7 @@ function initOutstandingTab() {
 
 async function ensureCreditCustomer() {
   await loadCreditModule("js/creditCustomerDetail.js");
-  await loadCreditModule("js/creditCustomer.js?v=16");
+  await loadCreditModule("js/creditCustomer.js?v=20");
   return window.CreditCustomer.init();
 }
 
