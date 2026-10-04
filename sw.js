@@ -11,7 +11,7 @@
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
  */
 
-const CACHE_VERSION = "v206";
+const CACHE_VERSION = "v210";
 const STATIC_CACHE = `bpf-static-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `bpf-runtime-${CACHE_VERSION}`;
 const DYNAMIC_CACHE = `bpf-dynamic-${CACHE_VERSION}`;
@@ -127,7 +127,7 @@ const STATIC_ASSET_PATHS = [
   "js/shiftStaffLedger.js?v=5",
   "js/meterShiftReading.js?v=43",
   "js/meterReading.js?v=33",
-  "js/printUtils.js?v=20",
+  "js/printUtils.js?v=23",
   "js/dsrSummary.js?v=3",
   "js/dsrSalesBreakdown.js?v=10",
   "js/dsr.js?v=7",
@@ -136,8 +136,8 @@ const STATIC_ASSET_PATHS = [
   "js/e20Register.js?v=19",
   "css/app-reminders.css?v=14",
   "js/reminders.js?v=18",
-  "css/app-credit.css?v=15",
-  "js/credit.js?v=11",
+  "css/app-credit.css?v=17",
+  "js/credit.js?v=15",
   "css/app-day-closing.css?v=12",
   "js/day-closing.js?v=25",
   "css/app-billing.css?v=11",
@@ -157,7 +157,7 @@ const STATIC_ASSET_PATHS = [
   "css/app-reports.css?v=15",
   "js/reports.js?v=20",
   "css/reports-print.css?v=16",
-  "css/credit-summary-print.css?v=7",
+  "css/credit-summary-print.css?v=10",
   "css/e20-register-print.css?v=5",
   "css/letterhead-print.css?v=4",
   "css/invoice-print.css?v=3",

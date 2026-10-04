@@ -175,6 +175,57 @@
     return { setEntries, render, setAdminActions };
   }
 
+  function entryActivityDate(entry) {
+    return String(entry?.entry_date || entry?.transaction_date || entry?.date || "");
+  }
+
+  function entryMonthKey(entry) {
+    return entryActivityDate(entry).slice(0, 7);
+  }
+
+  /** One row per calendar month. skipMonth is shown day by day instead. */
+  function buildMonthActivityRows(creditEntries, paymentEntries, skipMonth) {
+    const months = new Map();
+    const add = (entry, field) => {
+      const month = entryMonthKey(entry);
+      if (month.length !== 7 || month === skipMonth) return;
+      const row = months.get(month) || { month, credit: 0, settled: 0 };
+      row[field] += Number(entry?.amount) || 0;
+      months.set(month, row);
+    };
+    for (const entry of creditEntries || []) add(entry, "credit");
+    for (const entry of paymentEntries || []) add(entry, "settled");
+    return [...months.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }
+
+  /** One row per day. Pass monthKey (YYYY-MM) to keep a single month. */
+  function buildDayActivityRows(creditEntries, paymentEntries, monthKey) {
+    const days = new Map();
+    const add = (entry, field) => {
+      const date = entryActivityDate(entry);
+      if (date.length < 10) return;
+      if (monthKey && date.slice(0, 7) !== monthKey) return;
+      const row = days.get(date) || { date, credit: 0, settled: 0 };
+      row[field] += Number(entry?.amount) || 0;
+      days.set(date, row);
+    };
+    for (const entry of creditEntries || []) add(entry, "credit");
+    for (const entry of paymentEntries || []) add(entry, "settled");
+    return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** Bills that still have an unpaid balance, oldest first (FIFO settlement order). */
+  function openCreditLines(entries) {
+    return (entries || [])
+      .map((entry) => {
+        const amount = Number(entry?.amount) || 0;
+        const settled = Number(entry?.amount_settled) || 0;
+        return { ...entry, amount, settled, open: amount - settled };
+      })
+      .filter((entry) => entry.open > 0.009)
+      .sort((a, b) => entryActivityDate(a).localeCompare(entryActivityDate(b)));
+  }
+
   global.CreditCustomerDetail = {
     BREAKDOWN_PAGE_SIZE,
     getMonthStart,
@@ -183,5 +234,8 @@
     sortEntriesByDateDesc,
     renderBreakdownRows,
     createBreakdownPager,
+    buildMonthActivityRows,
+    buildDayActivityRows,
+    openCreditLines,
   };
 })(typeof window !== "undefined" ? window : globalThis);

@@ -406,7 +406,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=16";
 
   /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=7";
+  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=10";
 
   const CSS_IMPORT_RE =
     /@import\s+(?:url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])\s*[^;]*;/gi;
