@@ -461,16 +461,24 @@
                   <input id="filter-to" type="date" />
                 </div>
               </div>
+              <div class="form-field form-field-inline">
+                <label class="sr-only" for="customer-summary-print-mode">What to print</label>
+                <select id="customer-summary-print-mode">
+                  <option value="outstanding">Unpaid bills</option>
+                  <option value="activity">Activity</option>
+                  <option value="activity-days">Activity by day</option>
+                </select>
+              </div>
               <div class="filter-actions">
                 <button type="button" id="customer-apply-filter">Apply</button>
                 <button
                   type="button"
                   id="customer-summary-print-btn"
                   class="button-secondary customer-summary-print-btn"
-                  title="Print account summary for this customer"
+                  title="Print the statement selected above"
                   disabled
                 >
-                  Print summary
+                  Print
                 </button>
                 <button type="button" id="reset-period-filter" class="button-secondary">
                   Reset to today
@@ -493,46 +501,42 @@
 
         <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
           <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
-          <p class="muted text-sm customer-summary-lead">
-            Credit and settlements below match the activity period filter. Balance above is the customer&rsquo;s current outstanding or advance; the printed summary shows the same net for the selected period (or full account for All time).
-          </p>
 
-          <div class="customer-lifetime-stats">
-            <article class="customer-lifetime-stat">
-              <span class="customer-lifetime-stat-label">Credit taken</span>
-              <strong id="stat-lifetime-credit" class="customer-lifetime-stat-value">—</strong>
-              <p id="customer-credit-when" class="customer-lifetime-stat-meta muted text-sm"></p>
-            </article>
-            <article class="customer-lifetime-stat">
-              <span class="customer-lifetime-stat-label">Settlement done</span>
-              <strong id="stat-lifetime-settled" class="customer-lifetime-stat-value">—</strong>
-              <p id="customer-settlement-when" class="customer-lifetime-stat-meta muted text-sm"></p>
-            </article>
-          </div>
-
-          <h3 class="settings-subheading">Credit taken in period</h3>
-          <p class="muted text-sm">Credit sales in the selected activity period.</p>
+          <h3 class="settings-subheading">Credit</h3>
           <div class="table-wrap">
             <table class="overdue-detail-table">
               <thead>
-                <tr><th>Date</th><th>Amount (₹)</th></tr>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount (₹)</th>
+                </tr>
               </thead>
               <tbody id="lifetime-credit-body"></tbody>
             </table>
           </div>
           <p id="lifetime-credit-empty" class="muted text-sm hidden">No credit entries.</p>
+          <div id="lifetime-credit-pagination" class="pagination-controls hidden">
+            <span id="lifetime-credit-info" class="muted pagination-info"></span>
+            <button type="button" id="lifetime-credit-more" class="button-secondary">Load more</button>
+          </div>
 
-          <h3 class="settings-subheading">Settlements in period</h3>
-          <p class="muted text-sm">Payments received in the selected activity period.</p>
+          <h3 class="settings-subheading">Settlements</h3>
           <div class="table-wrap">
             <table class="overdue-detail-table">
               <thead>
-                <tr><th>Date</th><th>Amount (₹)</th></tr>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount (₹)</th>
+                </tr>
               </thead>
               <tbody id="lifetime-payment-body"></tbody>
             </table>
           </div>
           <p id="lifetime-payment-empty" class="muted text-sm hidden">No settlements.</p>
+          <div id="lifetime-payment-pagination" class="pagination-controls hidden">
+            <span id="lifetime-payment-info" class="muted pagination-info"></span>
+            <button type="button" id="lifetime-payment-more" class="button-secondary">Load more</button>
+          </div>
         </section>
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>

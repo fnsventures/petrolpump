@@ -914,47 +914,6 @@ body.modal-open {
   margin-top: 0;
 }
 
-.customer-summary-lead {
-  margin: 0 0 var(--space-4);
-}
-
-.customer-lifetime-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-5);
-}
-
-.customer-lifetime-stat {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.customer-lifetime-stat-label {
-  display: block;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin-bottom: 0.35rem;
-}
-
-.customer-lifetime-stat-value {
-  display: block;
-  font-size: 1.25rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: #0f172a;
-}
-
-.customer-lifetime-stat-meta {
-  margin: 0.45rem 0 0;
-  min-height: 1.25em;
-}
-
 @media (max-width: 640px) {
   .customer-balance-hero-body {
     flex-direction: column;
