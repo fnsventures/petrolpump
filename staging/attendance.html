@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Attendance · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css?v=28" />
+    <script src="js/roleBootstrap.js?v=28"></script>
+    <script src="js/appNav.js?v=28"></script>
+    <link rel="stylesheet" href="css/app-layout.css?v=28" />
+    <link rel="stylesheet" href="css/app-core.css?v=28" />
+    <link rel="stylesheet" href="css/app-attendance.css?v=12" />
+    <link rel="stylesheet" href="css/payroll.css?v=3" />
+    <script defer src="js/vendor/supabase.min.js"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=28"></script>
+    <script defer src="js/cache.js?v=28"></script>
+    <script defer src="js/appConfig.js?v=28"></script>
+    <script defer src="js/utils.js?v=28"></script>
+    <script defer src="js/pwa.js?v=28"></script>
+    <script defer src="js/supabase.js?v=28"></script>
+    <script defer src="js/pumpSettings.js?v=28"></script>
+    <script defer src="js/payrollRules.js?v=6"></script>
+    <script defer src="js/pageSections.js?v=28"></script>
+    <script defer src="js/auth.js?v=28"></script>
+    <script defer src="js/taskUtils.js?v=28"></script>
+    <script defer src="js/dsrQueries.js?v=28"></script>
+    <script defer src="js/notifications.js?v=28"></script>
+    <script defer src="js/staffEmployees.js?v=5"></script>
+    <script defer src="js/attendance.js?v=18"></script>
+  </head>
+  <body class="attendance-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+  </div>
+  <div class="page-title-stack">
+    <span class="page-subtitle">Attendance</span>
+    <span class="page-layer">HR</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
+</header>
+
+    <main class="app-layout settings-layout">
+      <nav class="settings-nav card" aria-label="Attendance sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="mark">Mark attendance</button>
+        <button type="button" class="settings-nav-item" data-section="history">History</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible" data-panel="mark">
+        <div class="panel-head att-mark-head">
+          <div>
+            <h2 class="dashboard-section-title">Mark attendance</h2>
+            <p class="muted panel-lead">Select a date and set status for each staff. Over duty is an extra day’s pay on a present day. Loss of pay is only leave past the monthly allowance, plus half-days.</p>
+          </div>
+          <div class="att-mark-filter">
+            <div class="form-field att-date-field">
+              <label for="attendance-date">Date</label>
+              <input id="attendance-date" type="date" />
+            </div>
+            <div class="filter-actions att-mark-actions">
+              <button type="button" id="attendance-save-all" class="button-secondary">Save all</button>
+            </div>
+          </div>
+        </div>
+        <div id="attendance-policy" class="payroll-policy" hidden></div>
+        <div id="attendance-summary" class="muted margin-top" aria-live="polite"></div>
+        <div class="table-wrap margin-top">
+        <table class="attendance-mark-table" id="attendance-mark-table">
+          <thead>
+            <tr>
+              <th>Staff</th>
+              <th class="att-col-month">This month</th>
+              <th>Status</th>
+              <th>Shift</th>
+              <th class="att-col-od">Over duty</th>
+              <th>Note</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="attendance-body">
+            <tr>
+              <td colspan="7" class="muted">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+        <p id="attendance-message" class="success hidden" aria-live="polite"></p>
+        <p id="attendance-error" class="error hidden" aria-live="polite"></p>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="history" hidden>
+        <div class="panel-head att-history-head">
+          <div>
+            <h2 class="dashboard-section-title">Attendance history</h2>
+            <p class="muted panel-lead">Month grid: each column is a day. <strong>OD</strong> under a present day is over duty. The pay effect under the grid uses the same rules as salary.</p>
+          </div>
+          <div class="att-history-filter">
+            <div class="form-field att-month-field">
+              <label id="history-month-label">Month</label>
+              <div class="att-month-control" role="group" aria-labelledby="history-month-label">
+                <select id="history-month-month" aria-label="Month name"></select>
+                <select id="history-month-year" aria-label="Year"></select>
+              </div>
+            </div>
+            <div class="filter-actions att-history-actions">
+              <button type="button" id="history-refresh" class="button-secondary" title="Reload this month from the server">Refresh</button>
+              <button type="button" id="history-download-csv" class="button-secondary">Download CSV</button>
+            </div>
+          </div>
+        </div>
+        <p id="attendance-matrix-summary" class="attendance-matrix-summary muted margin-top" aria-live="polite"></p>
+        <div id="attendance-matrix-wrap" class="table-wrap attendance-matrix-wrap margin-top" role="region" aria-label="Attendance by day"></div>
+        <ul class="attendance-matrix-legend" aria-label="Status legend">
+          <li><span class="att-legend-swatch att-cell-present" aria-hidden="true">P</span> Present</li>
+          <li><span class="att-legend-swatch att-cell-half" aria-hidden="true">H</span> Half-day</li>
+          <li><span class="att-legend-swatch att-cell-leave" aria-hidden="true">L</span> Leave</li>
+          <li><span class="att-legend-swatch att-cell-present" aria-hidden="true">OD</span> Over duty</li>
+          <li><span class="att-legend-swatch att-cell-empty" aria-hidden="true">—</span> Not marked</li>
+        </ul>
+        <div id="attendance-pay-panel" class="att-pay-panel"></div>
+        <p class="attendance-matrix-shift-note muted margin-top">
+          When a shift is saved: <strong>Mo</strong> = morning shift, <strong>Af</strong> = afternoon shift (small text under the letter; hover still shows your custom shift names).
+        </p>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

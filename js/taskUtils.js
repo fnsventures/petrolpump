@@ -1,0 +1,47 @@
+(function(d){const g=new Set(["credit_followup","payment","call"]),S={high:0,normal:1,low:2};function m(e){return e?g.has(e.reminder_type)||!!e.credit_customer_id:!1}function T(e){const n=String(e||"").trim();return n?`Call ${n}`:"Call customer"}function D(e){return e?`credit.html?${new URLSearchParams({name:e}).toString()}`:"reminders.html"}function N(e){return(e?.credit_customers?.customer_name||e?.customer_name||"").trim()}function h(e){const n=String(e||"").replace(/\D/g,"");return n?n.length===10?`91${n}`:n.startsWith("0")&&n.length===11?`91${n.slice(1)}`:n:""}function k(e){const n=h(e);return n?`tel:+${n}`:""}function C(e,n){const t=h(e);if(!t)return"";const a=new URLSearchParams;n&&a.set("text",n);const r=a.toString();return`https://wa.me/${t}${r?`?${r}`:""}`}function A(e){const n=e?.credit_customers?.amount_due??e?.amount_due,t=Number(n);return Number.isFinite(t)?t:null}function b(e,n){return e.due_date&&e.due_date<n?0:e.due_date===n?1:!e.due_date&&e.priority==="high"?2:e.due_date&&e.due_date>n?3:4}function I(e,n){return[...e].sort((t,a)=>{const r=b(t,n)-b(a,n);if(r)return r;const i=m(t)?0:1,s=m(a)?0:1;if(i!==s)return i-s;const o=t.due_date||"9999-12-31",c=a.due_date||"9999-12-31";return o!==c?o<c?-1:1:(S[t.priority]??1)-(S[a.priority]??1)})}function O(e){const n=[],t=[];for(const a of e||[])(m(a)?n:t).push(a);return{credit:n,todo:t}}function L(){try{localStorage.setItem("reminders-updated",String(Date.now()))}catch{}typeof d.CacheInvalidation<"u"&&d.CacheInvalidation.invalidate("operational")}function E(e,n){if(typeof d.addDaysToDateString=="function")return d.addDaysToDateString(e,n);const t=String(e||"").slice(0,10),[a,r,i]=t.split("-").map(Number);if(!a||!r||!i)return t;const s=new Date(a,r-1,i);if(s.setDate(s.getDate()+(Number(n)||0)),typeof d.toLocalDateString=="function")return d.toLocalDateString(s);const o=s.getFullYear(),c=String(s.getMonth()+1).padStart(2,"0"),u=String(s.getDate()).padStart(2,"0");return`${o}-${c}-${u}`}function v(e,n,t){if(typeof d.appendDatedNote=="function")return d.appendDatedNote(e,n,t);const a=String(n||"").trim();if(!a)return null;const r=String(t||"").trim(),i=r?`[${r}] ${a}`:a,s=String(e||"").trim();let o=s?`${s}
+${i}`:i;return o.length>2e3&&(o=o.slice(o.length-2e3)),o}async function F(e,{id:n,dueDate:t,note:a,dateLabel:r}={}){if(!e||!n||!t)return{error:new Error("Missing reschedule fields")};const i={due_date:t,updated_at:new Date().toISOString()},s=String(a||"").trim();if(s){const{data:u,error:l}=await e.from("reminders").select("notes").eq("id",n).eq("status","open").maybeSingle();if(l)return{error:l};const f=v(u?.notes,s,r);f!=null&&(i.notes=f)}const{data:o,error:c}=await e.from("reminders").update(i).eq("id",n).eq("status","open").select("id").maybeSingle();return c?{error:c}:o?.id?{error:null}:{error:new Error("Could not update task \u2014 it may already be done.")}}function x(e,n,t,{escapeHtml:a,allHref:r="reminders.html"}={}){if(!n||t<=0)return e;const i=typeof a=="function"?a:o=>String(o),s=t===1?"1 more task":`${t} more tasks`;return`${e}
+<details class="tasks-more-expand">
+  <summary>
+    <span class="tasks-more-expand-closed">Show ${i(s)}</span>
+    <span class="tasks-more-expand-open">Show less</span>
+  </summary>
+  <div class="tasks-more-list">${n}</div>
+  <p class="tasks-more-footer muted">
+    <a href="${i(r)}">Open all tasks</a>
+  </p>
+</details>`}function q(e,n){const t=typeof PumpSettings<"u"&&typeof PumpSettings.getStationLegalName=="function"&&PumpSettings.getStationLegalName()||"Bishnupriya Fuels",a=typeof formatDisplayDate=="function"&&typeof getLocalDateString=="function"?formatDisplayDate(getLocalDateString()):"",r=Number(n),i=Number.isFinite(r)&&r>0&&typeof formatCurrency=="function",s=["Hello,","",`This is ${t} with your credit statement.`];return a||i?(s.push(""),a&&s.push(`As on ${a}`),i&&s.push(`Outstanding: ${formatCurrency(r)}`)):e&&s.push("",`Regarding ${e}.`),s.push("","Please clear this at the pump, or reply to this chat."),s.join(`
+`)}const B='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z"/></svg>',M='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0-7.74 13.61L3 21l4.52-1.19A9 9 0 1 0 12 3zm0 2a7 7 0 1 1-3.57 13.03l-.3-.18-2.11.56.56-2.06-.2-.32A7 7 0 0 1 12 5zm3.15 9.64c-.17-.08-1-.49-1.16-.54-.16-.06-.27-.08-.39.08-.12.17-.45.54-.55.65-.1.11-.2.12-.37.04-.17-.08-.71-.26-1.35-.82-.5-.45-.83-1-.93-1.17-.1-.17-.01-.27.07-.35.08-.08.17-.2.25-.3.08-.1.11-.17.17-.28.06-.11.03-.21-.01-.3-.04-.08-.39-.94-.53-1.29-.14-.35-.28-.3-.39-.3h-.33c-.11 0-.3.04-.46.21-.16.17-.6.59-.6 1.45 0 .86.62 1.7.7 1.82.08.11 1.22 1.86 2.96 2.61.41.18.73.29.98.37.41.13.79.11 1.08.07.33-.05 1-.41 1.14-.81.14-.4.14-.74.1-.81-.04-.07-.15-.11-.32-.19z"/></svg>';function U(e,n){const t=typeof escapeHtml=="function"?escapeHtml:s=>String(s??""),a=String(e||"").trim(),r=k(a),i=C(a,n);return!r&&!i?"":`<span class="contact-line">
+      ${r?`<a class="contact-line-number" href="${t(r)}" aria-label="Call ${t(a)}">${t(a)}</a>`:`<span class="contact-line-number">${t(a)}</span>`}
+      <span class="contact-line-actions">
+        ${r?`<a class="contact-line-btn contact-line-btn--call" href="${t(r)}" aria-label="Call ${t(a)}">${B}</a>`:""}
+        ${i?`<a class="contact-line-btn contact-line-btn--whatsapp" href="${t(i)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${t(a)}">${M}</a>`:""}
+      </span>
+    </span>`}function w(e,{credit:n=!1,escapeHtml:t,forRemindersPage:a=!1}={}){const r=typeof t=="function"?t:l=>String(l??""),i=r(e),s=a?"button-secondary reminder-later-choice":"button-secondary task-later-choice reminder-later-btn",o=(l,f,$,p)=>{const y=a?`data-reminder-action="reschedule" data-id="${i}" data-days="${l}"${p?` data-note="${r(p)}"`:""}`:`data-reminder-later="reschedule" data-reminder-id="${i}" data-days="${l}"${p?` data-note="${r(p)}"`:""}`;return`<button type="button" class="${s}" ${y}>
+        <span class="${a?"reminder-later-choice-title":"task-later-choice-title"}">${r(f)}</span>${$?`<span class="${a?"reminder-later-choice-sub":"task-later-choice-sub"}">${r($)}</span>`:""}
+      </button>`},c=n?o(1,"No answer","Tomorrow","No answer"):o(1,"Tomorrow","","");return`<div class="${a?"reminder-later-grid":"task-later-grid"}" role="group" aria-label="Follow up">
+      ${c}
+      ${o(3,"+3 days","","")}
+      ${o(7,"+7 days","","")}
+    </div>`}function _(e,{escapeHtml:n,forRemindersPage:t=!1,today:a=""}={}){const r=typeof n=="function"?n:y=>String(y??""),i=r(e),s=r(a||""),o=t?`reminder-later-date-${i}`:`later-date-${i}`,c=t?"reminder-later-pick":"task-later-pick",u=t?"reminder-later-custom-label":"task-later-custom-label",l=t?"reminder-later-custom":"task-later-custom",f=t?"":' class="task-later-date"',$=t?`data-reminder-action="reschedule-pick" data-id="${i}"`:`data-reminder-later="reschedule-pick" data-reminder-id="${i}"`,p=t?"button-secondary button-small":"button-secondary button-small reminder-later-btn";return`<div class="${l}">
+      <label class="${u}" for="${o}">Or pick a date</label>
+      <div class="${c}">
+        <input id="${o}" type="date"${f} data-later-date${s?` min="${s}"`:""} />
+        <button type="button" class="${p}" ${$}>Set</button>
+      </div>
+    </div>`}function z(e,{credit:n=!1,escapeHtml:t,forRemindersPage:a=!1,today:r=""}={}){const s=(typeof t=="function"?t:l=>String(l??""))(e),o=n?"Follow up":"Push follow-up",c=w(e,{credit:n,escapeHtml:t,forRemindersPage:a}),u=_(e,{escapeHtml:t,forRemindersPage:a,today:r});return a?`<div class="reminder-later-panel" data-later-for="${s}" hidden>
+        <p class="reminder-later-heading">${o}</p>
+        ${c}
+        ${u}
+        <p class="reminder-later-error" data-later-error hidden></p>
+        <div class="reminder-later-footer">
+          <button type="button" class="button-secondary button-small" data-reminder-action="later-cancel" data-id="${s}">Cancel</button>
+        </div>
+      </div>`:`<div class="task-later-panel" data-later-for="${s}" hidden>
+      <p class="task-later-heading">${o}</p>
+      ${c}
+      ${u}
+      <p class="task-later-error" data-later-error hidden></p>
+      <div class="task-later-footer">
+        <button type="button" class="button-secondary button-small reminder-later-btn" data-reminder-later="cancel" data-reminder-id="${s}">Cancel</button>
+      </div>
+    </div>`}function Y(e){if(typeof document>"u"||!document.body)return;const n=String(e||"").trim();if(!n)return;let t=document.getElementById("task-toast");t||(t=document.createElement("div"),t.id="task-toast",t.className="task-toast",t.setAttribute("role","status"),t.setAttribute("aria-live","polite"),document.body.appendChild(t)),t.textContent=n,t.classList.add("is-visible"),clearTimeout(t._hideTimer),t._hideTimer=setTimeout(()=>{t.classList.remove("is-visible")},2800)}d.TaskUtils={isCreditTask:m,creditTitle:T,customerHref:D,customerNameOf:N,phoneE164:h,telHref:k,waHref:C,waMessageForCustomer:q,contactRowHtml:U,amountDueOf:A,urgencyRank:b,sortTasks:I,splitCreditTodo:O,notifyTasksUpdated:L,addDaysYmd:E,appendFollowUpNote:v,rescheduleOpenTask:F,laterChoicesHtml:w,laterCustomPickHtml:_,laterPanelHtml:z,wrapMoreCollapse:x,showTaskToast:Y,CREDIT_TYPES:g}})(typeof window<"u"?window:globalThis);
