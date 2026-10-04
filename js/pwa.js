@@ -1,12 +1,14 @@
 /**
  * Standard PWA client lifecycle for BPFuels.
- * - Install prompt (beforeinstallprompt)
+ * - Install prompt (Android beforeinstallprompt, iOS Add to Home Screen)
  * - Controlled SW updates (banner → safe apply → reload)
  * - Offline / online status with cache invalidation on reconnect
  * - Throttled app-resume for ops pages (desktop focus thrash safe)
  */
 (function () {
   const INSTALL_DISMISS_KEY = "bpf-pwa-install-dismissed";
+  const INSTALL_SEEN_KEY = "bpf-pwa-install-seen";
+  const INSTALL_DISMISS_MS = 7 * 24 * 60 * 60 * 1000;
   const THEME_COLOR = "#0070c0";
   const APP_NAME = "Bishnupriya Fuels";
   const SHORT_NAME = "BPFuels";
@@ -46,6 +48,48 @@
       window.matchMedia("(display-mode: fullscreen)").matches ||
       window.navigator.standalone === true
     );
+  }
+
+  function isMobileClient() {
+    const ua = navigator.userAgent || "";
+    if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+    return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  }
+
+  function isIos() {
+    const ua = navigator.userAgent || "";
+    return /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function isIosSafari() {
+    if (!isIos()) return false;
+    return !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|GSA\/|FBAN|FBAV|Instagram|Line\/|Twitter|Snapchat/i.test(
+      navigator.userAgent || ""
+    );
+  }
+
+  function installDismissedRecently() {
+    const raw = readStorage(INSTALL_DISMISS_KEY);
+    const at = Number(raw);
+    if (!Number.isFinite(at)) return false;
+    return Date.now() - at < INSTALL_DISMISS_MS;
+  }
+
+  function readSession(key) {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function writeSession(key, value) {
+    try {
+      sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function isPublicLandingPage() {
@@ -215,42 +259,139 @@
     });
   }
 
-  function showInstallBanner() {
+  function dismissInstallSheet(persist) {
+    document.getElementById("app-install-sheet")?.remove();
+    document.body.classList.remove("has-install-sheet");
+    if (persist) writeStorage(INSTALL_DISMISS_KEY, String(Date.now()));
+  }
+
+  function installSteps(items) {
+    const list = document.createElement("ol");
+    list.className = "app-install-sheet-steps";
+    items.forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      list.appendChild(li);
+    });
+    return list;
+  }
+
+  function fillInstallBody(body, kind) {
+    body.replaceChildren();
+    const lead = document.createElement("p");
+    if (kind === "native") {
+      lead.textContent = "Install BPFuels on this phone. It opens full screen from your home screen.";
+      body.appendChild(lead);
+      return;
+    }
+    if (kind === "ios-safari") {
+      lead.textContent = "Add BPFuels to your Home Screen. It opens full screen, like an installed app.";
+      body.append(
+        lead,
+        installSteps([
+          "Tap the Share button in Safari (the square with an arrow).",
+          "Scroll down and tap Add to Home Screen.",
+          "Tap Add.",
+        ])
+      );
+      return;
+    }
+    if (kind === "ios-other") {
+      lead.textContent = "This browser can’t install the app. Open the page in Safari, then add it to your Home Screen.";
+      body.append(
+        lead,
+        installSteps(["Copy the page address.", "Open Safari and paste it.", "Tap Share, then Add to Home Screen."])
+      );
+      return;
+    }
+    lead.textContent = "Add BPFuels from the browser menu. It then opens full screen from your home screen.";
+    body.append(
+      lead,
+      installSteps(["Tap the browser menu (⋮).", "Tap Install app or Add to Home screen.", "Confirm Add or Install."])
+    );
+  }
+
+  function showInstallSheet() {
     if (typeof document === "undefined" || !document.body) return;
-    if (isStandalone() || isPublicLandingPage()) return;
-    if (readStorage(INSTALL_DISMISS_KEY)) return;
+    if (document.getElementById("app-install-sheet")) return;
 
-    let banner = document.getElementById("app-install-banner");
-    if (banner) return;
+    const iosSafari = isIosSafari();
+    const iosOther = isIos() && !iosSafari;
+    const kind = iosSafari ? "ios-safari" : iosOther ? "ios-other" : "native";
 
-    banner = document.createElement("div");
-    banner.id = "app-install-banner";
-    banner.className = "app-install-banner";
-    banner.setAttribute("role", "status");
+    const root = document.createElement("div");
+    root.id = "app-install-sheet";
+    root.className = "app-install-sheet";
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", "app-install-sheet-title");
 
-    const text = document.createElement("span");
-    text.textContent = "Install BPFuels for quick access from your home screen.";
+    const backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "app-install-sheet-backdrop";
+    backdrop.setAttribute("aria-label", "Dismiss install prompt");
+    backdrop.addEventListener("click", () => dismissInstallSheet(true));
 
-    const installBtn = document.createElement("button");
-    installBtn.type = "button";
-    installBtn.className = "app-install-banner-action";
-    installBtn.textContent = "Install";
-    installBtn.addEventListener("click", () => {
-      void promptInstall();
-    });
+    const panel = document.createElement("div");
+    panel.className = "app-install-sheet-panel";
 
-    const dismissBtn = document.createElement("button");
-    dismissBtn.type = "button";
-    dismissBtn.className = "app-install-banner-close";
-    dismissBtn.setAttribute("aria-label", "Dismiss");
-    dismissBtn.textContent = "×";
-    dismissBtn.addEventListener("click", () => {
-      writeStorage(INSTALL_DISMISS_KEY, String(Date.now()));
-      banner.remove();
-    });
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "app-install-sheet-close";
+    close.setAttribute("aria-label", "Not now");
+    close.textContent = "×";
+    close.addEventListener("click", () => dismissInstallSheet(true));
 
-    banner.append(text, installBtn, dismissBtn);
-    document.body.insertBefore(banner, document.body.firstChild);
+    const icon = document.createElement("img");
+    icon.className = "app-install-sheet-icon";
+    icon.alt = "";
+    icon.width = 56;
+    icon.height = 56;
+    icon.src = new URL("assets/apple-touch-icon.png", window.location.href).href;
+
+    const title = document.createElement("h2");
+    title.id = "app-install-sheet-title";
+    title.className = "app-install-sheet-title";
+    title.textContent = "Install BPFuels";
+
+    const body = document.createElement("div");
+    body.className = "app-install-sheet-body";
+    fillInstallBody(body, kind);
+
+    const actions = document.createElement("div");
+    actions.className = "app-install-sheet-actions";
+
+    const later = document.createElement("button");
+    later.type = "button";
+    later.className = "app-install-sheet-dismiss";
+    later.textContent = kind === "native" || kind === "android" ? "Not now" : "Got it";
+    later.addEventListener("click", () => dismissInstallSheet(true));
+
+    if (kind === "native" || kind === "android") {
+      const install = document.createElement("button");
+      install.type = "button";
+      install.className = "app-install-sheet-action";
+      install.textContent = "Install";
+      install.addEventListener("click", () => {
+        if (deferredInstallPrompt) {
+          void promptInstall();
+          return;
+        }
+        fillInstallBody(body, "android");
+        install.remove();
+        later.textContent = "Got it";
+      });
+      actions.append(install, later);
+    } else {
+      actions.append(later);
+    }
+
+    panel.append(close, icon, title, body, actions);
+    root.append(backdrop, panel);
+    document.body.appendChild(root);
+    document.body.classList.add("has-install-sheet");
+    writeSession(INSTALL_SEEN_KEY, "1");
+    (root.querySelector(".app-install-sheet-action") || later).focus();
   }
 
   async function promptInstall() {
@@ -262,31 +403,51 @@
       deferredInstallPrompt = null;
 
       if (outcome === "accepted") {
-        document.getElementById("app-install-banner")?.remove();
+        dismissInstallSheet(false);
         return true;
       }
     } catch (error) {
       console.warn("[PWA] Install prompt failed:", error);
       deferredInstallPrompt = null;
+      const body = document.querySelector(".app-install-sheet-body");
+      if (body) fillInstallBody(body, "android");
+      document.querySelector(".app-install-sheet-action")?.remove();
     }
 
     return false;
   }
 
+  function shouldOfferInstall() {
+    if (isStandalone() || !isMobileClient()) return false;
+    if (installDismissedRecently()) return false;
+    if (readSession(INSTALL_SEEN_KEY) === "1") return false;
+    const file = (window.location.pathname.split("/").pop() || "").toLowerCase();
+    return file !== "offline.html";
+  }
+
   function initInstallPrompt() {
-    if (isStandalone() || isPublicLandingPage()) return;
-
-    window.addEventListener("beforeinstallprompt", (event) => {
-      event.preventDefault();
-      deferredInstallPrompt = event;
-      showInstallBanner();
-    });
-
     window.addEventListener("appinstalled", () => {
       deferredInstallPrompt = null;
-      document.getElementById("app-install-banner")?.remove();
+      dismissInstallSheet(false);
     });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && document.getElementById("app-install-sheet")) {
+        dismissInstallSheet(true);
+      }
+    });
+
+    if (!shouldOfferInstall()) return;
+    window.setTimeout(showInstallSheet, 700);
   }
+
+  window.addEventListener("beforeinstallprompt", (event) => {
+    if (!isMobileClient() || isStandalone()) return;
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    const action = document.querySelector(".app-install-sheet-action");
+    if (action) action.hidden = false;
+  });
 
   function dispatchAppResume(detail) {
     window.dispatchEvent(new CustomEvent("bpf:app-resume", { detail }));
