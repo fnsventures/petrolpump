@@ -53,28 +53,28 @@
 }
 
 .salary-status--paid {
-  background: #d1fae5;
-  color: #047857;
+  background: rgba(0, 122, 51, 0.1);
+  color: var(--bpcl-green);
 }
 
 .salary-status--partial {
-  background: #fef3c7;
-  color: #b45309;
+  background: rgba(217, 119, 6, 0.14);
+  color: var(--color-warning);
 }
 
 .salary-status--unpaid {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--color-danger);
 }
 
 .salary-status--none {
-  background: var(--surface-muted, #f1f5f9);
+  background: var(--surface-muted);
   color: var(--text-muted);
 }
 
 .salary-status--advance {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: var(--bpcl-blue-soft);
+  color: var(--bpcl-blue-dark);
 }
 
 .salary-summary-table tbody tr {

@@ -957,8 +957,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const customerName =
       TaskUtils.customerNameOf(row) || customersById.get(row.credit_customer_id)?.customer_name || "";
+    const embedded = Array.isArray(row.credit_customers) ? row.credit_customers[0] : row.credit_customers;
     const mobile =
-      row.credit_customers?.mobile || customersById.get(row.credit_customer_id)?.mobile || "";
+      embedded?.mobile || customersById.get(row.credit_customer_id)?.mobile || "";
     const amountDue =
       TaskUtils.amountDueOf(row) ??
       (customersById.get(row.credit_customer_id)

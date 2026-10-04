@@ -112,7 +112,7 @@ body.meter-reading-page .page-layout-wide .settings-panels {
 }
 
 body.meter-reading-page main.settings-layout.page-layout-wide {
-  width: min(80rem, 98vw);
+  width: min(80rem, 100%);
 }
 
 body.meter-reading-page .page-layout-wide .settings-panel.card.dsr-card {
@@ -379,7 +379,7 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
   }
 
   body.meter-reading-page main.settings-layout.page-layout-wide {
-    width: min(100%, 98vw);
+    width: 100%;
   }
 
   body.meter-reading-page .page-layout-wide .settings-panel.card.dsr-card {

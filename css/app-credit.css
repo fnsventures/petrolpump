@@ -726,13 +726,19 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   transition: color 0.15s ease;
 }
 
+.customer-balance-hero-intro {
+  flex: 1 1 16rem;
+  min-width: min(100%, 14rem);
+}
+
 .customer-balance-hero .contact-line {
-  display: flex;
-  width: 100%;
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
   font-size: var(--text-sm);
   font-weight: 400;
   color: var(--text-muted);
-  margin-top: 0.15rem;
+  margin-top: 0.35rem;
 }
 
 .customer-balance-hero #customer-meta-rest {

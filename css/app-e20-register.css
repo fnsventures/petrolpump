@@ -672,6 +672,21 @@ body.e20-register-page .sr-only {
   border: 0;
 }
 
+@media (max-width: 768px) {
+  body.e20-register-page .e20-grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.e20-register-page .e20-table--water {
+    min-width: 52rem;
+  }
+
+  body.e20-register-page .e20-table--quality {
+    min-width: 44rem;
+  }
+}
+
 @media (max-width: 640px) {
   body.e20-register-page .e20-head-actions {
     width: 100%;

@@ -52,7 +52,15 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 npm run dev
 ```
 
-Open **http://localhost:3000/** — uses `_site/` built from source.
+Open **http://localhost:3000/** — uses `_site/` built from source (HTML partials expanded from `_partials/`).
+
+Authenticated pages are assembled at build time:
+
+1. Unique markup stays in the `.html` file (`<main>…`).
+2. `<head>` assets come from `_partials/app-pages.json` via `<!-- @partial app-head -->`.
+3. The topbar comes from `_partials/app-topbar.njk`.
+
+To add a script or stylesheet to a page, edit `app-pages.json` (not a copied `<script>` block). Bump that file’s version in `assetVersions` (or `asset-version.json` for shared files) and run `npm run sync:assets` when shared JS/CSS changes.
 
 **Quick static serve** (partials not expanded unless you ran `npm run build:site` first):
 

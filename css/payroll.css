@@ -8,11 +8,11 @@
   margin-top: 0.85rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius, 8px);
-  background: linear-gradient(180deg, #f8fbff 0%, #f8fafc 100%);
-  font-size: var(--text-sm, 0.875rem);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  font-size: var(--text-sm);
   line-height: 1.45;
-  color: #334155;
+  color: var(--text);
 }
 
 .payroll-policy p {
@@ -32,28 +32,28 @@
   gap: 0.3rem;
   padding: 0.16rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1.35;
   white-space: nowrap;
-  background: #e0f2fe;
-  color: #075985;
+  background: var(--bpcl-blue-soft);
+  color: var(--bpcl-blue-dark);
 }
 
 .payroll-chip.is-off {
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-muted);
+  color: var(--text-muted);
 }
 
 .payroll-chip.is-deduct {
-  background: #fee2e2;
-  color: #991b1b;
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--color-danger);
 }
 
 .payroll-chip.is-earn {
-  background: #dcfce7;
-  color: #166534;
+  background: rgba(0, 122, 51, 0.1);
+  color: var(--bpcl-green);
 }
 
 .payroll-rule-grid {
@@ -65,9 +65,9 @@
 
 .payroll-rule-card {
   border: 1px solid var(--border);
-  border-radius: var(--radius, 8px);
+  border-radius: var(--radius-sm);
   padding: 0.9rem 1rem 0.75rem;
-  background: var(--surface, #fff);
+  background: var(--surface);
   box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
 }
 
@@ -82,7 +82,7 @@
   font-size: 0.8rem;
   font-weight: 450;
   line-height: 1.4;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
 }
 
 .payroll-rule-card .form-field {
@@ -93,11 +93,11 @@
 .payroll-example {
   margin: 0 0 1rem;
   padding: 0.7rem 0.85rem;
-  border-radius: var(--radius, 8px);
-  background: #f8fafc;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
   border: 1px dashed var(--border);
-  color: #334155;
-  font-size: 0.875rem;
+  color: var(--text);
+  font-size: var(--text-sm);
   line-height: 1.45;
 }
 
@@ -116,12 +116,12 @@
 }
 
 .att-month-effect .is-deduct {
-  color: #b91c1c;
+  color: var(--color-danger);
   font-weight: 700;
 }
 
 .att-month-effect .is-earn {
-  color: #047857;
+  color: var(--bpcl-green);
   font-weight: 700;
 }
 
@@ -140,7 +140,7 @@
   height: 1rem;
   min-height: 0;
   margin: 0;
-  accent-color: #b45309;
+  accent-color: var(--color-warning);
 }
 
 .att-od-label input:disabled {
@@ -160,7 +160,7 @@
 }
 
 .attendance-mark-table tbody tr.att-row-overduty {
-  box-shadow: inset 3px 0 0 #d97706;
+  box-shadow: inset 3px 0 0 var(--color-warning);
 }
 
 .attendance-matrix td.att-cell .att-cell-od {
@@ -168,7 +168,7 @@
   font-size: 0.52rem;
   line-height: 1;
   letter-spacing: 0.04em;
-  color: #b45309;
+  color: var(--color-warning);
 }
 
 .att-pay-panel {
@@ -191,15 +191,15 @@
 .att-pay-kpi {
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius, 8px);
-  background: var(--surface, #fff);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
 }
 
 .att-pay-kpi span {
   display: block;
   font-size: 0.72rem;
   font-weight: 600;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
 }
 
 .att-pay-kpi strong {
@@ -210,20 +210,20 @@
 }
 
 .att-pay-kpi.is-deduct strong {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .att-pay-kpi.is-earn strong {
-  color: #047857;
+  color: var(--bpcl-green);
 }
 
 .salary-payroll-note {
   margin: -0.35rem 0 0.85rem;
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-sm);
 }
 
 .salary-money-deduct {
-  color: #b91c1c;
+  color: var(--color-danger);
   font-weight: 700;
 }
 
@@ -244,7 +244,7 @@
 }
 
 .salary-money-earn {
-  color: #047857;
+  color: var(--bpcl-green);
   font-weight: 700;
 }
 
@@ -253,8 +253,8 @@
   margin-bottom: var(--space-3, 0.75rem);
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
-  background: linear-gradient(180deg, #f8fbff 0%, #fff 100%);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .salary-adjust-head {
@@ -268,7 +268,7 @@
 
 .salary-adjust-head h3 {
   margin: 0;
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-sm);
 }
 
 .salary-adjust-grid {
@@ -282,12 +282,12 @@
   margin: 0;
   font-size: 0.68rem;
   font-weight: 600;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
 }
 
 .salary-adjust-grid dd {
   margin: 0.1rem 0 0;
-  font-size: var(--text-sm, 0.875rem);
+  font-size: var(--text-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -296,13 +296,13 @@
   margin: 0.55rem 0 0;
   font-size: 0.78rem;
   line-height: 1.4;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .salary-kpi-grid .stat-card.is-deduct .stat-value {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .salary-kpi-grid .stat-card.is-earn .stat-value {
-  color: #047857;
+  color: var(--bpcl-green);
 }
