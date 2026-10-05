@@ -3186,3 +3186,129 @@ body:has(.app-install-banner) .topbar,
 body:has(.app-error-banner) .topbar {
   scroll-margin-top: 2.5rem;
 }
+
+/* ── Brand loader: still Bishnupriya logo with a sweeping ring (AppLoader in utils.js) ──
+   Layers (top → bottom): logo · white gap disc · rotating conic arc · track colour.
+   Only the arc's angle animates, so the logo itself never moves. */
+@property --app-loader-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.app-spinner,
+.app-busy::before,
+html.app-booting::after {
+  --app-loader-logo: url("../assets/logo-44.webp");
+  background:
+    var(--app-loader-logo) center / 72% no-repeat,
+    radial-gradient(closest-side, var(--surface, #fff) 80%, transparent calc(80% + 0.5px)),
+    conic-gradient(
+      from var(--app-loader-angle),
+      rgba(0, 112, 192, 0) 0deg,
+      rgba(0, 112, 192, 0.35) 140deg,
+      var(--color-primary, #0070c0) 290deg,
+      #ffc20e 355deg,
+      rgba(0, 112, 192, 0) 360deg
+    ),
+    #e2e8f0;
+  border-radius: 50%;
+  animation: app-loader-sweep 1s linear infinite;
+}
+
+.app-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  vertical-align: middle;
+}
+
+.app-spinner--lg,
+html.app-booting::after {
+  --app-loader-logo: url("../assets/logo-104.webp");
+}
+
+.app-spinner--lg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+/* Busy leaf ("Loading…", "Saving…", "Signing in…", "…"): spinning logo only, no text.
+   font-size: 0 collapses the label visually but keeps it for screen readers;
+   the ring is sized in rem so it is unaffected. */
+.app-busy:not(option) {
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+
+.app-busy::before {
+  content: "";
+  display: inline-block;
+  width: 1.4rem;
+  height: 1.4rem;
+  vertical-align: middle;
+}
+
+/* Solid primary buttons: white track + yellow arc so the ring reads on blue. */
+button.app-busy:not(.button-secondary):not(.link)::before {
+  background:
+    var(--app-loader-logo) center / 72% no-repeat,
+    radial-gradient(closest-side, #fff 80%, transparent calc(80% + 0.5px)),
+    conic-gradient(
+      from var(--app-loader-angle),
+      rgba(255, 194, 14, 0) 0deg,
+      rgba(255, 194, 14, 0.5) 150deg,
+      #ffc20e 330deg,
+      rgba(255, 194, 14, 0) 360deg
+    ),
+    rgba(255, 255, 255, 0.35);
+}
+
+/* <option> can't render pseudo-elements; the progress modal already has a large logo. */
+option.app-busy::before,
+select .app-busy::before,
+.action-progress-status.app-busy::before {
+  content: none;
+}
+
+/* Full-screen boot overlay until requireAuth resolves (or login redirect lands).
+   Uses html pseudo-elements — body::before is already the page backdrop. */
+html.app-booting::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  background: rgba(248, 250, 252, 0.94);
+}
+
+html.app-booting::after {
+  content: "";
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 10101;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin: -2.75rem 0 0 -2.75rem;
+  box-shadow: 0 6px 24px rgba(0, 112, 192, 0.22);
+}
+
+.action-progress-logo {
+  display: block;
+  margin: 0 auto 0.75rem;
+}
+
+@keyframes app-loader-sweep {
+  to {
+    --app-loader-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-spinner,
+  .app-busy::before,
+  html.app-booting::after {
+    animation-duration: 2.5s;
+  }
+}

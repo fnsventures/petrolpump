@@ -81,6 +81,8 @@
   }
 
   bootstrapRoleFromCache();
+  // Brand loader until requireAuth resolves (cleared by AppLoader.endBoot; watchdog in utils.js).
+  document.documentElement.classList.add("app-booting");
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {

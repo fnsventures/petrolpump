@@ -1138,12 +1138,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     const { data: { session } } = await window.supabaseClient.auth.getSession();
     if (session) {
+      window.AppLoader?.startBoot();
       const role = await resolveRoleForSession(session);
       if (role) {
         window.location.href = resolveLanding(role);
         return;
       }
       await window.supabaseClient.auth.signOut();
+      window.AppLoader?.endBoot();
     }
   }
   ensureTopbarUserMenu();
@@ -1204,16 +1206,17 @@ if (loginForm) {
       password,
     });
 
-    if (loginButton) {
-      loginButton.disabled = false;
-      loginButton.textContent = "Sign in";
-    }
-
     if (error) {
+      if (loginButton) {
+        loginButton.disabled = false;
+        loginButton.textContent = "Sign in";
+      }
       AppError.handle(error, { target: loginError });
       return;
     }
 
+    // Keep "Signing in…" and show the brand loader until the redirect lands.
+    window.AppLoader?.startBoot();
     const role = await resolveRoleForSession(data?.session);
     window.location.href = resolveLanding(role);
   });
@@ -1377,6 +1380,18 @@ async function verifyPageAccess(pageName) {
  * @param {string} [options.pageName] - Page identifier for server-side access verification.
  */
 async function requireAuth(options = {}) {
+  try {
+    const result = await resolveRequiredAuth(options);
+    // null means a redirect is underway — keep the loader up until the page unloads.
+    if (result) window.AppLoader?.endBoot();
+    return result;
+  } catch (err) {
+    window.AppLoader?.endBoot();
+    throw err;
+  }
+}
+
+async function resolveRequiredAuth(options = {}) {
   const {
     allowedRoles = null,
     redirectTo = "login.html",
