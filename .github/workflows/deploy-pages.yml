@@ -76,8 +76,6 @@ jobs:
             *) echo "invalid target: $target" >&2; exit 1 ;;
           esac
 
-          npm run sync:assets
-
           cat > js/env.js <<EOF
           window.__APP_CONFIG__ = {
             SUPABASE_URL: "${SUPABASE_URL}",
@@ -115,9 +113,11 @@ jobs:
 
           if [ "$target" = "staging" ]; then
             npm run build:html -- _site/staging
+            npm run stamp -- _site/staging
             npm run minify -- _site/staging
           else
             npm run build:html -- _site --exclude staging
+            npm run stamp -- _site --exclude staging
             npm run minify -- _site --exclude staging
           fi
 

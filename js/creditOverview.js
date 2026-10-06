@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, formatNumberPlain, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
+/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
 
 (function () {
   const page = () => window.CreditPage;
@@ -258,9 +258,9 @@ function buildOverviewCustomerPrintRows(customers) {
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(row.customer_name)}${isAdvance ? ' <span class="credit-overview-print-advance-tag">Advance</span>' : ""}</td>
-          <td class="num">₹ ${formatNumberPlain(row.credit_taken)}</td>
-          <td class="num">₹ ${formatNumberPlain(row.settled)}</td>
-          <td${outstandingClass}>₹ ${formatNumberPlain(display)}${isAdvance ? " adv." : ""}</td>
+          <td class="num">${formatCurrency(row.credit_taken)}</td>
+          <td class="num">${formatCurrency(row.settled)}</td>
+          <td${outstandingClass}>${formatCurrency(display)}${isAdvance ? " adv." : ""}</td>
         </tr>`;
     })
     .join("");
@@ -297,15 +297,15 @@ function buildOverviewPrintHtml(data, periodLabel) {
       <div class="credit-summary-kpis">
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Credit taken</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(creditTaken)}</span>
+          <span class="credit-summary-kpi-value">${formatCurrency(creditTaken)}</span>
         </div>
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Settled</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(settled)}</span>
+          <span class="credit-summary-kpi-value">${formatCurrency(settled)}</span>
         </div>
         <div class="credit-summary-kpi credit-summary-kpi--outstanding${hasAdvance ? " is-advance" : ""}">
           <span class="credit-summary-kpi-label">${balanceLabel}</span>
-          <span class="credit-summary-kpi-value">₹ ${formatNumberPlain(balanceValue)}</span>
+          <span class="credit-summary-kpi-value">${formatCurrency(balanceValue)}</span>
           <span class="credit-summary-kpi-meta">${
             hasAdvance ? "Settlements exceed credit in this period" : "Credit taken minus settled"
           }</span>
@@ -329,9 +329,9 @@ function buildOverviewPrintHtml(data, periodLabel) {
           <tfoot>
             <tr class="report-total-row">
               <td colspan="2">Total</td>
-              <td class="num">₹ ${formatNumberPlain(creditTaken)}</td>
-              <td class="num">₹ ${formatNumberPlain(settled)}</td>
-              <td class="num">₹ ${formatNumberPlain(balanceValue)}${hasAdvance ? " adv." : ""}</td>
+              <td class="num">${formatCurrency(creditTaken)}</td>
+              <td class="num">${formatCurrency(settled)}</td>
+              <td class="num">${formatCurrency(balanceValue)}${hasAdvance ? " adv." : ""}</td>
             </tr>
           </tfoot>
         </table>
@@ -351,7 +351,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
 
 async function ensureOverviewPrintDeps() {
   if (typeof PrintUtils === "undefined") {
-    await loadScript("js/printUtils.js?v=23");
+    await loadScript("js/printUtils.js");
   }
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();
@@ -364,7 +364,7 @@ async function runOverviewPrint() {
     if (typeof AppError?.showGlobalBanner === "function") {
       AppError.showGlobalBanner(msg);
     } else {
-      alert(msg);
+      void AppDialog.alert(msg);
     }
     return;
   }
@@ -412,7 +412,7 @@ async function handleOverviewPrintClick() {
     if (typeof AppError?.showGlobalBanner === "function") {
       AppError.showGlobalBanner(msg);
     } else {
-      alert(msg);
+      void AppDialog.alert(msg);
     }
   } finally {
     overviewPrintBusy = false;

@@ -2,9 +2,6 @@
 /**
  * Sync repo → _site and expand HTML partials (local preview / CI mirror).
  * Usage: npm run build:site
- *
- * Note: page esbuild bundling (build:js / update-html-bundles) is experimental
- * and intentionally not part of this pipeline — pages still load classic scripts.
  */
 
 import { spawn } from "node:child_process";
@@ -38,7 +35,7 @@ const excludes = [
   "package-lock.json",
 ].map((name) => `--exclude=${name}`);
 
-await run("node", ["scripts/sync-asset-versions.mjs"]);
 await run("rsync", ["-a", "--delete", ...excludes, `${REPO_ROOT}/`, `${SITE_DIR}/`]);
 await run("node", ["scripts/build-html.mjs", SITE_DIR]);
+await run("node", ["scripts/stamp-assets.mjs", SITE_DIR]);
 console.log(`Built preview site at ${SITE_DIR}`);

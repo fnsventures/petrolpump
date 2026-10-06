@@ -1057,7 +1057,7 @@ tr.is-editing .expense-cat-drag-handle {
 }
 
 .pl-buying-save.pl-save-success {
-  color: #059669;
+  color: var(--color-success);
 }
 
 /* Brief task status toast (Tasks + Dashboard) */
@@ -1181,6 +1181,75 @@ tr.is-editing .expense-cat-drag-handle {
   .app-toast {
     transition: none;
   }
+}
+
+/* Shared confirm / prompt / form dialog (js/appDialog.js) */
+.app-dialog {
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(85vh, 40rem);
+}
+
+.app-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.app-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0;
+  padding: var(--space-4);
+}
+
+.app-dialog-title {
+  margin: 0;
+  font-size: var(--heading-lg);
+  line-height: 1.3;
+}
+
+.app-dialog-message {
+  margin: 0;
+  white-space: pre-line;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.app-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.app-dialog-fields .form-field {
+  min-width: 0;
+}
+
+.app-dialog-input,
+.app-dialog-fields textarea,
+.app-dialog-fields select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.app-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+#app-dialog-cancel {
+  order: 1;
+}
+
+#app-dialog-ok {
+  order: 2;
 }
 
 /* Number and actions share one line and scale with the surrounding text. */

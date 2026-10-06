@@ -6,11 +6,14 @@
     "js/vendor/supabase.min.js",
     "js/env.js",
     "js/errorHandler.js",
+    "js/appDialog.js",
     "js/cache.js",
     "js/appConfig.js",
     "js/utils.js",
     "js/pwa.js",
     "js/supabase.js",
+    "js/queryPages.js",
+    "js/creditCustomerSearch.js",
     "js/pumpSettings.js"
   ],
   "sharedAfterAuth": [
@@ -35,51 +38,6 @@
       "letterhead.html"
     ],
     "Admin": ["analysis.html", "reports.html", "settings.html"]
-  },
-  "assetVersions": {
-    "css/app-dashboard.css": "32",
-    "css/app-dsr.css": "19",
-    "css/app-meter-reading.css": "48",
-    "css/app-credit.css": "17",
-    "css/app-reminders.css": "14",
-    "css/app-day-closing.css": "13",
-    "css/app-billing.css": "11",
-    "css/app-attendance.css": "12",
-    "css/payroll.css": "3",
-    "css/app-salary.css": "14",
-    "css/app-staff.css": "16",
-    "css/app-analysis.css": "9",
-    "css/app-reports.css": "15",
-    "css/app-e20-register.css": "16",
-    "css/app-letterhead.css": "7",
-    "css/report-watermark.css": "7",
-    "js/dashboard.js": "29",
-    "js/meterReading.js": "33",
-    "js/meterShiftReading.js": "43",
-    "js/shiftStaffLedger.js": "5",
-    "js/buyingPriceEntry.js": "6",
-    "js/dsr.js": "7",
-    "js/dsrSummary.js": "3",
-    "js/dsrSalesBreakdown.js": "10",
-    "js/dsrQueries.js": "2",
-    "js/credit.js": "15",
-    "js/reminders.js": "18",
-    "js/taskUtils.js": "9",
-    "js/day-closing.js": "27",
-    "js/payrollRules.js": "6",
-    "js/attendance.js": "18",
-    "js/salary.js": "25",
-    "js/staff.js": "19",
-    "js/staffEmployees.js": "5",
-    "js/analysis.js": "9",
-    "js/reports.js": "20",
-    "js/e20Register.js": "19",
-    "js/letterhead.js": "16",
-    "js/billing.js": "5",
-    "js/driveFiles.js": "5",
-    "js/printUtils.js": "23",
-    "js/dateRangeFilter.js": "10",
-    "js/purchaseTaxUtils.js": "7"
   },
   "pages": {
     "dashboard.html": {
@@ -162,7 +120,7 @@
       "pageTitle": "Day closing & short",
       "bodyClass": "day-closing-page",
       "css": ["css/app-day-closing.css", "css/app-dsr.css"],
-      "beforeAuth": ["js/printUtils.js", "js/pageSections.js"],
+      "beforeAuth": ["js/printUtils.js", "js/pageSections.js", "js/dayClosingMath.js"],
       "page": "js/day-closing.js"
     },
     "billing.html": {
@@ -239,7 +197,12 @@
       "beforeAuth": [
         "js/purchaseTaxUtils.js",
         "js/pageSections.js",
-        "js/printUtils.js"
+        "js/printUtils.js",
+        "js/reportsGst.js",
+        "js/reportsGstr1.js",
+        "js/reportsGstr3b.js",
+        "js/reportsPl.js",
+        "js/reportsSales.js"
       ],
       "page": "js/reports.js"
     },

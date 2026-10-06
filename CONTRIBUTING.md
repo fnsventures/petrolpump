@@ -39,11 +39,23 @@ Secrets: [docs/SECRETS.md](docs/SECRETS.md)
 
 ## Database changes
 
-1. Add a new file under `supabase/migrations/` (never rewrite an applied migration)
+1. `supabase migration new <name>` (never rewrite an applied migration; new files must sort last)
 2. Test via staging (`./scripts/db.sh sync` or release Step C)
-3. Update `supabase/schema.sql` and [docs/DATA_TABLES.md](docs/DATA_TABLES.md) when the public model changes
+3. Update `supabase/schema.sql` (`./scripts/check-schema-drift.sh` must pass) and [docs/DATA_TABLES.md](docs/DATA_TABLES.md) when the public model changes
 
-Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
+Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md) · Recipes: [docs/CHECKLISTS.md](docs/CHECKLISTS.md)
+
+---
+
+## PR checks
+
+`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`: deploy-style build, `node --check` on all JS, Markdown link check, migration name/order check, and (when `supabase/` changes) the schema-drift check. Run the same locally:
+
+```bash
+node scripts/check-doc-links.mjs
+./scripts/check-migration-order.sh
+./scripts/check-schema-drift.sh   # Docker
+```
 
 ---
 

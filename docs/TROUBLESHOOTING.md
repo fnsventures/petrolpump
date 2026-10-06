@@ -13,7 +13,7 @@ Unified fixes. Prefer this page when something is broken; deep dives link out.
 | Banner: config missing / copy `env.example.js` | DNS or bad `env.js` on Pages | `./scripts/check-dns-siblings.sh` then open `/js/env.js`. If DNS OK → Actions → **Deploy** → `prod`. Hard-refresh after. |
 | Login works, every page empty / RLS errors | User not in `public.users` | Insert admin/supervisor row ([DEVELOPMENT.md §1.4](DEVELOPMENT.md#14-first-login)) |
 | Staging shows prod data project (or vice versa) | Wrong GitHub env secrets | Check **staging** / **prod** `SUPABASE_URL` + `SUPABASE_ANON_KEY`, redeploy |
-| Live site unchanged after merge | Deploy still running, or SW cache | Wait for Actions **Deploy**; hard-refresh / unregister SW; bump `CACHE_VERSION` in `sw.js` if needed |
+| Live site unchanged after merge | Deploy still running, or SW cache | Wait for Actions **Deploy**; hard-refresh / unregister SW |
 | Supervisor sees Settings / Reports | Wrong role or cached role | Confirm `public.users.role`; sign out/in |
 | Direct URL to admin page blocked | Expected for supervisors | `check_page_access` — use an admin account |
 
@@ -23,10 +23,11 @@ Unified fixes. Prefer this page when something is broken; deep dives link out.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Sync / migrate cannot connect | Direct URL or bad password encoding | Session pooler `:5432` in `scripts/db.env`; encode `@` → `%40` |
+| Sync / migrate cannot connect (`no route to host`, timeout, `tenant/user not found`) | Direct URL, wrong pooler region, or bad password encoding | Use the Session pooler URL — [format](SECRETS.md#a-laptop-gitignored) |
+| `supabase db push` refuses: `Found local migration files to be inserted before the last migration on remote` | A migration filename sorts before one already applied (e.g. the `20250602*` files) | `supabase db push --include-all` after reviewing what it will run — [MIGRATIONS.md → Naming](MIGRATIONS.md#naming) |
 | Sync OK but photos missing on staging | Expected | Sync does **not** copy Storage file bytes ([scripts/README.md](../scripts/README.md)) |
 | Migrate says already applied but object missing | Manual stamp / drift | Do not stamp blindly; inspect `supabase_migrations.schema_migrations`; restore from backup if needed |
-| Accidental destructive SQL | — | Restore from Drive or `scripts/.prod-backups/` ([BACKUP.md](BACKUP.md)) |
+| Accidental destructive SQL | — | [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) |
 
 Full error table: [scripts/README.md](../scripts/README.md).
 
@@ -36,7 +37,7 @@ Full error table: [scripts/README.md](../scripts/README.md).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `unauthorized_client` | OAuth trio mismatch | Regenerate client ID + secret + refresh token **together**; update GitHub **prod** (and Edge secrets if invoices) |
+| `unauthorized_client` | OAuth trio mismatch | [SECRETS.md → OAuth rotation](SECRETS.md#google-oauth-unauthorized_client) |
 | Workflow green but no files | Wrong folder ID | Check `GOOGLE_DRIVE_BACKUP_FOLDER_ID` |
 | Local backup works, Actions fails | Missing GitHub secrets | [SECRETS.md](SECRETS.md) prod table |
 
@@ -87,7 +88,7 @@ Deploy via Actions (on `supabase/functions/**` push) or CLI — [DEVELOPMENT.md 
 
 | Symptom | Fix |
 |---------|-----|
-| Nav looks broken / raw `{% include %}` | Use `npm run dev` (expands Nunjucks), not raw `python3 -m http.server` on source |
+| No sidebar/topbar, page unstyled or scripts missing | Source HTML only has `<!-- @partial … -->` comments (invisible). Use `npm run dev` (expands partials), not raw `python3 -m http.server` on source |
 | Stale JS/CSS after edit | Hard-refresh; unregister service worker |
 | CORS / Auth weirdness | Always serve over `http://localhost` (not `file://`) |
 
@@ -99,7 +100,7 @@ Deploy via Actions (on `supabase/functions/**` push) or CLI — [DEVELOPMENT.md 
 |----------|------------|
 | Site down / wrong config banner | DNS check → redeploy prod |
 | Bad release (frontend only) | Revert merge on `main` or redeploy previous `ref` via Actions |
-| Bad migration / data | Stop writes if possible → restore from latest Drive/local backup ([BACKUP.md](BACKUP.md)) |
+| Bad migration / data | Stop writes if possible → forward-fix or restore ([DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)) |
 | OAuth broken | Invoices + backups both affected — rotate OAuth trio ([SECRETS.md](SECRETS.md)) |
 
 ---

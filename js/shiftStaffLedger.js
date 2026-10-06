@@ -2,7 +2,7 @@
  * Shift staff ledger: add credit customers & expenses from Staff collections.
  * Persists real credit_entries / expenses rows (day closing picks them up).
  */
-/* global window.supabaseClient, AppError, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName */
+/* global window.supabaseClient, AppError, AppDialog, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName, formRequestId, clearFormRequestId */
 
 (function (global) {
   const SALARY_CATEGORY = "salary";
@@ -17,6 +17,7 @@
   let expenseRows = [];
   let categories = [];
   let customerSuggestions = [];
+  let customerSearchSeq = 0;
   let comboboxMatches = [];
   let comboboxActive = -1;
   let currentUserId = null;
@@ -40,44 +41,25 @@
       .from("expense_categories")
       .select("name, label, sort_order")
       .order("sort_order", { ascending: true })
-      .order("label", { ascending: true });
+      .order("label", { ascending: true })
+      .limit(LOOKUP_ROW_LIMIT);
     if (error) throw error;
     categories = (data || []).filter((c) => c.name !== SALARY_CATEGORY);
   }
 
-  async function loadCustomerSuggestions() {
-    const { data, error } = await window.supabaseClient
-      .from("credit_customers")
-      .select("id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance")
-      .order("customer_name", { ascending: true })
-      .limit(500);
-    if (error) throw error;
+  async function searchCustomers(query) {
+    const seq = ++customerSearchSeq;
+    const rows = await searchCreditCustomers(query);
+    if (seq !== customerSearchSeq) return null;
     const byName = new Map();
-    (data || []).forEach((row) => {
+    rows.forEach((row) => {
       const name = (row.customer_name || "").trim();
       if (!name) return;
       const key = typeof normCustomerName === "function" ? normCustomerName(name) : name.toLowerCase();
-      const due = Number(row.amount_due) || 0;
-      const prepaid = Number(row.prepaid_balance) || 0;
-      const net = due - prepaid;
-      const cur = byName.get(key);
-      if (!cur) {
-        byName.set(key, {
-          name,
-          nameNorm: key,
-          vehicleNo: row.vehicle_no || "",
-          mobile: row.mobile || "",
-          address: row.address || "",
-          primaryId: row.id,
-          netBalance: net,
-        });
-      } else {
-        cur.netBalance += net;
-      }
+      if (!byName.has(key)) byName.set(key, { name, nameNorm: key });
     });
-    customerSuggestions = Array.from(byName.values()).sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-    );
+    customerSuggestions = Array.from(byName.values());
+    return customerSuggestions;
   }
 
   async function loadLedgerForContext() {
@@ -134,8 +116,10 @@
   function filterCustomers(query) {
     const needle =
       typeof normCustomerName === "function" ? normCustomerName(query) : String(query || "").toLowerCase();
-    if (!needle) return customerSuggestions.slice(0, 40);
-    return customerSuggestions.filter((c) => c.nameNorm.includes(needle)).slice(0, 40);
+    if (!needle) return customerSuggestions.slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
+    return customerSuggestions
+      .filter((c) => c.nameNorm.includes(needle))
+      .slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
   }
 
   function setComboboxOpen(open) {
@@ -146,6 +130,19 @@
     list.classList.toggle("hidden", !open);
     list.hidden = !open;
     if (!open) comboboxActive = -1;
+  }
+
+  async function fillCombobox(query) {
+    const list = el("shift-ledger-customer-list");
+    if (!list) return;
+    try {
+      const found = await searchCustomers(query);
+      if (!found) return;
+      if (el("shift-ledger-customer")?.value !== query && String(query || "") !== "") return;
+      renderCombobox(query);
+    } catch (err) {
+      AppError.report(err, { context: "ShiftStaffLedger.searchCustomers" });
+    }
   }
 
   function renderCombobox(query) {
@@ -340,8 +337,9 @@
   function bindCombobox() {
     const input = el("shift-ledger-customer");
     if (!input) return;
-    input.addEventListener("input", () => renderCombobox(input.value));
-    input.addEventListener("focus", () => renderCombobox(input.value));
+    const runSearch = typeof debounce === "function" ? debounce((value) => void fillCombobox(value), 180) : (value) => void fillCombobox(value);
+    input.addEventListener("input", () => runSearch(input.value));
+    input.addEventListener("focus", () => void fillCombobox(input.value));
     input.addEventListener("blur", () => setTimeout(() => setComboboxOpen(false), 150));
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "ArrowDown" && comboboxMatches.length) {
@@ -404,15 +402,18 @@
       btn.textContent = "…";
     }
     try {
-      const { error } = await window.supabaseClient.rpc("add_credit_entry", {
+      const params = {
         p_customer_name: customer,
         p_transaction_date: context.date,
         p_amount: amount,
         p_fuel_type: fuel,
         p_employee_id: context.employeeId,
         p_shift: context.shift,
-      });
+      };
+      params.p_request_id = formRequestId(form, params);
+      const { error } = await window.supabaseClient.rpc("add_credit_entry", params);
       if (error) throw error;
+      clearFormRequestId(form);
       form.reset();
       const fuelSel = el("shift-ledger-fuel");
       if (fuelSel) fuelSel.value = "HSD";
@@ -447,15 +448,18 @@
       btn.textContent = "…";
     }
     try {
-      const { error } = await window.supabaseClient.rpc("add_shift_expense", {
+      const params = {
         p_date: context.date,
         p_shift: context.shift,
         p_employee_id: context.employeeId,
         p_category: category,
         p_amount: amount,
         p_description: description || null,
-      });
+      };
+      params.p_request_id = formRequestId(form, params);
+      const { error } = await window.supabaseClient.rpc("add_shift_expense", params);
       if (error) throw error;
+      clearFormRequestId(form);
       form.reset();
       await loadLedgerForContext();
       renderBody();
@@ -473,7 +477,7 @@
   }
 
   async function deleteCredit(id) {
-    if (!id || !confirm("Remove this credit sale from the shift?")) return;
+    if (!id || !(await AppDialog.confirm("Remove this credit sale from the shift?", { title: "Remove credit sale", confirmLabel: "Remove", danger: true }))) return;
     setMsg("");
     try {
       const { error } = await window.supabaseClient.rpc("delete_shift_credit_entry", { p_entry_id: id });
@@ -489,7 +493,7 @@
   }
 
   async function deleteExpense(id) {
-    if (!id || !confirm("Remove this expense from the shift?")) return;
+    if (!id || !(await AppDialog.confirm("Remove this expense from the shift?", { title: "Remove expense", confirmLabel: "Remove", danger: true }))) return;
     setMsg("");
     try {
       const { error } = await window.supabaseClient.rpc("delete_shift_expense", { p_expense_id: id });
@@ -506,8 +510,7 @@
 
   function close() {
     if (!overlay || overlay.getAttribute("aria-hidden") === "true") return;
-    overlay.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
+    AppDialog.hide(overlay);
     context = null;
     if (focusReturn && typeof focusReturn.focus === "function") {
       try {
@@ -540,11 +543,10 @@
       subtitleEl.textContent = `${formatDisplayDate?.(context.date) || context.date} · ${shiftName} · Credit & expenses`;
     }
     bodyEl.innerHTML = '<p class="muted">Loading…</p>';
-    overlay.setAttribute("aria-hidden", "false");
-    document.body.classList.add("modal-open");
+    AppDialog.show(overlay, { focus: false, onDismiss: close });
 
     try {
-      await Promise.all([loadCategories(), loadCustomerSuggestions(), loadLedgerForContext()]);
+      await Promise.all([loadCategories(), loadLedgerForContext()]);
       renderBody();
       notifyChange();
       if (activeTab === "credit") el("shift-ledger-customer")?.focus();

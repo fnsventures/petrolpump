@@ -52,16 +52,20 @@ petrolPump/
 ├── credit-customer.html    # Legacy URL → redirects to credit.html (preserves query/hash)
 ├── expenses.html           # Daily expenses by category
 ├── day-closing.html        # Day closing & short; admin certify; night-cash collection register
+├── reminders.html          # Station tasks (dated reminders + undated todos)
+├── e20-register.html       # E-20 fuel testing register
 ├── billing.html            # Lube/accessory invoicing (cash memos)
 ├── invoices.html           # Supplier/purchase invoice documents (Google Drive)
 ├── attendance.html         # Employee attendance (status, check-in/out)
 ├── salary.html             # Salary payments, pay-period tracking, printable slips
 ├── staff.html              # Employee roster, profile, photo, BPCL ID card (admin only)
+├── letterhead.html         # Letter Desk: letters on station letterhead (print + Drive archive)
 ├── analysis.html           # Business intelligence: KPIs, charts, insights (admin only)
 ├── reports.html            # Printable reports: DSR, GST, trading/P&L (admin only)
 ├── settings.html           # Station config, users, salaries, products, integrations (admin only)
 ├── about.html              # About / info page
 ├── 404.html                # Not found page
+├── offline.html            # Offline fallback shown by the service worker
 ├── assets/                 # BPCL logo, landing images
 ├── CNAME                   # GitHub Pages custom domain
 ├── sw.js                   # Service worker (PWA / offline caching)
@@ -78,7 +82,6 @@ css/
 ├── app-layout.css           # Page shell: app-layout / section nav / panels
 ├── app-core.css             # Shared components (panel-head, fuel badges, toasts, …)
 ├── app-{route}.css          # Per-page styles (dashboard, dsr, credit, reports, …)
-├── app.css                  # Legacy aggregator (not linked in HTML)
 ├── login.css                # Login page
 ├── landing.css              # Public landing (index.html)
 └── *-print.css              # Print layouts (invoice, salary slip, reports, …)
@@ -117,6 +120,7 @@ js/
 │   └── supabase-login.min.js     # Auth-only bundle (login.html)
 ├── appConfig.js        # Default pump settings, GST slabs, branding constants
 ├── supabase.js         # Supabase client from window.__APP_CONFIG__
+├── supabaseLoginClient.js # Minimal auth client source for login.html (bundled → vendor/supabase-login.min.js)
 ├── auth.js             # Session guard, role, check_page_access, nav
 ├── appNav.js           # Dev fallback: inject nav when HTML partials not built
 ├── roleBootstrap.js    # Early role visibility from cache (FOUC prevention)
@@ -124,16 +128,26 @@ js/
 ├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
 ├── dsrQueries.js       # Shared DSR fetch/select helpers; receipt-history split
 ├── dsrSummary.js       # DSR summary section (lazy-loaded from dsr.js)
+├── dsrSections.js      # DSR summary section ids and copy
+├── dsrFuelNav.js       # Fuel sidebar labels (MS/HSD + tank capacity)
 ├── errorHandler.js     # Centralized error reporting
+├── appDialog.js        # Shared confirm, prompt, and form <dialog>
+├── pwa.js              # Service worker registration, install / update / offline banners
 ├── cache.js            # AppCache (role, reports, settings, …)
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
 ├── pageSections.js     # Settings-style section tabs
+├── notifications.js    # Header notification inbox (same feed as Dashboard)
+├── printUtils.js       # Shared hidden-iframe print pipeline (invoice, reports, slips, ID card, letters)
+├── driveFiles.js       # Client for the drive-files edge function
+├── taskUtils.js        # Shared Tasks helpers (reminders.js + dashboard.js)
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
 ├── buyingPriceEntry.js # Admin receipt-day ₹/KL entry (Meter Reading → Purchase cost)
 ├── landing.js          # Landing page
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
+├── dsrSalesBreakdown.js # DSR sales detail by pump / shift / salesman
 ├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
+├── meterShiftReading.js # Shift register: nozzles, staff, cash (Meter Reading)
 ├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
 ├── credit.js           # Credit list view, lazy tab modules
 ├── creditOverview.js   # Credit overview tab (lazy)
@@ -143,18 +157,30 @@ js/
 ├── expenses.js         # Expenses
 ├── reminders.js        # Station tasks (dated reminders + undated todos)
 ├── day-closing.js      # Day closing
+├── shiftStaffLedger.js # Shift staff ledger: credit/expense rows from staff collections
+├── e20Register.js      # E-20 testing register
 ├── billing.js          # Sales invoices → save_invoice RPC
 ├── invoices.js         # Supplier invoice documents → edge function
 ├── attendance.js       # Attendance batch save
 ├── salary.js           # Salary payments, pay-period tracking, expense linkage
+├── payrollRules.js     # Leave allowance, loss of pay, over-duty pay
 ├── staff.js            # Employee roster CRUD, photo upload, ID card (admin)
 ├── staffEmployees.js   # Cached employee loader (admin table vs supervisor RPCs)
+├── letterhead.js       # Letter Desk
 ├── analysis.js         # BI dashboard: KPIs, charts, insights (admin)
-├── reports.js          # Report catalog and print views (admin)
+├── reports.js          # Report catalog, data load, and print (admin)
+├── reportsGst.js       # GST sales and purchase reports
+├── reportsGstr1.js     # GSTR-1 register, CSV, and JSON
+├── reportsGstr3b.js    # GSTR-3B summary and JSON
+├── reportsPl.js        # Trading account and profit & loss
+├── reportsSales.js     # Tank DSR, fuel income, pump / shift / salesman
+├── queryPages.js       # Page PostgREST reads past the 1000-row cap
+├── creditCustomerSearch.js # Credit-customer autocomplete (limited search)
+├── dayClosingMath.js   # Day-closing short and shift-credit formulas
 └── settings.js         # pump_settings, users, salaries, products, integrations (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js`. **Do not copy `<head>` or script lists between HTML files** — add CSS/JS to `_partials/app-pages.json` instead.
+**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `appDialog.js`, `cache.js`, `pageSections.js`. **Do not copy `<head>` or script lists between HTML files** — add CSS/JS to `_partials/app-pages.json` instead.
 
 ### 3.4 Navigation (authenticated pages)
 
@@ -181,8 +207,8 @@ Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `cred
 
 ```
 supabase/
-├── schema.sql     # Full schema (tables, views, RLS, RPCs) — source of truth
-├── migrations/    # Incremental migrations (apply in filename order)
+├── schema.sql     # Greenfield snapshot; must match migrations (scripts/check-schema-drift.sh)
+├── migrations/    # Incremental migrations — the source of truth (apply in filename order)
 │   ├── 20250129*_dsr_*.sql
 │   ├── 202502*_credit_*.sql
 │   ├── 20250526*_split_dsr_petrol_diesel.sql
@@ -197,20 +223,31 @@ supabase/
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
     ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
-    └── _shared/googleDrive.ts
+    └── _shared/        # googleDrive.ts (OAuth / service-account auth), archivePdf.ts, logoPng.ts
 ```
 
 ### 3.6 Documentation
 
 ```
 docs/
-├── README.md       # Documentation index and how to use the docs
-├── ARCHITECTURE.md # This file — structure, stack, security, deployment
-├── DATA_TABLES.md  # Database tables: purpose, columns, RLS
-├── FLOWS.md        # User and data flows
+├── README.md             # Documentation index — start here
+├── ONBOARDING.md         # Day-1 checklist — maintain without AI
+├── OPERATIONS.md         # Sync, deploy, release, backup
+├── CHECKLISTS.md         # Add a page / migration / edge function / user
+├── DISASTER_RECOVERY.md  # Tested restore runbook + schema rollback
+├── SECRETS.md            # Credential inventory and rotation
+├── TROUBLESHOOTING.md    # Symptom → fix
+├── MIGRATIONS.md         # Author and apply schema changes
+├── DEVELOPMENT.md        # Local setup, GitHub environments, edge functions
+├── ARCHITECTURE.md       # This file — structure, stack, security, deployment
+├── DATA_TABLES.md        # Database tables: purpose, columns, RLS
 ├── DSR_TABLES.md         # DSR petrol/diesel tables and computed stock
-├── DEVELOPMENT.md        # Local setup, deployment, supervisor login
-└── INVOICE_DOCUMENTS.md  # Supplier invoices + Google Drive setup (full guide)
+├── DAY_CLOSING.md        # Day-closing formula + which migration defines each RPC
+├── FLOWS.md              # User and data flows
+├── BACKUP.md             # Drive backup: setup, verify, troubleshoot
+├── INVOICE_DOCUMENTS.md  # Supplier invoices + Google Drive / OAuth setup
+├── STORAGE_RETENTION.md  # Free-tier 500 MB: measure, retain, lean indexes
+└── assets/               # Diagram PNG/SVG used by README
 ```
 
 ---
@@ -288,7 +325,7 @@ docs/
 | `salary.html` | `salary.js` | Pay-period tracking, installments, slips, linked expenses |
 | `staff.html` | `staff.js` | Employee roster, photo, ID card print (admin only) |
 | `analysis.html` | `analysis.js` | BI: KPIs, daily series, Chart.js charts, insights (admin) |
-| `reports.html` | `reports.js` | Printable DSR, GST, trading account, P&amp;L (admin) |
+| `reports.html` | `reports.js` plus `reportsGst.js`, `reportsGstr1.js`, `reportsGstr3b.js`, `reportsPl.js`, `reportsSales.js` | Printable DSR, GST, GSTR, trading account, P&amp;L (admin) |
 | `settings.html` | `settings.js` | Station, billing, pumps, users, salaries, shifts, alerts, categories, integrations |
 
 **Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Created **billing invoices**, **letters**, **staff photos**, and **Aadhaar cards** use `drive-files`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
@@ -300,8 +337,8 @@ docs/
 ### 5.4 Caching and offline (PWA)
 
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
-- **`asset-version.json` + `scripts/sync-asset-versions.mjs`:** Single source of truth for shared static asset `?v=` query strings (utils, pwa, cache, auth, supabase, app-core.css) and `sw.js` `CACHE_VERSION`. Run before deploy when shared JS/CSS changes.
-- **`sw.js` (`CACHE_VERSION` `v188`):** Lean app-shell precache + runtime LRU caches. Strategies:
+- **`scripts/stamp-assets.mjs` (build time only):** Rewrites every local JS/CSS reference in the deploy output (HTML `src`/`href`, CSS `@import`, JS string literals like `"css/invoice-print.css"`) to `?v=<content hash>`, and generates `sw.js` `CACHE_VERSION` + `STATIC_ASSET_PATHS`. Source files never carry `?v=`; nothing is bumped by hand.
+- **`sw.js`:** Lean app-shell precache + runtime LRU caches. Strategies:
   - HTML navigations: **network-first** while online; cached page or `offline.html` only when offline
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)

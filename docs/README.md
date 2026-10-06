@@ -12,8 +12,10 @@ Guides for **Bishnupriya Fuels**.
 | **Sync / deploy / release / backup** | **[OPERATIONS.md](OPERATIONS.md)** |
 | Where secrets live / how to rotate | [SECRETS.md](SECRETS.md) |
 | Something is broken | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
+| **Data loss / bad migration / lost project** | **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** |
+| Add a page / migration / edge function / user | [CHECKLISTS.md](CHECKLISTS.md) |
 | Add or apply DB migrations | [MIGRATIONS.md](MIGRATIONS.md) |
-| See diagrams (architecture, sync, backup) | [../README.md](../README.md#1-architecture) |
+| See diagrams (architecture, sync, backup) | [Visual assets](#visual-assets) |
 | Run on your laptop | [DEVELOPMENT.md](DEVELOPMENT.md) |
 | Understand the system | [ARCHITECTURE.md](ARCHITECTURE.md) · [FLOWS.md](FLOWS.md) |
 | Change database tables | [DATA_TABLES.md](DATA_TABLES.md) · [DSR_TABLES.md](DSR_TABLES.md) |
@@ -61,16 +63,20 @@ Full steps: **[OPERATIONS.md](OPERATIONS.md)**
 | [OPERATIONS.md](OPERATIONS.md) | Day-to-day release and backup |
 | [SECRETS.md](SECRETS.md) | Credential inventory and rotation |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures |
+| [CHECKLISTS.md](CHECKLISTS.md) | Add a page / migration / edge function / user / secret |
+| [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Tested restore, schema rollback, incident scenarios |
 | [MIGRATIONS.md](MIGRATIONS.md) | Author and apply schema changes |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, GitHub envs, edge functions |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Folders, security |
 | [FLOWS.md](FLOWS.md) | How pages write data |
 | [DATA_TABLES.md](DATA_TABLES.md) | Tables, RLS, RPCs |
 | [DSR_TABLES.md](DSR_TABLES.md) | Meter / stock model |
+| [DAY_CLOSING.md](DAY_CLOSING.md) | Day-closing formula; current RPC definitions |
 | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Invoice PDF → Drive |
-| [BACKUP.md](BACKUP.md) | Backup restore |
+| [BACKUP.md](BACKUP.md) | Drive backup setup + verify |
+| [../CLAUDE.md](../CLAUDE.md) | Rules + conventions for AI agents (useful for humans too) |
 | [STORAGE_RETENTION.md](STORAGE_RETENTION.md) | Free-tier size, index hygiene, anti-duplication |
 | [../scripts/README.md](../scripts/README.md) | Script internals |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Pull requests |
 
-Migrations: `supabase/migrations/` · Full snapshot: `supabase/schema.sql` — see [MIGRATIONS.md](MIGRATIONS.md).
+Migrations: `supabase/migrations/` (source of truth) · Snapshot: `supabase/schema.sql` (checked by `scripts/check-schema-drift.sh`) — see [MIGRATIONS.md](MIGRATIONS.md).

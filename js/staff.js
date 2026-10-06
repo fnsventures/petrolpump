@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, AppDialog, escapeHtml, formatCurrency, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -661,9 +661,7 @@ function initStaffPage(auth) {
   function closeIdCardModal() {
     if (!idCardModal || !idCardModalOpen) return;
     idCardModalOpen = false;
-    idCardModal.classList.add("hidden");
-    idCardModal.hidden = true;
-    document.body.classList.remove("modal-open");
+    AppDialog.hide(idCardModal);
     idCardViewBtn?.setAttribute("aria-expanded", "false");
     idCardViewBtn?.focus();
   }
@@ -677,10 +675,8 @@ function initStaffPage(auth) {
     if (modalTitle) modalTitle.textContent = emp.name ? `${emp.name} · ID card` : "ID card preview";
 
     idCardModalOpen = true;
-    idCardModal.classList.remove("hidden");
-    idCardModal.hidden = false;
-    document.body.classList.add("modal-open");
     idCardViewBtn?.setAttribute("aria-expanded", "true");
+    AppDialog.show(idCardModal, { focus: idCardModalClose, onDismiss: closeIdCardModal });
 
     if (!paintIdCardPreview(emp)) {
       mount.innerHTML = '<p class="staff-id-modal-loading">Could not load ID card preview.</p>';
@@ -760,7 +756,7 @@ function initStaffPage(auth) {
       const amt = Number(emp.pf_contribution);
       profilePfContribution.textContent =
         Number.isFinite(amt) && amt > 0
-          ? `₹ ${amt.toLocaleString("en-IN")} / month`
+          ? `${formatCurrency(amt)} / month`
           : "Not set — use Settings → Staff salaries";
     }
     if (profileAddress) profileAddress.textContent = formatDetail(emp.address);
@@ -906,7 +902,12 @@ function initStaffPage(auth) {
     const confirmMsg = makeActive
       ? `Reactivate ${name}?\n\nThey will appear again in salary, attendance, E-20, and settings.`
       : `Mark ${name} inactive?\n\nThey will be hidden from salary, attendance, E-20, and settings. Past payments and attendance stay in history.`;
-    if (!window.confirm(confirmMsg)) return;
+    const confirmed = await AppDialog.confirm(confirmMsg, {
+      title: makeActive ? "Reactivate staff" : "Mark staff inactive",
+      confirmLabel: makeActive ? "Reactivate" : "Mark inactive",
+      danger: !makeActive,
+    });
+    if (!confirmed) return;
     const busyBtn = makeActive ? reactivateBtn : deactivateBtn;
     if (busyBtn) busyBtn.disabled = true;
     try {
@@ -916,7 +917,7 @@ function initStaffPage(auth) {
       selectedId = null;
       await refreshAndSelect(id);
     } catch (err) {
-      alert(AppError.getUserMessage(err) || `Could not ${action}.`);
+      AppError.showToast(AppError.getUserMessage(err) || `Could not ${action}.`, "error");
     } finally {
       if (busyBtn) busyBtn.disabled = false;
     }
@@ -1002,12 +1003,12 @@ function initStaffPage(auth) {
     const file = photoFileInput.files?.[0];
     if (!file) return;
     if (!STAFF_PHOTO_MIME.has(file.type)) {
-      alert("Use a JPG, PNG, or WebP image.");
+      AppError.showToast("Use a JPG, PNG, or WebP image.", "warning");
       photoFileInput.value = "";
       return;
     }
     if (file.size > MAX_STAFF_PHOTO_BYTES) {
-      alert("Image must be 2 MB or smaller.");
+      AppError.showToast("Image must be 2 MB or smaller.", "warning");
       photoFileInput.value = "";
       return;
     }
@@ -1032,12 +1033,12 @@ function initStaffPage(auth) {
     const file = aadhaarFileInput.files?.[0];
     if (!file) return;
     if (!STAFF_AADHAAR_MIME.has(file.type)) {
-      alert("Aadhaar card must be PDF, JPG, PNG, or WebP.");
+      AppError.showToast("Aadhaar card must be PDF, JPG, PNG, or WebP.", "warning");
       aadhaarFileInput.value = "";
       return;
     }
     if (file.size > MAX_STAFF_AADHAAR_BYTES) {
-      alert("Aadhaar file must be 10 MB or smaller.");
+      AppError.showToast("Aadhaar file must be 10 MB or smaller.", "warning");
       aadhaarFileInput.value = "";
       return;
     }
@@ -1063,9 +1064,9 @@ function initStaffPage(auth) {
   function closeAadhaarModal() {
     const modal = document.getElementById("staff-aadhaar-modal");
     if (!modal) return;
-    modal.classList.add("hidden");
-    modal.hidden = true;
+    if (!aadhaarModalOpen) return;
     aadhaarModalOpen = false;
+    AppDialog.hide(modal);
     const body = document.getElementById("staff-aadhaar-modal-body");
     if (body) body.innerHTML = "";
     revokeAadhaarPreview();
@@ -1097,7 +1098,7 @@ function initStaffPage(auth) {
     const subtitle = document.getElementById("staff-aadhaar-modal-subtitle");
     if (!modal || !body) return;
     if (typeof DriveFiles === "undefined") {
-      alert("Google Drive helper is not loaded.");
+      AppError.showToast("Google Drive helper is not loaded.", "error");
       return;
     }
     const emp = staffList.find((s) => s.id === employeeId);
@@ -1105,10 +1106,8 @@ function initStaffPage(auth) {
     if (title) title.textContent = emp?.name ? `${emp.name} · Aadhaar` : "Aadhaar card";
     if (subtitle) subtitle.textContent = fileName;
     body.innerHTML = `<p class="staff-id-modal-loading">Opening…</p>`;
-    modal.classList.remove("hidden");
-    modal.hidden = false;
     aadhaarModalOpen = true;
-    document.getElementById("staff-aadhaar-modal-close")?.focus();
+    AppDialog.show(modal, { focus: "#staff-aadhaar-modal-close", onDismiss: closeAadhaarModal });
     try {
       const result = await DriveFiles.download({ kind: "staff_aadhaar", employeeId, fileName });
       if (!aadhaarModalOpen) return;
@@ -1128,7 +1127,7 @@ function initStaffPage(auth) {
     const employeeId = viewBtn?.getAttribute("data-aadhaar-view") || downloadBtn?.getAttribute("data-aadhaar-download");
     if (!employeeId || !trigger || trigger.disabled) return;
     if (typeof DriveFiles === "undefined") {
-      alert("Google Drive helper is not loaded.");
+      AppError.showToast("Google Drive helper is not loaded.", "error");
       return;
     }
     if (viewBtn) {
@@ -1143,7 +1142,7 @@ function initStaffPage(auth) {
     DriveFiles.downloadAndSave({ kind: "staff_aadhaar", employeeId, fileName })
       .catch((err) => {
         AppError.report(err, { context: "staffAadhaarDownload" });
-        alert(AppError.getUserMessage(err) || "Could not download the Aadhaar card.");
+        AppError.showToast(AppError.getUserMessage(err) || "Could not download the Aadhaar card.", "error");
       })
       .finally(() => {
         trigger.disabled = false;
@@ -1168,7 +1167,7 @@ function initStaffPage(auth) {
     })
       .catch((err) => {
         AppError.report(err, { context: "staffAadhaarDownload" });
-        alert(AppError.getUserMessage(err) || "Could not download the Aadhaar card.");
+        AppError.showToast(AppError.getUserMessage(err) || "Could not download the Aadhaar card.", "error");
       })
       .finally(() => {
         if (btn) btn.disabled = false;
@@ -1180,7 +1179,7 @@ function initStaffPage(auth) {
       await runStaffIdPrintInIframe(emp);
     } catch (err) {
       AppError.report(err, { context: "staffIdPrint" });
-      alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
+      AppError.showToast(AppError.getUserMessage(err) || "Could not open the print dialog.", "error");
     }
   }
 
@@ -1205,7 +1204,7 @@ function initStaffPage(auth) {
     if (!emp) return;
     const missing = idCardReadiness(emp);
     if (missing.length) {
-      alert(`Add ${missing.join(" and ")} in the profile before printing.`);
+      AppError.showToast(`Add ${missing.join(" and ")} in the profile before printing.`, "warning");
       openEditForm(emp);
       return;
     }

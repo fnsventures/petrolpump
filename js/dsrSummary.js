@@ -286,12 +286,15 @@
       { data: dsrData, error: dsrError },
       { data: stockData, error: stockError },
     ] = await Promise.all([
-      supabaseClient
-        .from("dsr")
-        .select("date, product, sales_pump1, sales_pump2, total_sales, testing, stock")
-        .gte("date", startDate)
-        .lte("date", endDate)
-        .order("date", { ascending: false }),
+      fetchAllRows(() =>
+        supabaseClient
+          .from("dsr")
+          .select("date, product, sales_pump1, sales_pump2, total_sales, testing, stock")
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: false })
+          .order("product", { ascending: true })
+      ),
       window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
     ]);
 

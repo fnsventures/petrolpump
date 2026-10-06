@@ -42,14 +42,18 @@ async function fetchAnalysisData(startDate, endDate) {
     DsrQueries.fetchDsrRows(startDate, endDate),
     DsrQueries.fetchExpenses(startDate, endDate),
     DsrQueries.fetchLubeSales(startDate, endDate),
-window.supabaseClient
-      .from("invoice_documents")
-      .select("invoice_date, amount")
-      .eq("category", "purchase")
-      .gte("invoice_date", startDate)
-      .lte("invoice_date", endDate)
-      .gt("amount", 0),
-    window.supabaseClient.from("expense_categories").select("name, label"),
+    fetchAllRows(() =>
+      window.supabaseClient
+        .from("invoice_documents")
+        .select("id, invoice_date, amount")
+        .eq("category", "purchase")
+        .gte("invoice_date", startDate)
+        .lte("invoice_date", endDate)
+        .gt("amount", 0)
+        .order("invoice_date", { ascending: true })
+        .order("id", { ascending: true })
+    ),
+    window.supabaseClient.from("expense_categories").select("name, label").limit(LOOKUP_ROW_LIMIT),
   ]);
 
   if (dsrBundle.error) throw dsrBundle.error;

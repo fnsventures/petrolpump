@@ -349,7 +349,7 @@ function createDateRangeFilter(config) {
     const range = getRange();
     if (!range) {
       if (rangeSelect.value === "custom") {
-        alert("Please select a valid start and end date.");
+        AppError.showToast("Please select a valid start and end date.", "warning");
       }
       return;
     }
@@ -365,12 +365,12 @@ function createDateRangeFilter(config) {
     const s = startInput?.value;
     const e = endInput?.value;
     if (!s || !e) {
-      alert("Please select a start and end date.");
+      AppError.showToast("Please select a start and end date.", "warning");
       popover?.setOpen(true);
       return false;
     }
     if (s > e) {
-      alert("Start date cannot be after end date. Please select valid dates.");
+      AppError.showToast("Start date cannot be after end date. Please select valid dates.", "warning");
       popover?.setOpen(true);
       return false;
     }

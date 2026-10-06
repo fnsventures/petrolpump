@@ -61,7 +61,7 @@
 }
 .dc-formula-op {
   font-weight: 700;
-  color: #94a3b8;
+  color: #64748b;
   font-size: 0.85rem;
 }
 .dc-formula-op--minus {
@@ -326,7 +326,7 @@
 .dc-channel-summary-label::before {
   content: "▸ ";
   font-size: 0.6rem;
-  color: #94a3b8;
+  color: #64748b;
 }
 .dc-channel-details[open] .dc-channel-summary-label::before {
   content: "▾ ";
@@ -389,7 +389,7 @@
   display: inline-block;
   min-width: 0.65rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: #64748b;
   text-align: center;
   flex-shrink: 0;
 }
@@ -447,10 +447,10 @@
 .dc-channel-line.dc-channel-line--credit-suggested .dc-channel-line-label {
   font-size: 0.68rem;
   font-weight: 500;
-  color: #94a3b8;
+  color: #64748b;
 }
 .dc-channel-line.dc-channel-line--credit-suggested .dc-channel-op {
-  color: #94a3b8;
+  color: #64748b;
   font-weight: 600;
 }
 .dc-channel-line.dc-channel-line--credit-suggested span:last-child {
@@ -589,7 +589,7 @@
   line-height: 1.3;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  border: 1px solid #94a3b8;
+  border: 1px solid #64748b;
   border-radius: 0.4rem;
   background: #fff;
 }
@@ -1104,7 +1104,7 @@
 
 .dc-optional {
   font-weight: 500;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .dc-register-block-head {

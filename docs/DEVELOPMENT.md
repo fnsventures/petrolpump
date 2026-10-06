@@ -42,7 +42,7 @@ The app reads configuration from `js/env.js`, which is **gitignored** to avoid c
 
    **Storage buckets** for profile and staff photos (`user-avatars`, `staff-photos`) are created by migrations `20260528300000_user_avatar.sql` and `20260528500000_employee_photo.sql`. If you applied schema manually without migrations, run those migrations too.
 
-4. **Service worker / PWA:** `js/pwa.js` registers `sw.js` (installable app, offline shell). During local dev, hard-refresh or unregister the worker if assets look stale after changes. Bump `version` in `asset-version.json` and run `npm run sync:assets` when shared JS/CSS changes (updates HTML `?v=` and `sw.js` `CACHE_VERSION`); users get a **Reload** banner for waiting workers.
+4. **Service worker / PWA:** `js/pwa.js` registers `sw.js` (installable app, offline shell). During local dev, hard-refresh or unregister the worker if assets look stale after changes. Cache-busting `?v=` hashes and the SW precache list are generated at build (`scripts/stamp-assets.mjs`) — never add `?v=` in source; users get a **Reload** banner for waiting workers.
 
 ### 1.3 Run a local server
 
@@ -60,7 +60,7 @@ Authenticated pages are assembled at build time:
 2. `<head>` assets come from `_partials/app-pages.json` via `<!-- @partial app-head -->`.
 3. The topbar comes from `_partials/app-topbar.njk`.
 
-To add a script or stylesheet to a page, edit `app-pages.json` (not a copied `<script>` block). Bump that file’s version in `assetVersions` (or `asset-version.json` for shared files) and run `npm run sync:assets` when shared JS/CSS changes.
+To add a script or stylesheet to a page, edit `app-pages.json` (not a copied `<script>` block). No version bump is needed — content hashes are stamped at build.
 
 **Quick static serve** (partials not expanded unless you ran `npm run build:site` first):
 
@@ -128,7 +128,7 @@ Each deploy uses that environment’s GitHub secrets and pushes to **`gh-pages`*
    - `SUPABASE_ANON_KEY` — Supabase anon (public) key for that environment.
 
    **Prod only** — for the monthly database backup workflow (steps: [OPERATIONS §4](OPERATIONS.md#4-backup-production-database), deep guide: [Backup](BACKUP.md)):
-   - `PROD_DB_URL` — Session pooler URI from Supabase → Connect.
+   - `PROD_DB_URL` — Session pooler URI. Format and password encoding: [SECRETS.md → A. Laptop](SECRETS.md#a-laptop-gitignored).
    - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN` — same values as Supabase Edge Function secrets (invoice documents).
    - `GOOGLE_DRIVE_BACKUP_FOLDER_ID` — Google Drive folder ID for DB backups (create a dedicated folder; not the invoice root).
 
@@ -151,7 +151,7 @@ Scripts live in **`scripts/`**. Day-to-day commands: [OPERATIONS.md](OPERATIONS.
 
 ```bash
 cp scripts/db.env.example scripts/db.env
-# PROD_DB_URL + STAGING_DB_URL from Supabase → Connect → Session pooler
+# PROD_DB_URL + STAGING_DB_URL — Session pooler format: docs/SECRETS.md § A. Laptop
 ```
 
 ### 2.5 Edge functions
@@ -206,9 +206,10 @@ Migration file: `supabase/migrations/20260708120000_batch_credit_settle_rpc.sql`
 
 ### 2.7 Local preview build
 
-Source HTML uses Nunjucks partials (`{% include %}`). For a local mirror of the deployed site:
+Source HTML uses `<!-- @partial name -->` comments, which `scripts/build-html.mjs` expands from Nunjucks templates in `_partials/`. For a local mirror of the deployed site:
 
 ```bash
+npm test              # tax, GSTR, payroll, day-closing, and query paging
 npm run build:site    # sync → _site/ + expand partials
 npm run dev           # build:site + serve http://localhost:3000
 ```

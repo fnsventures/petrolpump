@@ -5,7 +5,8 @@ What changed and why?
 ## Checklist
 
 - [ ] No secrets committed (`js/env.js`, `scripts/db.env`, OAuth tokens, dumps)
-- [ ] Migrations reviewed (and listed in the PR if any)
+- [ ] Migrations reviewed (and listed in the PR if any); `supabase/schema.sql` updated
+- [ ] New page / edge function / user / secret → followed [docs/CHECKLISTS.md](../docs/CHECKLISTS.md)
 - [ ] Docs updated if behaviour, schema, or setup changed ([docs/README.md](../docs/README.md))
 - [ ] Tested on staging after merge (or note why not)
 

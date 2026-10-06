@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel */
 
 const STATUS_LABELS = {
   present: "Present",
@@ -436,7 +436,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function deleteRow(btn, date) {
     if (!isAdmin) {
-      alert("Only an admin can clear attendance records.");
+      AppError.showToast("Only an admin can clear attendance records.", "warning");
       return;
     }
 
@@ -446,8 +446,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const staff = staffList.find((s) => s.id === staffId);
     const staffName = staff?.name || "this staff member";
-    const confirmed = confirm(
-      `Clear attendance for ${staffName} on ${date}? This cannot be undone.`
+    const confirmed = await AppDialog.confirm(
+      `Clear attendance for ${staffName} on ${date}? This cannot be undone.`,
+      { title: "Clear attendance", confirmLabel: "Clear", danger: true }
     );
     if (!confirmed) return;
 
@@ -619,7 +620,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const nOver = counts.overDuty;
     const nUnmarked = Math.max(0, totalCells - recordMap.size);
 
-    const monthLabel = new Date(year, month - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+    const monthLabel = formatMonthLabel(`${year}-${String(month).padStart(2, "0")}`);
     if (historyMatrixSummary) {
       historyMatrixSummary.textContent = `${monthLabel} · ${staffList.length} staff × ${dayMetas.length} days — Present ${nPresent}, half-day ${nHalf}, leave ${nLeave}, over duty ${nOver}, not marked ${nUnmarked}.`;
     }

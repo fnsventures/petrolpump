@@ -118,14 +118,6 @@
     },
   ];
 
-  function escapeHtml(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
   function iconSvg(name) {
     const path = ICONS[name] || ICONS.dashboard;
     return `<svg class="app-sidebar-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${path}</svg>`;

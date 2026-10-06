@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, formatNumberPlain, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -32,11 +32,6 @@ function isMissingSalaryMonthColumn(error) {
   return /salary_month/i.test(msg) || error?.code === "PGRST204";
 }
 
-function isMissingSalaryPaymentIdColumn(error) {
-  const msg = String(error?.message || "");
-  return /salary_payment_id/i.test(msg) || error?.code === "PGRST204";
-}
-
 function getStaffSalaryMonthContext(staff, paid, monthValue, records, lopExcluded) {
   const balance = computeSalaryBalance(staff.monthly_salary, paid, staff, monthValue, records, {
     lopExcluded,
@@ -53,18 +48,7 @@ function getStaffSalaryMonthContext(staff, paid, monthValue, records, lopExclude
   };
 }
 
-function formatSalaryAmount(value) {
-  return value == null ? "—" : formatCurrency(value);
-}
-
-function formatMonthLabel(monthValue) {
-  if (!monthValue) return "—";
-  const [year, month] = monthValue.split("-").map(Number);
-  const d = new Date(year, month - 1, 1);
-  return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-}
-
-const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css?v=3";
+const SALARY_SLIP_PRINT_CSS = "css/salary-slip-print.css";
 
 function slipAssetUrl(path) {
   return new URL(path, window.location.href).href;
@@ -241,12 +225,6 @@ function paymentsForEmployee(payments, employeeId) {
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
-function salaryExpenseDescription(staff, note) {
-  if (!staff) return "Salary";
-  const n = note != null && String(note).trim() !== "" ? String(note).trim() : null;
-  return `Salary: ${staff.name}${n ? ` - ${n}` : ""}`;
-}
-
 function salaryDeleteButtonHtml(payment, staff, isAdmin) {
   if (!isAdmin || !payment?.id) return "";
   const staffName = staff?.name || "staff";
@@ -300,7 +278,7 @@ function slipAttendanceBlock(pay) {
   const bits = [`Present ${counts.present}`, `Half-day ${counts.half}`, leave];
   if (pay.overDutyEnabled) bits.push(`Over duty ${PayrollRules.formatDayCount(pay.overDutyDays)}`);
   const basis = pay.config?.dayRateBasis === "fixed" ? "fixed" : "calendar";
-  bits.push(`Day rate ₹ ${formatNumberPlain(pay.perDay)} (${pay.divisor} ${basis} days)`);
+  bits.push(`Day rate ${formatCurrency(pay.perDay)} (${pay.divisor} ${basis} days)`);
   const detail = pay.lossOfPayEnabled ? PayrollRules.lopBreakdownLabel(pay) : "";
   return `<div class="salary-slip-attendance"><strong>Attendance.</strong> ${escapeHtml(bits.join(" · "))}.${
     detail ? ` ${escapeHtml(detail)}.` : ""
@@ -339,7 +317,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
         <tr>
           <td>${i + 1}</td>
           <td>${escapeHtml(formatDisplayDate(p.date))}</td>
-          <td class="num">₹ ${formatNumberPlain(p.amount)}</td>
+          <td class="num">${formatCurrency(p.amount)}</td>
           <td>${escapeHtml(p.note || "—")}</td>
         </tr>`
         )
@@ -347,9 +325,9 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
     : `<tr><td colspan="4" style="text-align:center;color:#64748b">No salary disbursements recorded for this month</td></tr>`;
 
   const balanceRow = netAdvance > 0.009
-    ? `<tr class="salary-slip-summary-balance"><td>Advance paid (over net salary)</td><td>₹ ${formatNumberPlain(netAdvance)}</td></tr>`
+    ? `<tr class="salary-slip-summary-balance"><td>Advance paid (over net salary)</td><td>${formatCurrency(netAdvance)}</td></tr>`
     : netPending > 0.009
-      ? `<tr class="salary-slip-summary-balance"><td>Balance payable (net)</td><td>₹ ${formatNumberPlain(netPending)}</td></tr>`
+      ? `<tr class="salary-slip-summary-balance"><td>Balance payable (net)</td><td>${formatCurrency(netPending)}</td></tr>`
       : `<tr class="salary-slip-summary-paid"><td>Balance payable (net)</td><td>₹ 0.00 — Settled</td></tr>`;
 
   const employerPfBlock =
@@ -360,7 +338,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
         <table>
           <tr>
             <td>Employer PF (fixed monthly)</td>
-            <td>₹ ${formatNumberPlain(pf.employerPf)}</td>
+            <td>${formatCurrency(pf.employerPf)}</td>
           </tr>
         </table>
         <p style="margin:3pt 0 0;font-size:6.8pt;color:#64748b">Employer PF is deposited to EPFO separately and is not deducted from employee take-home pay.</p>
@@ -422,7 +400,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
         </div>
         <div>
           <dt>PF wage (gross)</dt>
-          <dd>₹ ${formatNumberPlain(pf.gross)}</dd>
+          <dd>${formatCurrency(pf.gross)}</dd>
         </div>
       </dl>
 
@@ -434,16 +412,16 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
           <table class="salary-slip-pay-table">
             <tr>
               <td>Gross salary</td>
-              <td>₹ ${formatNumberPlain(pf.gross)}</td>
+              <td>${formatCurrency(pf.gross)}</td>
             </tr>
             ${
               pay?.overDutyAmount > 0
-                ? `<tr><td>Over duty (${escapeHtml(PayrollRules.formatDayCount(pay.overDutyDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.overDutyAmount)}</td></tr>`
+                ? `<tr><td>Over duty (${escapeHtml(PayrollRules.formatDayCount(pay.overDutyDays))} day × ${formatCurrency(pay.perDay)})</td><td>${formatCurrency(pay.overDutyAmount)}</td></tr>`
                 : ""
             }
             <tr class="salary-slip-pay-total">
               <td>Total earnings</td>
-              <td>₹ ${formatNumberPlain(settled.earnings)}</td>
+              <td>${formatCurrency(settled.earnings)}</td>
             </tr>
           </table>
         </div>
@@ -454,16 +432,16 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
               pay?.lopExcluded
                 ? `<tr><td>Loss of pay excluded (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day, not deducted)</td><td>₹ 0.00</td></tr>`
                 : pay?.lopAmount > 0
-                  ? `<tr><td>Loss of pay (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day × ₹ ${formatNumberPlain(pay.perDay)})</td><td>₹ ${formatNumberPlain(pay.lopAmount)}</td></tr>`
+                  ? `<tr><td>Loss of pay (${escapeHtml(PayrollRules.formatDayCount(pay.lopDays))} day × ${formatCurrency(pay.perDay)})</td><td>${formatCurrency(pay.lopAmount)}</td></tr>`
                   : ""
             }
             <tr>
               <td>Employee PF (fixed monthly)</td>
-              <td>₹ ${formatNumberPlain(settled.employeePf)}</td>
+              <td>${formatCurrency(settled.employeePf)}</td>
             </tr>
             <tr class="salary-slip-pay-total">
               <td>Total deductions</td>
-              <td>₹ ${formatNumberPlain(roundMoney((pay?.lopAmount || 0) + settled.employeePf))}</td>
+              <td>${formatCurrency(roundMoney((pay?.lopAmount || 0) + settled.employeePf))}</td>
             </tr>
           </table>
         </div>
@@ -473,7 +451,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
 
       <div class="salary-slip-net-box">
         <span class="salary-slip-net-label">Net salary (take-home)</span>
-        <span class="salary-slip-net-amount">₹ ${formatNumberPlain(netSalary)}</span>
+        <span class="salary-slip-net-amount">${formatCurrency(netSalary)}</span>
       </div>
       <p class="salary-slip-words"><strong>In words:</strong> ${escapeHtml(amountInWordsINR(netSalary))}</p>
 
@@ -491,7 +469,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
         <tfoot>
           <tr>
             <td colspan="2">Total disbursed</td>
-            <td class="num">₹ ${formatNumberPlain(totalPaid)}</td>
+            <td class="num">${formatCurrency(totalPaid)}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -500,11 +478,11 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
       <table class="salary-slip-summary">
         <tr class="salary-slip-summary-net">
           <td>Net salary for month</td>
-          <td>₹ ${formatNumberPlain(netSalary)}</td>
+          <td>${formatCurrency(netSalary)}</td>
         </tr>
         <tr class="salary-slip-summary-total">
           <td>Total disbursed this month</td>
-          <td>₹ ${formatNumberPlain(totalPaid)}</td>
+          <td>${formatCurrency(totalPaid)}</td>
         </tr>
         ${balanceRow}
       </table>
@@ -713,10 +691,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const monthLabel = formatMonthLabel(monthValue);
     const name = staff?.name || "this employee";
     const ok = exclude
-      ? confirm(
-          `Exclude ${formatCurrency(suggested)} loss of pay from ${name}'s ${monthLabel} salary? Payable will not be reduced by that amount.`
+      ? await AppDialog.confirm(
+          `Exclude ${formatCurrency(suggested)} loss of pay from ${name}'s ${monthLabel} salary? Payable will not be reduced by that amount.`,
+          { title: "Loss of pay", confirmLabel: "Exclude" }
         )
-      : confirm(`Include loss of pay in ${name}'s ${monthLabel} salary again?`);
+      : await AppDialog.confirm(`Include loss of pay in ${name}'s ${monthLabel} salary again?`, {
+          title: "Loss of pay",
+          confirmLabel: "Include",
+        });
     if (!ok) return;
     try {
       await setLopExcluded(staffId, monthValue, exclude);
@@ -731,7 +713,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     } catch (error) {
       AppError.report(error, { context: "toggleLopExclusion" });
-      alert(AppError.getUserMessage(error) || "Could not update loss of pay.");
+      AppError.showToast(AppError.getUserMessage(error) || "Could not update loss of pay.", "error");
     }
   }
 
@@ -783,67 +765,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     detailActionsHead.hidden = !isAdmin;
   }
 
-  async function deleteLinkedSalaryExpense(payment, staff) {
-    if (payment?.id) {
-      const { data: linked, error: linkErr } = await window.supabaseClient
-        .from("expenses")
-        .select("id")
-        .eq("salary_payment_id", payment.id)
-        .limit(1);
-
-      if (!linkErr && linked?.length) {
-        const { error: delErr } = await window.supabaseClient.from("expenses").delete().eq("id", linked[0].id);
-        if (delErr) AppError.report(delErr, { context: "deleteLinkedSalaryExpenseById" });
-        return;
-      }
-      if (linkErr && !isMissingSalaryPaymentIdColumn(linkErr)) {
-        AppError.report(linkErr, { context: "deleteLinkedSalaryExpenseLookupById" });
-      }
-    }
-
-    const desc = salaryExpenseDescription(staff, payment.note);
-    const { data, error } = await window.supabaseClient
-      .from("expenses")
-      .select("id")
-      .eq("category", "salary")
-      .eq("date", payment.date)
-      .eq("amount", payment.amount)
-      .eq("description", desc)
-      .limit(1);
-
-    if (error) {
-      AppError.report(error, { context: "deleteLinkedSalaryExpenseLookup" });
-      return;
-    }
-    if (!data?.length) return;
-
-    const { error: delErr } = await window.supabaseClient.from("expenses").delete().eq("id", data[0].id);
-    if (delErr) {
-      AppError.report(delErr, { context: "deleteLinkedSalaryExpense" });
-    }
-  }
-
   async function deleteSalaryPayment(payment, staff) {
     if (!isAdmin) {
-      alert("Only an admin can delete salary payments.");
+      AppError.showToast("Only an admin can delete salary payments.", "warning");
       return;
     }
     if (!payment?.id) return;
 
     const staffName = staff?.name || "this staff member";
-    const confirmed = confirm(
-      `Delete salary payment of ${formatCurrency(payment.amount)} for ${staffName} on ${formatDisplayDate(payment.date)}?\n\nThe linked expense entry will also be removed. This cannot be undone.`
+    const confirmed = await AppDialog.confirm(
+      `Delete salary payment of ${formatCurrency(payment.amount)} for ${staffName} on ${formatDisplayDate(payment.date)}?\n\nThe linked expense entry will also be removed. This cannot be undone.`,
+      { title: "Delete payment", confirmLabel: "Delete", danger: true }
     );
     if (!confirmed) return;
 
-    const { error } = await window.supabaseClient.from("salary_payments").delete().eq("id", payment.id);
+    // Payment and its linked expense are removed in one transaction on the server.
+    const { error } = await window.supabaseClient.rpc("delete_salary_payment", { p_payment_id: payment.id });
     if (error) {
-      alert(AppError.getUserMessage(error));
+      AppError.showToast(AppError.getUserMessage(error), "error");
       AppError.report(error, { context: "deleteSalaryPayment", id: payment.id });
       return;
     }
-
-    await deleteLinkedSalaryExpense(payment, staff);
 
     if (typeof AppCache !== "undefined" && AppCache) {
       CacheInvalidation.invalidate("operational");
@@ -871,7 +813,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         })());
 
       if (!payment) {
-        alert("Payment not found. Refresh the page and try again.");
+        AppError.showToast("Payment not found. Refresh the page and try again.", "error");
         return;
       }
 
@@ -905,14 +847,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!detailOverlay) return;
     detailStaffId = staffId;
     renderDetailModal(staffId, getSelectedMonth());
-    detailOverlay.setAttribute("aria-hidden", "false");
-    document.body.classList.add("modal-open");
+    AppDialog.show(detailOverlay, {
+      focus: "#salary-detail-close",
+      onDismiss: closeDetailModal,
+    });
   }
 
   function closeDetailModal() {
-    if (!detailOverlay) return;
-    detailOverlay.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
+    if (!detailOverlay || detailOverlay.getAttribute("aria-hidden") === "true") return;
+    AppDialog.hide(detailOverlay);
     detailStaffId = null;
     document.querySelectorAll(".salary-summary-table tbody tr.is-selected").forEach((tr) => {
       tr.classList.remove("is-selected");
@@ -1036,7 +979,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           await runSalarySlipPrint(staff, list, monthValue);
         } catch (err) {
           AppError.report(err, { context: "printSalarySlip" });
-          alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
+          AppError.showToast(AppError.getUserMessage(err) || "Could not open the print dialog.", "error");
         }
       };
     }
@@ -1090,21 +1033,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function loadPaymentsInRange(startDate, endDate) {
-    const { data, error } = await window.supabaseClient
-      .from("salary_payments")
-      .select("id, employee_id, date, amount, note, salary_month")
-      .gte("date", startDate)
-      .lte("date", endDate)
-      .order("date", { ascending: false });
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("salary_payments")
+        .select("id, employee_id, date, amount, note, salary_month")
+        .gte("date", startDate)
+        .lte("date", endDate)
+        .order("date", { ascending: false })
+        .order("id", { ascending: true })
+    );
 
     if (error) {
       if (isMissingSalaryMonthColumn(error)) {
-        const { data: legacyData, error: legacyError } = await window.supabaseClient
-          .from("salary_payments")
-          .select("id, employee_id, date, amount, note")
-          .gte("date", startDate)
-          .lte("date", endDate)
-          .order("date", { ascending: false });
+        const { data: legacyData, error: legacyError } = await fetchAllRows(() =>
+          window.supabaseClient
+            .from("salary_payments")
+            .select("id, employee_id, date, amount, note")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: false })
+            .order("id", { ascending: true })
+        );
         if (legacyError) {
           AppError.report(legacyError, { context: "loadPaymentsInRange" });
           return [];
@@ -1121,11 +1070,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     const salaryMonth = normalizeSalaryMonth(monthValue);
     if (!salaryMonth) return [];
 
-    const { data, error } = await window.supabaseClient
-      .from("salary_payments")
-      .select("id, employee_id, date, amount, note, salary_month")
-      .eq("salary_month", salaryMonth)
-      .order("date", { ascending: false });
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("salary_payments")
+        .select("id, employee_id, date, amount, note, salary_month")
+        .eq("salary_month", salaryMonth)
+        .order("date", { ascending: false })
+        .order("id", { ascending: true })
+    );
 
     if (error) {
       if (isMissingSalaryMonthColumn(error)) {
@@ -1298,7 +1250,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <tr data-staff-id="${escapeHtml(s.id)}" tabindex="0" role="button" aria-label="View ${name} salary details">
             <td>${name}</td>
             <td>${role}</td>
-            <td class="num">${formatSalaryAmount(ctx.payable)}</td>
+            <td class="num">${formatCurrency(ctx.payable)}</td>
             <td class="num salary-col-lop${pay?.lopAmount > 0 ? " salary-money-deduct" : ""}"><div class="salary-lop-cell">${lopText}${lopAction}</div></td>
             <td class="num salary-col-od${pay?.overDutyAmount > 0 ? " salary-money-earn" : ""}">${odText}</td>
             <td class="num">${formatCurrency(paid)}</td>
@@ -1368,7 +1320,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           await runSalarySlipPrint(staff, list, monthValue);
         } catch (err) {
           AppError.report(err, { context: "printSalarySlipQuick" });
-          alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
+          AppError.showToast(AppError.getUserMessage(err) || "Could not open the print dialog.", "error");
         }
       });
     });
@@ -1456,7 +1408,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           await runSalarySlipPrint(staff, list, monthValue);
         } catch (err) {
           AppError.report(err, { context: "printHistorySlip" });
-          alert(AppError.getUserMessage(err) || "Could not open the print dialog.");
+          AppError.showToast(AppError.getUserMessage(err) || "Could not open the print dialog.", "error");
         }
       });
     });
@@ -1533,8 +1485,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      const staff = staffList.find((s) => s.id === staffId);
-
       const payments = await getPaymentsForSalaryMonth(salaryMonthVal);
       const records = await attendanceRecordsFor(staffId, salaryMonthVal);
       const balance = getStaffBalanceForMonth(
@@ -1545,87 +1495,60 @@ document.addEventListener("DOMContentLoaded", async () => {
         records,
         await excludedForStaff(staffId, salaryMonthVal)
       );
+      // Browser check is for a friendly prompt; record_salary_payment re-checks under a lock.
+      let allowOverpay = false;
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
         const overBy = roundMoney(amount - balance.pending);
         const msg =
           balance.pending <= 0.009
             ? `Net salary for ${formatMonthLabel(salaryMonthVal)} is already settled. Record ${formatCurrency(amount)} as advance?`
             : `Amount exceeds remaining balance (${formatCurrency(balance.pending)}). This will overpay by ${formatCurrency(overBy)}. Continue?`;
-        if (!confirm(msg)) {
+        if (!(await AppDialog.confirm(msg, { title: "Record payment", confirmLabel: "Record" }))) {
           resetSubmitBtn();
           return;
         }
+        allowOverpay = true;
       }
 
-      const payload = {
-        employee_id: staffId,
-        date,
-        amount,
-        note,
-        salary_month: salaryMonth,
-      };
-      if (auth.session?.user?.id) payload.created_by = auth.session.user.id;
+      const requestId = formRequestId(paymentForm, [staffId, date, salaryMonth, amount, note]);
+      const recordPayment = (allow) =>
+        window.supabaseClient.rpc("record_salary_payment", {
+          p_employee_id: staffId,
+          p_date: date,
+          p_salary_month: salaryMonth,
+          p_amount: amount,
+          p_note: note,
+          p_allow_overpay: allow,
+          p_request_id: requestId,
+        });
 
-      let insertedPayment = null;
-      let paymentErrorResult = null;
+      let { error: saveError } = await recordPayment(allowOverpay);
 
-      ({ data: insertedPayment, error: paymentErrorResult } = await window.supabaseClient
-        .from("salary_payments")
-        .insert(payload)
-        .select("id")
-        .single());
-
-      if (paymentErrorResult && isMissingSalaryMonthColumn(paymentErrorResult)) {
-        const legacyPayload = { employee_id: staffId, date, amount, note };
-        if (auth.session?.user?.id) legacyPayload.created_by = auth.session.user.id;
-        ({ data: insertedPayment, error: paymentErrorResult } = await window.supabaseClient
-          .from("salary_payments")
-          .insert(legacyPayload)
-          .select("id")
-          .single());
-      }
-
-      if (paymentErrorResult) {
-        resetSubmitBtn();
-        AppError.handle(paymentErrorResult, { target: paymentError });
-        return;
-      }
-
-      const desc = salaryExpenseDescription(staff, note);
-      const expensePayload = {
-        date,
-        category: "salary",
-        description: desc,
-        amount,
-      };
-      if (insertedPayment?.id) expensePayload.salary_payment_id = insertedPayment.id;
-      if (auth.session?.user?.id) expensePayload.created_by = auth.session.user.id;
-
-      let expenseError = null;
-      ({ error: expenseError } = await window.supabaseClient.from("expenses").insert(expensePayload));
-
-      if (expenseError && isMissingSalaryPaymentIdColumn(expenseError)) {
-        delete expensePayload.salary_payment_id;
-        ({ error: expenseError } = await window.supabaseClient.from("expenses").insert(expensePayload));
-      }
-
-      if (expenseError) {
-        if (insertedPayment?.id) {
-          const { error: rollbackError } = await window.supabaseClient
-            .from("salary_payments")
-            .delete()
-            .eq("id", insertedPayment.id);
-          if (rollbackError) {
-            AppError.report(rollbackError, {
-              context: "rollbackSalaryPaymentAfterExpenseFail",
-              paymentId: insertedPayment.id,
-            });
-          }
+      // Another payment for this month landed since the summary loaded.
+      if (saveError?.hint === "salary_overpay") {
+        let pending = null;
+        try {
+          pending = Number(JSON.parse(saveError.details || "{}").pending);
+        } catch (_) {
+          pending = null;
         }
+        const msg = Number.isFinite(pending)
+          ? `Remaining salary for ${formatMonthLabel(salaryMonthVal)} is now ${formatCurrency(pending)} (another payment was recorded). Record ${formatCurrency(amount)} anyway?`
+          : `This amount exceeds the remaining salary for ${formatMonthLabel(salaryMonthVal)}. Record it anyway?`;
+        if (!(await AppDialog.confirm(msg, { title: "Record payment", confirmLabel: "Record anyway" }))) {
+          resetSubmitBtn();
+          await refreshAll();
+          return;
+        }
+        ({ error: saveError } = await recordPayment(true));
+      }
+
+      if (saveError) {
         resetSubmitBtn();
-        AppError.handle(expenseError, { target: paymentError });
+        AppError.handle(saveError, { target: paymentError });
         return;
       }
+      clearFormRequestId(paymentForm);
 
       resetSubmitBtn();
 
