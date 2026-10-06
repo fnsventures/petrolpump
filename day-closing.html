@@ -21,7 +21,15 @@
           </div>
           <div class="form-field dc-date-field">
             <label for="day-closing-date">Date</label>
-            <input id="day-closing-date" name="date" type="date" form="day-closing-form" required />
+            <div class="dc-date-stepper">
+              <button type="button" id="dc-prev-day" class="button-secondary dc-date-step" aria-label="Previous day" title="Previous day">
+                <span aria-hidden="true">‹</span><span class="dc-date-step-text">Prev</span>
+              </button>
+              <input id="day-closing-date" name="date" type="date" form="day-closing-form" required />
+              <button type="button" id="dc-next-day" class="button-secondary dc-date-step" aria-label="Next day" title="Next day">
+                <span class="dc-date-step-text">Next</span><span aria-hidden="true">›</span>
+              </button>
+            </div>
           </div>
         </div>
         <details class="dc-formula-guide">

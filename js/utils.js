@@ -701,6 +701,93 @@ function hideProgress() {
   if (bar) bar.classList.remove("loading");
 }
 
+/**
+ * Brand loader: spinning Bishnupriya logo.
+ * - Boot overlay (html.app-booting) until requireAuth resolves.
+ * - Any leaf element whose whole text is a busy label ("Loading…", "Saving…", "…")
+ *   gets .app-busy, which renders a small spinning logo before the text.
+ */
+const AppLoader = (function () {
+  const BOOT_CLASS = "app-booting";
+  const BUSY_CLASS = "app-busy";
+  const ICON_ONLY_CLASS = "app-busy--icon";
+  const BOOT_WATCHDOG_MS = 15000;
+  const BUSY_TEXT_RE = /^(?:…|(?:[A-Z][a-z]+ing\b|Please wait)[^\n]{0,40}…)$/;
+  let bootWatchdog = null;
+  let observer = null;
+
+  function startBoot() {
+    document.documentElement.classList.add(BOOT_CLASS);
+    clearTimeout(bootWatchdog);
+    bootWatchdog = setTimeout(endBoot, BOOT_WATCHDOG_MS);
+  }
+
+  function endBoot() {
+    clearTimeout(bootWatchdog);
+    bootWatchdog = null;
+    document.documentElement.classList.remove(BOOT_CLASS);
+  }
+
+  function syncBusy(el) {
+    if (!el || el.nodeType !== 1) return;
+    const text = el.childElementCount === 0 ? el.textContent.trim() : "";
+    const busy = BUSY_TEXT_RE.test(text);
+    if (busy !== el.classList.contains(BUSY_CLASS)) el.classList.toggle(BUSY_CLASS, busy);
+    // Bare "…" placeholders show only the logo.
+    const iconOnly = busy && text === "…";
+    if (iconOnly !== el.classList.contains(ICON_ONLY_CLASS)) el.classList.toggle(ICON_ONLY_CLASS, iconOnly);
+  }
+
+  function scan(root) {
+    if (!root) return;
+    if (root.nodeType === 3) {
+      syncBusy(root.parentElement);
+      return;
+    }
+    if (root.nodeType !== 1) return;
+    // Fast path: most inserted subtrees have no busy label at all.
+    if (!root.textContent.includes("…")) {
+      syncBusy(root);
+      return;
+    }
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.data.includes("…")) syncBusy(node.parentElement);
+    }
+  }
+
+  function observe() {
+    if (observer || !document.body || typeof MutationObserver === "undefined") return;
+    scan(document.body);
+    observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "characterData") {
+          syncBusy(record.target.parentElement);
+          continue;
+        }
+        // Text replaced via textContent: re-check the element itself (clears stale spinners).
+        syncBusy(record.target);
+        record.addedNodes.forEach(scan);
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.body) observe();
+    else document.addEventListener("DOMContentLoaded", observe, { once: true });
+    if (document.documentElement.classList.contains(BOOT_CLASS)) {
+      bootWatchdog = setTimeout(endBoot, BOOT_WATCHDOG_MS);
+    }
+    // Back/forward cache can restore a page frozen mid-redirect with the overlay still on.
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) endBoot();
+    });
+  }
+
+  return { startBoot, endBoot, scan };
+})();
+
 const ActionProgress = (function () {
   const WATCHDOG_MS = 60000;
   let active = false;
@@ -720,6 +807,7 @@ const ActionProgress = (function () {
     root.setAttribute("aria-describedby", "action-progress-status");
     root.innerHTML =
       '<div class="action-progress-card">' +
+      '<span class="app-spinner app-spinner--lg action-progress-logo" aria-hidden="true"></span>' +
       '<p id="action-progress-title" class="action-progress-title"></p>' +
       '<p id="action-progress-status" class="action-progress-status"></p>' +
       '<div class="action-progress-track" aria-hidden="true"><div id="action-progress-fill" class="action-progress-fill"></div></div>' +
@@ -807,6 +895,7 @@ function recoverStuckUi() {
   _progressWatchdog = null;
   hideProgress();
   ActionProgress.close();
+  AppLoader.endBoot();
   document.querySelectorAll(".loading").forEach((el) => el.classList.remove("loading"));
   document.querySelectorAll("[aria-busy='true']").forEach((el) => el.removeAttribute("aria-busy"));
   document.querySelectorAll("button[disabled], input[disabled]").forEach((el) => {
@@ -911,6 +1000,7 @@ window.finishRecordFormSave = finishRecordFormSave;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
 window.ActionProgress = ActionProgress;
+window.AppLoader = AppLoader;
 window.recoverStuckUi = recoverStuckUi;
 window.createRequestGuard = createRequestGuard;
 window.withProgress = withProgress;

@@ -700,6 +700,12 @@
     width: 100%;
     min-width: 0;
   }
+  .dc-date-step-text {
+    display: none;
+  }
+  .dc-date-step {
+    min-width: var(--input-height);
+  }
   .dc-section-card,
   .dc-result-card,
   .dc-section-head,
@@ -1263,6 +1269,32 @@
 .day-closing-card .day-closing-form {
   margin-top: 0.5rem;
 }
+.dc-date-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.dc-date-stepper input {
+  flex: 1 1 auto;
+}
+
+.dc-date-step {
+  flex: 0 0 auto;
+  padding: 0 0.6rem;
+  font-size: 1.15rem;
+  gap: 0.25rem;
+}
+
+.dc-date-step-text {
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.dc-date-step:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .dc-close-head {
   display: flex;
   align-items: flex-start;

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
@@ -10,6 +10,7 @@ let dcDetailsCache = { date: null, collection: null, credit: null, expenses: nul
 let dcSettleMapsCache = { date: null, data: null, promise: null };
 let dcShiftChannelCache = { date: null, data: null, promise: null };
 let dcCloseLoadedDate = null;
+let dcStepPendingDate = null;
 let expenseCategoryLabels = null;
 let dcDom = null;
 let dcRegisterPrintRows = [];
@@ -75,6 +76,8 @@ function cacheDayClosingDom() {
     certifyBtn: document.getElementById("dc-certify-btn"),
     uncertifyBtn: document.getElementById("dc-uncertify-btn"),
     certifyError: document.getElementById("dc-certify-error"),
+    prevDayBtn: document.getElementById("dc-prev-day"),
+    nextDayBtn: document.getElementById("dc-next-day"),
     totalSaleEl: document.getElementById("dc-total-sale"),
     collectionEl: document.getElementById("dc-collection"),
     shortPrevEl: document.getElementById("dc-short-previous"),
@@ -609,6 +612,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
   if (!dateStr || !dcDom?.dateInput) return;
 
   if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
+  syncDayClosingDateStepper(dateStr);
   if (dcCloseLoadedDate && dcCloseLoadedDate !== dateStr) {
     collapseDayClosingDetails();
     if (dcDom.certifyAck) dcDom.certifyAck.checked = false;
@@ -1443,6 +1447,7 @@ async function printDayClosingRegister() {
 }
 
 async function setDayClosingCertified(certified) {
+  if (dcStepPendingDate) return;
   if (!isAdmin || dcCertifyInFlight) return;
   const dateStr = dcDom?.dateInput?.value?.trim();
   if (!dateStr) return;
@@ -1540,6 +1545,68 @@ async function setDayClosingCertified(certified) {
   }
 }
 
+function dcTodayStr() {
+  return typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
+}
+
+/** Typed night cash / phone pay / remarks not yet saved for the loaded date. */
+function dayClosingHasPendingInput(breakdown) {
+  if (dcStepPendingDate || breakdown?.certified) return false;
+  if (breakdown?.already_saved) return dayClosingHasUnsavedEdits(breakdown);
+  return [dcDom?.nightCashInput, dcDom?.phonePayInput, dcDom?.remarksInput].some((el) => el?.value?.trim());
+}
+
+function syncDayClosingDateStepper(dateStr) {
+  const nextBtn = dcDom?.nextDayBtn;
+  if (!nextBtn) return;
+  const atToday = !!dateStr && dateStr >= dcTodayStr();
+  nextBtn.disabled = atToday;
+  nextBtn.title = atToday ? "Already at today" : "Next day";
+}
+
+// Rapid Prev/Next clicks only fetch the day the user settles on.
+const loadSteppedDayClosingDate = debounce(async (dateStr) => {
+  dcStepPendingDate = null;
+  const url = new URL(window.location.href);
+  if (url.searchParams.has("date")) {
+    url.searchParams.set("date", dateStr);
+    history.replaceState(history.state, "", url);
+  }
+  try {
+    await openCloseDayForDate(dateStr);
+  } catch (err) {
+    AppError.report(err, { context: "stepDayClosingDate", dateStr });
+  } finally {
+    syncDayClosingSaveButton(dcDom?.saveBtn);
+  }
+}, 250);
+
+function stepDayClosingDate(days) {
+  const current = dcDom?.dateInput?.value?.trim() || dcTodayStr();
+  const today = dcTodayStr();
+  let target = addDaysToDateString(current, days);
+  if (target > today) target = today;
+  if (target === current) return;
+  if (
+    dayClosingHasPendingInput(dayClosingBreakdown) &&
+    !window.confirm("You have unsaved day closing entries for this date. Discard them and switch day?")
+  ) {
+    return;
+  }
+  // Show the new date immediately; drop any in-flight load for an intermediate day.
+  dcStepPendingDate = target;
+  dcBreakdownRequestId++;
+  dcDom.dateInput.value = target;
+  syncDayClosingDateStepper(target);
+  setBreakdownAmounts(DC_LOADING);
+  [dcDom.nightCashInput, dcDom.phonePayInput, dcDom.remarksInput].forEach((el) => {
+    if (el) el.value = "";
+  });
+  if (dcDom.saveBtn) dcDom.saveBtn.disabled = true;
+  syncDayClosingCertifyPanel(null);
+  loadSteppedDayClosingDate(target);
+}
+
 function openCloseDayForDate(dateStr) {
   if (!dateStr || !dcDom?.dateInput) return;
   savePersistedDate("day_closing_close", dateStr);
@@ -1553,11 +1620,15 @@ async function initializeDayClosing() {
   const { dateInput, form, refreshBtn, nightCashInput, phonePayInput } = dcDom;
   if (!dateInput || !form) return;
 
-  const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
+  const todayStr = dcTodayStr();
   const dateStr = initPersistedDateInput(dateInput, "day_closing_close", {
     urlParam: "date",
     fallback: todayStr,
-    onChange: (value) => loadDayClosingBreakdown(value),
+    onChange: (value) => {
+      loadSteppedDayClosingDate.cancel();
+      dcStepPendingDate = null;
+      loadDayClosingBreakdown(value);
+    },
   });
 
   const debouncedShortUpdate = debounce(updateDayClosingShortLive, 120);
@@ -1587,6 +1658,7 @@ async function initializeDayClosing() {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (dcStepPendingDate) return;
     let alreadySavedHandled = false;
     const submitBtn = dcDom.saveBtn;
     if (submitBtn) {
@@ -1695,6 +1767,8 @@ async function initializeDayClosing() {
   document.getElementById("day-closing-print")?.addEventListener("click", () => {
     printDayClosingStatement();
   });
+  dcDom.prevDayBtn?.addEventListener("click", () => stepDayClosingDate(-1));
+  dcDom.nextDayBtn?.addEventListener("click", () => stepDayClosingDate(1));
 
   dcDom.certifyBtn?.addEventListener("click", () => setDayClosingCertified(true));
   dcDom.uncertifyBtn?.addEventListener("click", () => setDayClosingCertified(false));
