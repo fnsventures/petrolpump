@@ -244,10 +244,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderCustomerSuggestions(input.value);
     };
 
-    const onInput = typeof debounce === "function" ? debounce(runSearch, 100) : runSearch;
+    const onInput = typeof debounce === "function"
+      ? debounce(() => {
+          runSearch();
+          void loadCustomerOptions(input.value);
+        }, 180)
+      : () => {
+          runSearch();
+          void loadCustomerOptions(input.value);
+        };
     input.addEventListener("input", onInput);
     input.addEventListener("focus", () => {
-      void ensureCustomers().then(() => renderCustomerSuggestions(input.value));
+      void loadCustomerOptions(input.value);
     });
 
     input.addEventListener("keydown", (event) => {
@@ -500,54 +508,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById(focusId)?.focus();
   }
 
-  async function ensureCustomers() {
-    if (customersLoaded) return;
-    if (customersLoading) return customersLoading;
-    customersLoading = loadCustomerOptions().finally(() => {
-      customersLoading = null;
-    });
-    return customersLoading;
+  let customerSearchSeq = 0;
+
+  function indexCustomer(row) {
+    if (!row?.id) return null;
+    customersById.set(row.id, row);
+    const name = String(row.customer_name || "").trim();
+    const mobile = String(row.mobile || "").trim();
+    return {
+      id: row.id,
+      name,
+      mobile,
+      amountDue: Number(row.amount_due) || 0,
+      search: normalizeSearch(`${name} ${mobile}`),
+      mobileDigits: mobile.replace(/\D/g, ""),
+    };
   }
 
-  async function loadCustomerOptions() {
-    const { data, error } = await window.supabaseClient
-      .from("credit_customers")
-      .select("id, customer_name, mobile, amount_due")
-      .order("customer_name", { ascending: true })
-      .limit(500);
+  async function ensureCustomers() {
+    return;
+  }
 
-    if (error) {
+  async function loadCustomerOptions(query) {
+    const seq = ++customerSearchSeq;
+    const q = String(query || "");
+    try {
+      const rows = await searchCreditCustomers(q, {
+        select: "id, customer_name, mobile, amount_due, prepaid_balance, vehicle_no, address, created_at",
+      });
+      if (seq !== customerSearchSeq) return;
+      const selectedId = document.getElementById("reminder-customer")?.value || "";
+      const selected = selectedId ? customersById.get(selectedId) : null;
+      customersById = new Map();
+      if (selected) customersById.set(selected.id, selected);
+      customerIndex = rows.map(indexCustomer).filter(Boolean);
+      customersLoaded = true;
+      const search = document.getElementById("reminder-customer-search");
+      if (search && document.activeElement === search) renderCustomerSuggestions(search.value);
+    } catch (error) {
+      if (seq !== customerSearchSeq) return;
       AppError.report(error, { context: "tasksLoadCustomers" });
-      return;
-    }
-
-    customersById = new Map();
-    const rows = data || [];
-    rows.sort((a, b) => {
-      const ad = Number(a.amount_due) > 0 ? 0 : 1;
-      const bd = Number(b.amount_due) > 0 ? 0 : 1;
-      if (ad !== bd) return ad - bd;
-      return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), "en");
-    });
-
-    customerIndex = rows.map((row) => {
-      customersById.set(row.id, row);
-      const name = String(row.customer_name || "").trim();
-      const mobile = String(row.mobile || "").trim();
-      return {
-        id: row.id,
-        name,
-        mobile,
-        amountDue: Number(row.amount_due) || 0,
-        search: normalizeSearch(`${name} ${mobile}`),
-        mobileDigits: mobile.replace(/\D/g, ""),
-      };
-    });
-
-    customersLoaded = true;
-    const search = document.getElementById("reminder-customer-search");
-    if (search && document.activeElement === search) {
-      renderCustomerSuggestions(search.value);
     }
   }
 
@@ -587,14 +587,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       else if (wantsCredit) dueEl.value = getLocalDateString();
     }
 
-    if (customersLoaded) {
-      let match = null;
-      if (customerId && customersById.has(customerId)) match = customerIndex.find((c) => c.id === customerId);
-      else if (name) {
-        const needle = normalizeSearch(name);
-        match = customerIndex.find((c) => normalizeSearch(c.name) === needle);
-      }
-      if (match) selectCustomerMatch(match);
+    if (customerId || name) {
+      void (async () => {
+        try {
+          let row = null;
+          if (customerId) row = await fetchCreditCustomerById(customerId);
+          if (!row && name) {
+            const rows = await searchCreditCustomers(name);
+            const needle = normalizeSearch(name);
+            row = rows.find((item) => normalizeSearch(item.customer_name) === needle) || null;
+          }
+          const match = row ? indexCustomer(row) : null;
+          if (match) selectCustomerMatch(match);
+        } catch (error) {
+          AppError.report(error, { context: "tasksPrefillCustomer" });
+        }
+      })();
     }
 
     if (!wantsCredit) {
@@ -764,7 +772,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       err.hidden = false;
       return;
     }
-    alert(message);
+    AppError.showToast(message, "warning");
   }
 
   function clearLaterError(panel) {

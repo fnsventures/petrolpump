@@ -35,6 +35,7 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [reminders](#reminders) | Station tasks: dated reminders + undated todos |
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 | [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
+| [write_requests](#write_requests) | Results of money RPCs keyed by client request id (retry safety) |
 
 For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
 
@@ -61,7 +62,10 @@ All application tables have RLS enabled. Unless noted otherwise:
 
 - **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`. Avatar URL updated via `update_my_avatar`.
 - **expense_categories, products, employees:** SELECT admin only on `employees` (supervisors use `list_employees_roster` / `list_employees_salary` RPCs); mutations admin only on all three.
-- **invoice_items:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — lines created only inside `save_invoice` RPC.
+- **invoices, invoice_items:** SELECT provisioned staff; INSERT/UPDATE denied on client — header and lines are created only inside `save_invoice` RPC. DELETE admin only.
+- **salary_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_salary_payment` / `delete_salary_payment`.
+- **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`); admins cannot delete a salary-linked expense directly.
+- **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
 - **reminders:** SELECT/INSERT as default; UPDATE allowed for any provisioned staff (shared ops board); DELETE admin only.
@@ -136,7 +140,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Index / constraint:** `unique (date)` — one MS row per business date (prevents day-closing and stock double-count).
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)). A certified day rejects insert, update, and delete for everyone, including admin (`dsr_validate_meter_row`).
 
 ---
 
@@ -172,7 +176,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## meter_shift_cash
 
-**Purpose:** Cash handed over by staff for a shift. Stores **hard cash**, **phone pay** (UPI), and **cached** credit/expense totals. **Total** = cash_collected + phone_pay + credit_amount + expense_amount. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total. Credit/expense caches are synced from attributed `credit_entries` / `expenses` rows (day closing reads the ledger for credit/expense). Day closing **night_cash** / **phone_pay** are prefilled from the sum of `cash_collected` / `phone_pay` across both shifts.
+**Purpose:** Cash handed over by staff for a shift. Stores **hard cash**, **phone pay** (UPI), and **cached** credit/expense totals. **Total** = cash_collected + phone_pay + credit_amount + expense_amount. Expected ₹ = assigned nozzle net litres × day selling rates (from daily DSR when present). **Short** = expected − total. Credit/expense caches are synced from attributed `credit_entries` / `expenses` rows (day closing reads the ledger for credit/expense). Day closing shows shift `cash_collected` / `phone_pay` (plus Cash/UPI settlements) as a hint. The supervisor types Night cash and Phone pay; the form does not prefill them. Formula: [DAY_CLOSING.md](DAY_CLOSING.md).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -393,15 +397,18 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | category | text | References expense_categories (logical) |
 | description | text | Optional |
 | amount | numeric | Amount (₹) |
-| salary_payment_id | uuid | Optional FK → salary_payments.id (auto-created when recording salary; unique when set) |
+| salary_payment_id | uuid | Optional FK → salary_payments.id (set by `record_salary_payment`; unique when set; ON DELETE CASCADE) |
+| employee_id | uuid | Optional staff whose till paid this expense during a shift |
+| shift | text | `morning` \| `afternoon` when entered from the shift register; otherwise null |
+| client_request_id | uuid | Expenses form request id; unique when set so a retried insert cannot duplicate |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**Salary linkage:** When a salary payment is recorded on `salary.html`, the client inserts a matching `expenses` row (category typically “Salary”) with `salary_payment_id` set. Deleting the salary payment removes the linked expense.
+**Salary linkage:** `record_salary_payment` inserts the payment and its `expenses` row (category `salary`, `salary_payment_id` set) in one transaction. Deleting the payment removes the linked expense through the cascading foreign key; `delete_salary_payment` also removes an exact-match unlinked expense left by payments recorded before the link existed.
 
-**Indexes:** `(date desc)`, `(created_at desc)`.
+**Indexes:** `(date desc)`, `(created_at desc)`, `(category)`, partial `(date, shift, employee_id)`, partial unique on `salary_payment_id` and on `client_request_id`.
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** SELECT as the default pattern. INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). Admins cannot delete a salary-linked expense; a supervisor can delete their own shift expense. `ledger_guard_certified_day` rejects a write whose date is certified, then refreshes an uncertified saved closing. See [RLS exceptions](#rls-conventions).
 
 ---
 
@@ -479,9 +486,11 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Indexes:** `(employee_id, date desc)`, `(date desc)`, `(salary_month desc, employee_id)`.
 
-**RLS:** Default operational pattern; DELETE admin only.
+**RLS:** SELECT provisioned staff; INSERT/UPDATE denied on client; DELETE admin only.
 
-**Client:** `salary.html` groups payments by `salary_month`, shows monthly summary vs `employees.monthly_salary`, prints salary slips (`css/salary-slip-print.css`), and creates linked `expenses` row on payment.
+**Writes:** `record_salary_payment(employee_id, date, salary_month, amount, note?, allow_overpay?, request_id?)` — locks the employee + month, recomputes take-home on the server (`salary_month_payable`: salary + over duty − loss of pay − PF, same rules as `js/payrollRules.js`) and raises hint `salary_overpay` when the amount exceeds what remains, unless `allow_overpay`. `delete_salary_payment(id)` (admin) removes the payment and its expense.
+
+**Client:** `salary.html` groups payments by `salary_month`, shows monthly summary vs `employees.monthly_salary`, and prints salary slips (`css/salary-slip-print.css`).
 
 ---
 
@@ -566,7 +575,9 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | fuel_type | text | `MS` \| `HSD` |
 | quantity | numeric | Quantity (L) |
 | amount | numeric | Amount (₹) |
-| amount_settled | numeric | Amount already paid (FIFO allocation) |
+| amount_settled | numeric | Amount already paid. Payments allocate newest-open-first (LIFO). Prepaid is applied oldest-first when a new sale is saved |
+| employee_id | uuid | Optional staff for a shift-register sale |
+| shift | text | `morning` \| `afternoon`, or null. Set together with `employee_id` or leave both null |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
@@ -574,13 +585,13 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**Trigger:** Updates `credit_customers.amount_due` on insert/update/delete.
+**Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed, so a later payment can settle that sale.
 
 ---
 
 ## credit_payments
 
-**Purpose:** Payments received from credit customers. Sum by date = collection for day-closing.
+**Purpose:** Payments received from credit customers. Day-closing **collection** is the sum for that date where `same_day_settlement` is false. Flagged rows are excluded from collection and show up as Night cash (Cash) or Phone pay (UPI).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -590,12 +601,13 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | amount | numeric | Amount (₹) |
 | note | text | Optional |
 | payment_mode | text | `Cash` \| `UPI` \| `Bank` |
+| same_day_settlement | boolean | True when the payment settles same-day credit (excluded from collection) |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
-**Note:** Payment allocation to entries (FIFO) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Overpayment increases `prepaid_balance`.
+**Note:** Payment allocation to entries (LIFO — newest open sale on or before the payment date first) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Both lock the customer row (`for update`) before allocating. Overpayment increases `prepaid_balance`. A certified payment date is rejected.
 ---
 
 ## reminders
@@ -636,8 +648,8 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 |--------|------|-------------|
 | id | uuid | Primary key |
 | date | date | Unique closing date |
-| night_cash | numeric | Hard cash at day end (prefilled from sum of shift `cash_collected`) |
-| phone_pay | numeric | UPI/PhonePe (prefilled from sum of shift `phone_pay`) |
+| night_cash | numeric | Hard cash the supervisor types. Shift cash plus Cash settlements are a hint only; the form does not prefill them |
+| phone_pay | numeric | UPI the supervisor types. Shift phone pay plus UPI settlements are a hint only |
 | short_today | numeric | Computed short (stored for next day’s short_previous) |
 | total_sale | numeric | Snapshot at closing |
 | collection | numeric | Snapshot at closing |
@@ -692,6 +704,22 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 **RLS:** SELECT for provisioned staff. Inserts go through `collect_night_cash` (security definer).
 
 **Page:** `day-closing.html` collection UI.
+
+---
+
+## write_requests
+
+**Purpose:** Result of each money-writing RPC call made with `p_request_id`, so a retried call (timeout, lost response, double submit) returns the first result instead of writing twice.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| request_id | uuid | Primary key — client-generated id |
+| kind | text | RPC name (`save_invoice`, `record_credit_payment`, …); a reused id for a different RPC is rejected |
+| created_by | uuid | auth.uid() of the caller; a reused id from another user is rejected |
+| response | jsonb | RPC return value |
+| created_at | timestamptz | Rows older than 14 days are pruned on write |
+
+**RLS:** enabled, no client policies or grants. Written only by `write_request_store()` inside the RPC's transaction.
 
 ---
 
@@ -753,7 +781,8 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
 | `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number | — |
-| `save_invoice(...)` | Atomic invoice + line items | — |
+| `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
+| `save_invoice(..., request_id?)` | Atomic invoice + line items; rejects qty/rate ≤ 0, invalid GST, discount < 0 or > subtotal | — |
 | `list_employees_roster()` | Active employees without PII | — |
 | `list_employees_salary()` | Active employees with HR fields | — |
 | `set_employee_photo(id, url)` | Update employee photo URL | admin |
@@ -766,9 +795,12 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_night_cash_available()` | Uncollected night cash totals | — |
 | `preview_night_cash_collection(from, to)` | Preview pickup for a date range | — |
 | `collect_night_cash(from, to, remarks?)` | Record pickup; link closings | — |
-| `add_credit_entry(...)` | New credit sale | — |
-| `record_credit_payment(...)` | Payment + FIFO; prepaid on overpay | — |
-| `batch_record_credit_settlements(...)` | Multi-customer payment in one transaction | — |
+| `add_credit_entry(..., request_id?)` | New credit sale; locks the customer row; rejects a certified day | — |
+| `record_credit_payment(..., request_id?)` | Payment + LIFO; locks the customer row; prepaid on overpay; rejects a certified day | — |
+| `batch_record_credit_settlements(..., request_id?)` | Multi-customer payment in one transaction; locks those rows; rejects a certified day | — |
+| `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
+| `record_salary_payment(...)` | Salary payment + linked expense; server overpay check; rejects a certified payment date | — |
+| `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Remove unsettled sale | admin |
 | `delete_credit_payment(id)` | Remove payment + reallocate | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
@@ -778,7 +810,11 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
 | `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
 
-Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions.
+Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions, `salary_month_payable`, `write_request_replay` / `write_request_store`.
+
+**Retry safety:** money RPCs marked `request_id?` take an optional `p_request_id uuid`. The client sends the same id while a form's values are unchanged (`formRequestId` in `js/utils.js`); a repeat call with that id returns the stored result from `write_requests` instead of writing again. Ids are kept 14 days.
+
+**Dates:** future-date checks compare with `meter_station_today()` (IST). `current_date` on Supabase is UTC, which rejected today's entries between 00:00 and 05:30 IST.
 
 ---
 

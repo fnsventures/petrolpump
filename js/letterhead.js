@@ -1,7 +1,7 @@
 /* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress */
 
 (function () {
-  const PRINT_CSS = "css/letterhead-print.css?v=4";
+  const PRINT_CSS = "css/letterhead-print.css";
   const PAGE_SIZE = 20;
   const HISTORY_COLSPAN = 5;
   const LETTER_LIST_SELECT =

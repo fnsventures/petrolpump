@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
 
 (function () {
   /** Part B checks every 2 hours, from morning-shift start through afternoon-shift end. */
@@ -10,7 +10,7 @@
   /** Tank labels from Settings → Pumps & tanks. Null until first read. */
   let pumpTanks = null;
 
-  const PRINT_CSS = "css/e20-register-print.css?v=5";
+  const PRINT_CSS = "css/e20-register-print.css";
   const HISTORY_PAGE_SIZE = 25;
 
   const REGISTER_SELECT = `
@@ -403,8 +403,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function unlockHistoryReportForEdit() {
     if (currentAuth?.role !== "admin" || !historyReportSnap?.certified) return;
-    const ok = window.confirm(
-      "Unlock this certified register for editing? You will open Daily register for that date."
+    const ok = await AppDialog.confirm(
+      "Unlock this certified register for editing? You will open Daily register for that date.",
+      { title: "Unlock register", confirmLabel: "Unlock" }
     );
     if (!ok) return;
     const date = historyReportSnap.register_date;
@@ -862,10 +863,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  function unlockCertifiedForEdit() {
+  async function unlockCertifiedForEdit() {
     if (currentAuth?.role !== "admin" || !currentSnapshot?.certified) return;
-    const ok = window.confirm(
-      "Unlock this certified register for editing? Changes should be rare — prefer printing a corrected sheet only when needed."
+    const ok = await AppDialog.confirm(
+      "Unlock this certified register for editing? Changes should be rare — prefer printing a corrected sheet only when needed.",
+      { title: "Unlock register", confirmLabel: "Unlock" }
     );
     if (!ok) return;
     adminUnlocked = true;
@@ -1171,8 +1173,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function deleteRegister() {
     if (!currentRegisterId || currentAuth?.role !== "admin") return;
     const dateStr = dom.dateInput?.value?.trim() || "";
-    const ok = window.confirm(
-      `Delete the E-20 register for ${formatDisplayDate(dateStr) || dateStr}? This cannot be undone.`
+    const ok = await AppDialog.confirm(
+      `Delete the E-20 register for ${formatDisplayDate(dateStr) || dateStr}? This cannot be undone.`,
+      { title: "Delete register", confirmLabel: "Delete", danger: true }
     );
     if (!ok) return;
 

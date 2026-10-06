@@ -369,20 +369,16 @@
       </aside>
     </main>
 
-    <div
+    <dialog
       id="reminders-landing-overlay"
-      class="reminders-landing-overlay"
+      class="reminders-landing-overlay app-modal"
+      aria-labelledby="reminders-landing-title"
+      aria-describedby="reminders-landing-lead"
       aria-hidden="true"
       hidden
     >
       <div class="reminders-landing-backdrop" data-reminders-landing-close tabindex="-1" aria-hidden="true"></div>
-      <div
-        class="reminders-landing-card card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reminders-landing-title"
-        aria-describedby="reminders-landing-lead"
-      >
+      <div class="reminders-landing-card card">
         <header class="reminders-landing-head">
           <div>
             <p class="reminders-landing-eyebrow">Needs attention</p>
@@ -401,7 +397,7 @@
           <button type="button" id="reminders-landing-dismiss" class="reminders-landing-dismiss">Got it</button>
         </footer>
       </div>
-    </div>
+    </dialog>
 
     <footer class="app-footer">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>

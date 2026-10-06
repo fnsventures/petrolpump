@@ -2,6 +2,7 @@
 // Bundles DSR (with receipt-history split), expenses, and lube sales for dashboard P&L.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { fetchAll, LOOKUP_ROW_LIMIT } from "../_shared/pageQuery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,12 +93,15 @@ async function fetchLatestReceiptsBefore(supabase: any, startDate: string, recei
 async function fetchDsrBundle(supabase: any, startDate: string, endDate: string, receiptStart: string) {
   if (receiptStart < startDate) {
     const [rangeResult, receiptResult] = await Promise.all([
-      supabase
-        .from("dsr")
-        .select(DSR_SELECT_PL)
-        .gte("date", startDate)
-        .lte("date", endDate)
-        .order("date", { ascending: true }),
+      fetchAll(() =>
+        supabase
+          .from("dsr")
+          .select(DSR_SELECT_PL)
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true })
+          .order("product", { ascending: true })
+      ),
       fetchLatestReceiptsBefore(supabase, startDate, receiptStart),
     ]);
 
@@ -115,12 +119,15 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
     };
   }
 
-  const { data, error } = await supabase
-    .from("dsr")
-    .select(DSR_SELECT_PL)
-    .gte("date", receiptStart)
-    .lte("date", endDate)
-    .order("date", { ascending: true });
+  const { data, error } = await fetchAll(() =>
+    supabase
+      .from("dsr")
+      .select(DSR_SELECT_PL)
+      .gte("date", receiptStart)
+      .lte("date", endDate)
+      .order("date", { ascending: true })
+      .order("product", { ascending: true })
+  );
 
   if (error) {
     return { dsrRows: null, receiptRows: null, error: error.message as string };
@@ -174,11 +181,14 @@ Deno.serve(async (req: Request) => {
     const [dsrBundle, expenseResult, invoiceSumResult, vaultSumResult, categoryResult] =
       await Promise.all([
         fetchDsrBundle(supabase, startDate, endDate, receiptStart),
-        supabase
-          .from("expenses")
-          .select("date, category, amount")
-          .gte("date", startDate)
-          .lte("date", endDate),
+        fetchAll(() =>
+          supabase
+            .from("expenses")
+            .select("date, category, amount")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: true })
+        ),
         supabase
           .from("invoices")
           .select("total_amount.sum()")
@@ -193,7 +203,7 @@ Deno.serve(async (req: Request) => {
           .lte("invoice_date", endDate)
           .gt("amount", 0)
           .maybeSingle(),
-        supabase.from("expense_categories").select("name, label").order("sort_order"),
+        supabase.from("expense_categories").select("name, label").order("sort_order").limit(LOOKUP_ROW_LIMIT),
       ]);
 
     const readAggregateSum = (data: unknown) => {

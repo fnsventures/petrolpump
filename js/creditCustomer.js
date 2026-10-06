@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils */
+/* global window.supabaseClient, formatCurrency, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId */
 
 (function () {
   const page = () => window.CreditPage;
@@ -12,20 +12,6 @@
     openCreditLines,
   } = CreditCustomerDetail;
   const SUMMARY_LIST_PAGE = 10;
-  const SUMMARY_MONTHS = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
   const summaryListState = {
     credit: { entries: [], shown: SUMMARY_LIST_PAGE },
     payment: { entries: [], shown: SUMMARY_LIST_PAGE },
@@ -384,18 +370,14 @@ function openCustomerEditModal() {
   msg?.classList.remove("success", "error");
 
   if (overlay) {
-    overlay.setAttribute("aria-hidden", "false");
-    document.body.classList.add("modal-open");
+    AppDialog.show(overlay, { focus: nameInput, onDismiss: closeCustomerEditModal });
   }
-  nameInput?.focus();
 }
 
 function closeCustomerEditModal() {
   const overlay = document.getElementById("customer-edit-overlay");
-  if (overlay) {
-    overlay.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
-  }
+  if (!overlay || overlay.getAttribute("aria-hidden") === "true") return;
+  AppDialog.hide(overlay);
   document.getElementById("customer-name-row")?.focus();
 }
 
@@ -434,10 +416,14 @@ async function isCustomerNameTakenByOther(newName, ids) {
   if (!trimmed) return false;
   const targetNorm = normCustomerName(trimmed);
   const pattern = `%${escapeIlikePattern(trimmed)}%`;
-  const { data, error } = await window.supabaseClient
-    .from("credit_customers")
-    .select("id, customer_name")
-    .ilike("customer_name", pattern);
+  const { data, error } = await fetchAllRows(() =>
+    window.supabaseClient
+      .from("credit_customers")
+      .select("id, customer_name")
+      .ilike("customer_name", pattern)
+      .order("customer_name", { ascending: true })
+      .order("id", { ascending: true })
+  );
   if (error) {
     AppError.report(error, { context: "isCustomerNameTakenByOther" });
     return false;
@@ -524,10 +510,14 @@ async function resolveCustomerIds() {
   }
   const needleNorm = normCustomerName(needle);
   const pattern = `%${escapeIlikePattern(needle)}%`;
-  const { data: list, error } = await window.supabaseClient
-    .from("credit_customers")
-    .select("id, vehicle_no, amount_due, prepaid_balance, last_payment, customer_name, mobile, address")
-    .ilike("customer_name", pattern);
+  const { data: list, error } = await fetchAllRows(() =>
+    window.supabaseClient
+      .from("credit_customers")
+      .select("id, vehicle_no, amount_due, prepaid_balance, last_payment, customer_name, mobile, address")
+      .ilike("customer_name", pattern)
+      .order("customer_name", { ascending: true })
+      .order("id", { ascending: true })
+  );
 
   if (error) {
     AppError.report(error, { context: "resolveCustomerIds" });
@@ -556,14 +546,6 @@ async function resolveCustomerIds() {
   updateSettleBalanceBanner();
 }
 
-
-function formatSummaryMonth(ym) {
-  const match = /^(\d{4})-(\d{2})$/.exec(String(ym || ""));
-  if (!match) return "—";
-  const index = Number(match[2]) - 1;
-  if (index < 0 || index > 11) return "—";
-  return `${SUMMARY_MONTHS[index]} ${match[1]}`;
-}
 
 function formatSummaryQty(value) {
   if (value == null || value === "") return "—";
@@ -708,12 +690,8 @@ function showCreditShareNotice(message) {
   if (typeof AppError?.showGlobalBanner === "function") {
     AppError.showGlobalBanner(message);
   } else {
-    alert(message);
+    void AppDialog.alert(message);
   }
-}
-
-function inrPlain(amount) {
-  return `₹ ${formatNumberPlain(amount)}`;
 }
 
 function creditSummaryPartyHtml(name, mobile, vehicleLine, address) {
@@ -750,7 +728,7 @@ function activityFocusMonth(context) {
 }
 
 function activityAmountCell(amount) {
-  return amount > 0.009 ? inrPlain(amount) : "";
+  return amount > 0.009 ? formatCurrency(amount) : "";
 }
 
 function buildDayTableHtml(rows, emptyLabel, options) {
@@ -776,7 +754,7 @@ function buildDayTableHtml(rows, emptyLabel, options) {
   const flushMonth = () => {
     if (!groupMonths || !month) return;
     parts.push(
-      `<tr class="credit-summary-month-total"><td>${escapeHtml(formatSummaryMonth(month))}</td><td class="num">${inrPlain(monthCredit)}</td><td class="num">${inrPlain(monthSettled)}</td></tr>`
+      `<tr class="credit-summary-month-total"><td>${escapeHtml(formatMonthLabel(month))}</td><td class="num">${formatCurrency(monthCredit)}</td><td class="num">${formatCurrency(monthSettled)}</td></tr>`
     );
   };
 
@@ -790,7 +768,7 @@ function buildDayTableHtml(rows, emptyLabel, options) {
       monthCredit = 0;
       monthSettled = 0;
       parts.push(
-        `<tr class="credit-summary-month-row"><td colspan="3">${escapeHtml(formatSummaryMonth(key))}</td></tr>`
+        `<tr class="credit-summary-month-row"><td colspan="3">${escapeHtml(formatMonthLabel(key))}</td></tr>`
       );
     }
     monthCredit += row.credit;
@@ -805,7 +783,7 @@ function buildDayTableHtml(rows, emptyLabel, options) {
 
 function dayActivityTableHtml(body, totals) {
   const foot = totals
-    ? `<tfoot><tr class="report-total-row"><td>Total</td><td class="num">${inrPlain(totals.credit)}</td><td class="num">${inrPlain(totals.settled)}</td></tr></tfoot>`
+    ? `<tfoot><tr class="report-total-row"><td>Total</td><td class="num">${formatCurrency(totals.credit)}</td><td class="num">${formatCurrency(totals.settled)}</td></tr></tfoot>`
     : "";
   return `<table class="report-table report-table-compact credit-summary-table--days">
         <thead>
@@ -836,7 +814,7 @@ function buildActivitySectionsHtml(summary, context) {
   const focusMonth = activityFocusMonth(context);
   const monthRows = buildMonthActivityRows(credits, payments, focusMonth);
   const dayRows = buildDayActivityRows(credits, payments, monthRows.length ? focusMonth : "");
-  const focusLabel = formatSummaryMonth(focusMonth);
+  const focusLabel = formatMonthLabel(focusMonth);
   const periodActivity = context?.periodActivity || "";
 
   let monthSection = "";
@@ -849,9 +827,9 @@ function buildActivitySectionsHtml(summary, context) {
         settledTotal += row.settled;
         return `
           <tr>
-            <td>${escapeHtml(formatSummaryMonth(row.month))}</td>
-            <td class="num">${inrPlain(row.credit)}</td>
-            <td class="num">${inrPlain(row.settled)}</td>
+            <td>${escapeHtml(formatMonthLabel(row.month))}</td>
+            <td class="num">${formatCurrency(row.credit)}</td>
+            <td class="num">${formatCurrency(row.settled)}</td>
           </tr>`;
       })
       .join("");
@@ -870,8 +848,8 @@ function buildActivitySectionsHtml(summary, context) {
           <tfoot>
             <tr class="report-total-row">
               <td>Total</td>
-              <td class="num">${inrPlain(creditTotal)}</td>
-              <td class="num">${inrPlain(settledTotal)}</td>
+              <td class="num">${formatCurrency(creditTotal)}</td>
+              <td class="num">${formatCurrency(settledTotal)}</td>
             </tr>
           </tfoot>
         </table>
@@ -914,7 +892,7 @@ function buildOutstandingLinesHtml(summary) {
           <td>${escapeHtml(formatDisplayDate(line.entry_date))}</td>
           <td>${fuel ? escapeHtml(fuel) : "—"}</td>
           <td class="num">${escapeHtml(formatSummaryQty(line.quantity))}</td>
-          <td class="num">${inrPlain(line.open)}</td>
+          <td class="num">${formatCurrency(line.open)}</td>
         </tr>`;
     })
     .join("");
@@ -956,7 +934,7 @@ function buildOutstandingStatementHtml(summary, context) {
   const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : formatDisplayDate(getLocalDateString());
   const openLines = buildOutstandingLinesHtml(summary);
   const openGap = Math.abs(openLines.openTotal - (hasAdvance ? 0 : outstanding));
-  const gapNote = !hasAdvance && !cleared && openGap > 0.05 ? ` Account balance is ${inrPlain(outstanding)}.` : "";
+  const gapNote = !hasAdvance && !cleared && openGap > 0.05 ? ` Account balance is ${formatCurrency(outstanding)}.` : "";
 
   return `
     <article class="credit-summary-sheet report-print-sheet">
@@ -966,7 +944,7 @@ function buildOutstandingStatementHtml(summary, context) {
 
       <div class="credit-summary-due${cleared ? " is-cleared" : ""}${hasAdvance ? " is-advance" : ""}">
         <span class="credit-summary-due-label">${balanceLabel}</span>
-        <span class="credit-summary-due-value">${inrPlain(balanceValue)}</span>
+        <span class="credit-summary-due-value">${formatCurrency(balanceValue)}</span>
       </div>
 
       <section class="credit-summary-block credit-summary-block--flow">
@@ -1010,11 +988,11 @@ function buildActivityStatementHtml(summary, context) {
       <div class="credit-summary-kpis credit-summary-kpis--two">
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Credit taken</span>
-          <span class="credit-summary-kpi-value">${inrPlain(creditTaken)}</span>
+          <span class="credit-summary-kpi-value">${formatCurrency(creditTaken)}</span>
         </div>
         <div class="credit-summary-kpi">
           <span class="credit-summary-kpi-label">Settled</span>
-          <span class="credit-summary-kpi-value">${inrPlain(settlementDone)}</span>
+          <span class="credit-summary-kpi-value">${formatCurrency(settlementDone)}</span>
         </div>
       </div>
 
@@ -1049,7 +1027,7 @@ async function runCreditSummaryPrint() {
     if (typeof AppError?.showGlobalBanner === "function") {
       AppError.showGlobalBanner(msg);
     } else {
-      alert(msg);
+      void AppDialog.alert(msg);
     }
     return;
   }
@@ -1100,7 +1078,7 @@ async function handleCreditSummaryPrintClick() {
     if (typeof AppError?.showGlobalBanner === "function") {
       AppError.showGlobalBanner(msg);
     } else {
-      alert(msg);
+      void AppDialog.alert(msg);
     }
   } finally {
     page().state.creditSummaryPrintBusy = false;
@@ -1351,6 +1329,16 @@ async function handleSettle() {
     }
   };
 
+  // Same id while the form is unchanged, so a retry cannot record the payment twice.
+  const settleForm = document.getElementById("settle-form");
+  const requestId = formRequestId(settleForm, [
+    settleIds,
+    settlementDate,
+    amount,
+    paymentMode,
+    sameDaySettlement,
+  ]);
+
   if (settleIds.length === 1) {
     const { error } = await window.supabaseClient.rpc("record_credit_payment", {
       p_credit_customer_id: settleIds[0],
@@ -1359,6 +1347,7 @@ async function handleSettle() {
       p_note: null,
       p_payment_mode: paymentMode,
       p_same_day_settlement: sameDaySettlement,
+      p_request_id: requestId,
     });
 
     if (btn) finishSettleSubmit();
@@ -1381,6 +1370,7 @@ async function handleSettle() {
       p_note: null,
       p_payment_mode: paymentMode,
       p_same_day_settlement: sameDaySettlement,
+      p_request_id: requestId,
     });
 
     finishSettleSubmit();
@@ -1394,6 +1384,8 @@ async function handleSettle() {
       return;
     }
   }
+
+  clearFormRequestId(settleForm);
 
   const settleAmountInput = document.getElementById("settle-amount");
   if (settleAmountInput) settleAmountInput.value = "";
@@ -1458,8 +1450,9 @@ async function deleteCreditEntry(entryId, btn) {
   const amount = Number(btn?.dataset?.amount || 0);
   const dateStr = btn?.dataset?.date || "";
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
-  const confirmed = confirm(
-    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`
+  const confirmed = await AppDialog.confirm(
+    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
+    { title: "Delete credit entry", confirmLabel: "Delete", danger: true }
   );
   if (!confirmed) return;
 
@@ -1485,8 +1478,9 @@ async function deleteCreditPayment(paymentId, btn) {
   const amount = Number(btn?.dataset?.amount || 0);
   const dateStr = btn?.dataset?.date || "";
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
-  const confirmed = confirm(
-    `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`
+  const confirmed = await AppDialog.confirm(
+    `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
+    { title: "Delete settlement", confirmLabel: "Delete", danger: true }
   );
   if (!confirmed) return;
 

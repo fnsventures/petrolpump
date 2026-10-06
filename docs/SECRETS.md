@@ -21,6 +21,7 @@ One map of every credential this app needs, where it lives, and how to rotate it
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Same | Same | Same |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | Same | Same | Regenerate with **matching** client ID/secret |
 | `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | GitHub **prod** | DB backup upload | Drive folder URL after `/folders/` |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Supabase Edge secrets (optional) | `invoice-documents`, `drive-files` — used **only if** the OAuth trio is not fully set | Google Cloud → IAM → Service account key (JSON). Needs a Shared Drive — [INVOICE_DOCUMENTS.md §5](INVOICE_DOCUMENTS.md#5-alternative-service-account-workspace--shared-drive) |
 | Invoice Drive folder / roots | Settings + Edge secrets | `invoice-documents`, `drive-files` | See [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
 | `GODADDY_API_KEY` | GitHub repo secrets (optional) | DNS sibling auto-fix | [developer.godaddy.com/keys](https://developer.godaddy.com/keys) |
 | `GODADDY_API_SECRET` | Same | Same | Same |
@@ -38,7 +39,7 @@ One map of every credential this app needs, where it lives, and how to rotate it
 
 Templates: `js/env.example.js`, `scripts/db.env.example`.
 
-Password in DB URLs: URL-encode (`@` → `%40`, `#` → `%23`). Use **Session pooler**, not Direct.
+**DB URL format (canonical — other docs link here):** Supabase → project → **Connect** → **Session pooler** (port **5432**), *not* Direct (Direct is IPv6-only and fails from most laptops and GitHub runners). URL-encode the password (`@` → `%40`, `#` → `%23`). Copy the exact host — a wrong pooler region gives `tenant/user not found`.
 
 ### B. GitHub Environments
 
@@ -58,7 +59,15 @@ Repo-level (required on `petrolpump` for the hourly DNS job; optional on `fns-ca
 
 ### C. Supabase Edge Function secrets
 
-Dashboard → Edge Functions → Secrets (per project). Used by `invoice-documents` and `drive-files` (Google OAuth + Drive paths). **Not** the same place as GitHub secrets — see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).
+Dashboard → Edge Functions → Secrets (per project). Used by `invoice-documents` and `drive-files`.
+
+| Secret | Notes |
+|--------|-------|
+| `GOOGLE_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` | Preferred. Wins when all three are set (`resolveDriveAuthMode` in `supabase/functions/_shared/googleDrive.ts`) |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Fallback when the OAuth trio is incomplete. Full key JSON on one line |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Injected by Supabase automatically — do not set |
+
+If neither OAuth nor the service account is configured, Drive features fail with a configuration error. **Not** the same place as GitHub secrets — see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).
 
 Do **not** put the service-role key in the frontend. Anon key in `env.js` is expected; RLS protects data.
 
@@ -88,7 +97,7 @@ Do **not** put the service-role key in the frontend. Anon key in `env.js` is exp
 
 ### Database password changed
 
-1. Update Session pooler URI in `scripts/db.env`.
+1. Update the Session pooler URI in `scripts/db.env` ([format](#a-laptop-gitignored)).
 2. Update GitHub **prod** secret `PROD_DB_URL`.
 3. Re-test: `./scripts/db.sh backup` (read-only).
 

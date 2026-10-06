@@ -3,6 +3,7 @@
 // This reduces latency by ~60-70% compared to multiple parallel API calls
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { fetchAll } from "../_shared/pageQuery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,22 +96,33 @@ Deno.serve(async (req: Request) => {
     });
 
     const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
-      supabase
-        .from("dsr")
-        .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
-        .gte("date", startDate)
-        .lte("date", endDate),
+      fetchAll(() =>
+        supabase
+          .from("dsr")
+          .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true })
+          .order("product", { ascending: true })
+      ),
       supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-      supabase
-        .from("expenses")
-        .select("date, amount, category, description")
-        .gte("date", startDate)
-        .lte("date", endDate),
-      supabase
-        .from("credit_entries")
-        .select("amount, amount_settled")
-        .gte("transaction_date", startDate)
-        .lte("transaction_date", endDate),
+      fetchAll(() =>
+        supabase
+          .from("expenses")
+          .select("date, amount, category, description")
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true })
+      ),
+      fetchAll(() =>
+        supabase
+          .from("credit_entries")
+          .select("amount, amount_settled")
+          .gte("transaction_date", startDate)
+          .lte("transaction_date", endDate)
+          .order("transaction_date", { ascending: true })
+          .order("id", { ascending: true })
+      ),
     ]);
 
     const response: DashboardResponse = {

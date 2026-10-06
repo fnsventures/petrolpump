@@ -1411,31 +1411,6 @@ async function fetchDsrRowForPrefill(product, selectedDateStr, selectCols) {
 }
 
 /**
- * Last positive selling rate for a product (skips null/zero incomplete rows).
- * @param {string} product - petrol | diesel
- * @returns {Promise<number | null>}
- */
-async function fetchLastDsrRate(product) {
-  const rateField = RATE_FIELD_BY_PRODUCT[product];
-  if (!rateField) return null;
-  const table = DSR_TABLE[product] || "dsr_petrol";
-
-  const { data, error } = await window.supabaseClient
-    .from(table)
-    .select(rateField)
-    .not(rateField, "is", null)
-    .order("date", { ascending: false })
-    .limit(30);
-
-  if (error || !data?.length) return null;
-  for (const row of data) {
-    const num = Number(row[rateField]);
-    if (Number.isFinite(num) && num > 0) return num;
-  }
-  return null;
-}
-
-/**
  * If the rate field is empty or zero, fill from the last entered selling rate.
  */
 async function ensureMeterRatePrefill(product, form) {
@@ -1445,8 +1420,8 @@ async function ensureMeterRatePrefill(product, form) {
   if (!input) return;
   const current = Number(input.value);
   if (Number.isFinite(current) && current > 0) return;
-  const lastRate = await fetchLastDsrRate(product);
-  if (lastRate != null) applyRateToForm(form, product, lastRate);
+  const last = await DsrQueries.fetchLastDsrRate(product);
+  if (last) applyRateToForm(form, product, last.rate);
 }
 
 /**
@@ -1510,7 +1485,7 @@ async function prefillOpeningFromPreviousDay(product, form) {
 
   const [openingStock, rateFallback] = await Promise.all([
     getPreviousDayDipStock(product, selectedDateStr),
-    needsRateFallback ? fetchLastDsrRate(product) : Promise.resolve(null),
+    needsRateFallback ? DsrQueries.fetchLastDsrRate(product) : Promise.resolve(null),
   ]);
 
   const openingStockInput = getFormFieldInput(form, "opening_stock");
@@ -1521,7 +1496,7 @@ async function prefillOpeningFromPreviousDay(product, form) {
   applyRateToForm(
     form,
     product,
-    needsRateFallback ? rateFallback : priorRate
+    needsRateFallback ? rateFallback?.rate ?? null : priorRate
   );
 
   updateDerivedFields(form);

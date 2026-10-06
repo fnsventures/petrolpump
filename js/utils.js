@@ -616,6 +616,34 @@ function resetFormKeepingFields(form, fieldValues) {
 }
 
 /**
+ * Request id for a money-writing form submit (p_request_id on RPCs, client_request_id on
+ * expenses). The same id is reused while the submitted values are unchanged, so a retry after
+ * a timeout or a lost response is recognised by the server instead of writing twice.
+ * Call clearFormRequestId(form) after a successful save.
+ * @param {HTMLFormElement|Element} form
+ * @param {unknown} values - submitted values; a change starts a new request
+ * @returns {string}
+ */
+function formRequestId(form, values) {
+  const fingerprint = JSON.stringify(values ?? null);
+  const pending = form?._pendingRequest;
+  if (pending && pending.fingerprint === fingerprint) return pending.id;
+  const id =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+          (Number(c) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))).toString(16)
+        );
+  if (form) form._pendingRequest = { id, fingerprint };
+  return id;
+}
+
+/** Forget the pending request id after a successful save (next submit is a new request). */
+function clearFormRequestId(form) {
+  if (form) delete form._pendingRequest;
+}
+
+/**
  * After a successful record save: reset the form, restore fields, and sync date keys.
  * @param {HTMLFormElement} form
  * @param {Record<string, string>} fieldValues
@@ -657,6 +685,21 @@ function formatCurrency(value) {
   return "₹" + Number(value).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Calendar month label from `YYYY-MM` (for example "October 2026").
+ * @param {string|null|undefined} monthValue
+ * @returns {string}
+ */
+function formatMonthLabel(monthValue) {
+  if (!monthValue) return "—";
+  const [year, month] = String(monthValue).split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) return String(monthValue);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
   });
 }
 
@@ -987,6 +1030,7 @@ window.getRangeForSelection = getRangeForSelection;
 window.setCustomRangeVisibility = setCustomRangeVisibility;
 window.getLocalDateString = getLocalDateString;
 window.formatCurrency = formatCurrency;
+window.formatMonthLabel = formatMonthLabel;
 window.getFilterState = getFilterState;
 window.getValidFilterState = getValidFilterState;
 window.setFilterState = setFilterState;

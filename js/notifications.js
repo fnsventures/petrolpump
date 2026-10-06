@@ -64,7 +64,7 @@
   let userId = null;
 
   function esc(value) {
-    return typeof escapeHtml === "function" ? escapeHtml(value) : String(value ?? "");
+    return escapeHtml(value);
   }
 
   function isAdmin() {
@@ -176,35 +176,14 @@
     return { rate: num, date: entry.date ?? null };
   }
 
-  async function fetchLastDsrRate(product) {
-    const rateField = DSR_RATE_FIELD[product];
-    if (!rateField) return null;
-    const { data, error } = await global.supabaseClient
-      .from("dsr")
-      .select(`date, ${rateField}`)
-      .eq("product", product)
-      .not(rateField, "is", null)
-      .order("date", { ascending: false })
-      .limit(30);
-    if (error) {
-      AppError.report(error, { context: "notifications.fetchLastDsrRate", product });
-      return null;
-    }
-    for (const row of data ?? []) {
-      const num = Number(row[rateField]);
-      if (Number.isFinite(num) && num > 0) return { rate: num, date: row.date ?? null };
-    }
-    return null;
-  }
-
   async function resolveRatesForDate(selectedDate, rows) {
     const petrolOnDate = rateFromDsrRows(rows, "petrol");
     const dieselOnDate = rateFromDsrRows(rows, "diesel");
     let petrolRate = petrolOnDate?.rate ?? null;
     let dieselRate = dieselOnDate?.rate ?? null;
     const [lastPetrol, lastDiesel] = await Promise.all([
-      !petrolRate ? fetchLastDsrRate("petrol") : Promise.resolve(null),
-      !dieselRate ? fetchLastDsrRate("diesel") : Promise.resolve(null),
+      !petrolRate ? DsrQueries.fetchLastDsrRate("petrol") : Promise.resolve(null),
+      !dieselRate ? DsrQueries.fetchLastDsrRate("diesel") : Promise.resolve(null),
     ]);
     if (!petrolRate && lastPetrol) petrolRate = lastPetrol.rate;
     if (!dieselRate && lastDiesel) dieselRate = lastDiesel.rate;
@@ -619,7 +598,9 @@
       .from("day_closing")
       .select("date, short_today, certified")
       .gte("date", startStr)
-      .lte("date", todayStr);
+      .lte("date", todayStr)
+      .order("date", { ascending: true })
+      .limit(DAY_CLOSING_LOOKBACK_DAYS + 1);
     return { data: data ?? [], error, todayStr, startStr };
   }
 
@@ -797,6 +778,7 @@
             .from("dsr")
             .select("date, product, petrol_rate, diesel_rate, stock, dip_reading")
             .eq("date", todayStr)
+            .limit(10)
         : Promise.resolve({ data: [], error: null }),
       needStockToday
         ? global.supabaseClient.rpc("get_dsr_stock_range", { p_start: todayStr, p_end: todayStr })
@@ -808,32 +790,58 @@
         ? global.supabaseClient.rpc("list_employees_roster")
         : Promise.resolve({ data: [], error: null }),
       th.attendanceAlert
-        ? global.supabaseClient.from("employee_attendance").select("id, employee_id").eq("date", todayStr)
+        ? global.supabaseClient
+            .from("employee_attendance")
+            .select("id, employee_id")
+            .eq("date", todayStr)
+            .limit(LOOKUP_ROW_LIMIT)
         : Promise.resolve({ data: [], error: null }),
       th.unpaidSalaryAlert && adminUser
         ? global.supabaseClient.rpc("list_employees_salary")
         : Promise.resolve({ data: [], error: null }),
       th.unpaidSalaryAlert && adminUser
-        ? global.supabaseClient.from("salary_payments").select("employee_id, amount").eq("salary_month", salaryMonth)
+        ? fetchAllRows(() =>
+            global.supabaseClient
+              .from("salary_payments")
+              .select("employee_id, amount")
+              .eq("salary_month", salaryMonth)
+              .order("employee_id", { ascending: true })
+          )
         : Promise.resolve({ data: [], error: null }),
       th.expenseRatioAlert
-        ? global.supabaseClient
-            .from("dsr")
-            .select("product, total_sales, testing, petrol_rate, diesel_rate")
-            .gte("date", monthRange.start)
-            .lte("date", monthRange.end)
+        ? fetchAllRows(() =>
+            global.supabaseClient
+              .from("dsr")
+              .select("product, total_sales, testing, petrol_rate, diesel_rate")
+              .gte("date", monthRange.start)
+              .lte("date", monthRange.end)
+              .order("date", { ascending: true })
+              .order("product", { ascending: true })
+          )
         : Promise.resolve({ data: [], error: null }),
       th.expenseRatioAlert
-        ? global.supabaseClient.from("expenses").select("amount").gte("date", monthRange.start).lte("date", monthRange.end)
+        ? fetchAllRows(() =>
+            global.supabaseClient
+              .from("expenses")
+              .select("id, amount")
+              .gte("date", monthRange.start)
+              .lte("date", monthRange.end)
+              .order("date", { ascending: true })
+              .order("id", { ascending: true })
+          )
         : Promise.resolve({ data: [], error: null }),
       th.missingInvoiceAlert && driveEnabled
-        ? global.supabaseClient
-            .from("dsr")
-            .select("date, product, receipts, invoice_document_id")
-            .gt("receipts", 0)
-            .is("invoice_document_id", null)
-            .gte("date", invoiceStart)
-            .lte("date", todayStr)
+        ? fetchAllRows(() =>
+            global.supabaseClient
+              .from("dsr")
+              .select("date, product, receipts, invoice_document_id")
+              .gt("receipts", 0)
+              .is("invoice_document_id", null)
+              .gte("date", invoiceStart)
+              .lte("date", todayStr)
+              .order("date", { ascending: true })
+              .order("product", { ascending: true })
+          )
         : Promise.resolve({ data: [], error: null }),
       creditTotalRupees == null
         ? global.supabaseClient.rpc("get_open_credit_as_of", { p_date: todayStr })

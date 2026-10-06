@@ -3,7 +3,7 @@
 Simple steps for everyday engineering work: **sync staging**, **deploy**, **release**, and **backup**.
 
 Read this page when you need to **do** something.  
-For animated diagrams of the same flows, see the [root README → Visual tour](../README.md#visual-tour).
+For diagrams of the same flows, see the [root README](../README.md#1-architecture).
 
 ---
 
@@ -40,7 +40,7 @@ PROD_DB_URL="postgresql://..."
 STAGING_DB_URL="postgresql://..."
 ```
 
-Encode special characters in the password (`@` → `%40`).
+URL format and encoding: [SECRETS.md → A. Laptop](SECRETS.md#a-laptop-gitignored).
 
 4. Confirm GitHub environments **staging** and **prod** each have:
 
@@ -115,7 +115,7 @@ When you add a new `*.fnsventures.in` Pages app, append its host to **this** rep
 3. Wait until it finishes without errors.
 4. Open the **staging website** and log in. You should see production-like data.
 
-If sync fails with connection errors, your `scripts/db.env` URLs are wrong — use Session pooler, not Direct.
+Connection errors → [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ---
 
@@ -233,7 +233,7 @@ OAuth setup (once): [Invoice documents — Google OAuth](INVOICE_DOCUMENTS.md#34
 Use the same three OAuth values for invoices and backup.  
 Folder ID: open the Drive folder → copy the ID from the URL after `/folders/`.
 
-If the job fails with `unauthorized_client`, the refresh token does not match the client ID/secret. Regenerate all three together (Playground must use **Use your own OAuth credentials**), update the secrets, then re-run.
+`unauthorized_client` → [SECRETS.md → Google OAuth rotation](SECRETS.md#google-oauth-unauthorized_client).
 
 ### Option B — Local file only
 
@@ -279,15 +279,7 @@ export GOOGLE_DRIVE_BACKUP_FOLDER_ID="..."
 
 ## 6. Common problems
 
-| Problem | Fix |
-|---------|-----|
-| Sync / migrate cannot connect | Use **Session pooler** URL in `scripts/db.env`, not Direct |
-| Staging website shows wrong project | GitHub **staging** secrets `SUPABASE_URL` / `SUPABASE_ANON_KEY` |
-| Live site unchanged after merge | Wait for Actions **Deploy**; hard-refresh (service worker) |
-| Drive backup: `unauthorized_client` | Regenerate matching OAuth trio; update GitHub **prod** secrets |
-| Login works but empty pages | User missing from `public.users` |
-| Banner: cannot reach `js/env.js` / DNS | Restore CNAME → `fnsventures.github.io` (`./scripts/check-dns-siblings.sh --fix` or wait for hourly Action). Hard-refresh after DNS recovers |
-| Banner: config missing / copy `env.example.js` | Real missing/invalid env. Local: copy `env.example.js`. Prod: Redeploy so CI regenerates `env.js` |
+See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** (single symptom → fix table). Restore / rollback: [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md).
 
 ---
 

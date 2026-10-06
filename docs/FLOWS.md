@@ -101,7 +101,7 @@ A typical daily sequence:
 
 ```
 1. Meter Reading (meter-reading.html)
-   → Upsert dsr_petrol and/or dsr_diesel for today
+   → Upsert dsr_petrol and/or dsr_diesel for today (rejected when that day is certified, including for admin)
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → Optional: Shift register — staff per nozzle, shift meters, cash + phone pay, short (₹)
    → Supervisors may re-save a shift with updates until day closing is saved (then admin only)
@@ -110,16 +110,17 @@ A typical daily sequence:
    → Optional: open dsr.html for listing / stock summary
 
 2. Credit (credit.html)
-   → Add credit sale → credit_entries (transaction_date = today)
-   → Record payment → record_credit_payment (FIFO allocation)
+   → Add credit sale → add_credit_entry(...) (locks the customer row; optional p_request_id; IST "today"; rejected when that day is certified)
+   → Record payment → record_credit_payment(..., same_day_settlement?, request_id?) (locks the customer row; rejected when that day is certified)
    → Overpayment stored as prepaid_balance (net = amount_due − prepaid)
 
 3. Expenses (expenses.html)
-   → Add expenses for the day → expenses
+   → Add expenses for the day → expenses (client_request_id so a retry cannot duplicate; rejected when that day is certified)
+   → Shift-register expenses go through add_shift_expense(...), not this form
 
 4. Day closing (day-closing.html)
    → get_day_closing_breakdown(date) — live components or saved snapshot
-   → night_cash / phone_pay prefilled from sum of both shifts (meter_shift_cash)
+   → night_cash / phone_pay are typed. Shift cash and Cash/UPI settlements are a hint, not a prefill
    → Review/adjust, then save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
    → short_today becomes next day’s short_previous
    → Supervisor: may edit day closing until certified or night cash is collected
@@ -137,15 +138,15 @@ A typical daily sequence:
    → After collection: supervisors cannot edit those closings; admins may still edit unless the day is certified
 ```
 
-**Data dependencies:**
+**Data dependencies** (full formula: [DAY_CLOSING.md](DAY_CLOSING.md)):
 
-- **Total sale:** From `dsr_petrol` / `dsr_diesel` (net litres × rate).
-- **Collection:** Sum of `credit_payments.amount` for that date.
-- **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
+- **Total sale:** Gross litres × rate (testing included), from the latest `dsr` row per product.
+- **Collection:** `credit_payments` that day with `same_day_settlement = false` (all modes).
+- **Credit today:** Open credit (entries minus same-day payments, floored at 0) plus legacy `credit_customers.amount_due` when that customer has no entries.
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
-- **Night cash / Phone pay:** Sum of `meter_shift_cash.cash_collected` / `phone_pay` for both shifts (prefilled until locked).
-- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save). While certified, the statement is frozen for everyone until revoke.
+- **Night cash / Phone pay:** Typed amounts. The hint is shift cash/phone pay plus Cash/UPI settlements.
+- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save). While certified, the statement, that day's expenses, credit sales, payments, and meter rows are frozen for everyone until revoke.
 - **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---
 
@@ -154,24 +155,26 @@ A typical daily sequence:
 ```
 Create / identify customer
    → credit_customers
-   → add_credit_entry(...) or insert credit_entries
-   → Trigger updates credit_customers.amount_due
+   → add_credit_entry(...) — locks the customer row, checks amount, IST date, and shift pairing; applies prepaid oldest-first; rejects a certified day
+   → A direct insert into credit_entries still syncs balances, but skips the RPC checks and p_request_id. `ledger_guard_certified_day` still rejects a certified sale date. Updating only `amount_settled` (payment allocation) stays allowed.
 
 Customer detail (credit.html#…)
    → Balance hero + period filter (this month, last 30 days, custom)
    → get_customer_credit_detail_as_of(name, date) for summary and line lists
 
 Receive payment
-   → record_credit_payment(customer_id, date, amount, note, payment_mode)
-   → FIFO allocation to credit_entries; insert credit_payments
+   → record_credit_payment(customer_id, date, amount, note, payment_mode, same_day_settlement?, request_id?)
+   → Locks the customer row, then LIFO allocation to credit_entries (newest open sale on or before the payment date); insert credit_payments
+   → Rejects a certified payment date
    → Overpayment increases prepaid_balance (sync RPC updates amount_due + prepaid)
+   → Calls apply_credit_payment_to_day_closing (same-day Cash/UPI also adds to night cash / phone pay)
 
 Batch settle (multiple customers)
    → batch_record_credit_settlements(...)
 
 Admin corrections (admin only)
    → delete_credit_entry(id) — only if amount_settled = 0
-   → delete_credit_payment(id) — re-allocates remaining payments FIFO
+   → delete_credit_payment(id) — re-allocates remaining payments LIFO
 ```
 
 - **Net balance:** `amount_due − prepaid_balance`.
@@ -201,7 +204,8 @@ Product catalog (admin: Settings → Billing → Products)
 
 Create invoice (billing.html)
    → Line items with GST slabs (from AppConfig.GST_SLABS)
-   → save_invoice(date, type, party, …, items jsonb)
+   → save_invoice(date, type, party, …, items jsonb, request_id?)
+   → Rejects non-positive quantity or rate, negative discount, and discount above subtotal
    → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
    → Save returns immediately after the save overlay finishes (DB + Drive PDF)
       (Billing invoices / 2026)
@@ -267,7 +271,7 @@ Reports (reports.html)
    → requireAuth({ pageName: 'reports' })
    → Section nav: About | Generate report
    → Date range filter (shared dateRangeFilter.js)
-   → Report catalog (REPORT_CATALOG in reports.js):
+   → Report catalog (REPORT_CATALOG in reports.js; figures in reportsGst.js, reportsGstr1.js, reportsGstr3b.js, reportsPl.js, reportsSales.js):
 
        Operations
          → dsr — Tank-wise DSR (HSD + MS; shortage, book total, variance, TVA)
@@ -355,11 +359,12 @@ Settings → Staff salaries (admin)
 Salary (salary.html)
    → list_employees_salary() for employee data + slips
    → Select salary_month (pay period — first of month) separate from payment date
-   → Record installment → salary_payments (date = when paid, salary_month = period)
-   → Auto-creates linked expenses row (category Salary, salary_payment_id FK)
+   → Record installment → record_salary_payment() writes salary_payments (date = when paid,
+     salary_month = period) and the linked expenses row (category Salary, salary_payment_id FK)
+     in one transaction; rejects overpay unless confirmed
    → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
    → Printable salary slips (css/salary-slip-print.css) with PF, loss of pay, over duty, establishment code
-   → Admin can delete payment → removes linked expense
+   → Admin can delete payment → delete_salary_payment() removes payment + linked expense
 ```
 
 ---

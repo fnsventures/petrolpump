@@ -178,7 +178,7 @@
 
   function wrapMoreCollapse(previewHtml, moreHtml, moreCount, { escapeHtml, allHref = "reminders.html" } = {}) {
     if (!moreHtml || moreCount <= 0) return previewHtml;
-    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s);
+    const esc = escapeHtml;
     const label = moreCount === 1 ? "1 more task" : `${moreCount} more tasks`;
     return `${previewHtml}
 <details class="tasks-more-expand">
@@ -224,7 +224,7 @@
 
   /** Same mobile line, call icon, and WhatsApp icon as the credit customer header. */
   function contactRowHtml(mobile, waText) {
-    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s ?? "");
+    const esc = escapeHtml;
     const shown = String(mobile || "").trim();
     const tel = telHref(shown);
     const wa = waHref(shown, waText);
@@ -255,7 +255,7 @@
    * Credit: No answer / +3 / +7. Todo: Tomorrow / +3 / +7.
    */
   function laterChoicesHtml(id, { credit = false, escapeHtml, forRemindersPage = false } = {}) {
-    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s ?? "");
+    const esc = escapeHtml;
     const safeId = esc(id);
     const btnClass = forRemindersPage
       ? "button-secondary reminder-later-choice"
@@ -289,7 +289,7 @@
 
   /** Custom date row under the quick choices (date + Set). */
   function laterCustomPickHtml(id, { escapeHtml, forRemindersPage = false, today = "" } = {}) {
-    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s ?? "");
+    const esc = escapeHtml;
     const safeId = esc(id);
     const min = esc(today || "");
     const inputId = forRemindersPage ? `reminder-later-date-${safeId}` : `later-date-${safeId}`;
@@ -314,7 +314,7 @@
 
   /** Full More… panel markup (choices + custom date + cancel). */
   function laterPanelHtml(id, { credit = false, escapeHtml, forRemindersPage = false, today = "" } = {}) {
-    const esc = typeof escapeHtml === "function" ? escapeHtml : (s) => String(s ?? "");
+    const esc = escapeHtml;
     const safeId = esc(id);
     const heading = credit ? "Follow up" : "Push follow-up";
     const choices = laterChoicesHtml(id, { credit, escapeHtml, forRemindersPage });

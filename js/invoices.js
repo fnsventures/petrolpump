@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, AppDialog, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -17,7 +17,7 @@ const TABLE_COLSPAN = 7;
 
 let currentAuth = null;
 let driveConfigured = false;
-let loadInvoicesController = null;
+let vaultListController = null;
 let documentCategoryLabelMap = Object.fromEntries(
   FALLBACK_DOCUMENT_CATEGORIES.map((c) => [c.value, c.label])
 );
@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindUploadForm();
   bindInvoiceTableActions();
 
-  await Promise.all([refreshDriveStatus(), loadDocumentCategories(), loadInvoices()]);
+  await Promise.all([refreshDriveStatus(), loadDocumentCategories(), loadVaultDocuments()]);
 });
 
 function getDocumentCategoryLabel(value) {
@@ -90,7 +90,8 @@ async function loadDocumentCategories() {
     .from("document_categories")
     .select("name, label")
     .order("sort_order", { ascending: true })
-    .order("label", { ascending: true });
+    .order("label", { ascending: true })
+    .limit(LOOKUP_ROW_LIMIT);
 
   let categories = [];
   if (!error && data?.length) {
@@ -302,7 +303,7 @@ function bindUploadForm() {
       });
       if (fileInput) fileInput.value = "";
       progress?.succeed("Uploaded");
-      loadInvoices();
+      loadVaultDocuments();
     } catch (err) {
       AppError.report(err, { context: "invoiceUpload" });
       showFormError(errorEl, err.message || "Upload failed.");
@@ -339,19 +340,19 @@ function initInvoiceFilter() {
     applyBtn: "invoice-apply-filter",
     trigger: "apply",
     runOnInit: false,
-    onApply: () => loadInvoices(),
+    onApply: () => loadVaultDocuments(),
   });
 }
 
-async function loadInvoices() {
+async function loadVaultDocuments() {
   const tbody = document.getElementById("invoice-table-body");
   const emptyCta = document.getElementById("invoice-empty-cta");
   const tableEl = tbody?.closest("table");
   if (!tbody) return;
 
-  loadInvoicesController?.abort();
+  vaultListController?.abort();
   const controller = new AbortController();
-  loadInvoicesController = controller;
+  vaultListController = controller;
 
   tbody.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="muted">Loading…</td></tr>`;
   emptyCta?.classList.add("hidden");
@@ -359,18 +360,19 @@ async function loadInvoices() {
 
   const { start, end } = getInvoiceDateRange();
   const categoryFilter = document.getElementById("invoice-category-filter")?.value || "all";
-  let query = window.supabaseClient
-    .from("invoice_documents")
-    .select(INVOICE_LIST_COLUMNS)
-    .order("invoice_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .abortSignal(controller.signal);
-  if (start) query = query.gte("invoice_date", start);
-  if (end) query = query.lte("invoice_date", end);
-  if (categoryFilter !== "all") {
-    query = query.eq("category", categoryFilter);
-  }
-  const { data, error } = await query;
+  const { data, error } = await fetchAllRows(() => {
+    let query = window.supabaseClient
+      .from("invoice_documents")
+      .select(INVOICE_LIST_COLUMNS)
+      .order("invoice_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .abortSignal(controller.signal);
+    if (start) query = query.gte("invoice_date", start);
+    if (end) query = query.lte("invoice_date", end);
+    if (categoryFilter !== "all") query = query.eq("category", categoryFilter);
+    return query;
+  });
 
   if (controller.signal.aborted) return;
 
@@ -426,7 +428,7 @@ function bindInvoiceTableActions() {
       return;
     }
     if (btn.dataset.action === "download") await downloadInvoice(id, btn);
-    if (btn.dataset.action === "delete") await deleteInvoice(id);
+    if (btn.dataset.action === "delete") await deleteVaultDocument(id);
   });
 }
 
@@ -453,7 +455,7 @@ async function downloadInvoice(id, btn) {
     URL.revokeObjectURL(url);
   } catch (err) {
     AppError.report(err, { context: "invoiceDownload" });
-    alert(err.message || "Download failed.");
+    AppError.showToast(err.message || "Download failed.", "error");
   } finally {
     hideProgress();
     if (btn) {
@@ -463,9 +465,9 @@ async function downloadInvoice(id, btn) {
   }
 }
 
-async function deleteInvoice(id) {
+async function deleteVaultDocument(id) {
   if (!id || currentAuth?.role !== "admin") return;
-  if (!confirm("Delete this document from Google Drive and the app?")) return;
+  if (!(await AppDialog.confirm("Delete this document from Google Drive and the app?", { title: "Delete document", confirmLabel: "Delete", danger: true }))) return;
 
   const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
   progress?.start({ title: "Deleting", status: "Removing from Google Drive…", steps: 1 });
@@ -474,10 +476,10 @@ async function deleteInvoice(id) {
     progress?.setStep(0, "Removing from Google Drive…");
     await invokeInvoiceFunction({ action: "delete", id });
     progress?.succeed("Deleted");
-    loadInvoices();
+    loadVaultDocuments();
   } catch (err) {
     AppError.report(err, { context: "invoiceDelete" });
-    alert(err.message || "Delete failed.");
+    AppError.showToast(err.message || "Delete failed.", "error");
   } finally {
     progress?.close();
     hideProgress();
@@ -485,6 +487,6 @@ async function deleteInvoice(id) {
 }
 
 bindLiveRefresh(() => {
-  loadInvoicesController?.abort();
-  void loadInvoices();
+  vaultListController?.abort();
+  void loadVaultDocuments();
 }, { match: () => Boolean(document.getElementById("invoice-table-body")) });

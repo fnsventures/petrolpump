@@ -483,40 +483,25 @@
 
   async function loadRatesMap(start, end) {
     const map = new Map();
-    try {
-      const [pRes, dRes] = await Promise.all([
-        supabaseClient
-          .from("dsr_petrol")
-          .select("date, petrol_rate, created_at")
-          .gte("date", start)
-          .lte("date", end)
-          .order("created_at", { ascending: false }),
-        supabaseClient
-          .from("dsr_diesel")
-          .select("date, diesel_rate, created_at")
-          .gte("date", start)
-          .lte("date", end)
-          .order("created_at", { ascending: false }),
-      ]);
-      const seenPetrol = new Set();
-      const seenDiesel = new Set();
-      (pRes.data || []).forEach((r) => {
-        if (seenPetrol.has(r.date)) return;
-        seenPetrol.add(r.date);
-        const cur = map.get(r.date) || {};
-        cur.petrol = Number(r.petrol_rate) || 0;
-        map.set(r.date, cur);
-      });
-      (dRes.data || []).forEach((r) => {
-        if (seenDiesel.has(r.date)) return;
-        seenDiesel.add(r.date);
-        const cur = map.get(r.date) || {};
-        cur.diesel = Number(r.diesel_rate) || 0;
-        map.set(r.date, cur);
-      });
-    } catch (err) {
-      AppError.report(err, { context: "DsrSalesBreakdown.loadRates" });
+    const { data, error } = await fetchAllRows(() =>
+      supabaseClient
+        .from("dsr")
+        .select("date, product, petrol_rate, diesel_rate")
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: true })
+        .order("product", { ascending: true })
+    );
+    if (error) {
+      AppError.report(error, { context: "DsrSalesBreakdown.loadRates" });
+      return map;
     }
+    (data || []).forEach((row) => {
+      const cur = map.get(row.date) || { petrol: 0, diesel: 0 };
+      if (row.product === "petrol") cur.petrol = Number(row.petrol_rate) || 0;
+      if (row.product === "diesel") cur.diesel = Number(row.diesel_rate) || 0;
+      map.set(row.date, cur);
+    });
     return map;
   }
 

@@ -263,7 +263,7 @@ async function printCurrentDsrView() {
     });
   } catch (err) {
     const msg = AppError.handle(err, { context: { source: "dsrPrint" } });
-    window.alert(msg || err?.message || "Could not print.");
+    AppError.showToast(msg || err?.message || "Could not print.", "error");
   } finally {
     dsrPrintBusy = false;
     if (btn) {

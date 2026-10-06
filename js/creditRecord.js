@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppCache, AppError, escapeHtml, normCustomerName, formatCurrency, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle */
+/* global window.supabaseClient, AppCache, AppError, escapeHtml, normCustomerName, formatCurrency, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId */
 
 (function () {
   const page = () => window.CreditPage;
@@ -162,17 +162,22 @@ async function handleQuickPayment() {
         ? (key, fn) => AppCache.runDedupedMutation(key, fn)
         : (_key, fn) => fn();
 
+    const quickPaymentForm = document.getElementById("credit-quick-payment-form");
+    const paymentParams = {
+      p_credit_customer_id: quickPaymentCustomerId,
+      p_date: settlementDate,
+      p_amount: amount,
+      p_note: null,
+      p_payment_mode: paymentMode,
+      p_same_day_settlement: sameDaySettlement,
+    };
+    paymentParams.p_request_id = formRequestId(quickPaymentForm, paymentParams);
+
     await runMutation(mutationKey, async () => {
-      const { error } = await window.supabaseClient.rpc("record_credit_payment", {
-        p_credit_customer_id: quickPaymentCustomerId,
-        p_date: settlementDate,
-        p_amount: amount,
-        p_note: null,
-        p_payment_mode: paymentMode,
-        p_same_day_settlement: sameDaySettlement,
-      });
+      const { error } = await window.supabaseClient.rpc("record_credit_payment", paymentParams);
       if (error) throw error;
     });
+    clearFormRequestId(quickPaymentForm);
 
     restoreSubmit();
     AppCache?.confirmOptimisticUpdate?.(cacheKey);
@@ -254,10 +259,12 @@ function buildCustomerSuggestions(rows) {
   return suggestions;
 }
 
-function filterCustomerSuggestions(query) {
+let customerSearchSeq = 0;
+
+function matchingSuggestions(query) {
   const needle = normCustomerName(query);
-  if (!needle) return customerSuggestions.slice(0, 50);
-  return customerSuggestions.filter((item) => item.nameNorm.includes(needle)).slice(0, 50);
+  if (!needle) return customerSuggestions.slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
+  return customerSuggestions.filter((item) => item.nameNorm.includes(needle)).slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
 }
 
 function setComboboxOpen(open) {
@@ -275,7 +282,7 @@ function renderCustomerSuggestions(query) {
   const input = document.getElementById("customer");
   if (!list || !input) return;
 
-  const matches = filterCustomerSuggestions(query);
+  const matches = matchingSuggestions(query);
   customerComboboxActiveIndex = -1;
   customerComboboxMatches = matches;
 
@@ -335,13 +342,13 @@ function initCustomerCombobox() {
   if (!input || !list) return;
 
   const onInput = debounce(() => {
-    renderCustomerSuggestions(input.value);
-  }, 120);
+    void loadCustomerNames(input.value);
+  }, 180);
 
   input.addEventListener("input", onInput);
 
   input.addEventListener("focus", () => {
-    renderCustomerSuggestions(input.value);
+    void loadCustomerNames(input.value);
   });
 
   input.addEventListener("keydown", (event) => {
@@ -376,22 +383,20 @@ function initCustomerCombobox() {
   });
 }
 
-async function loadCustomerNames() {
+async function loadCustomerNames(query) {
+  const input = document.getElementById("customer");
+  const q = query != null ? query : input?.value || "";
+  const seq = ++customerSearchSeq;
   try {
-    const { data, error } = await window.supabaseClient
-      .from("credit_customers")
-      .select("id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance, created_at")
-      .order("created_at", { ascending: false });
-    if (error) {
-      AppError.report(error, { context: "loadCustomerNames" });
-      return;
-    }
-    customerSuggestions = buildCustomerSuggestions(data || []);
-    const input = document.getElementById("customer");
-    if (input && document.activeElement === input) {
+    const rows = await searchCreditCustomers(q);
+    if (seq !== customerSearchSeq) return;
+    customerSuggestions = buildCustomerSuggestions(rows);
+    if (input && (document.activeElement === input || query == null)) {
       renderCustomerSuggestions(input.value);
     }
+    if (input) syncQuickPaymentPanel(input.value || "");
   } catch (e) {
+    if (seq !== customerSearchSeq) return;
     AppError.report(e, { context: "loadCustomerNames" });
   }
 }
@@ -484,20 +489,24 @@ async function handleCreditSubmit(event) {
         ? (key, fn) => AppCache.runDedupedMutation(key, fn)
         : (_key, fn) => fn();
 
+    const entryParams = {
+      p_customer_name: customerNameInput,
+      p_transaction_date: transactionDate,
+      p_amount: amount,
+      p_vehicle_no: vehicleNo,
+      p_fuel_type: fuelType || undefined,
+      p_quantity: quantity ?? undefined,
+      p_notes: notes,
+      p_mobile: mobile,
+      p_address: address,
+    };
+    entryParams.p_request_id = formRequestId(form, entryParams);
+
     await runMutation(mutationKey, async () => {
-      const { error } = await window.supabaseClient.rpc("add_credit_entry", {
-        p_customer_name: customerNameInput,
-        p_transaction_date: transactionDate,
-        p_amount: amount,
-        p_vehicle_no: vehicleNo,
-        p_fuel_type: fuelType || undefined,
-        p_quantity: quantity ?? undefined,
-        p_notes: notes,
-        p_mobile: mobile,
-        p_address: address,
-      });
+      const { error } = await window.supabaseClient.rpc("add_credit_entry", entryParams);
       if (error) throw error;
     });
+    clearFormRequestId(form);
 
     restoreSubmit();
     AppCache?.confirmOptimisticUpdate?.("credit_ledger");

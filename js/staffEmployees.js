@@ -21,16 +21,17 @@
   }
 
   async function fetchFromEmployeesTable(client, status) {
-    let query = client
-      .from("employees")
-      .select(EMPLOYEE_DETAIL_SELECT)
-      .order("display_order", { ascending: true })
-      .order("name", { ascending: true });
-
-    if (status === "active") query = query.eq("is_active", true);
-    else if (status === "inactive") query = query.eq("is_active", false);
-
-    const { data, error } = await query;
+    const { data, error } = await fetchAllRows(() => {
+      let query = client
+        .from("employees")
+        .select(EMPLOYEE_DETAIL_SELECT)
+        .order("display_order", { ascending: true })
+        .order("name", { ascending: true })
+        .order("id", { ascending: true });
+      if (status === "active") query = query.eq("is_active", true);
+      else if (status === "inactive") query = query.eq("is_active", false);
+      return query;
+    });
     if (error) throw error;
     return data ?? [];
   }
@@ -143,10 +144,13 @@
       if (!rpcFailedMissing) throw rpcErr;
     }
 
-    const { data, error } = await client
-      .from("employees")
-      .select(EMPLOYEE_DETAIL_SELECT)
-      .in("id", unique);
+    const { data, error } = await fetchAllRows(() =>
+      client
+        .from("employees")
+        .select(EMPLOYEE_DETAIL_SELECT)
+        .in("id", unique)
+        .order("id", { ascending: true })
+    );
     if (error) throw error;
     (data ?? []).forEach((row) => map.set(row.id, row));
     return map;

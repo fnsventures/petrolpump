@@ -1,6 +1,6 @@
 # Production database backup (Google Drive)
 
-Deep reference for **automated / manual prod DB backups** to Google Drive, restore, and troubleshooting.
+Deep reference for **automated / manual prod DB backups** to Google Drive and troubleshooting. **Restore:** [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) (tested runbook).
 
 > **Simple steps first:** [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database)  
 > **Local backup only:** `./scripts/db.sh backup`
@@ -21,7 +21,7 @@ Deep reference for **automated / manual prod DB backups** to Google Drive, resto
 6. [How the automated backup runs](#6-how-the-automated-backup-runs)
 7. [Manual backup (GitHub or local)](#7-manual-backup-github-or-local)
 8. [Verify a backup succeeded](#8-verify-a-backup-succeeded)
-9. [Restore from a backup](#9-restore-from-a-backup)
+9. [Restore from a backup](#9-restore-from-a-backup) → [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)
 10. [Troubleshooting](#10-troubleshooting)
 11. [Security](#11-security)
 12. [Related documentation](#12-related-documentation)
@@ -145,7 +145,7 @@ This folder is **independent** from the invoice root folder in **Settings → In
 
 ### Step 2 — Google OAuth credentials
 
-If invoice uploads already work, reuse the same OAuth client and refresh token. If you forgot the values, see [Invoice documents §3.4–3.5](INVOICE_DOCUMENTS.md#34-create-oauth-client-credentials) or the recovery steps below.
+If invoice uploads already work, reuse the same OAuth client and refresh token (setup: [Invoice documents §3.4–3.5](INVOICE_DOCUMENTS.md#34-create-oauth-client-credentials)).
 
 | Secret | Where to get it |
 |--------|-----------------|
@@ -153,19 +153,11 @@ If invoice uploads already work, reuse the same OAuth client and refresh token. 
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Same client (reset secret if lost) |
 | `GOOGLE_OAUTH_REFRESH_TOKEN` | [OAuth Playground](https://developers.google.com/oauthplayground) — scope `https://www.googleapis.com/auth/drive` |
 
-Supabase **cannot show secret values again** after they are saved. Regenerate via OAuth Playground if needed, then update **both** Supabase Edge Function secrets and GitHub prod secrets.
+Lost or mismatched values: [SECRETS.md → Google OAuth](SECRETS.md#google-oauth-unauthorized_client).
 
 ### Step 3 — Production database URL
 
-From **Supabase prod project → Connect → Session pooler (port 5432)**:
-
-```
-postgresql://postgres.[PROJECT-REF]:[PASSWORD]@....pooler.supabase.com:5432/postgres
-```
-
-URL-encode special characters in the password (`@` → `%40`).
-
-Same value as `PROD_DB_URL` in `scripts/db.env` (local scripts — never commit this file).
+Same Session pooler URI as `PROD_DB_URL` in `scripts/db.env` — format and encoding: [SECRETS.md](SECRETS.md#a-laptop-gitignored).
 
 ### Step 4 — GitHub prod environment secrets
 
@@ -278,44 +270,25 @@ select count(*) from public.dsr_diesel;
 
 ## 9. Restore from a backup
 
-**Always test restore on a new or staging Supabase project first** — not directly on live prod unless you are sure.
+Full tested runbook: **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** (last drill, scenarios, post-restore checklist, schema rollback).
 
-### Step 1 — Download from Drive
+1. Download a matching `prod-schema-<ts>.sql.gz` + `prod-data-<ts>.sql.gz` pair (Drive `BackupRoot/YYYY/YYYY-MM/` or `scripts/.prod-backups/`). Skip 0-byte files.
+2. Restore with the helper (reads `.sql` or `.sql.gz`):
 
-From `BackupRoot/YYYY/YYYY-MM/`, download:
+   ```bash
+   # Inspect / drill — throwaway Docker container
+   ./scripts/restore-dump.sh --local <schema> <data>
+   # New, empty Supabase project (Session pooler URI)
+   CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url "$NEW_DB_URL" <schema> <data>
+   ```
 
-- `prod-schema-*.sql.gz`
-- `prod-data-*.sql.gz`
-- `backup-manifest-*.txt` (reference only)
+3. The helper verifies every table's row count against the dump. Then work through [DISASTER_RECOVERY.md §4](DISASTER_RECOVERY.md#4-post-restore-checklist-new-project).
 
-### Step 2 — Decompress
-
-```bash
-gunzip prod-schema-20260601-030012.sql.gz
-gunzip prod-data-20260601-030012.sql.gz
-```
-
-### Step 3 — Apply to target database
-
-On a **fresh** Supabase project (or empty database):
-
-1. **Schema first** — Supabase Dashboard → **SQL Editor** → paste/run `prod-schema-*.sql`  
-   Or via CLI: `psql "$TARGET_DB_URL" -f prod-schema-....sql`
-
-2. **Data second** — run `prod-data-*.sql` the same way.
-
-Order matters: schema before data.
-
-### Step 4 — Post-restore checks
-
-- Log in with a restored auth user (passwords restore with auth data).
-- Confirm DSR counts match manifest.
-- Reconfigure edge function secrets and `pump_settings` if restoring to a new project ref.
-- Storage **files** (avatars, etc.) are not in the dump — re-upload or accept missing images.
-
-### Step 5 — App config
-
-If the restore target is a **new** Supabase project, update GitHub environment secrets (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `PROD_DB_URL`) and redeploy, or point local `js/env.js` at the new project for testing.
+| Do not | Why |
+|--------|-----|
+| Paste into SQL Editor | Data file is `COPY … FROM stdin`, ~15 MB |
+| Run `psql -f` without `-v ON_ERROR_STOP=1 --single-transaction` | psql exits 0 while skipping whole tables (drill: `auth.users` came back empty) |
+| Restore over live prod | Untested; use a new project or copy back single tables ([DISASTER_RECOVERY.md §6.1](DISASTER_RECOVERY.md#61-accidental-data-delete-or-corruption)) |
 
 ---
 
@@ -325,15 +298,24 @@ If the restore target is a **new** Supabase project, update GitHub environment s
 |---------|--------------|-----|
 | `PROD_DB_URL must be set` | Missing GitHub secret | Add `PROD_DB_URL` to prod environment |
 | `Missing Google OAuth env` | OAuth secrets not in GitHub | Add all three OAuth secrets to prod environment |
-| `Google OAuth token error` / `unauthorized_client` | Client ID/secret do not match the refresh token (often Playground used without “your own credentials”), or secret was rotated | Regenerate: Playground → **Use your own OAuth credentials** → scope `drive` → update **all three** secrets in GitHub **prod** (+ Supabase Edge if invoices share them). Verify with the `curl` in [README §4](../README.md#4-google-drive-invoices--db-backups) before re-running the workflow |
+| `Google OAuth token error` / `unauthorized_client` | Client ID/secret do not match the refresh token, or secret was rotated | Regenerate all three together — [SECRETS.md](SECRETS.md#google-oauth-unauthorized_client). Check with the token test below before re-running |
 | `Drive upload failed` | Wrong folder ID or token scope | Verify `GOOGLE_DRIVE_BACKUP_FOLDER_ID`; ensure Drive scope on refresh token |
-| `no route to host` / connection timeout | Wrong DB URL | Use **Session pooler** URI from Supabase Connect, not Direct |
-| `tenant/user not found` | Wrong pooler region | Copy exact URI from prod project's **Connect** tab |
+| `no route to host` / timeout / `tenant/user not found` | Wrong DB URL or pooler region | [TROUBLESHOOTING.md → Database scripts](TROUBLESHOOTING.md#database-scripts) |
 | `permission denied for buckets_vectors` | Internal storage table | Already excluded in scripts; update repo if you see this on old workflow |
 | Workflow did not run on schedule | GitHub cron delay | Free repos can delay scheduled workflows; use manual **Run workflow** to confirm setup |
 | Job succeeds but no files in Drive | Wrong backup folder ID | Confirm folder ID from Drive URL; check Gmail account matches OAuth token |
 
-**Recover forgotten OAuth values:** [Invoice documents §3.4–3.5](INVOICE_DOCUMENTS.md#34-create-oauth-client-credentials). Supabase and GitHub do not display stored secret values.
+**OAuth token test** (values from your shell env; never hard-code them). Success returns JSON with `access_token`; failure shows `error`:
+
+```bash
+curl -s https://oauth2.googleapis.com/token \
+  --data-urlencode "client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+  --data-urlencode "client_secret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+  --data-urlencode "refresh_token=${GOOGLE_OAUTH_REFRESH_TOKEN}" \
+  --data-urlencode "grant_type=refresh_token" | jq 'has("access_token"), .error'
+```
+
+**Lost OAuth values:** Supabase and GitHub never display stored secrets — regenerate per [SECRETS.md](SECRETS.md#google-oauth-unauthorized_client).
 
 **Invoice folder ID vs backup folder ID:** Settings → Integrations shows the **invoice** root folder. Backups use **`GOOGLE_DRIVE_BACKUP_FOLDER_ID`** in GitHub only — a separate Drive folder.
 
@@ -355,6 +337,9 @@ Also consider **Supabase Dashboard → Database → Backups** (plan-dependent) b
 
 | Document | Description |
 |----------|-------------|
+| [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Tested restore, scenarios, schema rollback |
+| [SECRETS.md](SECRETS.md) | Where every secret lives, rotation |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Connection / pooler / OAuth fixes |
 | [scripts/README.md](../scripts/README.md) | Command quick reference (`db.sh backup`, migrate backup step) |
 | [DEVELOPMENT.md §2](DEVELOPMENT.md#2-deployment-prod-and-staging) | GitHub environments, deploy flow, prod secrets list |
 | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Google OAuth setup (shared credentials) |
@@ -369,6 +354,7 @@ Also consider **Supabase Dashboard → Database → Backups** (plan-dependent) b
 | `.github/workflows/backup-prod-db.yml` | Scheduled + manual GitHub workflow |
 | `scripts/backup-prod-to-drive.sh` | Dump, gzip, upload orchestration |
 | `scripts/backup-prod.sh` | Local-only backup |
+| `scripts/restore-dump.sh` | Restore a dump locally or into a new project |
 | `scripts/lib/backup.sh` | `supabase db dump` helpers |
 | `scripts/lib/google-drive.sh` | OAuth token + Drive upload |
 | `scripts/lib/constants.sh` | Storage dump exclusions |

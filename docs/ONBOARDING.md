@@ -44,7 +44,7 @@ cp js/env.example.js js/env.js
 
 ```bash
 cp scripts/db.env.example scripts/db.env
-# Session pooler URLs (port 5432) for prod + staging
+# Session pooler URLs — format: docs/SECRETS.md § A. Laptop
 ```
 
 5. Run locally:
@@ -74,6 +74,8 @@ npm run dev
 | 4 | [MIGRATIONS.md](MIGRATIONS.md) | How to change the database safely |
 | 5 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures |
 | 6 | [ARCHITECTURE.md](ARCHITECTURE.md) | Folders and security model |
+| 7 | [CHECKLISTS.md](CHECKLISTS.md) | Recipes: add a page / migration / edge function / user |
+| 8 | [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Know this **before** you need it |
 
 ---
 
@@ -105,6 +107,7 @@ npm run dev
 
 - [ ] Open Actions — last **Deploy** on `main` / `staging` green?
 - [ ] Once a month: confirm Drive backup folder has a new `YYYY/YYYY-MM/` dump (or run the workflow)
+- [ ] Once a quarter: run the restore drill in [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) and update its "last tested" line
 - [ ] Before any release: smoke-test `/staging/` after sync
 - [ ] Never commit `js/env.js`, `scripts/db.env`, dumps, or OAuth tokens
 

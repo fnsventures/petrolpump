@@ -20,6 +20,11 @@ Prod data sync is always **read-only** on production.
 | Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | **schema** | — |
 | Verify sibling Pages DNS + `/js/env.js` (canonical; cashline wraps this) | `./scripts/check-dns-siblings.sh` | — | — |
 | Auto-restore missing sibling CNAMEs (GoDaddy) | `./scripts/check-dns-siblings.sh --fix` | — | — |
+| Restore a dump into local Docker (inspect / DR drill) | `./scripts/restore-dump.sh --local <schema.sql> <data.sql>` | — | — |
+| Restore a dump into a **new, empty** project | `CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url …` — see [DISASTER_RECOVERY.md](../docs/DISASTER_RECOVERY.md) | — | — |
+| `schema.sql` matches migrations (Docker) | `./scripts/check-schema-drift.sh` | — | — |
+| New migrations sort last | `./scripts/check-migration-order.sh` | — | — |
+| Markdown links / anchors | `node scripts/check-doc-links.mjs` | — | — |
 
 **Entry point:** `./scripts/db.sh help`
 
@@ -45,8 +50,7 @@ Edit `scripts/db.env`:
 | `PROD_DB_URL` | petrol pump | sync (read), migrate, backup |
 | `STAGING_DB_URL` | petrol pump staging | sync (write) |
 
-Get URIs from **Supabase → Connect → Session pooler (5432)**.  
-URL-encode the password (`@` → `%40`).
+URL format (Session pooler, encoding): [docs/SECRETS.md → A. Laptop](../docs/SECRETS.md#a-laptop-gitignored).
 
 Legacy env files (`sync-prod-to-staging.env`, `migrate-prod.env`) still work if `db.env` is missing.
 

@@ -27,6 +27,8 @@ Part of the [Petrol Pump documentation](README.md). For all tables and flows, se
 
 Each table has **exactly one row per date** (`unique (date)`). MS and HSD are stored separately so tank capacity and defaults can differ (e.g. 15KL vs 20KL).
 
+Trigger `dsr_validate_meter_row` (before insert/update) rejects a row where any nozzle's closing is below its opening, a meter or sales/testing/stock/receipts value is negative, or testing exceeds total sales. Updates that leave those columns unchanged (buying price, supplier invoice) are not checked, so older rows that break the rule can still be edited.
+
 ---
 
 ## dsr (backward-compatible view)

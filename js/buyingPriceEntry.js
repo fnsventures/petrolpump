@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
+/* global window.supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, formatCurrency, formatQuantity, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
 
 /**
  * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.
@@ -163,11 +163,6 @@
     }
   }
 
-  function formatMoney(n) {
-    if (!Number.isFinite(n)) return "—";
-    return n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-  }
-
   function groupRowsByDate(rows) {
     const map = new Map();
     (rows ?? []).forEach((row) => {
@@ -210,7 +205,7 @@
     const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, lfrGst);
     const lfrOut = dayEl.querySelector(".pl-lfr-per-kl");
     if (lfrOut) {
-      lfrOut.textContent = lfrPerKl != null ? `₹${formatMoney(lfrPerKl)}/KL incl. GST` : "—";
+      lfrOut.textContent = lfrPerKl != null ? `${formatCurrency(lfrPerKl)}/KL incl. GST` : "—";
     }
 
     dayEl.querySelectorAll(".pl-product-block").forEach((block) => {
@@ -221,7 +216,7 @@
       const delPerKl = ratePerKlFromTotalAndQty(delTotal, delQty);
       const delOut = block.querySelector(".pl-del-per-kl");
       if (delOut) {
-        delOut.textContent = delPerKl != null ? `₹${formatMoney(delPerKl)}/KL` : "—";
+        delOut.textContent = delPerKl != null ? `${formatCurrency(delPerKl)}/KL` : "—";
       }
       const preview = block.querySelector(".pl-landed-preview");
       const parsed = validateBuyingRateKlInput(rateKl);
@@ -236,7 +231,7 @@
       if (preview) {
         preview.textContent =
           landed != null
-            ? `Buying price (landed) ≈ ₹${formatMoney(landed)}/L · ₹${formatMoney(landed * 1000)}/KL`
+            ? `Buying price (landed) ≈ ${formatCurrency(landed)}/L · ${formatCurrency(landed * 1000)}/KL`
             : "Buying price (landed): —";
       }
     });
@@ -321,7 +316,7 @@
             <div class="pl-product-block" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">
               <div class="pl-product-head">
                 <strong>${escapeHtml(productLabel)}</strong>
-                <span class="muted">${formatMoney(receiptsL)} L · from fuel invoice</span>
+                <span class="muted">${formatQuantity(receiptsL)} L · from fuel invoice</span>
               </div>
               <div class="pl-field-grid">
                 <label class="pl-field">
