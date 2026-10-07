@@ -41,7 +41,8 @@ Example: `widgets.html` with script `js/widgets.js`.
 - [ ] Update [DATA_TABLES.md](DATA_TABLES.md) / [DSR_TABLES.md](DSR_TABLES.md) if tables, RPCs or RLS changed.
 - [ ] Never edit a migration that is already on `staging`/`main`.
 - [ ] PR template: tick **Needs `./scripts/db.sh migrate --apply`**.
-- [ ] Release: `./scripts/db.sh sync` → test `/staging/` → `./scripts/db.sh migrate` → quiet window → `./scripts/db.sh migrate --apply` → merge to `main` ([OPERATIONS.md §3](OPERATIONS.md#3-release-to-production)).
+- [ ] Staging first: `supabase db push --db-url "$STAGING_DB_URL"` ([MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only)), or `./scripts/db.sh sync` if you also want prod data copied over.
+- [ ] Release: test `/staging/` → `./scripts/db.sh migrate` → quiet window → `./scripts/db.sh migrate --apply` → merge to `main` ([OPERATIONS.md §3](OPERATIONS.md#3-release-to-production)).
 
 ---
 

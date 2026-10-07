@@ -22,6 +22,11 @@ Commands:
   preflight         Prod preflight checks only
   help              Show this message
 
+Staging schema only (keeps staging data; does not touch prod):
+  docs/MIGRATIONS.md — "Staging schema only"
+  supabase db push --db-url "$STAGING_DB_URL" --dry-run
+  supabase db push --db-url "$STAGING_DB_URL" --yes
+
 Release order:
   1. ./scripts/db.sh sync
   2. Push to staging branch → test /staging/

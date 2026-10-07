@@ -45,6 +45,7 @@ Open the [root README](../README.md) for the full tour. Use **PNG** in README (G
 | Task | Action |
 |------|--------|
 | Sync staging DB | `./scripts/db.sh sync` |
+| Apply migrations on staging (keep data) | [MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only) |
 | Deploy test website | Push / merge to `staging` |
 | Check migrations | `./scripts/db.sh migrate` |
 | Apply migrations on prod | `./scripts/db.sh migrate --apply` |
