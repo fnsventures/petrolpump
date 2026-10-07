@@ -2353,6 +2353,18 @@ body.action-progress-open {
   border-radius: 12px;
   background: #fff;
   box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+  animation: action-progress-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes action-progress-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .action-progress-title {
@@ -2379,14 +2391,15 @@ body.action-progress-open {
   width: 0;
   height: 100%;
   border-radius: inherit;
-  background: var(--color-primary, #0070c0);
-  transition: width 0.28s ease;
+  background: linear-gradient(90deg, var(--color-primary, #0070c0), #2b8fd4);
+  transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .action-progress-pct {
   margin: 0.45rem 0 0;
   font-size: 0.75rem;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   color: var(--color-primary, #0070c0);
   text-align: right;
@@ -3352,6 +3365,7 @@ html.app-booting::after {
 .action-progress-logo {
   display: block;
   margin: 0 auto 0.75rem;
+  animation-duration: 1.35s;
 }
 
 @keyframes app-loader-sweep {
@@ -3365,5 +3379,11 @@ html.app-booting::after {
   .app-busy::before,
   html.app-booting::after {
     animation-duration: 2.5s;
+  }
+
+  .action-progress-card,
+  .action-progress-fill {
+    animation: none;
+    transition: none;
   }
 }

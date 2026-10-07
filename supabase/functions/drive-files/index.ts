@@ -295,7 +295,7 @@ async function handleLetterArchive(letterIdRaw: string, _auth: AuthUser) {
     });
   }
 
-  if (!String(letter.body || "").trim()) {
+  if (!String(letter.body || "").trim() && !String(letter.subject || "").trim()) {
     throw new Error("Letter text is missing");
   }
 

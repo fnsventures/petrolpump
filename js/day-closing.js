@@ -25,6 +25,7 @@ let dayClosingBreakdown = null;
 let isAdmin = false;
 let dcBreakdownRequestId = 0;
 let dcCertifyInFlight = false;
+let dcCertifyPromptOpen = false;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
 let dcSettleMapsCache = { date: null, data: null, promise: null };
 let dcShiftChannelCache = { date: null, data: null, promise: null };
@@ -1477,7 +1478,7 @@ async function printDayClosingRegister() {
 
 async function setDayClosingCertified(certified) {
   if (dcStepPendingDate) return;
-  if (!isAdmin || dcCertifyInFlight) return;
+  if (!isAdmin || dcCertifyInFlight || dcCertifyPromptOpen) return;
   const dateStr = dcDom?.dateInput?.value?.trim();
   if (!dateStr) return;
   if (!dayClosingBreakdown?.already_saved) {
@@ -1511,17 +1512,26 @@ async function setDayClosingCertified(certified) {
   const ref = dayClosingBreakdown?.closing_reference || "";
   const dateLabel = formatDisplayDate(dateStr);
   const collected = !!dayClosingBreakdown?.night_cash_collected;
-  const confirmed = await AppDialog.confirm(
-    certified
-      ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
-      : collected
-        ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
-        : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`,
-    {
-      title: certified ? "Certify day closing" : "Revoke certification",
-      confirmLabel: certified ? "Certify" : "Revoke",
-    }
-  );
+  dcCertifyPromptOpen = true;
+  let confirmed = false;
+  try {
+    confirmed = await AppDialog.confirm(
+      certified
+        ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
+        : collected
+          ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
+          : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`,
+      {
+        title: certified ? "Certify day closing" : "Revoke certification",
+        confirmLabel: certified ? "Certify" : "Revoke",
+      }
+    );
+  } finally {
+    // Hold the guard past this click so a fall-through cannot open the popup again.
+    window.setTimeout(() => {
+      dcCertifyPromptOpen = false;
+    }, 350);
+  }
   if (!confirmed) return;
 
   const certifyBtn = dcDom.certifyBtn;

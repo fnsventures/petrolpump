@@ -188,7 +188,6 @@ function initReportsPage() {
     try {
       await VaultDocuments.open(id, { previewWindow: preview });
     } catch (err) {
-      if (preview && !preview.closed) preview.close();
       AppError.report(err, { context: "vaultDocumentView" });
       AppError.showToast(err.message || "Could not open the document.", "error");
     }

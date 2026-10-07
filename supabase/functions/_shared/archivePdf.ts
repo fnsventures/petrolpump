@@ -1,6 +1,6 @@
 import { PDFDocument, PDFPage, StandardFonts, rgb, type PDFFont, type PDFImage } from "https://esm.sh/pdf-lib@1.17.1?target=deno";
 import type { StationBranding } from "./googleDrive.ts";
-import { STATION_LOGO_PNG_B64 } from "./logoPng.ts";
+import { STATION_LOGO_PNG_B64, STATION_LOGO_PRINT_PNG_B64 } from "./logoPng.ts";
 
 const BLUE = rgb(0, 112 / 255, 192 / 255);
 const BLUE_DARK = rgb(0, 90 / 255, 156 / 255);
@@ -67,6 +67,7 @@ function decodeB64(b64: string): Uint8Array {
 }
 
 const LOGO_BYTES = decodeB64(STATION_LOGO_PNG_B64);
+const LETTER_LOGO_BYTES = decodeB64(STATION_LOGO_PRINT_PNG_B64);
 
 function pdfSafe(value: unknown): string {
   return String(value ?? "")
@@ -163,9 +164,9 @@ function drawBox(page: PDFPage, x: number, y: number, w: number, h: number, thic
   });
 }
 
-async function embedLogo(pdf: PDFDocument): Promise<PDFImage | null> {
+async function embedLogo(pdf: PDFDocument, bytes: Uint8Array = LOGO_BYTES): Promise<PDFImage | null> {
   try {
-    return await pdf.embedPng(LOGO_BYTES);
+    return await pdf.embedPng(bytes);
   } catch {
     return null;
   }
@@ -645,7 +646,7 @@ export async function buildLetterPdf(letter: LetterPdfData, station: StationBran
     regular: await pdf.embedFont(StandardFonts.Helvetica),
     bold: await pdf.embedFont(StandardFonts.HelveticaBold),
   };
-  const logo = await embedLogo(pdf);
+  const logo = await embedLogo(pdf, LETTER_LOGO_BYTES);
 
   const addStyledPage = (): { page: PDFPage; y: number } => {
     const page = pdf.addPage([PAGE_W, PAGE_H]);

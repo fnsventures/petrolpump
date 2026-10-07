@@ -480,12 +480,17 @@
     if (!id || !(await AppDialog.confirm("Remove this credit sale from the shift?", { title: "Remove credit sale", confirmLabel: "Remove", danger: true }))) return;
     setMsg("");
     try {
-      const { error } = await window.supabaseClient.rpc("delete_shift_credit_entry", { p_entry_id: id });
-      if (error) throw error;
-      await loadLedgerForContext();
-      renderBody();
-      notifyChange();
-      setMsg("Credit sale removed.");
+      await ActionProgress.track(
+        { title: "Removing", status: "Removing this credit sale…", doneStatus: "Removed" },
+        async () => {
+          const { error } = await window.supabaseClient.rpc("delete_shift_credit_entry", { p_entry_id: id });
+          if (error) throw error;
+          await loadLedgerForContext();
+          renderBody();
+          notifyChange();
+          setMsg("Credit sale removed.");
+        }
+      );
     } catch (err) {
       AppError.report(err, { context: "ShiftStaffLedger.deleteCredit" });
       setMsg(err?.message || "Could not remove credit sale.", true);
@@ -496,12 +501,17 @@
     if (!id || !(await AppDialog.confirm("Remove this expense from the shift?", { title: "Remove expense", confirmLabel: "Remove", danger: true }))) return;
     setMsg("");
     try {
-      const { error } = await window.supabaseClient.rpc("delete_shift_expense", { p_expense_id: id });
-      if (error) throw error;
-      await loadLedgerForContext();
-      renderBody();
-      notifyChange();
-      setMsg("Expense removed.");
+      await ActionProgress.track(
+        { title: "Removing", status: "Removing this expense…", doneStatus: "Removed" },
+        async () => {
+          const { error } = await window.supabaseClient.rpc("delete_shift_expense", { p_expense_id: id });
+          if (error) throw error;
+          await loadLedgerForContext();
+          renderBody();
+          notifyChange();
+          setMsg("Expense removed.");
+        }
+      );
     } catch (err) {
       AppError.report(err, { context: "ShiftStaffLedger.deleteExpense" });
       setMsg(err?.message || "Could not remove expense.", true);

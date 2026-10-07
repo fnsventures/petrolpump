@@ -453,23 +453,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!confirmed) return;
 
     btn.disabled = true;
-    const { error } = await window.supabaseClient.from("employee_attendance").delete().eq("id", recordId);
-
-    if (error) {
+    try {
+      await ActionProgress.track(
+        { title: "Clearing", status: "Removing this attendance record…", doneStatus: "Cleared" },
+        async () => {
+          const { error } = await window.supabaseClient.from("employee_attendance").delete().eq("id", recordId);
+          if (error) throw error;
+          showMessage("Attendance cleared.");
+          if (typeof CacheInvalidation !== "undefined") {
+            CacheInvalidation.invalidate("operational");
+          }
+          await loadAttendanceForDate(date);
+          renderAttendanceTable(date);
+          if (getHistoryMonthValue()) {
+            await loadHistoryMonth(getHistoryMonthValue());
+          }
+        }
+      );
+    } catch (error) {
       btn.disabled = false;
       showMessage(AppError.getUserMessage(error), true);
       AppError.report(error, { context: "attendance deleteRow", recordId });
-      return;
-    }
-
-    showMessage("Attendance cleared.");
-    if (typeof CacheInvalidation !== "undefined") {
-      CacheInvalidation.invalidate("operational");
-    }
-    await loadAttendanceForDate(date);
-    renderAttendanceTable(date);
-    if (getHistoryMonthValue()) {
-      await loadHistoryMonth(getHistoryMonthValue());
     }
   }
 

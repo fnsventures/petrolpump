@@ -248,14 +248,16 @@ Library (invoices.html → Library tab)
 
 ```
 Compose (letterhead.html)
-   → Save (DB metadata first) / Print letter / Download Word (local only)
-   → A DB trigger queues a Drive PDF archive, then letter body is cleared
-      (Letters / 2026)
+   → Save / Print letter / Download Word writes letterhead_letters first
+   → The page then calls drive-files to store the PDF in Google Drive
+      (Letters / year). A deferred trigger queues the same archive if the
+      browser closes after the save.
+   → After the PDF is stored, the letter body is cleared
    → Drive PDF uses the same station letterhead as print (css/letterhead-print.css)
    → letterhead_letters stores date, subject, Drive file ID (not the letter text)
 
 History
-   → View / Print from saved body
+   → View / Print opens the Drive PDF
    → Drive link opens the archived file
    → Admin delete removes Drive file + history row
 ```

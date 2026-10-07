@@ -252,6 +252,41 @@ async function refreshDriveStatus() {
   }
 }
 
+function postInvoiceUpload(form, hooks) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", invoiceFunctionUrl());
+    xhr.upload.addEventListener("progress", (event) => {
+      if (!event.lengthComputable || !event.total) return;
+      hooks?.onSent(event.loaded / event.total);
+    });
+    xhr.upload.addEventListener("load", () => {
+      hooks?.onBodySent();
+    });
+    xhr.addEventListener("load", () => {
+      let payload = {};
+      try {
+        payload = JSON.parse(xhr.responseText || "{}");
+      } catch {
+        payload = {};
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(payload.error || `Upload failed (${xhr.status})`));
+        return;
+      }
+      resolve(payload);
+    });
+    xhr.addEventListener("error", () => reject(new Error("Upload failed. Check the connection and try again.")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload was cancelled.")));
+    invoiceFunctionHeaders(false)
+      .then((headers) => {
+        Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value));
+        xhr.send(new FormData(form));
+      })
+      .catch(reject);
+  });
+}
+
 function showFormError(errorEl, message) {
   if (!errorEl) return;
   errorEl.textContent = message;
@@ -286,18 +321,23 @@ function bindUploadForm() {
       submitBtn.textContent = "Uploading…";
     }
     const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
-    progress?.start({ title: "Uploading document", status: "Uploading to Google Drive…", steps: 1 });
+    progress?.start({
+      title: "Uploading document",
+      status: "Uploading to Google Drive…",
+      timeoutMs: 180000,
+    });
 
     try {
-      progress?.setStep(0, "Uploading to Google Drive…");
-      const res = await fetch(invoiceFunctionUrl(), {
-        method: "POST",
-        headers: await invoiceFunctionHeaders(false),
-        body: new FormData(form),
+      await postInvoiceUpload(form, {
+        onSent(ratio) {
+          progress?.setPercent(ratio * 78);
+        },
+        onBodySent() {
+          progress?.setPercent(null, "Saving on Google Drive…");
+        },
       });
 
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || `Upload failed (${res.status})`);
+      await progress?.succeed("Uploaded");
 
       successEl?.classList.remove("hidden");
       const savedDate = document.getElementById("invoice-date")?.value;
@@ -305,7 +345,6 @@ function bindUploadForm() {
         invoiceDate: RECORD_DATE_KEYS.invoiceUpload,
       });
       if (fileInput) fileInput.value = "";
-      progress?.succeed("Uploaded");
       loadVaultDocuments();
     } catch (err) {
       AppError.report(err, { context: "invoiceUpload" });
@@ -428,7 +467,6 @@ function bindInvoiceTableActions() {
       try {
         await VaultDocuments.open(id, { previewWindow: preview });
       } catch (err) {
-        if (preview && !preview.closed) preview.close();
         AppError.report(err, { context: "invoiceView" });
         AppError.showToast(err.message || "Could not open the document.", "error");
       }
@@ -476,20 +514,21 @@ async function deleteVaultDocument(id) {
   if (!id || currentAuth?.role !== "admin") return;
   if (!(await AppDialog.confirm("Delete this document from Google Drive and the app?", { title: "Delete document", confirmLabel: "Delete", danger: true }))) return;
 
-  const progress = typeof ActionProgress !== "undefined" ? ActionProgress : null;
-  progress?.start({ title: "Deleting", status: "Removing from Google Drive…", steps: 1 });
-  showProgress();
   try {
-    progress?.setStep(0, "Removing from Google Drive…");
-    await invokeInvoiceFunction({ action: "delete", id });
-    progress?.succeed("Deleted");
-    loadVaultDocuments();
+    await ActionProgress.track(
+      {
+        title: "Deleting",
+        status: "Removing from Google Drive…",
+        doneStatus: "Deleted",
+      },
+      async () => {
+        await invokeInvoiceFunction({ action: "delete", id });
+        loadVaultDocuments();
+      }
+    );
   } catch (err) {
     AppError.report(err, { context: "invoiceDelete" });
     AppError.showToast(err.message || "Delete failed.", "error");
-  } finally {
-    progress?.close();
-    hideProgress();
   }
 }
 

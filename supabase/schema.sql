@@ -1390,8 +1390,9 @@ for each row
 execute function public.enqueue_drive_pdf_from_invoice();
 
 drop trigger if exists letterhead_letters_enqueue_drive_pdf on public.letterhead_letters;
-create trigger letterhead_letters_enqueue_drive_pdf
+create constraint trigger letterhead_letters_enqueue_drive_pdf
 after insert on public.letterhead_letters
+deferrable initially deferred
 for each row
 execute function public.enqueue_drive_pdf_from_letter();
 
