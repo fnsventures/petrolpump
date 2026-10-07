@@ -16,8 +16,8 @@ const AVATAR_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 /**
  * Generate cache key for user role
  */
-function getRoleCacheKey(email) {
-  return `staff_role_${email?.toLowerCase() ?? "unknown"}`;
+function getRoleCacheKey(userId) {
+  return `staff_role_${userId || "unknown"}`;
 }
 
 /** Role from JWT metadata only — never used for authorization (DB is source of truth). */
@@ -221,18 +221,17 @@ function normalizeEmail(email) {
  */
 const roleFetchGuard = typeof createRequestGuard === "function" ? createRequestGuard() : null;
 
-async function fetchRoleFromStaff(email) {
+async function fetchRoleFromStaff(userId) {
   const loadId = roleFetchGuard ? roleFetchGuard.next() : 0;
-  const normalized = normalizeEmail(email);
-  if (!normalized) return null;
+  if (!userId) return null;
 
-  const cacheKey = getRoleCacheKey(email);
+  const cacheKey = getRoleCacheKey(userId);
 
   const fetchFn = async () => {
     const { data, error } = await supabaseClient
       .from("users")
       .select("role, display_name, avatar_url")
-      .eq("email", normalized)
+      .eq("auth_user_id", userId)
       .maybeSingle();
     if (error) {
       AppError.report(error, { context: "fetchRoleFromUsers" });
@@ -261,8 +260,7 @@ async function fetchRoleFromStaff(email) {
 
 async function resolveAuthForSession(session) {
   if (!session) return { role: null, display_name: null, avatar_url: null };
-  const email = session.user?.email;
-  const cached = await fetchRoleFromStaff(email);
+  const cached = await fetchRoleFromStaff(session.user?.id);
   if (cached?.role) {
     return {
       role: cached.role,
@@ -285,10 +283,10 @@ async function resolveRoleForSession(session) {
 /**
  * Clear cached role for a user (call after role changes)
  */
-function invalidateUserRoleCache(email) {
-  if (typeof AppCache !== "undefined" && AppCache && email) {
-    AppCache.remove(getRoleCacheKey(email));
-  }
+function invalidateUserRoleCache(userId) {
+  if (typeof AppCache === "undefined" || !AppCache) return;
+  if (userId) AppCache.remove(getRoleCacheKey(userId));
+  AppCache.invalidateByType?.("user_role");
 }
 
 function unwrapLegacyNavUser(topbar) {
@@ -723,7 +721,7 @@ async function uploadUserAvatar(file, session) {
   });
   if (rpcError) throw rpcError;
 
-  invalidateUserRoleCache(session.user.email);
+  invalidateUserRoleCache(session.user.id);
   return publicUrl;
 }
 
@@ -742,7 +740,7 @@ async function removeUserAvatar(session) {
   });
   if (rpcError) throw rpcError;
 
-  invalidateUserRoleCache(session.user.email);
+  invalidateUserRoleCache(session.user.id);
 }
 
 function initTopbarUserMenuHandlers() {
@@ -1044,17 +1042,11 @@ function ensureTopbarUserMenu() {
 }
 
 async function handleLogout() {
-  const {
-    data: { session },
-  } = await supabaseClient.auth.getSession();
-  const email = session?.user?.email;
-
   await supabaseClient.auth.signOut();
 
-  if (email) {
-    invalidateUserRoleCache(email);
-  }
-  if (typeof clearApiCaches === "function") {
+  if (typeof clearAllCaches === "function") {
+    await clearAllCaches();
+  } else if (typeof clearApiCaches === "function") {
     await clearApiCaches();
   }
 

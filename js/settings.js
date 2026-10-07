@@ -721,32 +721,25 @@ function initUsersForm() {
       return;
     }
 
-    if (!existingUser && !password) {
+    let passwordNote = "";
+    if (!existingUser && password) {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-      if (errorEl) { errorEl.textContent = "Password is required to create a new login."; errorEl.classList.remove("hidden"); }
+      if (errorEl) {
+        errorEl.textContent = "Create this login in Supabase → Authentication → Users, then save the role with the password field empty. Public sign-up is turned off in the dashboard, so this page cannot create the account.";
+        errorEl.classList.remove("hidden");
+      }
       return;
     }
-
-    let passwordNote = "";
-    if (password) {
-      if (!existingUser) {
-        const { error: signupError } = await window.supabaseClient.auth.signUp({ email, password });
-        if (signupError && !isExistingUserError(signupError)) {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-          AppError.handle(signupError, { target: errorEl });
-          return;
-        }
-      } else {
-        const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin + "/login.html",
-        });
-        if (resetError) {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-          AppError.handle(resetError, { target: errorEl });
-          return;
-        }
-        passwordNote = " Password reset email sent.";
+    if (password && existingUser) {
+      const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/login.html",
+      });
+      if (resetError) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
+        AppError.handle(resetError, { target: errorEl });
+        return;
       }
+      passwordNote = " Password reset email sent.";
     }
 
     const displayName = formData.get("display_name")?.trim() || null;
@@ -1330,9 +1323,4 @@ function formatSettingsDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function isExistingUserError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("already registered") || message.includes("already exists");
 }

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, AppDialog, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, AppDialog, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, VaultDocuments */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -12,7 +12,7 @@ const FALLBACK_DOCUMENT_CATEGORIES = [
   { value: "other", label: "Other" },
 ];
 const INVOICE_LIST_COLUMNS =
-  "id, invoice_date, year, month, category, title, vendor, amount, file_name, mime_type, drive_web_view_link, created_at";
+  "id, invoice_date, year, month, category, title, vendor, amount, file_name, mime_type, created_at";
 const TABLE_COLSPAN = 7;
 
 let currentAuth = null;
@@ -236,6 +236,9 @@ async function refreshDriveStatus() {
     driveConfigured = !!data.configured;
     if (driveConfigured) {
       hideDriveBanner();
+      VaultDocuments.revokePublicLinks().catch((err) => {
+        AppError.report(err, { context: "revokeVaultPublicLinks" });
+      });
       return;
     }
 
@@ -391,9 +394,7 @@ async function loadVaultDocuments() {
   const isAdmin = currentAuth?.role === "admin";
   tbody.innerHTML = data.map((row) => {
     const folderLabel = `${row.year} / ${MONTH_NAMES[(row.month || 1) - 1] || row.month}`;
-    const viewBtn = row.drive_web_view_link
-      ? `<button type="button" class="link" data-action="view" data-href="${escapeHtml(row.drive_web_view_link)}">View</button>`
-      : "";
+    const viewBtn = `<button type="button" class="link" data-action="view" data-id="${escapeHtml(row.id)}">View</button>`;
     const downloadBtn = `<button type="button" class="link" data-action="download" data-id="${escapeHtml(row.id)}">Download</button>`;
     const deleteBtn = isAdmin
       ? `<button type="button" class="link danger" data-action="delete" data-id="${escapeHtml(row.id)}">Delete</button>`
@@ -423,8 +424,14 @@ function bindInvoiceTableActions() {
 
     const id = btn.dataset.id;
     if (btn.dataset.action === "view") {
-      const href = btn.dataset.href;
-      if (href) window.open(href, "_blank", "noopener,noreferrer");
+      const preview = window.open("", "_blank");
+      try {
+        await VaultDocuments.open(id, { previewWindow: preview });
+      } catch (err) {
+        if (preview && !preview.closed) preview.close();
+        AppError.report(err, { context: "invoiceView" });
+        AppError.showToast(err.message || "Could not open the document.", "error");
+      }
       return;
     }
     if (btn.dataset.action === "download") await downloadInvoice(id, btn);

@@ -1,6 +1,6 @@
 # Operations playbook
 
-Simple steps for everyday engineering work: **sync staging**, **deploy**, **release**, and **backup**.
+Simple steps for everyday engineering work: **sync staging**, **apply staging schema**, **deploy**, **release**, and **backup**.
 
 Read this page when you need to **do** something.  
 For diagrams of the same flows, see the [root README](../README.md#1-architecture).
@@ -94,9 +94,11 @@ When you add a new `*.fnsventures.in` Pages app, append its host to **this** rep
 
 ## 1. Sync staging with production data
 
-**What it does:** Copies **data** from the live database into the staging database so you can test with real numbers.
+**What it does:** Copies **data** from the live database into the staging database so you can test with real numbers. Before the copy, it also applies pending migrations on staging.
 
-**What it does not do:** Change production. Deploy the website. Apply new schema.
+**What it does not do:** Change production. Deploy the website. Keep the staging rows you already have.
+
+To apply SQL on staging and **keep** its current data, use [Apply migrations to staging only](#apply-migrations-to-staging-only) instead.
 
 | | Production | Staging |
 |--|------------|---------|
@@ -116,6 +118,39 @@ When you add a new `*.fnsventures.in` Pages app, append its host to **this** rep
 4. Open the **staging website** and log in. You should see production-like data.
 
 Connection errors → [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+---
+
+## Apply migrations to staging only
+
+**What it does:** Runs pending files in `supabase/migrations/` on the **staging** database. Staging rows stay.
+
+**What it does not do:** Change production. Replace staging data. Deploy the website.
+
+`./scripts/db.sh migrate` and `./scripts/db.sh migrate --apply` are production. Do not use them for this.
+
+### Steps
+
+1. Supabase CLI installed, and `STAGING_DB_URL` set in `scripts/db.env` (Session pooler).
+2. From the repo root, review (no change):
+
+```bash
+set -a
+source scripts/db.env
+set +a
+supabase db push --db-url "$STAGING_DB_URL" --dry-run
+```
+
+3. The list should be only the new migration files. If it names older files, or says a local file would be inserted before the last migration on the remote, stop.
+4. Apply:
+
+```bash
+supabase db push --db-url "$STAGING_DB_URL" --yes
+```
+
+5. Open `/staging/` and smoke-test: login → dashboard → the page that uses the change.
+
+Details and the stamp-history note: [MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only).
 
 ---
 
@@ -165,7 +200,9 @@ Merge or push to `staging`. Wait for Deploy. Test again on `/staging/`.
 
 If this release has **no** new files under `supabase/migrations/`, skip to Step D.
 
-If it **does** have migrations:
+If it **does** have migrations, apply them on staging first ([Apply migrations to staging only](#apply-migrations-to-staging-only)) and test `/staging/`. `./scripts/db.sh sync` already does that push before it replaces staging data, so a fresh sync covers this.
+
+Then, for production:
 
 1. Review safely (no production change):
 
@@ -190,8 +227,9 @@ This automatically takes a **local** backup first, then upgrades the **productio
 ### Short checklist
 
 - [ ] Sync (optional but recommended)
+- [ ] Staging schema applied if there are new migrations ([schema only](#apply-migrations-to-staging-only), or via sync)
 - [ ] Code on `staging` and tested
-- [ ] Migrations applied **if any** (`migrate` then `migrate --apply`)
+- [ ] Migrations applied on prod **if any** (`migrate` then `migrate --apply`)
 - [ ] Merge to `main`
 - [ ] Live site checked
 

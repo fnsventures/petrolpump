@@ -2,7 +2,7 @@
 
 How to change the schema safely without guessing.
 
-**Day-to-day apply steps:** [OPERATIONS.md §3 Step C](OPERATIONS.md#3-release-to-production)  
+**Day-to-day apply steps:** [staging schema only](OPERATIONS.md#apply-migrations-to-staging-only) · [production](OPERATIONS.md#3-release-to-production)  
 **Script internals / errors:** [scripts/README.md](../scripts/README.md)
 
 ---
@@ -61,11 +61,35 @@ supabase db push --db-url "$DB_URL" --include-all
 
 ## Apply order (staging → prod)
 
-### Staging (usual path)
+Apply on **staging** and smoke-test `/staging/` before any production migrate. `./scripts/db.sh migrate` and `./scripts/db.sh migrate --apply` change **production** only.
 
-`./scripts/db.sh sync` stamps pending migrations and pushes schema to staging **before** loading prod data. So after sync, staging schema matches the repo.
+### Staging schema only
 
-You can also push to the staging project with Supabase CLI if you are iterating on schema only (see CLI docs); day-to-day this repo uses `db.sh sync` / `migrate`.
+Pushes pending files in `supabase/migrations/` to the staging project. Existing staging rows stay. Production is not contacted.
+
+Needs the Supabase CLI and `STAGING_DB_URL` (Session pooler) in `scripts/db.env`. From the repo root:
+
+```bash
+set -a
+source scripts/db.env
+set +a
+
+# Lists pending files. Changes nothing.
+supabase db push --db-url "$STAGING_DB_URL" --dry-run
+
+# Applies those files to staging only.
+supabase db push --db-url "$STAGING_DB_URL" --yes
+```
+
+Stop if the dry-run lists migrations older than the latest version already on staging, or says a local file would be inserted before the last remote migration (`Found local migration files to be inserted before the last migration on remote`).
+
+`scripts/stamp-staging-migrations.sql` only marks the old bootstrap history as applied (`on conflict do nothing`). It does not run SQL. `./scripts/db.sh sync` runs it; a staging database that already has migration history does not need it for new files. **Never** run that stamp file on production.
+
+Then smoke-test `/staging/`: login → dashboard → the page that uses the new object.
+
+### Staging with production data
+
+`./scripts/db.sh sync` runs that same staging schema push, then **replaces staging data** with a production dump. Use it when you want real DSR, credit, and HR numbers. Use the schema-only commands above when you want the new SQL and the current staging rows.
 
 ### Production (release)
 
@@ -136,6 +160,8 @@ Smoke-test on staging/prod: login → dashboard → the page that uses the new o
 |---------|--------|
 | Only edit `schema.sql`, no migration | Prod never gets the change via `db push` |
 | Apply migration on prod before testing on staging | Harder rollback |
+| `./scripts/db.sh migrate --apply` when you meant staging | Production schema changes |
+| `./scripts/db.sh sync` when you only wanted the new SQL | Staging data replaced with prod |
 | Use Direct DB URL in `db.env` | Connection failures — [use Session pooler](SECRETS.md#a-laptop-gitignored) |
 | Commit `scripts/db.env` | Credential leak |
 | Run stamp-staging SQL on prod | Migrations marked applied without running |
@@ -146,7 +172,9 @@ Smoke-test on staging/prod: login → dashboard → the page that uses the new o
 
 | Command | Effect |
 |---------|--------|
+| `supabase db push --db-url "$STAGING_DB_URL" --dry-run` | List pending migrations on staging |
+| `supabase db push --db-url "$STAGING_DB_URL" --yes` | Apply pending migrations on staging; data kept |
+| `./scripts/db.sh sync` | Staging schema, then replace staging data from prod |
 | `./scripts/db.sh migrate` | Preflight / dry-run on prod |
 | `./scripts/db.sh migrate --apply` | Backup + push migrations to prod |
-| `./scripts/db.sh sync` | Staging schema + replace staging data from prod |
 | `./scripts/db.sh backup` | Local prod dump only |

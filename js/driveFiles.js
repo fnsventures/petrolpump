@@ -192,6 +192,55 @@
     return invokeJson({ action: "delete", ...params });
   }
 
+  function invoiceDocumentsUrl() {
+    const cfg = appConfig();
+    const client = global.supabaseClient;
+    return `${cfg.SUPABASE_URL || client?.supabaseUrl}/functions/v1/invoice-documents`;
+  }
+
+  async function postInvoiceDocuments(body) {
+    const res = await fetch(invoiceDocumentsUrl(), {
+      method: "POST",
+      headers: await functionHeaders(true),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await parseErrorResponse(res));
+    const type = res.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const data = await res.json();
+      if (data?.error) throw new Error(data.error);
+      return { json: data };
+    }
+    return { response: res };
+  }
+
+  async function openVaultDocument(id, options = {}) {
+    const preview = options.previewWindow && !options.previewWindow.closed ? options.previewWindow : null;
+    const { response } = await postInvoiceDocuments({ action: "download", id });
+    if (!response) throw new Error("Could not open the document.");
+    const fileName = fileNameFromDisposition(response.headers.get("Content-Disposition"), "document");
+    const blob = withUsefulType(await response.blob(), fileName);
+    const url = URL.createObjectURL(blob);
+    if (preview) {
+      preview.location.replace(url);
+    } else {
+      const opened = window.open(url, "_blank");
+      if (!opened) saveBlob(blob, fileName);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  }
+
+  async function revokeVaultPublicLinks() {
+    let after = "";
+    for (let i = 0; i < 100; i += 1) {
+      const { json } = await postInvoiceDocuments({ action: "revoke-public-links", after });
+      if (!json || json.done) return json;
+      if (!json.after || json.after === after) return json;
+      after = json.after;
+    }
+    return null;
+  }
+
   function localSettings() {
     const gd = global.PumpSettings?.getCachedSync?.()?.integrations?.googleDrive;
     return {
@@ -212,5 +261,10 @@
     remove,
     isNotConfiguredError,
     localSettings,
+  };
+
+  global.VaultDocuments = {
+    open: openVaultDocument,
+    revokePublicLinks: revokeVaultPublicLinks,
   };
 })(typeof window !== "undefined" ? window : globalThis);

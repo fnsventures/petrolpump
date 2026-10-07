@@ -29,7 +29,7 @@ This document describes the main **user and data flows** in the Petrol Pump appl
 User opens app (index.html / login.html)
     → Enters email + password (or uses Forgot password → reset email)
     → Supabase Auth signs in
-    → auth.js: fetch role from public.users (by email) — NOT from JWT metadata
+    → auth.js: fetch role from public.users where auth_user_id = the login id — NOT from the email claim or JWT metadata
     → If no public.users row: role unset → login.html?error=unprovisioned
     → Role cached (AppCache), stored in session
     → Redirect: admin/supervisor → dashboard.html
@@ -235,7 +235,7 @@ Upload (invoices.html → Upload tab)
 
 Library (invoices.html → Library tab)
    → SELECT invoice_documents (this year / last year / all time)
-   → View: drive_web_view_link | Download/Delete: edge function actions
+   → View and Download: edge function (the Drive file is not shared with anyone) | Delete: edge function, admin only
 ```
 
 **Roles:** Admin and supervisor can upload, list, view, download. **Delete** (Drive file + DB row) is **admin only**.

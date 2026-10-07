@@ -13,6 +13,7 @@ Prod data sync is always **read-only** on production.
 | Goal | Command | Prod | Staging |
 |------|---------|------|---------|
 | Test with real prod data on `/staging/` | `./scripts/db.sh sync` | read only | **replaced** |
+| Apply pending migrations on staging; keep its data | `supabase db push --db-url "$STAGING_DB_URL"` — [steps](../docs/MIGRATIONS.md#staging-schema-only) | no change | **schema** |
 | Check prod before migration | `./scripts/db.sh migrate` | no change | — |
 | Same as migrate (alias) | `./scripts/db.sh preflight` | no change | — |
 | Backup prod to local files | `./scripts/db.sh backup` | no change | — |
@@ -48,7 +49,7 @@ Edit `scripts/db.env`:
 | Variable | Project | Used by |
 |----------|---------|---------|
 | `PROD_DB_URL` | petrol pump | sync (read), migrate, backup |
-| `STAGING_DB_URL` | petrol pump staging | sync (write) |
+| `STAGING_DB_URL` | petrol pump staging | sync (write), staging schema push |
 
 URL format (Session pooler, encoding): [docs/SECRETS.md → A. Laptop](../docs/SECRETS.md#a-laptop-gitignored).
 
@@ -81,6 +82,16 @@ Do not use a second checklist here; this file only explains script behaviour.
 **Output:** `scripts/.sync-dumps/` (gitignored)
 
 **Does not copy:** storage file bytes (photos), session tokens, edge function secrets.
+
+There is no `db.sh` subcommand for schema only. Sync always continues into the data replace. To push SQL and keep staging rows, stop after the same `db push` sync uses in step 1:
+
+```bash
+set -a && source scripts/db.env && set +a
+supabase db push --db-url "$STAGING_DB_URL" --dry-run   # review
+supabase db push --db-url "$STAGING_DB_URL" --yes       # staging only
+```
+
+Full steps: [MIGRATIONS.md → Staging schema only](../docs/MIGRATIONS.md#staging-schema-only).
 
 ---
 

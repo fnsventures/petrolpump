@@ -86,6 +86,7 @@ npm run dev
 | Push / merge → `staging` | Staging only | No | No |
 | Merge `staging` → `main` | Production | No | No |
 | `./scripts/db.sh sync` | No | No (staging **data** replaced) | Staging schema may update |
+| `supabase db push` with `STAGING_DB_URL` | No | No (staging **schema** only) | No |
 | `./scripts/db.sh migrate` | No | No | No (dry-run) |
 | `./scripts/db.sh migrate --apply` | No | No | **Yes** |
 | Actions → Backup | No | No (read-only dump) | No |
@@ -113,10 +114,14 @@ npm run dev
 
 ---
 
-## If you only remember three commands
+## If you only remember these commands
 
 ```bash
-./scripts/db.sh sync              # real data on staging
+# staging schema only — see MIGRATIONS.md; keeps staging data
+supabase db push --db-url "$STAGING_DB_URL" --dry-run
+supabase db push --db-url "$STAGING_DB_URL" --yes
+
+./scripts/db.sh sync              # real data on staging (also pushes schema)
 ./scripts/db.sh migrate           # safe: what would apply on prod
 ./scripts/db.sh migrate --apply   # quiet window only — upgrades prod schema
 ```

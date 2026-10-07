@@ -265,7 +265,7 @@
         <!-- Users -->
         <section id="settings-panel-users" class="settings-panel card" data-panel="users" hidden>
           <h2>Users &amp; roles</h2>
-          <p class="muted">Assign app login roles. Add new user or update role for an existing email.</p>
+          <p class="muted">Assign app login roles. Create the login in the Supabase dashboard first (Authentication → Users). Public sign-up stays off, so this page only saves the role.</p>
           <form id="settings-form" class="form">
             <div class="form-grid">
               <div class="form-field">
@@ -284,11 +284,11 @@
                 </select>
               </div>
               <div class="form-field">
-                <label for="staff-password">Set password</label>
-                <input id="staff-password" name="password" type="password" placeholder="Leave empty to skip" minlength="6" />
+                <label for="staff-password">Reset password</label>
+                <input id="staff-password" name="password" type="password" placeholder="Existing user only" minlength="6" autocomplete="new-password" />
               </div>
             </div>
-            <p class="muted">Password required for a new login. For an existing user, entering a password sends a reset link to that email.</p>
+            <p class="muted">Leave the password empty to save the role. For someone who already has a login, a password here sends a reset link. New logins are created in the Supabase dashboard, not here.</p>
             <button type="submit">Save role</button>
             <p id="settings-success" class="success hidden">Role saved.</p>
             <p id="settings-error" class="error hidden"></p>
