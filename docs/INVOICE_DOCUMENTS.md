@@ -55,7 +55,7 @@ invoices.html / settings.html ──JWT──► Edge fn invoice-documents ─�
 1. The browser POSTs `multipart/form-data` with the user's JWT.
 2. The function checks `check_page_access('invoices')`, validates the type, size, and category, and reads the root folder ID from `pump_settings`.
 3. It gets a Google access token (OAuth refresh token or service account; see [§5](#5-alternative-service-account-workspace--shared-drive) for precedence), finds or creates the folder path, and uploads the file.
-4. It sets the Drive permission to **anyone with the link → reader** and inserts the `invoice_documents` row using the service role. If the insert fails, it deletes the Drive file.
+4. It uploads the file **without** sharing it, then inserts the `invoice_documents` row using the service role. If the insert fails, it deletes the Drive file.
 
 **List** reads `invoice_documents` directly through the Supabase client and RLS. **Download** and **delete** go through the edge function because the bytes live in Drive.
 
@@ -263,13 +263,13 @@ Work staging first, then prod:
 | Status OK but upload fails with `Google OAuth token error` / `unauthorized_client` | The refresh token was revoked, or the client and token don't match (Playground used without own credentials, or secret rotated). Regenerate all three ([§3.4](#34-create-oauth-client-credentials)–[3.5](#35-obtain-a-refresh-token-oauth-playground)). See [SECRETS.md → Rotation recipes](SECRETS.md#rotation-recipes). |
 | Edge function 404 | Deploy `invoice-documents` to that project ref. |
 | Library empty after a successful upload | Check the period filter (default This year) and the type filter. Run `select * from invoice_documents order by created_at desc limit 5;`. |
-| View link won't open | Org policy may block "anyone with link" sharing. Download still works through the function. |
+| View won't open | View and Download both go through the function. A public Drive link is not used. |
 | Works on staging but not prod (or the reverse) | Each project needs its own function deploy and secrets. Folder IDs can differ per environment. |
 
 ## 12. Security and privacy
 
 - The browser sends only the user JWT. Google credentials stay in Edge Function secrets.
-- Uploaded files are shared as **anyone with link → reader** so View works, which means anyone holding the link can open the file. For sensitive documents, use a Shared Drive whose policy blocks link sharing; Download keeps working.
+- Uploaded files are **not** shared as anyone-with-the-link. View and Download both require a signed-in supervisor or admin; the function reads the bytes with the Drive token. Staff photos are the exception and stay public so the image can load in the browser. Opening Vault or Reports removes any leftover file-level anyone permission on documents already in Drive.
 - RLS hides metadata from anonymous and unprovisioned users. Delete is admin-only in both RLS and the function. File type and size are validated server-side.
 
 ## 13. Maintenance

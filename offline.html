@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Offline · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
@@ -107,13 +108,6 @@
         <a href="login.html">Sign in</a>
       </p>
     </main>
-    <script>
-      document.getElementById("retry-btn")?.addEventListener("click", () => {
-        window.location.reload();
-      });
-      window.addEventListener("online", () => {
-        window.location.reload();
-      });
-    </script>
+    <script src="js/offline.js"></script>
   </body>
 </html>

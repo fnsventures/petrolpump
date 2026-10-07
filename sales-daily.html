@@ -8,14 +8,10 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Redirecting…</title>
-    <script>
-      (function () {
-        var q = window.location.search || "";
-        window.location.replace("dsr.html" + q);
-      })();
-    </script>
+    <script src="js/legacyPageRedirect.js"></script>
     <meta http-equiv="refresh" content="0;url=dsr.html" />
       <script defer src="js/pwa.js"></script>
   </head>

@@ -34,7 +34,7 @@ Example: `widgets.html` with script `js/widgets.js`.
 - [ ] `supabase migration new short_snake_description` — never hand-type a timestamp; the file must sort after every existing one ([MIGRATIONS.md → Naming](MIGRATIONS.md#naming)).
 - [ ] Additive and safe: nullable/defaulted columns, `create or replace` functions, `if not exists` indexes. Destructive change → plan the rollback first ([DISASTER_RECOVERY.md → Schema rollback](DISASTER_RECOVERY.md#schema-rollback)).
 - [ ] Redefining a function? Start from the **latest** migration that defines it (`grep -lE "create( or replace)? function public\.<name>\b" … | sort | tail -1`), not `schema.sql`, a `grant`, or a `comment on function`. Day-closing RPCs: [DAY_CLOSING.md](DAY_CLOSING.md).
-- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
+- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. `authenticated` has no insert or update on `amount_due`, `prepaid_balance`, or `amount_settled`. See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
 - [ ] Changing a function's arguments? `drop function if exists public.fn(<old arg types>);` in the same migration, or the old version stays callable.
 - [ ] New table → enable RLS and add policies; grant RPCs to `authenticated` only.
 - [ ] Mirror the change in `supabase/schema.sql`; `./scripts/check-schema-drift.sh` passes (needs Docker).
@@ -63,8 +63,9 @@ Example: `get-widgets-data`.
 
 Both steps are required — an Auth account alone sees empty pages.
 
+- [ ] **Public sign-up off** — Supabase → **Authentication → Sign In / Up** (or Providers → Email) → disable **Allow new users to sign up**, on **both** prod and staging. A new project turns this on. The app cannot change it. Settings no longer calls `signUp`.
 - [ ] **Auth** — Supabase → **Authentication → Users → Add user** (email + password), in the right project (prod or staging).
-- [ ] **App role** — an admin adds the email under **Settings → Users** (calls `upsert_staff`), choosing `admin` or `supervisor`. SQL alternative:
+- [ ] **App role** — an admin adds the email under **Settings → Users** (calls `upsert_staff`), choosing `admin` or `supervisor`. The Auth user must already exist. SQL alternative (the row links to `auth.users` when that email already has a login):
   ```sql
   insert into public.users (email, role)
   values ('operator@example.com', 'supervisor')

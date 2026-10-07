@@ -773,7 +773,6 @@ function collectFuelPurchaseLines(data, range, getStored) {
       supplierInvoiceNo: meta.supplierInvoiceNo || vault?.title || "",
       supplierGstin: meta.supplierGstin || "",
       invoiceDocumentId: meta.invoiceDocumentId || vault?.id || null,
-      driveWebViewLink: vault?.drive_web_view_link || null,
     });
   };
 
@@ -833,7 +832,6 @@ function buildFuelPurchaseRows(data, range) {
       supplierInvoiceNo,
       supplierGstin,
       invoiceDocumentId,
-      driveWebViewLink,
     }) => {
     const taxPct = getPurchaseTaxPct(product);
     const slabKey = classifyGstSlab(taxPct);
@@ -873,7 +871,6 @@ function buildFuelPurchaseRows(data, range) {
       supplierInvoiceNo: supplierInvoiceNo || "",
       supplierGstin: gstin,
       invoiceDocumentId: invoiceDocumentId || null,
-      driveWebViewLink: driveWebViewLink || null,
     };
   });
 
@@ -939,11 +936,9 @@ function renderGstPurchaseDetail(data, range) {
         const ref = prod === "petrol" ? "MS" : prod === "diesel" ? "HSD" : String(r.product).toUpperCase();
         const invNo = r.supplierInvoiceNo ? escapeHtml(r.supplierInvoiceNo) : "—";
         const gstin = r.supplierGstin ? escapeHtml(r.supplierGstin) : "—";
-        const vaultCell = r.driveWebViewLink
-          ? `<a href="${escapeHtml(r.driveWebViewLink)}" target="_blank" rel="noopener">View PDF</a>`
-          : r.invoiceDocumentId
-            ? "Linked"
-            : "—";
+        const vaultCell = r.invoiceDocumentId
+          ? `<button type="button" class="link" data-vault-document="${escapeHtml(r.invoiceDocumentId)}">View PDF</button>`
+          : "—";
         return `<tr class="${fuelRowClass(prod)}">
       <td>${formatNumericDate(r.date)}</td>
       <td>${formatFuelBadge(ref)}</td>

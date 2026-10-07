@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatNumericDate, AppError, escapeHtml, PumpSettings, loadPumpSettings, DsrQueries, buildExpenseCategoryMap, initDocsAccordion, PrintUtils, createRequestGuard, withProgress, AppCache, fetchAllRows */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatNumericDate, AppError, escapeHtml, PumpSettings, loadPumpSettings, DsrQueries, buildExpenseCategoryMap, initDocsAccordion, PrintUtils, createRequestGuard, withProgress, AppCache, fetchAllRows, VaultDocuments */
 /**
  * Reports page: catalog, data load, and print.
  * Figures live in reportsGst.js, reportsGstr1.js, reportsGstr3b.js, reportsPl.js, reportsSales.js.
@@ -173,6 +173,26 @@ function initReportsPage() {
   if (tab && findReportMeta(tab)) {
     setActiveReportTab(tab);
   }
+
+  VaultDocuments.revokePublicLinks().catch((err) => {
+    AppError.report(err, { context: "revokeVaultPublicLinks" });
+  });
+
+  document.getElementById("reports-preview")?.addEventListener("click", async (event) => {
+    const btn = event.target.closest("[data-vault-document]");
+    if (!btn) return;
+    event.preventDefault();
+    const id = btn.dataset.vaultDocument;
+    if (!id) return;
+    const preview = window.open("", "_blank");
+    try {
+      await VaultDocuments.open(id, { previewWindow: preview });
+    } catch (err) {
+      if (preview && !preview.closed) preview.close();
+      AppError.report(err, { context: "vaultDocumentView" });
+      AppError.showToast(err.message || "Could not open the document.", "error");
+    }
+  });
 
   document.getElementById("reports-catalog")?.addEventListener("click", async (e) => {
     const btn = e.target.closest(".reports-pick");
@@ -473,7 +493,7 @@ async function fetchReportDataDirect(start, end) {
     fetchAllRows(() =>
       supabaseClient
         .from("invoice_documents")
-        .select("id, invoice_date, vendor, amount, category, title, drive_web_view_link")
+        .select("id, invoice_date, vendor, amount, category, title")
         .eq("category", "purchase")
         .gte("invoice_date", start)
         .lte("invoice_date", end)

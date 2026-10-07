@@ -75,7 +75,7 @@ Then open **http://localhost:8080/**. Use `index.html` or `login.html` as the en
 
 Two steps are required — Supabase Auth alone is **not** enough to use the app:
 
-1. **Supabase Auth** — Create the user under **Authentication → Users** (email/password).
+1. **Supabase Auth** — Create the user under **Authentication → Users** (email/password). Leave **Allow new users to sign up** off on both projects (Authentication → Sign In / Up). The app cannot change that dashboard switch.
 2. **Provision in `public.users`** — Add a row with the same email and role `admin` or `supervisor`.
 
 **Greenfield (no admin yet):** After signing in, the first user can self-provision as admin via **Settings → Users** or the `upsert_staff` RPC. Bootstrap rules enforce: only **your own JWT email**, role must be **`admin`**. You cannot create a supervisor or provision someone else's email until an admin exists.
@@ -227,7 +227,7 @@ Operators can log in with a **supervisor** role: they see operational pages (das
 ### 3.1 Steps to enable a supervisor
 
 1. **Supabase Auth**  
-   Ensure the user exists under **Authentication → Users**. Create the user (or have them sign up) and set a password.
+   Ensure the user exists under **Authentication → Users**. Add the user there and set a password. Do not use public sign-up.
 
 2. **App users table**  
    Add a row in `public.users` with role `supervisor`:
@@ -240,7 +240,7 @@ Operators can log in with a **supervisor** role: they see operational pages (das
      on conflict (email) do update set role = 'supervisor';
      ```
 
-   Emails are stored in lowercase; the app matches login email case-insensitively.
+   Emails are stored in lowercase. The role is resolved from `users.auth_user_id` = the Auth user id, not from the email in the token.
 
 3. **Login**  
    The user signs in on the login page with the same email and password. They are redirected to the dashboard; Staff, Analysis, Reports, and Settings are hidden from the navigation. Direct navigation to admin URLs is blocked by `check_page_access` when pages use `requireAuth({ pageName: … })`.

@@ -103,7 +103,8 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| email | text | Unique, lowercase for matching |
+| email | text | Unique, lowercase login email |
+| auth_user_id | uuid | `auth.users.id`. Role checks use this, not the email claim. Filled when the Auth user and this row refer to the same email |
 | role | text | `admin` \| `supervisor` |
 | display_name | text | Optional; shown in app |
 | avatar_url | text | Optional; public URL in `user-avatars` Storage bucket |
@@ -310,7 +311,8 @@ See [DSR_TABLES.md](DSR_TABLES.md).
 | file_size | bigint | Size in bytes |
 | drive_file_id | text | Google Drive file ID |
 | drive_folder_id | text | Drive folder ID (month folder for purchase; year folder for other types) |
-| drive_web_view_link | text | Optional view URL (anyone-with-link if shared on upload) |
+| drive_web_view_link | text | Drive URL. Not shared publicly; View and Download go through the edge function |
+| public_link_revoked_at | timestamptz | When the file-level anyone permission was confirmed absent |
 | notes | text | Optional |
 | uploaded_by | uuid | FK → auth.users |
 | created_at | timestamptz | Upload time |
@@ -558,7 +560,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** Default operational pattern; UPDATE also allowed for supervisor or admin (contact info; balances updated by payment RPC/triggers).
+**RLS:** Default operational pattern. Supervisors and admins may update contact fields. `authenticated` has no insert or update on `amount_due` or `prepaid_balance`; `sync_credit_customer_balances` (security definer) writes them.
 
 **Trigger / sync:** Entry and payment RPCs keep `amount_due` and `prepaid_balance` consistent.
 ---
@@ -583,9 +585,9 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Constraint:** `amount_settled <= amount`.
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)). `authenticated` cannot insert or update `amount_settled`, and cannot update `amount`. Payment RPCs write `amount_settled`; `add_credit_entry` writes `amount`.
 
-**Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed, so a later payment can settle that sale.
+**Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed inside those RPCs, so a later payment can settle that sale.
 
 ---
 
@@ -771,16 +773,16 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 
 | RPC | Purpose | Admin-only mutations |
 |-----|---------|----------------------|
-| `get_user_role()` | Resolve role from JWT email → `users` | — |
-| `is_admin()`, `is_supervisor_or_admin()` | Policy helpers | — |
-| `require_staff_access()` | Raises if not provisioned staff | internal |
+| `get_user_role()` | Resolve role from `auth.uid()` → `users.auth_user_id` | — |
+| `is_admin()`, `is_supervisor_or_admin()` | Policy helpers. False for a login that is not provisioned; null when there is no login | — |
+| `require_staff_access()` | Raises if a login is not provisioned staff. No-op when there is no login | internal |
 | `check_page_access(page)` | Returns `{ allowed, role, page }` | — |
 | `upsert_staff(email, role, display_name, password?)` | Create/update app user | bootstrap + admin |
 | `delete_staff(email)` | Remove app user | admin |
 | `update_my_avatar(url)` | Set operator profile photo URL | own row |
 | `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
 | `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
-| `generate_invoice_number()` | Next billing invoice number | — |
+| `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
 | `save_invoice(..., request_id?)` | Atomic invoice + line items; rejects qty/rate ≤ 0, invalid GST, discount < 0 or > subtotal | — |
 | `list_employees_roster()` | Active employees without PII | — |

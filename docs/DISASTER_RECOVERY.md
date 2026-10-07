@@ -147,7 +147,7 @@ None of these items are in the SQL dump.
 | # | Item | Where |
 |---|------|-------|
 | 1 | **Auth URL config**: Site URL + redirect URLs (`https://bishnupriyafuels.fnsventures.in`, `/staging/`, `localhost`) | Supabase → Authentication → URL Configuration |
-| 2 | Auth providers / SMTP / email templates if customised | Supabase → Authentication |
+| 2 | Auth providers / SMTP / email templates if customised. **Turn off public sign-up** (Authentication → Sign In / Up → Allow new users to sign up). A restored project may turn it back on. The app cannot change this | Supabase → Authentication |
 | 3 | Users can log in with their old passwords (`encrypted_password` is restored). Old sessions are invalid because the JWT secret is new | Test one admin login |
 | 4 | **Edge Function secrets**: Google OAuth trio, Drive folder settings | Supabase → Edge Functions → Secrets ([INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md)) |
 | 5 | **Deploy edge functions** (`get-dashboard-data`, `get-reports-data`, `get-pl-data`, `invoice-documents`, `drive-files`) | Update `SUPABASE_PROJECT_REF` → Actions → **Deploy Supabase Functions** → Run workflow |

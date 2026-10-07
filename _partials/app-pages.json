@@ -138,6 +138,7 @@
       "pageTitle": "Vault",
       "bodyClass": "invoices-page",
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
+      "afterAuth": ["js/driveFiles.js"],
       "page": "js/invoices.js"
     },
     "attendance.html": {
@@ -204,6 +205,7 @@
         "js/reportsPl.js",
         "js/reportsSales.js"
       ],
+      "afterAuth": ["js/driveFiles.js"],
       "page": "js/reports.js"
     },
     "settings.html": {

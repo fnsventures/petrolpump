@@ -21,34 +21,41 @@ create extension if not exists pg_net;
 -- ROLE HELPER FUNCTIONS (Security Definer - bypasses RLS for internal checks)
 -- ============================================================================
 
--- Get the current user's role from public.users only (no JWT metadata fallback).
+-- Get the current user's role from public.users only (no JWT metadata or email-claim fallback).
 -- Returns 'admin', 'supervisor', or null if not provisioned.
 create or replace function public.get_user_role()
 returns text
 language sql
 security definer
 stable
+set search_path = public
 as $$
   select role
   from public.users
-  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'))
+  where auth_user_id = auth.uid()
   limit 1;
 $$;
 
-comment on function public.get_user_role() is 'Returns admin/supervisor from public.users only. Null if not provisioned.';
+comment on function public.get_user_role() is
+  'Returns admin/supervisor from public.users for auth.uid(). Null if not provisioned.';
 
--- Helper function to check if current user is admin
--- This centralizes the admin check logic and improves performance
+-- Helper function to check if current user is admin.
+-- False (not null) when the caller is unprovisioned, so `if not is_admin()` denies them.
 create or replace function public.is_admin()
 returns boolean
 language sql
 security definer
 stable
+set search_path = public
 as $$
-  select public.get_user_role() = 'admin';
+  select case
+    when auth.uid() is null then null
+    else coalesce(public.get_user_role() = 'admin', false)
+  end;
 $$;
 
-comment on function public.is_admin() is 'Returns true if the current authenticated user has admin role.';
+comment on function public.is_admin() is
+  'True when auth.uid() is a provisioned admin. False for any other login. Null when there is no login (restore / SQL editor).';
 
 -- True when daily meter sheet was finished (not a shift-sync stub with meters only).
 create or replace function public.dsr_meter_row_is_complete(
@@ -192,11 +199,16 @@ returns boolean
 language sql
 security definer
 stable
+set search_path = public
 as $$
-  select public.get_user_role() in ('admin', 'supervisor');
+  select case
+    when auth.uid() is null then null
+    else coalesce(public.get_user_role() in ('admin', 'supervisor'), false)
+  end;
 $$;
 
-comment on function public.is_supervisor_or_admin() is 'Returns true if the current user is a supervisor or admin.';
+comment on function public.is_supervisor_or_admin() is
+  'True when auth.uid() is provisioned staff. False for any other login. Null when there is no login (restore / SQL editor).';
 
 -- Reject unprovisioned auth users (exist in auth.users but not public.users)
 create or replace function public.require_staff_access()
@@ -207,6 +219,10 @@ stable
 set search_path = public
 as $$
 begin
+  -- No login: table owner, service role, or a restore. Not a signed-up stranger.
+  if auth.uid() is null then
+    return;
+  end if;
   if not public.is_supervisor_or_admin() then
     raise exception 'Provisioned staff access required';
   end if;
@@ -214,7 +230,7 @@ end;
 $$;
 
 comment on function public.require_staff_access() is
-  'Raises unless the caller is a provisioned admin or supervisor in public.users.';
+  'Raises unless the caller is a provisioned admin or supervisor. No-op when there is no login.';
 
 -- Station calendar date (IST). Use instead of current_date, which is UTC on Supabase.
 create or replace function public.meter_station_today()
@@ -362,6 +378,7 @@ set search_path = public
 as $$
 declare
   v_result jsonb;
+  v_auth_id uuid;
 begin
   if not public.is_admin() then
     if exists (select 1 from public.users where role = 'admin') then
@@ -381,10 +398,29 @@ begin
     raise exception 'Email is required';
   end if;
 
-  insert into public.users (email, role, display_name)
-  values (lower(trim(p_email)), p_role, nullif(trim(p_display_name), ''))
-  on conflict (email) do update set role = excluded.role, display_name = excluded.display_name
-  returning jsonb_build_object('id', id, 'email', email, 'role', role, 'display_name', display_name) into v_result;
+  select a.id
+  into v_auth_id
+  from auth.users a
+  where lower(trim(a.email)) = lower(trim(p_email))
+  limit 1;
+
+  if v_auth_id is null then
+    raise exception 'Create this login in Supabase Authentication first';
+  end if;
+
+  insert into public.users (email, role, display_name, auth_user_id)
+  values (lower(trim(p_email)), p_role, nullif(trim(p_display_name), ''), v_auth_id)
+  on conflict (email) do update set
+    role = excluded.role,
+    display_name = excluded.display_name,
+    auth_user_id = excluded.auth_user_id
+  returning jsonb_build_object(
+    'id', id,
+    'email', email,
+    'role', role,
+    'display_name', display_name,
+    'auth_user_id', auth_user_id
+  ) into v_result;
   return v_result;
 end;
 $$;
@@ -1253,6 +1289,9 @@ declare
   v_payload jsonb;
   v_drive jsonb;
 begin
+  perform public.require_staff_access();
+
+  begin
   if p_kind is null or p_record_id is null then
     return;
   end if;
@@ -1306,14 +1345,18 @@ begin
     body := v_payload,
     timeout_milliseconds := 25000
   );
-exception
-  when others then
-    raise warning 'enqueue_drive_pdf_archive failed: %', sqlerrm;
+  exception
+    when others then
+      raise warning 'enqueue_drive_pdf_archive failed: %', sqlerrm;
+  end;
 end;
 $$;
 
 comment on function public.enqueue_drive_pdf_archive(text, uuid) is
-  'Fire-and-forget Drive PDF archive via pg_net. Never blocks invoice/letter save.';
+  'Fire-and-forget Drive PDF archive via pg_net. Provisioned staff only. Never blocks invoice/letter save.';
+
+revoke all on function public.enqueue_drive_pdf_archive(text, uuid) from public, anon;
+grant execute on function public.enqueue_drive_pdf_archive(text, uuid) to authenticated;
 
 create or replace function public.enqueue_drive_pdf_from_invoice()
 returns trigger
@@ -1420,7 +1463,8 @@ create table if not exists public.invoice_documents (
   notes text,
   uploaded_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  category text not null default 'purchase'
+  category text not null default 'purchase',
+  public_link_revoked_at timestamp with time zone
 );
 
 create index if not exists invoice_documents_date_idx on public.invoice_documents (invoice_date desc);
@@ -1442,7 +1486,9 @@ comment on column public.invoice_documents.invoice_date is
 comment on column public.invoice_documents.drive_file_id is
   'Google Drive file ID for download via edge function.';
 comment on column public.invoice_documents.drive_web_view_link is
-  'Optional Drive web view link (anyone-with-link if shared on upload).';
+  'Drive URL for the file. Vault uploads are not shared with anyone; open them through the invoice-documents function.';
+comment on column public.invoice_documents.public_link_revoked_at is
+  'When the file-level anyone-with-the-link permission was confirmed absent. Null until that check runs.';
 
 alter table public.dsr_petrol
   drop constraint if exists dsr_petrol_invoice_document_id_fkey;
@@ -1521,17 +1567,19 @@ create policy "invoice_items_delete_admin" on public.invoice_items
   for delete to authenticated using (public.is_admin());
 
 
--- Generate next invoice number (CRI/NNNN)
+-- Generate next invoice number (CRI/NNNN). Provisioned staff only.
 create or replace function public.generate_invoice_number()
 returns text
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
   v_year text;
   v_seq integer;
   v_number text;
 begin
+  perform public.require_staff_access();
   v_year := to_char(current_date, 'YYYY');
   v_seq := nextval('public.invoice_number_seq');
   v_number := 'CRI/' || lpad(v_seq::text, 4, '0');
@@ -1539,7 +1587,11 @@ begin
 end;
 $$;
 
-comment on function public.generate_invoice_number() is 'Generate next sequential invoice number in CRI/NNNN format.';
+comment on function public.generate_invoice_number() is
+  'Next CRI/NNNN invoice number. Provisioned staff only.';
+
+revoke all on function public.generate_invoice_number() from public, anon;
+grant execute on function public.generate_invoice_number() to authenticated;
 
 
 -- Save a complete invoice with items in a single transaction
@@ -1715,6 +1767,7 @@ comment on function public.save_invoice(date, text, text, text, text, text, text
 create table if not exists public.users (
   id uuid default uuid_generate_v4() constraint staff_pkey primary key,
   email text not null constraint staff_email_key unique,
+  auth_user_id uuid references auth.users (id) on delete set null,
   role text not null constraint staff_role_check check (role in ('admin', 'supervisor')),
   created_at timestamp with time zone default timezone('utc'::text, now()),
   display_name text constraint staff_display_name_check check (char_length(trim(display_name)) <= 120 or display_name is null),
@@ -1722,8 +1775,13 @@ create table if not exists public.users (
 );
 
 create index if not exists staff_email_idx on public.users (email);
+create unique index if not exists users_auth_user_id_key
+  on public.users (auth_user_id)
+  where auth_user_id is not null;
 
 comment on table public.users is 'App users (login / operator roles). Display name shown in UI.';
+comment on column public.users.auth_user_id is
+  'auth.users.id for this login. Role checks use this, not the email claim.';
 comment on column public.users.display_name is 'Name shown in the app (e.g. welcome message). Optional; falls back to email if empty.';
 comment on column public.users.avatar_url is 'Public URL of operator profile photo (Supabase Storage user-avatars bucket).';
 
@@ -1752,7 +1810,7 @@ begin
   perform public.require_staff_access();
   update public.users
   set avatar_url = nullif(trim(p_avatar_url), '')
-  where lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'));
+  where auth_user_id = auth.uid();
   if not found then
     raise exception 'User not provisioned';
   end if;
@@ -1789,6 +1847,62 @@ create policy "users_update_admin" on public.users
 drop policy if exists "users_delete_admin" on public.users;
 create policy "users_delete_admin" on public.users
   for delete to authenticated using (public.is_admin());
+
+create or replace function public.set_app_user_auth_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_auth_id uuid;
+begin
+  select a.id
+  into v_auth_id
+  from auth.users a
+  where lower(trim(a.email)) = lower(trim(new.email))
+  limit 1;
+
+  if v_auth_id is not null then
+    new.auth_user_id := v_auth_id;
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.set_app_user_auth_id() is
+  'Sets users.auth_user_id from auth.users when the emails match.';
+
+drop trigger if exists users_set_auth_id on public.users;
+create trigger users_set_auth_id
+  before insert or update of email on public.users
+  for each row execute function public.set_app_user_auth_id();
+
+create or replace function public.link_app_user_auth_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.users
+  set auth_user_id = new.id
+  where auth_user_id is null
+    and lower(trim(email)) = lower(trim(new.email));
+  return new;
+end;
+$$;
+
+comment on function public.link_app_user_auth_id() is
+  'Links a new Auth user to a public.users row that does not yet have auth_user_id.';
+
+drop trigger if exists auth_users_link_app_user on auth.users;
+create trigger auth_users_link_app_user
+  after insert or update of email on auth.users
+  for each row execute function public.link_app_user_auth_id();
+
+revoke all on function public.set_app_user_auth_id() from public, anon, authenticated;
+revoke all on function public.link_app_user_auth_id() from public, anon, authenticated;
 
 -- Employees (pump staff who receive salary – distinct from app users)
 -- Constraint/index names keep the legacy staff_members_* prefix (table was renamed).
@@ -2683,9 +2797,10 @@ comment on table public.credit_customers is 'Credit ledger for fleet and institu
 comment on column public.credit_customers.date is 'Date for which this credit applies; used for day-closing credit_today sum.';
 comment on column public.credit_customers.mobile is 'Customer mobile / phone (optional)';
 comment on column public.credit_customers.address is 'Customer address (optional)';
-comment on column public.credit_customers.prepaid_balance is 'Advance credit from overpayment. Net balance = amount_due - prepaid_balance.';
+comment on column public.credit_customers.prepaid_balance is
+  'Advance from overpayment. Not granted to authenticated; sync_credit_customer_balances writes it. Net = amount_due - prepaid_balance.';
 comment on column public.credit_customers.amount_due is
-  'Current outstanding balance for this customer (synced from credit_entries when using credit_entries).';
+  'Outstanding from unsettled sales. Not granted to authenticated; sync_credit_customer_balances writes it.';
 
 alter table public.credit_customers enable row level security;
 
@@ -2707,7 +2822,8 @@ create policy "credit_insert_own" on public.credit_customers
     public.is_supervisor_or_admin() and created_by = auth.uid()
   );
 
--- UPDATE: Supervisors and admins (contact info; amount_due also updated by payment RPC/triggers)
+-- UPDATE: Supervisors and admins may edit contact fields. amount_due and
+-- prepaid_balance are not granted to authenticated (see grants below).
 drop policy if exists "credit_update_authenticated" on public.credit_customers;
 drop policy if exists "credit_update_by_role" on public.credit_customers;
 create policy "credit_update_by_role" on public.credit_customers
@@ -2755,7 +2871,8 @@ create index if not exists credit_entries_shift_staff_idx
 
 comment on table public.credit_entries is 'One row per credit sale. Transaction date = DSR date (business date of fuel delivery).';
 comment on column public.credit_entries.transaction_date is 'Business date when fuel was dispensed on credit; drives DSR credit_today.';
-comment on column public.credit_entries.amount_settled is 'Amount already paid against this entry (FIFO allocation).';
+comment on column public.credit_entries.amount_settled is
+  'Amount already paid against this sale. Not granted to authenticated; payment RPCs write it.';
 comment on column public.credit_entries.employee_id is
   'Optional: staff who gave credit during a shift register entry.';
 comment on column public.credit_entries.shift is
@@ -2780,6 +2897,52 @@ create policy "credit_entries_update_by_role" on public.credit_entries
 drop policy if exists "credit_entries_delete_admin" on public.credit_entries;
 create policy "credit_entries_delete_admin" on public.credit_entries
   for delete to authenticated using (public.is_admin());
+
+-- Browser roles cannot write balances. Security-definer RPCs run as the owner.
+revoke insert, update on table public.credit_customers from public, anon, authenticated;
+revoke insert, update on table public.credit_entries from public, anon, authenticated;
+
+grant insert (
+  customer_name,
+  vehicle_no,
+  last_payment,
+  notes,
+  created_by,
+  date,
+  mobile,
+  address
+) on table public.credit_customers to authenticated;
+
+grant update (
+  customer_name,
+  vehicle_no,
+  last_payment,
+  notes,
+  date,
+  mobile,
+  address
+) on table public.credit_customers to authenticated;
+
+grant insert (
+  credit_customer_id,
+  transaction_date,
+  fuel_type,
+  quantity,
+  amount,
+  created_by,
+  employee_id,
+  shift
+) on table public.credit_entries to authenticated;
+
+grant update (
+  credit_customer_id,
+  transaction_date,
+  fuel_type,
+  quantity,
+  created_by,
+  employee_id,
+  shift
+) on table public.credit_entries to authenticated;
 
 create or replace function public.credit_entries_sync_amount_due()
 returns trigger language plpgsql security definer
@@ -5969,6 +6132,8 @@ declare
   v_credit numeric := 0;
   v_expense numeric := 0;
 begin
+  perform public.require_staff_access();
+
   if p_date is null or p_employee_id is null or v_shift not in ('morning', 'afternoon') then
     return;
   end if;
@@ -6009,7 +6174,7 @@ end;
 $$;
 
 comment on function public.sync_meter_shift_cash_ledger_totals(date, text, uuid) is
-  'Refresh meter_shift_cash credit_amount/expense_amount from attributed ledger rows.';
+  'Refresh meter_shift_cash credit_amount/expense_amount from attributed ledger rows. Provisioned staff only.';
 
 create or replace function public.trg_sync_shift_cash_from_credit_entries()
 returns trigger
@@ -7740,6 +7905,7 @@ comment on function public.get_meter_shift_readings(date, text) is
   'Load shift nozzles, cash/phone/credit/expense, rates, daily meters, suggested openings, attendance hints.';
 
 grant execute on function public.get_meter_shift_readings(date, text) to authenticated;
+revoke all on function public.sync_meter_shift_cash_ledger_totals(date, text, uuid) from public, anon;
 grant execute on function public.sync_meter_shift_cash_ledger_totals(date, text, uuid) to authenticated;
 grant execute on function public.add_shift_expense(date, text, uuid, text, numeric, text, uuid) to authenticated;
 grant execute on function public.delete_shift_credit_entry(uuid) to authenticated;

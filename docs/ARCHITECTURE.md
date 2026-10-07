@@ -347,7 +347,7 @@ docs/
 - **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume` (cache invalidation on reconnect/resume is centralized in `js/utils.js` → `onAppResumeEvent`)
 - **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` with stale-while-revalidate, in-flight dedup, cross-tab invalidation (`BroadcastChannel` + `storage`), local `bpf:cache-invalidate` events, and `invalidateOperational()` for live data
 - **`js/utils.js`:** `bindLiveRefresh()` wires a page handler to both `bpf:app-resume` and `bpf:cache-invalidate` (same-tab mutations and cross-tab edits)
-- **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker (SW static/dynamic caches only — API is not SW-cached)
+- **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches`. Logout calls `clearAllCaches`, which drops every `bpf_cache_` entry (including employee Aadhaar, PAN, phone, and address) and asks the service worker to clear its caches. `clearApiCaches` only drops live operational snapshots.
 - Scope works for prod root and `/staging/`
 
 ---
@@ -357,7 +357,7 @@ docs/
 ### 6.1 Authentication
 
 - **Provider:** Supabase Auth (email/password).
-- **App roles:** Stored in `public.users` (email, role, display_name). Role is resolved by matching `auth.jwt() ->> 'email'` to `users.email` (case-insensitive). Roles: `admin`, `supervisor`.
+- **App roles:** Stored in `public.users` (`email`, `auth_user_id`, `role`, `display_name`). Role is resolved by matching `auth.uid()` to `users.auth_user_id`. Roles: `admin`, `supervisor`.
 
 ### 6.2 Database
 
@@ -374,7 +374,7 @@ docs/
 - **Operator profile:** `update_my_avatar(url)`, `my_avatar_storage_folder()` (path helper for Storage RLS).
 - **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `batch_record_credit_settlements`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
 - **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite`, `certified`, `can_certify`), `save_day_closing(...)` (rejects certified rows), `set_day_closing_certified(date, boolean)` (admin certify/revoke), `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest uncertified date only), `recascade_day_closing_short_from(date)` (internal; skips later certified days).
-- **Billing:** `generate_invoice_number()`, `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
+- **Billing:** `generate_invoice_number()` (provisioned staff only), `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
 - **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
 - **User management:** `upsert_staff(...)`, `delete_staff(email)` — admin staff provisioning with bootstrap rules.
 - **Audit:** Triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
@@ -407,7 +407,10 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 ## 7. Security model
 
 - **Enforcement:** RLS and security-definer RPC guards are the primary authorization layer. Client-side checks only affect the UI.
-- **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. Authenticated users without a `public.users` row cannot read or write application data — policies and RPCs use `is_supervisor_or_admin()` / `require_staff_access()`.
+- **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. `get_user_role()` matches `users.auth_user_id` to `auth.uid()`. A signed-in user without that link gets `is_admin()` / `is_supervisor_or_admin()` = false, and `require_staff_access()` rejects them. A session with no login (restore, SQL editor) is unchanged.
+- **Public sign-up:** Turn off **Allow new users to sign up** in the Supabase dashboard (prod and staging). The browser cannot change that setting. Settings saves a role only after the Auth user already exists.
+- **Browser policy:** Pages send a Content-Security-Policy (`_partials/app-head.njk` and the standalone HTML files). Scripts are same-origin, plus Chart.js from `cdn.jsdelivr.net`. Styles allow inline CSS because print and a few pages set style attributes.
+- **Logout:** Clears every `bpf_cache_` entry, including employee Aadhaar, PAN, phone, and address (`clearAllCaches`).
 - **Roles:**
 
 | Capability | Admin | Supervisor |
