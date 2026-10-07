@@ -779,19 +779,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
     if (!confirmed) return;
 
-    // Payment and its linked expense are removed in one transaction on the server.
-    const { error } = await window.supabaseClient.rpc("delete_salary_payment", { p_payment_id: payment.id });
-    if (error) {
+    try {
+      await ActionProgress.track(
+        { title: "Deleting", status: "Removing this salary payment…", doneStatus: "Deleted" },
+        async () => {
+          const { error } = await window.supabaseClient.rpc("delete_salary_payment", { p_payment_id: payment.id });
+          if (error) throw error;
+          if (typeof AppCache !== "undefined" && AppCache) {
+            CacheInvalidation.invalidate("operational");
+          }
+          await refreshAll();
+        }
+      );
+    } catch (error) {
       AppError.showToast(AppError.getUserMessage(error), "error");
       AppError.report(error, { context: "deleteSalaryPayment", id: payment.id });
-      return;
     }
-
-    if (typeof AppCache !== "undefined" && AppCache) {
-      CacheInvalidation.invalidate("operational");
-    }
-
-    await refreshAll();
   }
 
   function bindSalaryDeleteDelegation(container) {

@@ -267,8 +267,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   }
 
   /** Normalize logo markup before iframe print (high-res src, no picture/srcset). */
-  function applyPrintLogos(html) {
-    const logoUrl = getStationLogoPrintUrl();
+  function applyPrintLogos(html, logoUrl = getStationLogoPrintUrl()) {
     return String(html || "")
       .replace(
         new RegExp(

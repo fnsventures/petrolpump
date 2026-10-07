@@ -1458,20 +1458,24 @@ async function deleteCreditEntry(entryId, btn) {
 
   if (btn) btn.disabled = true;
   showCustomerDetailMessage("");
-  const { error } = await window.supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
-
-  if (error) {
+  try {
+    await ActionProgress.track(
+      { title: "Deleting", status: "Removing this credit entry…", doneStatus: "Deleted" },
+      async () => {
+        const { error } = await window.supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
+        if (error) throw error;
+        page().invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        showCustomerDetailMessage(`Credit entry of ${formatCurrency(amount)} deleted.`);
+        page().refreshCreditPortfolioViews();
+      }
+    );
+  } catch (error) {
     if (btn) btn.disabled = false;
     showCustomerDetailMessage(AppError.getUserMessage(error), true);
     AppError.report(error, { context: "deleteCreditEntry", entryId });
-    return;
   }
-
-  page().invalidateCreditCaches();
-  await resolveCustomerIds();
-  await loadCustomerDetail();
-  showCustomerDetailMessage(`Credit entry of ${formatCurrency(amount)} deleted.`);
-  page().refreshCreditPortfolioViews();
 }
 
 async function deleteCreditPayment(paymentId, btn) {
@@ -1486,20 +1490,24 @@ async function deleteCreditPayment(paymentId, btn) {
 
   if (btn) btn.disabled = true;
   showCustomerDetailMessage("");
-  const { error } = await window.supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
-
-  if (error) {
+  try {
+    await ActionProgress.track(
+      { title: "Deleting", status: "Removing this settlement…", doneStatus: "Deleted" },
+      async () => {
+        const { error } = await window.supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
+        if (error) throw error;
+        page().invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        showCustomerDetailMessage(`Settlement of ${formatCurrency(amount)} deleted.`);
+        page().refreshCreditPortfolioViews();
+      }
+    );
+  } catch (error) {
     if (btn) btn.disabled = false;
     showCustomerDetailMessage(AppError.getUserMessage(error), true);
     AppError.report(error, { context: "deleteCreditPayment", paymentId });
-    return;
   }
-
-  page().invalidateCreditCaches();
-  await resolveCustomerIds();
-  await loadCustomerDetail();
-  showCustomerDetailMessage(`Settlement of ${formatCurrency(amount)} deleted.`);
-  page().refreshCreditPortfolioViews();
 }
 
 function pickContactFromRows(rows) {

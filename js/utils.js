@@ -833,9 +833,14 @@ const AppLoader = (function () {
 
 const ActionProgress = (function () {
   const WATCHDOG_MS = 60000;
+  const HOLD_MS = 420;
   let active = false;
-  let stepCount = 1;
   let watchdog = null;
+  let creepTimer = null;
+  let creepStarted = 0;
+  let displayed = 0;
+  let lead = 0;
+  let finishing = null;
 
   function ensure() {
     let root = document.getElementById("action-progress");
@@ -863,51 +868,90 @@ const ActionProgress = (function () {
   function setFill(pct) {
     const fill = document.getElementById("action-progress-fill");
     const pctEl = document.getElementById("action-progress-pct");
-    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
     if (fill) fill.style.width = `${clamped}%`;
-    if (pctEl) pctEl.textContent = `${clamped}%`;
+    if (pctEl) pctEl.textContent = `${Math.round(clamped)}%`;
+  }
+
+  function setStatus(status) {
+    if (!status) return;
+    const el = document.getElementById("action-progress-status");
+    if (el) el.textContent = status;
+  }
+
+  function stopCreep() {
+    clearInterval(creepTimer);
+    creepTimer = null;
+  }
+
+  function tickCreep() {
+    if (!active || finishing) return;
+    const elapsed = performance.now() - creepStarted;
+    const eased = 92 * (1 - Math.exp(-elapsed / 3200));
+    const next = Math.min(96, Math.max(displayed, eased, lead));
+    displayed = next;
+    setFill(displayed);
   }
 
   function start(options) {
     const opts = options || {};
     const root = ensure();
     active = true;
-    stepCount = Math.max(1, Number(opts.steps) || 1);
+    finishing = null;
+    displayed = 0;
+    lead = 0;
     document.getElementById("action-progress-title").textContent = opts.title || "Working";
-    document.getElementById("action-progress-status").textContent = opts.status || "Please wait…";
-    setFill(10);
+    setStatus(opts.status || "Please wait…");
+    setFill(0);
     root.hidden = false;
     document.body.classList.add("action-progress-open");
+    stopCreep();
+    creepStarted = performance.now();
+    creepTimer = setInterval(tickCreep, 80);
     clearTimeout(watchdog);
     watchdog = setTimeout(() => {
       if (active) {
         console.warn("[ActionProgress] Watchdog closed a stuck overlay.");
         close();
       }
-    }, WATCHDOG_MS);
+    }, opts.timeoutMs || WATCHDOG_MS);
   }
 
-  function setStep(index, status) {
+  function setStep(_index, status) {
     if (!active) return;
-    const step = Math.max(0, Number(index) || 0);
-    if (status) {
-      const el = document.getElementById("action-progress-status");
-      if (el) el.textContent = status;
+    setStatus(status);
+  }
+
+  function setPercent(pct, status) {
+    if (!active || finishing) return;
+    setStatus(status);
+    if (pct == null || pct === "") return;
+    const clamped = Math.max(0, Math.min(96, Number(pct) || 0));
+    if (clamped > lead) lead = clamped;
+    if (lead > displayed) {
+      displayed = lead;
+      setFill(displayed);
     }
-    setFill(((step + 0.5) / stepCount) * 100);
   }
 
   function succeed(status) {
-    if (!active) return;
-    if (status) {
-      const el = document.getElementById("action-progress-status");
-      if (el) el.textContent = status;
-    }
+    if (!active) return Promise.resolve();
+    if (finishing) return finishing;
+    stopCreep();
+    setStatus(status);
+    displayed = 100;
+    lead = 100;
     setFill(100);
+    finishing = new Promise((resolve) => setTimeout(resolve, HOLD_MS));
+    return finishing;
   }
 
   function close() {
     active = false;
+    finishing = null;
+    displayed = 0;
+    lead = 0;
+    stopCreep();
     clearTimeout(watchdog);
     watchdog = null;
     const root = document.getElementById("action-progress");
@@ -916,19 +960,22 @@ const ActionProgress = (function () {
     setFill(0);
   }
 
-  async function run(options, fn) {
+  async function track(options, fn) {
     start(options);
     try {
-      const result = await fn({ setStep, succeed });
-      succeed((options && options.doneStatus) || "Done");
-      await new Promise((resolve) => setTimeout(resolve, 280));
+      const result = await fn({ setStep, setPercent, succeed });
+      await succeed((options && options.doneStatus) || "Done");
       return result;
     } finally {
       close();
     }
   }
 
-  return { start, setStep, succeed, close, run };
+  function run(options, fn) {
+    return track(options, fn);
+  }
+
+  return { start, setStep, setPercent, succeed, close, run, track };
 })();
 
 /** Recover from stuck UI after background/freeze (PWA resume hook). */

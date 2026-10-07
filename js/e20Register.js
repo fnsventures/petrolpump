@@ -1182,19 +1182,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     const deleteId = currentRegisterId;
     if (dom.deleteBtn) dom.deleteBtn.disabled = true;
     try {
-      const { error } = await window.supabaseClient
-        .from("e20_testing_registers")
-        .delete()
-        .eq("id", deleteId);
-      if (error) throw error;
-      if (currentRegisterId === deleteId) currentRegisterId = null;
-      currentSnapshot = null;
-      adminUnlocked = false;
-      historyFilterKey = "";
-      setFeedback(true, "Register deleted.");
-      await loadTemplateRegister();
-      await loadRegister(dateStr);
-      void loadHistory(true);
+      await ActionProgress.track(
+        { title: "Deleting", status: "Removing this register…", doneStatus: "Deleted" },
+        async () => {
+          const { error } = await window.supabaseClient
+            .from("e20_testing_registers")
+            .delete()
+            .eq("id", deleteId);
+          if (error) throw error;
+          if (currentRegisterId === deleteId) currentRegisterId = null;
+          currentSnapshot = null;
+          adminUnlocked = false;
+          historyFilterKey = "";
+          setFeedback(true, "Register deleted.");
+          await loadTemplateRegister();
+          await loadRegister(dateStr);
+          void loadHistory(true);
+        }
+      );
     } catch (err) {
       AppError.handle(err, { target: dom.error });
       if (dom.deleteBtn && currentRegisterId) dom.deleteBtn.disabled = false;

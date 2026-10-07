@@ -320,12 +320,18 @@ async function saveProduct(form) {
 
 async function deleteProduct(id) {
   if (!id || !(await AppDialog.confirm("Remove this product from the billing list?", { title: "Remove product", confirmLabel: "Remove", danger: true }))) return;
-  const { error } = await window.supabaseClient.from("products").update({ is_active: false }).eq("id", id);
-  if (error) {
+  try {
+    await ActionProgress.track(
+      { title: "Removing", status: "Removing this product…", doneStatus: "Removed" },
+      async () => {
+        const { error } = await window.supabaseClient.from("products").update({ is_active: false }).eq("id", id);
+        if (error) throw error;
+        await loadProducts();
+      }
+    );
+  } catch (error) {
     AppError.showToast(AppError.getUserMessage(error), "error");
-    return;
   }
-  await loadProducts();
 }
 
 // ─── Pumps ───────────────────────────────────────────────────────────────────
@@ -997,13 +1003,19 @@ function createSortableCategoryManager(opts) {
       AppError.showToast(`Cannot delete: ${count} ${opts.usageNoun} use this ${opts.noun}.`, "warning");
       return;
     }
-    const { error } = await window.supabaseClient.from(opts.table).delete().eq("id", id);
-    if (error) {
+    try {
+      await ActionProgress.track(
+        { title: "Deleting", status: `Removing this ${opts.noun}…`, doneStatus: "Deleted" },
+        async () => {
+          const { error } = await window.supabaseClient.from(opts.table).delete().eq("id", id);
+          if (error) throw error;
+          cache = cache.filter((r) => r.id !== id);
+          render(cache);
+        }
+      );
+    } catch (error) {
       AppError.showToast(AppError.getUserMessage(error), "error");
-      return;
     }
-    cache = cache.filter((r) => r.id !== id);
-    render(cache);
   }
 
   function init() {

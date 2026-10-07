@@ -35,7 +35,7 @@
     form = document.createElement("form");
     form.method = "dialog";
     form.className = "app-dialog-form";
-    form.noValidate = false;
+    form.noValidate = true;
 
     titleEl = document.createElement("h2");
     titleEl.id = "app-dialog-title";
@@ -67,12 +67,44 @@
     dialog.append(form);
     document.body.append(dialog);
 
-    form.addEventListener("submit", (event) => {
-      if (event.submitter && event.submitter.value === "cancel") return;
-      if (!form.checkValidity()) {
-        event.preventDefault();
+    // Close on the next turn. Closing inside this click lets the same click
+    // fall through onto the page button underneath and reopen the popup.
+    const requestClose = (value) => {
+      if (value !== "cancel" && !form.checkValidity()) {
         form.reportValidity();
+        return;
       }
+      window.setTimeout(() => {
+        if (dialog.open) dialog.close(value);
+      }, 0);
+    };
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const value = event.submitter && event.submitter.value ? event.submitter.value : "ok";
+      requestClose(value);
+    });
+
+    // A click listener on document can cancel the submit default action.
+    // Close from the button click itself so Certify / Revoke still dismiss.
+    okBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      requestClose("ok");
+    });
+    cancelBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      requestClose("cancel");
+    });
+
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      const inside =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!inside) requestClose("cancel");
     });
   }
 

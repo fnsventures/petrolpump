@@ -466,34 +466,37 @@ const AdminDelete = (function () {
 
     if (btn) btn.disabled = true;
     const progress = window.ActionProgress;
-    progress?.start({
-      title: "Deleting",
-      status: "Removing this record…",
-      steps: 1,
-    });
     try {
-      progress?.setStep(0, "Removing from the app and Google Drive…");
-      const result = await deleteFn();
-      const error = result?.error ?? null;
-      if (error) {
-        if (btn) btn.disabled = false;
-        progress?.close();
-        AppDialog.toast(window.AppError.getUserMessage(error), "error");
-        window.AppError.report(error, errorContext || {});
-        return;
-      }
-      if (typeof window.CacheInvalidation !== "undefined") {
-        window.CacheInvalidation.invalidate(cacheScope);
-      }
-      progress?.succeed("Deleted");
-      if (onSuccess) await onSuccess();
-      await new Promise((resolve) => setTimeout(resolve, 220));
+      await progress.track(
+        {
+          title: "Deleting",
+          status: "Removing this record…",
+          doneStatus: "Deleted",
+        },
+        async (p) => {
+          p.setStep(0, "Removing from the app and Google Drive…");
+          const result = await deleteFn();
+          const error = result?.error ?? null;
+          if (error) {
+            const wrapped = new Error(window.AppError.getUserMessage(error));
+            wrapped.original = error;
+            wrapped.handled = true;
+            AppDialog.toast(wrapped.message, "error");
+            window.AppError.report(error, errorContext || {});
+            throw wrapped;
+          }
+          if (typeof window.CacheInvalidation !== "undefined") {
+            window.CacheInvalidation.invalidate(cacheScope);
+          }
+          if (onSuccess) await onSuccess();
+        }
+      );
     } catch (err) {
       if (btn) btn.disabled = false;
-      AppDialog.toast(window.AppError.getUserMessage(err), "error");
-      window.AppError.report(err, errorContext || {});
-    } finally {
-      progress?.close();
+      if (!err?.handled) {
+        AppDialog.toast(window.AppError.getUserMessage(err), "error");
+        window.AppError.report(err, errorContext || {});
+      }
     }
   }
 
