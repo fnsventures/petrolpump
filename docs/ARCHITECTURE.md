@@ -336,7 +336,7 @@ supabase/
 - **Engine:** PostgreSQL (Supabase).
 - **Schema:** Defined in `supabase/schema.sql`; changes are applied via migrations under `supabase/migrations/`.
 - **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()`, and `require_staff_access()` (security definer). Only users provisioned in `public.users` (admin or supervisor) can read or write operational data.
-- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`.
+- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. Production deletes rows older than 6 months after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
 
 ### 6.3 Key server-side constructs
 
@@ -349,7 +349,7 @@ supabase/
 - **Billing:** `generate_invoice_number()` (provisioned staff only), `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
 - **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
 - **User management:** `upsert_staff(...)`, `delete_staff(email)` — admin staff provisioning with bootstrap rules.
-- **Audit:** Triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
+- **Audit:** Triggers on users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (not cache-only credit/expense refreshes), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
 
 ### 6.4 Supabase Storage buckets
 

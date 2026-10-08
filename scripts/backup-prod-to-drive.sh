@@ -63,11 +63,15 @@ for raw_file in "${backup_files[@]}"; do
 done
 upload_paths+=("${manifest_file}")
 
+# On-demand full copies go to Manual/<timestamp> so a later year-end cleanup
+# does not treat them as a month folder. Year-end sets DRIVE_BACKUP_SUBPATH=Yearly/YYYY.
+subpath="${DRIVE_BACKUP_SUBPATH:-Manual/${TIMESTAMP}}"
+
 echo
-echo "==> Upload to Google Drive"
+echo "==> Upload to Google Drive (${subpath})"
 token="$(google_drive_access_token)"
-month_folder_id="$(google_drive_ensure_month_folder "${GOOGLE_DRIVE_BACKUP_FOLDER_ID}" "${token}")"
-echo "    Folder ID: ${month_folder_id}"
+dest_folder_id="$(google_drive_ensure_path "${GOOGLE_DRIVE_BACKUP_FOLDER_ID}" "${token}" "${subpath}")"
+echo "    Folder ID: ${dest_folder_id}"
 
 for file_path in "${upload_paths[@]}"; do
   file_name="$(basename "${file_path}")"
@@ -76,7 +80,7 @@ for file_path in "${upload_paths[@]}"; do
     mime_type="text/plain"
   fi
   echo "    Uploading ${file_name}…"
-  link="$(google_drive_upload_file "${file_path}" "${file_name}" "${month_folder_id}" "${token}" "${mime_type}")"
+  link="$(google_drive_upload_file "${file_path}" "${file_name}" "${dest_folder_id}" "${token}" "${mime_type}")"
   echo "    → ${link}"
 done
 

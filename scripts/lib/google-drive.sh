@@ -71,16 +71,85 @@ google_drive_ensure_folder() {
   echo "${folder_id}"
 }
 
-# Ensures BackupRoot/YYYY/YYYY-MM/ and returns the month folder ID.
-google_drive_ensure_month_folder() {
+# Ensures each segment of "Yearly/2026" or "Manual/20261101-030012" and returns the last folder ID.
+google_drive_ensure_path() {
   local root_id="$1"
   local token="$2"
-  local year month year_id month_id
-  year="$(date +%Y)"
-  month="$(date +%Y-%m)"
+  local path="$3"
+  local parent="${root_id}"
+  local part rest="${path}"
+
+  while [[ "${rest}" == */* ]]; do
+    part="${rest%%/*}"
+    rest="${rest#*/}"
+    [[ -n "${part}" ]] || continue
+    parent="$(google_drive_ensure_folder "${parent}" "${part}" "${token}")"
+  done
+  if [[ -n "${rest}" ]]; then
+    parent="$(google_drive_ensure_folder "${parent}" "${rest}" "${token}")"
+  fi
+  echo "${parent}"
+}
+
+# Ensures BackupRoot/YYYY/YYYY-MM/ for an explicit month and returns the month folder ID.
+google_drive_ensure_named_month_folder() {
+  local root_id="$1"
+  local token="$2"
+  local month="$3"
+  local year year_id month_id
+  year="${month%%-*}"
   year_id="$(google_drive_ensure_folder "${root_id}" "${year}" "${token}")"
   month_id="$(google_drive_ensure_folder "${year_id}" "${month}" "${token}")"
   echo "${month_id}"
+}
+
+# TSV: id, name, mimeType. All pages. Exits if Drive returns an error.
+google_drive_list_children() {
+  local parent_id="$1"
+  local token="$2"
+  local page_token="" response err
+
+  while true; do
+    if [[ -n "${page_token}" ]]; then
+      response="$(curl -sS -G "${DRIVE_API}/files" \
+        --data-urlencode "q='${parent_id}' in parents and trashed=false" \
+        --data-urlencode "fields=nextPageToken,files(id,name,mimeType)" \
+        --data-urlencode "pageSize=100" \
+        --data-urlencode "pageToken=${page_token}" \
+        -H "Authorization: Bearer ${token}")"
+    else
+      response="$(curl -sS -G "${DRIVE_API}/files" \
+        --data-urlencode "q='${parent_id}' in parents and trashed=false" \
+        --data-urlencode "fields=nextPageToken,files(id,name,mimeType)" \
+        --data-urlencode "pageSize=100" \
+        -H "Authorization: Bearer ${token}")"
+    fi
+    err="$(echo "${response}" | jq -r '.error.message // empty')"
+    if [[ -n "${err}" ]]; then
+      echo "Drive list failed: ${err}" >&2
+      exit 1
+    fi
+    echo "${response}" | jq -r '.files[]? | [.id, .name, .mimeType] | @tsv'
+    page_token="$(echo "${response}" | jq -r '.nextPageToken // empty')"
+    [[ -z "${page_token}" ]] && break
+  done
+}
+
+# Move a file or folder to Drive trash (recoverable for about 30 days).
+google_drive_trash_file() {
+  local file_id="$1"
+  local token="$2"
+  local response err
+
+  response="$(curl -sS -X PATCH "${DRIVE_API}/files/${file_id}" \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    -d '{"trashed":true}')"
+  err="$(echo "${response}" | jq -r '.error.message // empty')"
+  if [[ -n "${err}" ]]; then
+    echo "Drive trash failed for ${file_id}: ${err}" >&2
+    exit 1
+  fi
 }
 
 google_drive_upload_file() {

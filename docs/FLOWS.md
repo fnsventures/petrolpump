@@ -36,7 +36,7 @@ User opens app (index.html / login.html)
     → Topbar user menu: profile avatar upload (user-avatars bucket), logout
 ```
 
-**Important:** All data access is enforced by RLS and security-definer RPC guards in the database. A user must exist in both Auth and `public.users`. Hiding links and `check_page_access` are for UX and defense-in-depth.
+**Important:** All data access is enforced by RLS and security-definer RPC guards in the database. A user must exist in both Auth and `public.users`. Hiding links and `check_page_access` are for UX and defense-in-depth. Supervisors can read DSR, expenses, invoices, and credit because those pages are their job. Analysis and Reports stay off their menu. `buying_price_per_litre` is not granted to the browser role; only an admin sees it, through `dsr_cost`.
 
 ### `check_page_access` page identifiers
 
@@ -364,6 +364,8 @@ Salary (salary.html)
    → Record installment → record_salary_payment() writes salary_payments (date = when paid,
      salary_month = period) and the linked expenses row (category Salary, salary_payment_id FK)
      in one transaction; rejects overpay unless confirmed
+   → A certified payment date is rejected, and a collected date is rejected for a supervisor.
+     If that month still has salary due, the form records the cash on today instead of the locked day
    → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
    → Printable salary slips (css/salary-slip-print.css) with PF, loss of pay, over duty, establishment code
    → Admin can delete payment → delete_salary_payment() removes payment + linked expense
@@ -401,7 +403,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Reports (`reports.html`):** Printable registers — see §6.
 - **Dashboard Net profit:** Quick glance — see §1b.
 - **Meter Reading → Purchase cost:** Inline buying price — see §1b.
-- **Audit log:** Admins read `audit_log`; writes via triggers only.
+- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months after the monthly Drive backup. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
 
 ---
 

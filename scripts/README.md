@@ -2,7 +2,7 @@
 
 What each script does internally. The order to run them is [docs/OPERATIONS.md](../docs/OPERATIONS.md). Restore is [docs/RECOVERY.md](../docs/RECOVERY.md).
 
-Production is read-only except `./scripts/db.sh migrate --apply`.
+Production is read-only except `./scripts/db.sh migrate --apply` and `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh`. `disable-staging-audit.sh` writes staging only.
 
 Entry point: `./scripts/db.sh help`.
 
@@ -62,7 +62,12 @@ For a legacy prod that predates migration tracking (`users` table, legacy `dsr` 
 | Command | Result |
 |---------|--------|
 | `./scripts/db.sh backup` | `scripts/.prod-backups/prod-schema-*.sql`, `prod-data-*.sql`, `dsr-counts-snapshot-*.txt`. Runs `backup-prod.sh` |
-| `./scripts/backup-prod-to-drive.sh` | Same dump, gzipped, uploaded. Monthly workflow: `.github/workflows/backup-prod-db.yml` |
+| `./scripts/backup-month-to-drive.sh` | Finished month only (CSV), uploaded. `ARCHIVE_MONTH=2026-10` picks the month. Scheduled on the 1st |
+| `./scripts/backup-prod-to-drive.sh` | Whole database, uploaded to `Manual/<timestamp>/` |
+| `./scripts/backup-year-to-drive.sh` | `YEAR=2026`: whole database to `Yearly/2026/`, then trash that year’s month folders |
+| `./scripts/purge-audit-log.sh` | Dry-run. `CONFIRM_PURGE_AUDIT=yes` deletes production `audit_log` rows older than 6 months |
+| `./scripts/prune-drive-backups.sh` | Dry-run. `CONFIRM_PRUNE_DRIVE=yes` trashes month folders whose year already has `Yearly/YYYY` |
+| `./scripts/disable-staging-audit.sh` | Dry-run. `CONFIRM_STAGING_AUDIT=yes` turns audit off on staging and empties `audit_log` |
 | `./scripts/restore-dump.sh --local` | Inspect or drill in Docker |
 | `CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url …` | New, empty project |
 
@@ -85,7 +90,13 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 | `sync-prod-to-staging.sh` | Prod → staging data copy |
 | `migrate-prod.sh` | Prod schema migration |
 | `backup-prod.sh` | Local backup |
-| `backup-prod-to-drive.sh` | Backup plus Drive upload |
+| `backup-month-to-drive.sh` | One finished month, uploaded to Drive |
+| `backup-prod-to-drive.sh` | Whole database, uploaded to Drive `Manual/` |
+| `backup-year-to-drive.sh` | Year-end full copy, then trash that year’s month folders |
+| `purge-audit-log.sh` | Delete old `audit_log` rows on production |
+| `prune-drive-backups.sh` | Trash month folders for years that have a full copy |
+| `disable-staging-audit.sh` | Staging only: stop audit and empty `audit_log` |
+| `lib/backup-retention.mjs` | Which month folders the prune keeps |
 | `restore-dump.sh` | Local or new-project restore |
 | `lib/backup.sh` | `supabase db dump` |
 | `lib/google-drive.sh` | OAuth and upload |

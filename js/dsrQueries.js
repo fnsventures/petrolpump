@@ -38,7 +38,7 @@
     const results = await Promise.all(
       RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
         supabaseClient
-          .from("dsr")
+          .from("dsr_cost")
           .select(DSR_SELECT_RECEIPT)
           .eq("product", product)
           .gte("date", receiptStart)
@@ -70,7 +70,7 @@
       const [rangeResult, receiptResult] = await Promise.all([
         fetchAllRows(() =>
           supabaseClient
-            .from("dsr")
+            .from("dsr_cost")
             .select(select)
             .gte("date", startDate)
             .lte("date", endDate)
@@ -96,7 +96,7 @@
     const queryStart = useReceiptHistory ? receiptStart : startDate;
     const { data, error } = await fetchAllRows(() =>
       window.supabaseClient
-        .from("dsr")
+        .from("dsr_cost")
         .select(select)
         .gte("date", queryStart)
         .lte("date", endDate)
@@ -162,7 +162,7 @@
     const req = (async () => {
       const { data, error } = await fetchAllRows(() =>
         window.supabaseClient
-          .from("dsr")
+          .from("dsr_cost")
           .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
           .gte("date", startStr)
           .lte("date", endStr)

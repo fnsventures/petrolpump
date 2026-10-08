@@ -91,6 +91,32 @@ run_psql_stdin() {
   fi
 }
 
+# Write one SELECT to a CSV file via psql \copy. select_sql must not contain a semicolon.
+run_psql_copy_query() {
+  local db_url="$1"
+  local select_sql="$2"
+  local outfile="$3"
+  local dir file qfile
+  dir="$(cd "$(dirname "${outfile}")" && pwd)"
+  file="$(basename "${outfile}")"
+  qfile="$(mktemp)"
+  if [[ -n "${PSQL_BIN}" ]]; then
+    printf '\\copy (%s) TO '\''%s'\'' WITH (FORMAT csv, HEADER true)\n' \
+      "${select_sql}" "${dir}/${file}" > "${qfile}"
+    "${PSQL_BIN}" "${db_url}" -v ON_ERROR_STOP=1 -f "${qfile}"
+    rm -f "${qfile}"
+  else
+    printf '\\copy (%s) TO '\''/backup/%s'\'' WITH (FORMAT csv, HEADER true)\n' \
+      "${select_sql}" "${file}" > "${qfile}"
+    docker run --rm -i \
+      -v "${dir}:/backup" \
+      -v "${qfile}:/tmp/copy.sql:ro" \
+      "${PG_DOCKER_IMAGE}" \
+      psql "${db_url}" -v ON_ERROR_STOP=1 -f /tmp/copy.sql
+    rm -f "${qfile}"
+  fi
+}
+
 run_psql_query() {
   local db_url="$1"
   local query="$2"
