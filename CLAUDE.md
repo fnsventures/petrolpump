@@ -42,10 +42,10 @@ Verify UI by building (`npm run build:site`), `node --check` on edited JS, and c
 |------|---------|
 | Page → tables/RPCs it writes | [docs/FLOWS.md](docs/FLOWS.md) |
 | Tables, RLS, RPCs | [docs/DATA_TABLES.md](docs/DATA_TABLES.md), latest migrations |
-| Meter / DSR / stock model | [docs/DSR_TABLES.md](docs/DSR_TABLES.md) |
+| Meter / DSR / stock model | [docs/DATA_TABLES.md](docs/DATA_TABLES.md) (`dsr_petrol`, `dsr_stock`) |
 | Day-closing formula | [docs/DAY_CLOSING.md](docs/DAY_CLOSING.md) |
 | Secrets (names only) | [docs/SECRETS.md](docs/SECRETS.md) |
-| Release / restore | [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/DISASTER_RECOVERY.md](docs/DISASTER_RECOVERY.md) |
+| Release / restore | [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/RECOVERY.md](docs/RECOVERY.md) |
 | Symptom → fix | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 
 ## Before finishing a change

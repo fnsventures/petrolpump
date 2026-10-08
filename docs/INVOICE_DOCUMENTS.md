@@ -1,6 +1,6 @@
 # Invoice documents (supplier invoices + Google Drive)
 
-This guide covers setting up, deploying, and running the **supplier / purchase invoice vault**. Hub: [README.md](README.md).
+This guide covers setting up, deploying, and running the **supplier / purchase invoice vault**.
 
 | Name in the app | What it is | Page / table |
 |-----------------|------------|--------------|
@@ -8,25 +8,6 @@ This guide covers setting up, deploying, and running the **supplier / purchase i
 | **Invoice documents** (this doc) | Inward supplier invoices and other vault files (PDFs, scans) | `invoices.html` → `invoice_documents` + Google Drive |
 
 Billing PDFs, letters, and staff photos/Aadhaar use the same Drive root and Google credentials through the `drive-files` edge function.
-
-## Table of contents
-
-1. [What the feature does](#1-what-the-feature-does)
-2. [Prerequisites](#2-prerequisites)
-3. [Architecture](#3-architecture)
-4. [Complete setup (step by step)](#4-complete-setup-step-by-step)
-5. [Alternative: service account (Workspace / Shared Drive)](#5-alternative-service-account-workspace--shared-drive)
-6. [Roles and permissions](#6-roles-and-permissions)
-7. [How it works at runtime](#7-how-it-works-at-runtime)
-8. [Edge function API](#8-edge-function-api)
-9. [Database schema](#9-database-schema)
-10. [Release checklist](#10-release-checklist)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Security and privacy](#12-security-and-privacy)
-13. [Maintenance](#13-maintenance)
-14. [Source files reference](#14-source-files-reference)
-
----
 
 ## 1. What the feature does
 
@@ -37,7 +18,7 @@ Billing PDFs, letters, and staff photos/Aadhaar use the same Drive root and Goog
 
 ## 2. Prerequisites
 
-- One Supabase project for staging and one for prod ([DEVELOPMENT.md §2](DEVELOPMENT.md#2-deployment-prod-and-staging)), plus the [Supabase CLI](https://supabase.com/docs/guides/cli) if you deploy by hand.
+- One Supabase project for staging and one for prod ([OPERATIONS.md](OPERATIONS.md)), plus the [Supabase CLI](https://supabase.com/docs/guides/cli) if you deploy by hand.
 - A Google account that will own the Drive folder (personal Gmail → OAuth; Shared Drive → OAuth or a service account), and a Google Cloud project. The free tier is enough and no billing account is needed.
 - An admin user in `public.users`.
 - Migrations applied: `20260619120000_invoice_documents_google_drive.sql` plus the later `document_categories` and `folder_layout` migrations. `./scripts/db.sh migrate` applies everything pending. If the category list is empty, seed it with `scripts/seed-document-categories.sql`.
@@ -133,7 +114,7 @@ Go to **APIs & Services → Library → Google Drive API → Enable**. Skip this
 3. Step 1: enter the scope `https://www.googleapis.com/auth/drive` → **Authorize APIs**. Sign in as the folder-owner Gmail. If you see "Google hasn't verified this app", choose **Advanced → Go to … (unsafe)**.
 4. Step 2: **Exchange authorization code for tokens**, then copy the **Refresh token**. It is long-lived, so store it securely.
 
-The client ID, client secret, and refresh token form one set. If you regenerate any of them, regenerate and update all three. Rotation steps are in [SECRETS.md → Rotation recipes](SECRETS.md#rotation-recipes). The DB backup workflow reuses the same three values ([BACKUP.md](BACKUP.md)).
+The client ID, client secret, and refresh token form one set. If you regenerate any of them, regenerate and update all three. Rotation steps are in [SECRETS.md → Rotation recipes](SECRETS.md#rotation-recipes). The database backup workflow reuses the same three values ([RECOVERY.md](RECOVERY.md#setup)).
 
 ### Step 4 — Set Supabase Edge Function secrets
 
@@ -156,7 +137,7 @@ Every function in the project can read these. Supabase injects `SUPABASE_URL`, `
 
 ### Step 6 — Deploy the frontend
 
-Push to `staging` (test at `/staging/`), then merge to `main` ([DEVELOPMENT.md §2](DEVELOPMENT.md#2-deployment-prod-and-staging)). GitHub needs only `SUPABASE_URL` and `SUPABASE_ANON_KEY` for the frontend. Google secrets never go there.
+Push to `staging` (test at `/staging/`), then merge to `main` ([OPERATIONS.md](OPERATIONS.md#3-release-to-production)). GitHub needs only `SUPABASE_URL` and `SUPABASE_ANON_KEY` for the frontend. Google secrets never go there.
 
 ### Step 7 — Verify end-to-end
 
@@ -243,13 +224,11 @@ Indexes: `invoice_date desc`, `(year desc, month desc)`, `category`, and a parti
 
 ## 10. Release checklist
 
-Work staging first, then prod:
+Follow [OPERATIONS.md → Release](OPERATIONS.md#3-release-to-production), plus:
 
-1. Apply any new migration (`./scripts/db.sh migrate --apply`).
-2. Deploy the edge functions if they changed. CI does this when `supabase/functions/**` changes on `main`/`staging`; check that the run succeeded. Deploy the function **before or with** the frontend, or uploads fail even though the site deployed.
-3. Confirm the Supabase secrets, and that the integration and root folder are set in Settings.
-4. Push the frontend to `staging` and test upload, download, and delete.
-5. Merge to `main` and smoke-test the prod Invoices page.
+1. Deploy `invoice-documents` (and `drive-files` if it changed) **before or with** the frontend. CI does this when `supabase/functions/**` changes. If the site ships first, uploads fail.
+2. Confirm the Supabase secrets, and that the integration and root folder are set in Settings.
+3. On `/staging/`, test upload, download, and delete. Then smoke-test the live Invoices page.
 
 ## 11. Troubleshooting
 
@@ -277,7 +256,7 @@ Work staging first, then prod:
 - **Refresh token:** it doesn't expire unless the user revokes access ([Google Account → Third-party access](https://myaccount.google.com/permissions)), the client secret is regenerated, or too many tokens are issued for that client and user. Fix it with [§3.5](#35-obtain-a-refresh-token-oauth-playground) and update the secret.
 - **Change the root folder:** create the new folder and update Settings. Existing files stay in the old tree, so move them by hand if needed. The folder cache is keyed by root ID, so no cleanup is required.
 - **Change the Gmail account:** re-authorize in the Playground (new or same client), update all three secrets, and share or move the root folder to the new account. Old files stay in the previous account's Drive.
-- **Edge function changes:** push to `main`/`staging` (CI), or run the manual `supabase functions deploy` commands from Step 2 for each project.
+- **Edge function changes:** push to `main` or `staging` (CI), or deploy by hand — [ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions).
 
 ## 14. Source files reference
 
@@ -290,5 +269,3 @@ Work staging first, then prod:
 | `supabase/functions/_shared/googleDrive.ts` | Auth-mode resolution, tokens, folder tree and cache, upload/download/delete |
 | `supabase/functions/_shared/archivePdf.ts` | Letterhead-style PDFs for billing, letters, staff files |
 | `supabase/migrations/20260619120000_invoice_documents_google_drive.sql` (+ `2026072*` category migrations) | Table, RLS, page access, document types |
-
-Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATA_TABLES.md](DATA_TABLES.md), [FLOWS.md](FLOWS.md), [SECRETS.md](SECRETS.md), [scripts/README.md](../scripts/README.md).

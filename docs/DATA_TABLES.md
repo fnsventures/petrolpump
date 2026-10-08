@@ -1,10 +1,8 @@
-# Data Tables
+# Data tables
 
-Reference for all **database tables** used by the Petrol Pump application: purpose, key columns, relationships, and Row Level Security (RLS). Use this for schema work, RPC design, or understanding the data model. The canonical schema is `supabase/schema.sql`; this doc is a summary.
+Tables, views, RLS, and RPCs. The canonical schema is `supabase/schema.sql`. This page is the reading copy, including the meter and stock model.
 
-> **Documentation hub:** [README.md](README.md)
-
----
+Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md).
 
 ## Table Index
 
@@ -37,8 +35,6 @@ Reference for all **database tables** used by the Petrol Pump application: purpo
 | [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
 | [write_requests](#write_requests) | Results of money RPCs keyed by client request id (retry safety) |
 
-For the DSR / stock model (tables vs views), see [DSR_TABLES.md](DSR_TABLES.md).
-
 **Storage buckets** (Supabase Storage, not PostgreSQL tables): `user-avatars` (operator profile photos). Staff photos and Aadhaar scans are stored in Google Drive (see `drive-files` edge function). Legacy `staff-photos` bucket may still hold older ID photos.
 
 ---
@@ -64,6 +60,9 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **expense_categories, products, employees:** SELECT admin only on `employees` (supervisors use `list_employees_roster` / `list_employees_salary` RPCs); mutations admin only on all three.
 - **invoices, invoice_items:** SELECT provisioned staff; INSERT/UPDATE denied on client — header and lines are created only inside `save_invoice` RPC. DELETE admin only.
 - **salary_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_salary_payment` / `delete_salary_payment`.
+- **credit_entries:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `add_credit_entry`. DELETE admin only.
+- **credit_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_credit_payment` / `batch_record_credit_settlements`. DELETE admin only.
+- **day_closing:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — use `save_day_closing`, `set_day_closing_certified`, `collect_night_cash`, and `delete_day_closing`.
 - **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`); admins cannot delete a salary-linked expense directly.
 - **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
@@ -209,19 +208,45 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## dsr (view)
 
-**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables.
+**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables. Older queries that name a single `dsr` relation keep working without a second copy of the rows.
 
-See [DSR_TABLES.md](DSR_TABLES.md).
+```sql
+select ..., 'petrol' as product from dsr_petrol
+union all
+select ..., 'diesel' as product from dsr_diesel;
+```
 
 ---
 
 ## dsr_stock (view)
 
-**Purpose:** **Computed** stock reconciliation per (date, product): `opening_stock` (LAG of prior dip), `receipts`, `total_stock`, `net_sale`, `closing_stock`, `dip_stock`, `variation`. Not a physical table — derived from meter rows.
+**Purpose:** **Computed** stock reconciliation per (date, product). Not a physical table. There is no Stock form and no `sync_dsr_receipts_from_stock` step. Dip entered on the meter row is enough.
 
-**RPC:** `get_dsr_stock_range(start_date, end_date)` — same logic scoped to a date range (preferred for reports).
+| Field | Formula |
+|-------|---------|
+| `dip_stock` | `stock` on the meter row |
+| `net_sale` | `greatest(total_sales - testing, 0)` |
+| `opening_stock` | previous day’s `dip_stock` (`LAG` per product) |
+| `closing_stock`, `variation` | opening, receipts, net sale, and dip |
 
-See [DSR_TABLES.md](DSR_TABLES.md).
+**RPC:** `get_dsr_stock_range(start_date, end_date)` — same logic, but `LAG` is scoped to the range plus one prior day per product. Prefer it for a date picker so the report does not scan full history. Requires `require_staff_access()`. The client combines meter rows and stock fields with `mergeDsrStock` in `js/dsrQueries.js`.
+
+Dashboard and sales-daily read `dsr_stock` (or the RPC). Tank fill % uses `pump_settings.config.pumps` (`petrol.tankCapacity` / `diesel.tankCapacity`). `reports.tanks` is one section per product for the tank-wise DSR printout.
+
+**Tank-wise DSR columns:** Open, Buy, **Short** (`max(0, variation)` = book − dip when the book is higher), **Total** (open + buy − short), Test, Meter, Actual, Cum, Dip sale, Close, Var, CumV, Rate, **TVA** (configured capacity − closing dip).
+
+### Why two tables
+
+| Choice | Why |
+|--------|-----|
+| `dsr_petrol` and `dsr_diesel` | Per-tank defaults (15KL vs 20KL), simpler forms, buying price per product |
+| `dsr` view | One shape for “all products” reads |
+| Computed `dsr_stock` | No duplicate stock rows, no sync job, variation always matches the latest meter row |
+| `meter_shift_*` | Staff and shift accountability. Day closing, stock, and reports still read the daily tables |
+
+Trigger `dsr_validate_meter_row` (before insert or update) rejects a closing below its opening, a negative meter or sales/testing/stock/receipts value, or testing above total sales. An update that leaves those columns alone (buying price, supplier invoice) is not checked, so an older bad row can still be edited. A certified day rejects the write for everyone, including admin.
+
+A single table with a `product` column would match today’s view plus two tables. Worth it only if you need a cross-product constraint in one physical table.
 
 ---
 
@@ -585,7 +610,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Constraint:** `amount_settled <= amount`.
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)). `authenticated` cannot insert or update `amount_settled`, and cannot update `amount`. Payment RPCs write `amount_settled`; `add_credit_entry` writes `amount`.
+**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client (`authenticated` has no insert or update grant). `add_credit_entry` writes the sale, including `amount`, and applies prepaid. Payment RPCs write `amount_settled`. DELETE admin only.
 
 **Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed inside those RPCs, so a later payment can settle that sale.
 
@@ -607,9 +632,9 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
+**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client — same pattern as `salary_payments`. `record_credit_payment` and `batch_record_credit_settlements` insert the row. DELETE admin only.
 
-**Note:** Payment allocation to entries (LIFO — newest open sale on or before the payment date first) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Both lock the customer row (`for update`) before allocating. Overpayment increases `prepaid_balance`. A certified payment date is rejected.
+**Note:** Payment allocation to entries (LIFO — newest open sale on or before the payment date first) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Both lock the customer row (`for update`) before allocating. Overpayment increases `prepaid_balance`. A certified payment date is rejected. A direct insert or update is denied, so it cannot skip the customer lock, LIFO allocation, prepaid, or the future-date check.
 ---
 
 ## reminders
@@ -668,7 +693,7 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
 
-**RLS:** Default operational pattern, with extra rules when `night_cash_collection_id` is set or `certified` is true: certified closings cannot be updated or deleted until revoke (including admin, except via `set_day_closing_certified` / night-cash collection RPCs). Supervisors cannot update collected closings.
+**RLS:** SELECT provisioned staff. INSERT and UPDATE denied on client, so night cash and short are stored only by `save_day_closing`. DELETE denied on client — `delete_day_closing` removes the latest uncertified, uncollected closing. `set_day_closing_certified` and `collect_night_cash` update the row. Certified closings stay frozen until revoke; supervisors cannot overwrite a collected closing.
 
 **RPCs:**
 
@@ -817,17 +842,3 @@ Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `
 **Retry safety:** money RPCs marked `request_id?` take an optional `p_request_id uuid`. The client sends the same id while a form's values are unchanged (`formRequestId` in `js/utils.js`); a repeat call with that id returns the stored result from `write_requests` instead of writing again. Ids are kept 14 days.
 
 **Dates:** future-date checks compare with `meter_station_today()` (IST). `current_date` on Supabase is UTC, which rejected today's entries between 00:00 and 05:30 IST.
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment |
-| [Flows](FLOWS.md) | User and data flows; page → data mapping |
-| [DSR Tables](DSR_TABLES.md) | DSR vs dsr_stock in detail |
-| [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
-| [Backup](BACKUP.md) | Production database backup to Google Drive |
-| [Documentation hub](README.md) | Index of all guides |

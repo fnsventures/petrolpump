@@ -1,8 +1,6 @@
 # Architecture
 
-This document describes the architecture of **Bishnupriya Fuels** (Petrol Pump): technology stack, project structure, runtime components, security, and deployment. It is the single source of truth for how the application is organized and how it runs.
-
-> **Documentation hub:** [README.md](README.md) · **See also:** [Data Tables](DATA_TABLES.md) · [Flows](FLOWS.md) · [Development guide](DEVELOPMENT.md)
+How Bishnupriya Fuels is put together: pages, runtime, security, and deploy. Tables and RLS are [DATA_TABLES.md](DATA_TABLES.md). Page behaviour is [FLOWS.md](FLOWS.md). Laptop setup is [START.md](START.md).
 
 ---
 
@@ -226,32 +224,6 @@ supabase/
     └── _shared/        # googleDrive.ts (OAuth / service-account auth), archivePdf.ts, logoPng.ts
 ```
 
-### 3.6 Documentation
-
-```
-docs/
-├── README.md             # Documentation index — start here
-├── ONBOARDING.md         # Day-1 checklist — maintain without AI
-├── OPERATIONS.md         # Sync, deploy, release, backup
-├── CHECKLISTS.md         # Add a page / migration / edge function / user
-├── DISASTER_RECOVERY.md  # Tested restore runbook + schema rollback
-├── SECRETS.md            # Credential inventory and rotation
-├── TROUBLESHOOTING.md    # Symptom → fix
-├── MIGRATIONS.md         # Author and apply schema changes
-├── DEVELOPMENT.md        # Local setup, GitHub environments, edge functions
-├── ARCHITECTURE.md       # This file — structure, stack, security, deployment
-├── DATA_TABLES.md        # Database tables: purpose, columns, RLS
-├── DSR_TABLES.md         # DSR petrol/diesel tables and computed stock
-├── DAY_CLOSING.md        # Day-closing formula + which migration defines each RPC
-├── FLOWS.md              # User and data flows
-├── BACKUP.md             # Drive backup: setup, verify, troubleshoot
-├── INVOICE_DOCUMENTS.md  # Supplier invoices + Google Drive / OAuth setup
-├── STORAGE_RETENTION.md  # Free-tier 500 MB: measure, retain, lean indexes
-└── assets/               # Diagram PNG/SVG used by README
-```
-
----
-
 ## 4. System diagram
 
 ```
@@ -398,7 +370,20 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
 | `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
 
-Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`. Requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` per environment. See [Development guide §2.5](DEVELOPMENT.md#25-edge-functions).
+Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`, when `supabase/functions/**` changes on `main` or `staging`. Each environment needs `SUPABASE_ACCESS_TOKEN` ([Account → Tokens](https://supabase.com/dashboard/account/tokens)) and `SUPABASE_PROJECT_REF` (Project Settings → General). Register a new function in the `for fn in …` list in that workflow or it is never deployed. Google secrets for `invoice-documents` and `drive-files` live in Supabase → **Edge Functions → Secrets**, not in GitHub — [SECRETS.md](SECRETS.md#c-supabase-edge-function-secrets).
+
+The client falls back to direct queries if a read function is missing. Deploy the function before or with the frontend that calls it.
+
+```bash
+supabase login
+supabase functions deploy get-dashboard-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-reports-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-pl-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
+```
+
+Repeat for staging and prod. After the batch credit migration, confirm `batch_record_credit_settlements` with `scripts/verify-batch-rpc.sql` in the SQL Editor.
 
 Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
@@ -441,22 +426,5 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 ## 8. Deployment
 
 - **Hosting:** GitHub Pages (custom domain via `CNAME`).
-- **Environments:**
-  - **Prod:** `main` branch → root URL (e.g. `https://bishnupriyafuels.fnsventures.in/`).
-  - **Staging:** `staging` branch → `/staging/` path.
-- **CI:** `.github/workflows/deploy-pages.yml` — builds env, vendor bundle, HTML partials, minifies assets, pushes to **`gh-pages`** (staging → `/staging/`, prod → root). Edge functions: `.github/workflows/deploy-supabase-functions.yml`.
-- **Details:** Step-by-step local setup, deploy flow, and supervisor login are in [Development guide](DEVELOPMENT.md).
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Data Tables](DATA_TABLES.md) | Tables, columns, relationships, RLS |
-| [Flows](FLOWS.md) | User and data flows (auth, daily ops, credit, HR, admin) |
-| [DSR Tables](DSR_TABLES.md) | `dsr_petrol` / `dsr_diesel`, views, stock reconciliation |
-| [Development guide](DEVELOPMENT.md) | Local development, deployment, supervisor login |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive integration, edge function, full setup |
-| [Backup](BACKUP.md) | Production database backup to Google Drive |
-| [Documentation hub](README.md) | Index of all guides |
+- **Environments:** `main` → site root. `staging` → `/staging/`.
+- **CI:** `.github/workflows/deploy-pages.yml` builds env, the vendor bundle, HTML partials, and minified assets, then pushes `gh-pages`. The release order is [OPERATIONS.md](OPERATIONS.md).

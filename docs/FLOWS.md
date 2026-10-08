@@ -1,8 +1,6 @@
 # Flows
 
-This document describes the main **user and data flows** in the Petrol Pump application: how features connect and in what order data is typically entered. Use it to understand end-to-end behaviour and the page → data mapping.
-
-> **Documentation hub:** [README.md](README.md)
+How a feature writes data, and in what order a normal day is entered. The table and column reference is [DATA_TABLES.md](DATA_TABLES.md).
 
 ### Flow overview
 
@@ -122,6 +120,7 @@ A typical daily sequence:
    → get_day_closing_breakdown(date) — live components or saved snapshot
    → night_cash / phone_pay are typed. Shift cash and Cash/UPI settlements are a hint, not a prefill
    → Review/adjust, then save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
+   → Table insert, update, and delete are denied. save_day_closing writes night cash and short; delete_day_closing is the only delete
    → short_today becomes next day’s short_previous
    → Supervisor: may edit day closing until certified or night cash is collected
    → After day closing is saved: supervisors cannot change that day’s shifts (admin can)
@@ -156,7 +155,7 @@ A typical daily sequence:
 Create / identify customer
    → credit_customers
    → add_credit_entry(...) — locks the customer row, checks amount, IST date, and shift pairing; applies prepaid oldest-first; rejects a certified day
-   → A direct insert into credit_entries still syncs balances, but skips the RPC checks and p_request_id. `ledger_guard_certified_day` still rejects a certified sale date. Updating only `amount_settled` (payment allocation) stays allowed.
+   → authenticated cannot insert or update credit_entries. Payment RPCs still update amount_settled. ledger_guard_certified_day still rejects a certified sale date.
 
 Customer detail (credit.html#…)
    → Balance hero + period filter (this month, last 30 days, custom)
@@ -165,6 +164,7 @@ Customer detail (credit.html#…)
 Receive payment
    → record_credit_payment(customer_id, date, amount, note, payment_mode, same_day_settlement?, request_id?)
    → Locks the customer row, then LIFO allocation to credit_entries (newest open sale on or before the payment date); insert credit_payments
+   → authenticated cannot insert or update credit_payments (same pattern as salary_payments)
    → Rejects a certified payment date
    → Overpayment increases prepaid_balance (sync RPC updates amount_due + prepaid)
    → Calls apply_credit_payment_to_day_closing (same-day Cash/UPI also adds to night cash / phone pay)
@@ -193,7 +193,7 @@ Admin corrections (admin only)
 - **Legacy hashes** on `dsr.html` (`#meter`, `#petrol`, `#diesel`) redirect to `meter-reading.html`.
 - **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
-See [DSR_TABLES.md](DSR_TABLES.md).
+Stock formulas and why petrol and diesel are separate tables: [DATA_TABLES.md → dsr_stock](DATA_TABLES.md#dsr_stock-view).
 ---
 
 ## 5. Billing flow (lube / accessories)
@@ -426,17 +426,3 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Reports | dsr_*, invoices, expenses, pump_settings (admin) |
 | Analysis | dsr_*, expenses via DsrQueries (admin) |
 | Settings | pump_settings, users, employees, products, expense_categories, upsert_staff, delete_staff (admin) |
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Documentation hub](README.md) | Index and release checklist |
-| [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment |
-| [Data Tables](DATA_TABLES.md) | Table reference and RLS |
-| [DSR Tables](DSR_TABLES.md) | DSR tables and computed stock |
-| [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
-| [Backup](BACKUP.md) | Production database backup to Google Drive |

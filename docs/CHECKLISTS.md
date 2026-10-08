@@ -32,13 +32,13 @@ Example: `widgets.html` with script `js/widgets.js`.
 ## Add a migration
 
 - [ ] `supabase migration new short_snake_description` — never hand-type a timestamp; the file must sort after every existing one ([MIGRATIONS.md → Naming](MIGRATIONS.md#naming)).
-- [ ] Additive and safe: nullable/defaulted columns, `create or replace` functions, `if not exists` indexes. Destructive change → plan the rollback first ([DISASTER_RECOVERY.md → Schema rollback](DISASTER_RECOVERY.md#schema-rollback)).
+- [ ] Additive and safe: nullable/defaulted columns, `create or replace` functions, `if not exists` indexes. Destructive change → plan the rollback first ([RECOVERY.md → Schema rollback](RECOVERY.md#schema-rollback)).
 - [ ] Redefining a function? Start from the **latest** migration that defines it (`grep -lE "create( or replace)? function public\.<name>\b" … | sort | tail -1`), not `schema.sql`, a `grant`, or a `comment on function`. Day-closing RPCs: [DAY_CLOSING.md](DAY_CLOSING.md).
-- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. `authenticated` has no insert or update on `amount_due`, `prepaid_balance`, or `amount_settled`. See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
+- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. `authenticated` has no insert or update on `credit_entries` or `credit_payments`, and none on `amount_due`, `prepaid_balance`, or `amount_settled`. `day_closing` insert, update, and delete are denied on the client (`save_day_closing` / `delete_day_closing`). See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
 - [ ] Changing a function's arguments? `drop function if exists public.fn(<old arg types>);` in the same migration, or the old version stays callable.
 - [ ] New table → enable RLS and add policies; grant RPCs to `authenticated` only.
 - [ ] Mirror the change in `supabase/schema.sql`; `./scripts/check-schema-drift.sh` passes (needs Docker).
-- [ ] Update [DATA_TABLES.md](DATA_TABLES.md) / [DSR_TABLES.md](DSR_TABLES.md) if tables, RPCs or RLS changed.
+- [ ] Update [DATA_TABLES.md](DATA_TABLES.md) if tables, RPCs, RLS, or the meter/stock model changed.
 - [ ] Never edit a migration that is already on `staging`/`main`.
 - [ ] PR template: tick **Needs `./scripts/db.sh migrate --apply`**.
 - [ ] Staging first: `supabase db push --db-url "$STAGING_DB_URL"` ([MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only)), or `./scripts/db.sh sync` if you also want prod data copied over.
@@ -55,7 +55,7 @@ Example: `get-widgets-data`.
 - [ ] **Register for deploy** — add the name to the `for fn in …` list in `.github/workflows/deploy-supabase-functions.yml`. Functions not in that list are never deployed.
 - [ ] Function secrets → Supabase Dashboard → **Edge Functions → Secrets** on **both** projects; record them in [SECRETS.md](SECRETS.md).
 - [ ] Client: call with `supabaseClient.functions.invoke("get-widgets-data", …)` and keep a direct-query fallback, as the dashboard does.
-- [ ] Docs: function table in [DEVELOPMENT.md §2.5](DEVELOPMENT.md#25-edge-functions) and [ARCHITECTURE.md §3.5](ARCHITECTURE.md#35-backend-supabase).
+- [ ] Docs: function table in [ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions) and the tree in [§3.5](ARCHITECTURE.md#35-backend-supabase).
 - [ ] Release: merge to `staging` deploys to staging automatically; merge to `main` deploys to prod. Deploy **before or with** the frontend that needs it.
 
 ---
