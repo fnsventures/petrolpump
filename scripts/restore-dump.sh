@@ -8,7 +8,7 @@
 #   CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url "$URL" <schema> <data>
 #   ./scripts/restore-dump.sh --destroy      # remove local restore container
 #
-# Prints row counts only (never row contents). See docs/DISASTER_RECOVERY.md.
+# Prints row counts only (never row contents). See docs/RECOVERY.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -240,5 +240,5 @@ if [[ "${MODE}" == "local" ]]; then
   echo "Inspect: docker exec -it ${RESTORE_CONTAINER} psql -U postgres -h localhost"
   echo "Remove : $0 --destroy"
 else
-  echo "Next: post-restore checklist in docs/DISASTER_RECOVERY.md"
+  echo "Next: post-restore checklist in docs/RECOVERY.md"
 fi

@@ -17,7 +17,7 @@ Use **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for sync, staging deploy, relea
 
 Never commit secrets, dumps, `js/env.js`, or `scripts/db.env`.
 
-**Maintain without Cursor:** [docs/ONBOARDING.md](docs/ONBOARDING.md)
+A new laptop: [docs/START.md](docs/START.md).
 
 ---
 
@@ -32,7 +32,7 @@ cp js/env.example.js js/env.js
 npm run dev
 ```
 
-Full setup: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)  
+Full setup: [docs/START.md](docs/START.md)  
 Secrets: [docs/SECRETS.md](docs/SECRETS.md)
 
 ---
@@ -63,9 +63,8 @@ node scripts/check-doc-links.mjs
 
 | You changed… | Also update |
 |--------------|-------------|
-| Tables / RLS / RPCs | `supabase/schema.sql`, [DATA_TABLES.md](docs/DATA_TABLES.md) |
-| DSR / meter model | [DSR_TABLES.md](docs/DSR_TABLES.md) |
-| Secrets / CI env vars | [SECRETS.md](docs/SECRETS.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md) |
-| Release / sync / backup steps | [OPERATIONS.md](docs/OPERATIONS.md) |
+| Tables / RLS / RPCs / meter model | `supabase/schema.sql`, [DATA_TABLES.md](docs/DATA_TABLES.md) |
+| Secrets / CI env vars | [SECRETS.md](docs/SECRETS.md) |
+| Release / sync / backup | [OPERATIONS.md](docs/OPERATIONS.md), [RECOVERY.md](docs/RECOVERY.md) |
 | Page → data behaviour | [FLOWS.md](docs/FLOWS.md) |
 | Invoice Drive / OAuth | [INVOICE_DOCUMENTS.md](docs/INVOICE_DOCUMENTS.md) |

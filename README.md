@@ -6,14 +6,14 @@ Operations web app for Bishnupriya Fuels (Authorized BPCL dealer), a [F&S Ventur
 
 The app is a static HTML/JS site on GitHub Pages, backed by Supabase (Auth, Postgres with RLS, Edge Functions) and Google Drive for PDFs and DB backups. It covers meter readings and DSR (MS/HSD stock), the credit ledger (payments, prepaid, outstanding), day closing (night cash, phone pay, short, collection), outward GST billing and the inward supplier-invoice vault, expenses, HR (attendance, salary), and admin reports.
 
-The day-to-day playbook is [OPERATIONS.md](docs/OPERATIONS.md). If you're maintaining this without Cursor, start with [ONBOARDING.md](docs/ONBOARDING.md), then [SECRETS.md](docs/SECRETS.md) and [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+The day-to-day playbook is [OPERATIONS.md](docs/OPERATIONS.md). A new laptop starts at [START.md](docs/START.md). The full map is [docs/README.md](docs/README.md).
 
 <a id="1-architecture"></a>
 <a id="visual-tour"></a>
 
 ## 1 · Architecture
 
-Pages flow `index.html` → `login.html` → `dashboard.html`. Access comes from Supabase Auth plus the user's role in `public.users`. Layout, security, and the file tree: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Diagrams: [docs index → Visual assets](docs/README.md#visual-assets).
+Pages flow `index.html` → `login.html` → `dashboard.html`. Access comes from Supabase Auth plus the user's role in `public.users`. Layout, security, and the file tree: [ARCHITECTURE.md](docs/ARCHITECTURE.md). Diagrams: [docs index → Pictures](docs/README.md#pictures).
 
 <a id="2-sync-staging--production-data"></a>
 <a id="3-release"></a>
@@ -27,8 +27,8 @@ Pages flow `index.html` → `login.html` → `dashboard.html`. Access comes from
 | Sync prod data into staging (prod is read-only; staging data is **replaced**; neither site is deployed) | `./scripts/db.sh sync` | [OPERATIONS §1](docs/OPERATIONS.md#1-sync-staging-with-production-data) |
 | Apply migrations on staging only (staging data kept) | `supabase db push --db-url "$STAGING_DB_URL"` | [OPERATIONS](docs/OPERATIONS.md#apply-migrations-to-staging-only) |
 | Release | A sync *(optional)* → B push/merge to `staging` → C `./scripts/db.sh migrate --apply` *(if schema changed)* → D merge `staging` → `main` | [OPERATIONS §3](docs/OPERATIONS.md#3-release-to-production) |
-| Backup to Drive | Actions → **Backup production database** | [OPERATIONS §4](docs/OPERATIONS.md#4-backup-production-database), [BACKUP.md](docs/BACKUP.md) |
-| Backup locally | `./scripts/db.sh backup` | [BACKUP.md](docs/BACKUP.md) |
+| Backup to Drive | Actions → **Backup production database** | [OPERATIONS](docs/OPERATIONS.md#4-backup-production-database), [RECOVERY](docs/RECOVERY.md) |
+| Backup locally | `./scripts/db.sh backup` | [RECOVERY](docs/RECOVERY.md) |
 
 Supplier invoices and other PDFs go to Google Drive through Supabase Edge Functions. Setup is in [INVOICE_DOCUMENTS.md](docs/INVOICE_DOCUMENTS.md).
 
@@ -44,7 +44,7 @@ npm ci
 npm run dev                      # http://localhost:3000
 ```
 
-Create the user in Supabase **Auth**, then add them to `public.users` as `admin`. More: [DEVELOPMENT.md](docs/DEVELOPMENT.md); the full day-1 guide is [ONBOARDING.md](docs/ONBOARDING.md).
+Create the user in Supabase **Auth**, then add them to `public.users` as `admin`. The full setup is [START.md](docs/START.md).
 
 <a id="6-features"></a>
 <a id="features"></a>
@@ -53,19 +53,7 @@ Create the user in Supabase **Auth**, then add them to `public.users` as `admin`
 
 ## 4 · Docs
 
-[**docs/README.md**](docs/README.md) is the full index. The most-used guides:
-
-| Doc | Purpose |
-|-----|---------|
-| [Onboarding](docs/ONBOARDING.md) | Day 1; maintaining without Cursor |
-| [Operations](docs/OPERATIONS.md) | Sync, deploy, release, backup |
-| [Secrets](docs/SECRETS.md) / [Troubleshooting](docs/TROUBLESHOOTING.md) | Credentials; common failures |
-| [Architecture](docs/ARCHITECTURE.md) / [Flows](docs/FLOWS.md) / [Data tables](docs/DATA_TABLES.md) | Structure, page → data, schema and RLS |
-| [Development](docs/DEVELOPMENT.md) / [Migrations](docs/MIGRATIONS.md) | Local setup; schema changes |
-| [Backup](docs/BACKUP.md) / [Invoice documents](docs/INVOICE_DOCUMENTS.md) | Drive backups and restore; supplier PDFs |
-| [Checklists](docs/CHECKLISTS.md) | Add a page / migration / edge function / user |
-| [Disaster recovery](docs/DISASTER_RECOVERY.md) | Tested restore, schema rollback |
-| [Contributing](CONTRIBUTING.md) / [CLAUDE.md](CLAUDE.md) | Branch, PR, CI checks; agent rules |
+[**docs/README.md**](docs/README.md) is the index: start, operations, recovery, and the schema reference. Pull requests: [CONTRIBUTING.md](CONTRIBUTING.md). Agent rules: [CLAUDE.md](CLAUDE.md).
 
 <a id="8-license"></a>
 <a id="license"></a>

@@ -42,7 +42,7 @@ Log the date, DB size, top tables, and audit size each time. **Thresholds:** at 
 
 ## Archiving a year
 
-1. Confirm a verified full backup on Drive ([BACKUP.md](BACKUP.md)), record a baseline measurement, choose a cutoff (e.g. `< 2023-04-01`), and pick a quiet window.
+1. Confirm a verified full backup on Drive ([RECOVERY.md](RECOVERY.md)), record a baseline measurement, choose a cutoff (e.g. `< 2023-04-01`), and pick a quiet window.
 2. Optionally export the year to Drive `Archive/YYYY/`.
 3. Dry-run the deletes on staging, then smoke-test DSR, credit balances, day closing, and reports. Credit balances must still match after old ledger rows are removed.
 4. Run the same deletes on prod in one transaction and record the row counts.
@@ -82,5 +82,3 @@ Procedure: staging → `DROP INDEX CONCURRENTLY` (or a migration) → smoke test
 - **Possible later cleanups** (each needs a migration and a staging dry-run): store each rate only on its own product's DSR table, derive DSR `sales_pump*`/`total_sales` and `purchase_*_total`, and remove `DISTINCT ON (date)` from the `dsr`/`dsr_stock` views now that `unique(date)` exists.
 
 **If storage is still tight:** shorten the hot window first, then move old years to an external archive Postgres, then move the primary DB (Neon or a VPS). Supabase Pro is the last resort.
-
-Related: [DATA_TABLES.md](DATA_TABLES.md), [DSR_TABLES.md](DSR_TABLES.md), [MIGRATIONS.md](MIGRATIONS.md), [ARCHITECTURE.md](ARCHITECTURE.md).

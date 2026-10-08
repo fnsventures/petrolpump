@@ -1,215 +1,111 @@
-# Database maintenance scripts
+# Database scripts
 
-Scripts for sync, migrate, and backup.
+What each script does internally. The order to run them is [docs/OPERATIONS.md](../docs/OPERATIONS.md). Restore is [docs/RECOVERY.md](../docs/RECOVERY.md).
 
-> **Day-to-day steps:** [docs/OPERATIONS.md](../docs/OPERATIONS.md)  
-> **This file:** tool setup, what each script does internally, and error messages.
+Production is read-only except `./scripts/db.sh migrate --apply`.
 
-Prod data sync is always **read-only** on production.
----
+Entry point: `./scripts/db.sh help`.
 
-## Quick reference
-
-| Goal | Command | Prod | Staging |
-|------|---------|------|---------|
-| Test with real prod data on `/staging/` | `./scripts/db.sh sync` | read only | **replaced** |
-| Apply pending migrations on staging; keep its data | `supabase db push --db-url "$STAGING_DB_URL"` — [steps](../docs/MIGRATIONS.md#staging-schema-only) | no change | **schema** |
-| Check prod before migration | `./scripts/db.sh migrate` | no change | — |
-| Same as migrate (alias) | `./scripts/db.sh preflight` | no change | — |
-| Backup prod to local files | `./scripts/db.sh backup` | no change | — |
-| Backup prod → Google Drive | `./scripts/backup-prod-to-drive.sh` | no change | — |
-| Upgrade prod schema (release) | `./scripts/db.sh migrate --apply` | **schema** | — |
-| Verify sibling Pages DNS + `/js/env.js` (canonical; cashline wraps this) | `./scripts/check-dns-siblings.sh` | — | — |
-| Auto-restore missing sibling CNAMEs (GoDaddy) | `./scripts/check-dns-siblings.sh --fix` | — | — |
-| Restore a dump into local Docker (inspect / DR drill) | `./scripts/restore-dump.sh --local <schema.sql> <data.sql>` | — | — |
-| Restore a dump into a **new, empty** project | `CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url …` — see [DISASTER_RECOVERY.md](../docs/DISASTER_RECOVERY.md) | — | — |
-| `schema.sql` matches migrations (Docker) | `./scripts/check-schema-drift.sh` | — | — |
-| New migrations sort last | `./scripts/check-migration-order.sh` | — | — |
-| Markdown links / anchors | `node scripts/check-doc-links.mjs` | — | — |
-
-**Entry point:** `./scripts/db.sh help`
-
----
-
-## One-time setup
-
-### 1. Tools
+## Tools and credentials
 
 - [Supabase CLI](https://supabase.com/docs/guides/cli): `brew install supabase/tap/supabase`
-- **Docker Desktop** running (used for `pg_dump` / `psql` when not installed locally), **or** `brew install libpq` and add to `PATH`
-
-### 2. Credentials
+- Docker Desktop (used for `pg_dump` / `psql` when they are not installed), or `brew install libpq`
 
 ```bash
 cp scripts/db.env.example scripts/db.env
 ```
 
-Edit `scripts/db.env`:
+| Variable | Used by |
+|----------|---------|
+| `PROD_DB_URL` | sync (read), migrate, backup |
+| `STAGING_DB_URL` | sync (write), staging schema push |
 
-| Variable | Project | Used by |
-|----------|---------|---------|
-| `PROD_DB_URL` | petrol pump | sync (read), migrate, backup |
-| `STAGING_DB_URL` | petrol pump staging | sync (write), staging schema push |
+Session pooler format: [docs/SECRETS.md → Laptop](../docs/SECRETS.md#a-laptop-gitignored). Legacy env files (`sync-prod-to-staging.env`, `migrate-prod.env`) still work if `db.env` is missing.
 
-URL format (Session pooler, encoding): [docs/SECRETS.md → A. Laptop](../docs/SECRETS.md#a-laptop-gitignored).
+## `./scripts/db.sh sync`
 
-Legacy env files (`sync-prod-to-staging.env`, `migrate-prod.env`) still work if `db.env` is missing.
-
----
-
-## Release workflow
-
-Follow **[docs/OPERATIONS.md](../docs/OPERATIONS.md)** — short numbered steps for sync, deploy, migrate, and go-live.
-
-Do not use a second checklist here; this file only explains script behaviour.
----
-
-## Commands in detail
-
-### `./scripts/db.sh sync`
-
-**Purpose:** Mirror production **data** into staging so you can test the new app with real DSR, credit, HR, etc.
-
-**Runs:** `sync-prod-to-staging.sh`
+Runs `sync-prod-to-staging.sh`. Mirrors production **data** into staging.
 
 | Step | Action |
 |------|--------|
-| 1 | Stamp staging migrations + `db push` (schema only on staging) |
-| 2 | Dump prod auth, public, storage, legacy `dsr` if needed |
+| 1 | Stamp staging migrations, then `db push` (schema only on staging) |
+| 2 | Dump prod auth, public, storage, and legacy `dsr` if needed |
 | 3 | Truncate staging |
-| 4 | Load dumps; split legacy `dsr` → `dsr_petrol` / `dsr_diesel` when prod still uses old schema |
+| 4 | Load dumps. Split legacy `dsr` into `dsr_petrol` / `dsr_diesel` when prod still has the old table |
 
-**Output:** `scripts/.sync-dumps/` (gitignored)
+Output: `scripts/.sync-dumps/` (gitignored). Does not copy storage file bytes, session tokens, or edge function secrets.
 
-**Does not copy:** storage file bytes (photos), session tokens, edge function secrets.
+There is no `db.sh` subcommand for schema only. Sync always continues into the data replace. To push SQL and keep staging rows: [docs/OPERATIONS.md → Staging schema](../docs/OPERATIONS.md#apply-migrations-to-staging-only).
 
-There is no `db.sh` subcommand for schema only. Sync always continues into the data replace. To push SQL and keep staging rows, stop after the same `db push` sync uses in step 1:
+## `./scripts/db.sh migrate`
 
-```bash
-set -a && source scripts/db.env && set +a
-supabase db push --db-url "$STAGING_DB_URL" --dry-run   # review
-supabase db push --db-url "$STAGING_DB_URL" --yes       # staging only
-```
+Runs `migrate-prod.sh` without `CONFIRM_PROD_MIGRATE`. Preflight and dry-run. No production change. `preflight` is the same command.
 
-Full steps: [MIGRATIONS.md → Staging schema only](../docs/MIGRATIONS.md#staging-schema-only).
+## `./scripts/db.sh migrate --apply`
 
----
-
-### `./scripts/db.sh migrate`
-
-**Purpose:** Safe preflight — shows migration status and dry-run. **No prod changes.**
-
-**Runs:** `migrate-prod.sh` (without `CONFIRM_PROD_MIGRATE`)
-
----
-
-### `./scripts/db.sh migrate --apply`
-
-**Purpose:** Upgrade **production schema** to match repo migrations (same target as staging).
-
-**Runs:** `migrate-prod.sh` with confirmation flag
+Runs `migrate-prod.sh` with the confirmation flag. Upgrades **production schema**.
 
 | Step | Action |
 |------|--------|
-| 1 | Preflight SQL + migration counts |
+| 1 | Preflight SQL and migration counts |
 | 2 | Dry-run |
-| 3 | Backup schema + data → `scripts/.prod-backups/` |
-| 4 | `supabase db push` on prod (includes DSR split if legacy table) |
-| 5 | Verification SQL + DSR row count snapshot |
+| 3 | Backup schema and data to `scripts/.prod-backups/` |
+| 4 | `supabase db push` on prod (includes the DSR split if the legacy table is still there) |
+| 5 | Verification SQL and a DSR row-count snapshot |
 
-Run during a **quiet window** (no DSR / day closing entries).
+Run in a quiet window. Do not run `stamp-staging-migrations.sql` on prod (it marks the DSR-split migrations done without running them).
 
-**Do not** run `stamp-staging-migrations.sql` on prod (it marks DSR-split migrations as done without running them).
+For a legacy prod that predates migration tracking (`users` table, legacy `dsr` table), `migrate-prod.sh` runs `stamp-prod-migrations.sql` to mark pre-split migrations applied, then `db push` continues from `split_dsr_petrol_diesel`.
 
-For **legacy prod** (built before migration tracking: `users` table, legacy `dsr` table), `migrate-prod.sh` auto-runs `stamp-prod-migrations.sql` to mark pre-split migrations as applied, then `db push` runs from `split_dsr_petrol_diesel` onward.
+## Backup and restore
 
----
+| Command | Result |
+|---------|--------|
+| `./scripts/db.sh backup` | `scripts/.prod-backups/prod-schema-*.sql`, `prod-data-*.sql`, `dsr-counts-snapshot-*.txt`. Runs `backup-prod.sh` |
+| `./scripts/backup-prod-to-drive.sh` | Same dump, gzipped, uploaded. Monthly workflow: `.github/workflows/backup-prod-db.yml` |
+| `./scripts/restore-dump.sh --local` | Inspect or drill in Docker |
+| `CONFIRM_RESTORE=yes ./scripts/restore-dump.sh --target-url …` | New, empty project |
 
-### `./scripts/db.sh backup`
+Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md).
 
-**Purpose:** Standalone prod backup without migrating.
+## Other checks
 
-**Runs:** `backup-prod.sh`
+| Command | Effect |
+|---------|--------|
+| `./scripts/check-dns-siblings.sh` | Sibling Pages DNS and `/js/env.js`. `--fix` restores CNAMEs (needs `GODADDY_*`) |
+| `./scripts/check-schema-drift.sh` | `schema.sql` matches migrations (Docker) |
+| `./scripts/check-migration-order.sh` | New migrations sort last |
+| `node scripts/check-doc-links.mjs` | Markdown links and anchors |
 
-**Output:** `scripts/.prod-backups/`
-
-- `prod-schema-YYYYMMDD-HHMMSS.sql`
-- `prod-data-YYYYMMDD-HHMMSS.sql`
-- `dsr-counts-snapshot-YYYYMMDD-HHMMSS.txt`
-
-Also use **Supabase Dashboard → Database → Backups** before major releases.
-
----
-
-### `./scripts/backup-prod-to-drive.sh`
-
-**Purpose:** Dump prod schema + data, gzip, and upload to Google Drive. Same dumps as `./scripts/db.sh backup`.
-
-**Full documentation:** [docs/BACKUP.md](../docs/BACKUP.md) — setup, architecture, included/excluded data, verify, restore, troubleshooting.
-
-**Quick reference:**
-
-- **Automated:** `.github/workflows/backup-prod-db.yml` — 1st of month 03:00 UTC + manual **Run workflow**
-- **Local:** `./scripts/backup-prod-to-drive.sh` (export Google secrets + `GOOGLE_DRIVE_BACKUP_FOLDER_ID`; `PROD_DB_URL` from `scripts/db.env`)
-- **Drive layout:** `BackupRoot/YYYY/YYYY-MM/` → `prod-schema-*.sql.gz`, `prod-data-*.sql.gz`, `backup-manifest-*.txt`
-
----
-
-## Script files
+## Files
 
 | File | Role |
 |------|------|
-| `db.sh` | Main entry point (sync / migrate / backup) |
+| `db.sh` | sync / migrate / backup |
 | `sync-prod-to-staging.sh` | Prod → staging data copy |
 | `migrate-prod.sh` | Prod schema migration |
-| `backup-prod.sh` | Prod-only backup (local files) |
-| `backup-prod-to-drive.sh` | Prod backup + Google Drive upload |
-| `lib/google-drive.sh` | OAuth + Drive upload helpers |
-| `db.env.example` | Connection URL template |
-| `lib/db-client.sh` | Shared psql / Docker helpers |
+| `backup-prod.sh` | Local backup |
+| `backup-prod-to-drive.sh` | Backup plus Drive upload |
+| `restore-dump.sh` | Local or new-project restore |
+| `lib/backup.sh` | `supabase db dump` |
+| `lib/google-drive.sh` | OAuth and upload |
+| `lib/db-client.sh` | psql / Docker |
 | `lib/env.sh` | Load `db.env` |
-| `lib/backup.sh` | Backup helpers |
 | `lib/constants.sh` | Dump exclude lists |
-| `stamp-staging-migrations.sql` | Staging only — marks migrations applied |
-| `stamp-prod-migrations.sql` | Legacy prod only — marks pre-DSR-split migrations applied |
+| `stamp-staging-migrations.sql` | Staging only — mark history applied |
+| `stamp-prod-migrations.sql` | Legacy prod only — mark pre-DSR-split history applied |
 | `truncate-staging.sql` | Staging only — clear before import |
-| `create-dsr-import-table.sql` | Staging sync — temp legacy dsr import |
+| `create-dsr-import-table.sql` | Staging sync — temp legacy `dsr` import |
 | `dsr-import-from-prod.sql` | Staging sync — split into petrol/diesel |
-| `migrate-prod-preflight.sql` | Prod checks before migration |
-| `migrate-prod-verify.sql` | Prod checks after migration |
+| `migrate-prod-preflight.sql` | Checks before a production migration |
+| `migrate-prod-verify.sql` | Checks after |
 
----
-
-## Gitignored paths
+## Never commit
 
 | Path | Contents |
 |------|----------|
 | `scripts/db.env` | Database passwords |
 | `scripts/.sync-dumps/` | Staging sync dumps |
-| `scripts/.prod-backups/` | Prod backups |
+| `scripts/.prod-backups/` | Production backups |
 
-Never commit these.
-
----
-
-## Troubleshooting
-
-| Error | Fix |
-|-------|-----|
-| Docker not running | Start Docker Desktop or `brew install libpq` |
-| `no route to host` on `db.*.supabase.co` | Use **Session pooler** URI in `db.env`, not Direct |
-| `tenant/user not found` | Wrong pooler region — copy exact URI from **Connect** |
-| `pg_dump version mismatch` | Scripts use `postgres:17` Docker image |
-| `must be owner of sequence` on staging truncate | Fixed in `truncate-staging.sql` (no RESTART IDENTITY on auth) |
-| `permission denied for buckets_vectors` | Internal storage table — excluded from dumps |
-| `column net_sale of relation dsr` | Legacy prod `dsr` → auto-transform on sync |
-| `relation "supabase_migrations.schema_migrations" does not exist` | Prod never used `supabase db push` before — preflight treats count as 0; review dry-run before `--apply` |
-
----
-
-## Related docs
-
-- [Operations playbook](../docs/OPERATIONS.md) — sync, deploy, release, backup steps
-- [Backup guide](../docs/BACKUP.md) — Drive restore and troubleshooting
-- [Development](../docs/DEVELOPMENT.md) — GitHub environments
-- [Project README](../README.md)
+Failures: [docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).

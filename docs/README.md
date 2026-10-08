@@ -1,83 +1,55 @@
 # Documentation
 
-Guides for **Bishnupriya Fuels**.
+One place for each fact. Start with the row that matches the job.
 
----
+## Run it
 
-## Start here
+| Guide | Use it when |
+|-------|-------------|
+| [Start](START.md) | New laptop. Local app, first login, prod vs staging |
+| [Operations](OPERATIONS.md) | Sync, deploy, release, DNS |
+| [Recovery](RECOVERY.md) | Backups, restore, a bad migration, a lost project |
+| [Secrets](SECRETS.md) | Where a credential lives, and how to rotate it |
+| [Troubleshooting](TROUBLESHOOTING.md) | Something is broken |
 
-| Your goal | Open this |
-|-----------|-----------|
-| **New laptop / no Cursor — day-1 checklist** | **[ONBOARDING.md](ONBOARDING.md)** |
-| **Sync / deploy / release / backup** | **[OPERATIONS.md](OPERATIONS.md)** |
-| Where secrets live / how to rotate | [SECRETS.md](SECRETS.md) |
-| Something is broken | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
-| **Data loss / bad migration / lost project** | **[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)** |
-| Add a page / migration / edge function / user | [CHECKLISTS.md](CHECKLISTS.md) |
-| Add or apply DB migrations | [MIGRATIONS.md](MIGRATIONS.md) |
-| See diagrams (architecture, sync, backup) | [Visual assets](#visual-assets) |
-| Run on your laptop | [DEVELOPMENT.md](DEVELOPMENT.md) |
-| Understand the system | [ARCHITECTURE.md](ARCHITECTURE.md) · [FLOWS.md](FLOWS.md) |
-| Change database tables | [DATA_TABLES.md](DATA_TABLES.md) · [DSR_TABLES.md](DSR_TABLES.md) |
-| Supplier PDFs in Google Drive | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
-| Drive backup restore (deep) | [BACKUP.md](BACKUP.md) |
-| Stay on Supabase free (500 MB) + lean indexes / less duplication | [STORAGE_RETENTION.md](STORAGE_RETENTION.md) |
+## Change it
 
----
+| Guide | Use it when |
+|-------|-------------|
+| [Checklists](CHECKLISTS.md) | Add a page, migration, edge function, user, or secret |
+| [Migrations](MIGRATIONS.md) | Author a schema change and keep `schema.sql` honest |
+| [Architecture](ARCHITECTURE.md) | Folders, runtime, security, edge functions |
+| [Flows](FLOWS.md) | How a page writes data |
+| [Data tables](DATA_TABLES.md) | Tables, views, RLS, RPCs. Includes the meter and stock model |
+| [Day closing](DAY_CLOSING.md) | The short formula and which migration defines each function |
+| [Invoices](INVOICE_DOCUMENTS.md) | Supplier PDFs in Google Drive |
+| [Storage](STORAGE_RETENTION.md) | Stay inside the 500 MB free database |
 
-## Visual assets
+Agent rules: [CLAUDE.md](../CLAUDE.md). Pull requests: [CONTRIBUTING.md](../CONTRIBUTING.md). Script internals: [scripts/README.md](../scripts/README.md).
 
-Open the [root README](../README.md) for the full tour. Use **PNG** in README (GitHub blocks most SVGs).
+Schema changes live in `supabase/migrations/`. `supabase/schema.sql` is the snapshot; `scripts/check-schema-drift.sh` checks they match.
 
-| Diagram | PNG | SVG source |
-|---------|-----|------------|
-| Architecture & entry | [architecture-flow.png](assets/architecture-flow.png) | [svg](assets/architecture-flow.svg) |
-| Daily data flow | [data-flow.png](assets/data-flow.png) | [svg](assets/data-flow.svg) |
-| Sync prod → staging | [sync-flow.png](assets/sync-flow.png) | [svg](assets/sync-flow.svg) |
-| Deploy branches | [deploy-path.png](assets/deploy-path.png) | [svg](assets/deploy-path.svg) |
-| Release A→D | [release-steps.png](assets/release-steps.png) | [svg](assets/release-steps.svg) |
-| Backup → Drive | [backup-flow.png](assets/backup-flow.png) | [svg](assets/backup-flow.svg) |
+## Pictures
 
----
+The [root README](../README.md) is the short tour. GitHub renders the PNGs.
 
-## Operations (one line each)
+| | PNG | Source |
+|--|-----|--------|
+| Architecture | [png](assets/architecture-flow.png) | [svg](assets/architecture-flow.svg) |
+| Daily data | [png](assets/data-flow.png) | [svg](assets/data-flow.svg) |
+| Sync | [png](assets/sync-flow.png) | [svg](assets/sync-flow.svg) |
+| Deploy | [png](assets/deploy-path.png) | [svg](assets/deploy-path.svg) |
+| Release | [png](assets/release-steps.png) | [svg](assets/release-steps.svg) |
+| Backup | [png](assets/backup-flow.png) | [svg](assets/backup-flow.svg) |
 
-| Task | Action |
-|------|--------|
-| Sync staging DB | `./scripts/db.sh sync` |
-| Apply migrations on staging (keep data) | [MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only) |
-| Deploy test website | Push / merge to `staging` |
-| Check migrations | `./scripts/db.sh migrate` |
-| Apply migrations on prod | `./scripts/db.sh migrate --apply` |
-| Deploy live website | Merge `staging` → `main` |
-| Backup prod → Drive | Actions → **Backup production database** |
+## Commands
 
-Full steps: **[OPERATIONS.md](OPERATIONS.md)**
-
----
-
-## Reference library
-
-| Guide | When you need it |
-|-------|------------------|
-| [ONBOARDING.md](ONBOARDING.md) | Maintain the app without Cursor / AI |
-| [OPERATIONS.md](OPERATIONS.md) | Day-to-day release and backup |
-| [SECRETS.md](SECRETS.md) | Credential inventory and rotation |
-| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common failures |
-| [CHECKLISTS.md](CHECKLISTS.md) | Add a page / migration / edge function / user / secret |
-| [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) | Tested restore, schema rollback, incident scenarios |
-| [MIGRATIONS.md](MIGRATIONS.md) | Author and apply schema changes |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Local setup, GitHub envs, edge functions |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Folders, security |
-| [FLOWS.md](FLOWS.md) | How pages write data |
-| [DATA_TABLES.md](DATA_TABLES.md) | Tables, RLS, RPCs |
-| [DSR_TABLES.md](DSR_TABLES.md) | Meter / stock model |
-| [DAY_CLOSING.md](DAY_CLOSING.md) | Day-closing formula; current RPC definitions |
-| [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Invoice PDF → Drive |
-| [BACKUP.md](BACKUP.md) | Drive backup setup + verify |
-| [../CLAUDE.md](../CLAUDE.md) | Rules + conventions for AI agents (useful for humans too) |
-| [STORAGE_RETENTION.md](STORAGE_RETENTION.md) | Free-tier size, index hygiene, anti-duplication |
-| [../scripts/README.md](../scripts/README.md) | Script internals |
-| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Pull requests |
-
-Migrations: `supabase/migrations/` (source of truth) · Snapshot: `supabase/schema.sql` (checked by `scripts/check-schema-drift.sh`) — see [MIGRATIONS.md](MIGRATIONS.md).
+| I want to… | Do this |
+|------------|---------|
+| Test with live data on staging | `./scripts/db.sh sync` |
+| Apply SQL on staging and keep its rows | [Operations → Staging schema](OPERATIONS.md#apply-migrations-to-staging-only) |
+| Publish the test site | Push or merge to `staging` |
+| See what would change on prod | `./scripts/db.sh migrate` |
+| Upgrade the live schema | `./scripts/db.sh migrate --apply` |
+| Publish the live site | Merge `staging` → `main` |
+| Save the database | [Recovery](RECOVERY.md) |

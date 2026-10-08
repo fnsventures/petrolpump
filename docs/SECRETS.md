@@ -108,7 +108,7 @@ All three OAuth values must be regenerated **together** (Playground: “Use your
 1. GitHub **prod** secrets (backup), and  
 2. Supabase Edge Function secrets (invoices).
 
-Then re-run backup / try one invoice upload. Details: [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database), [BACKUP.md](BACKUP.md).
+Then re-run backup / try one invoice upload. [OPERATIONS.md → Backup](OPERATIONS.md#4-backup-production-database), [RECOVERY.md → Setup](RECOVERY.md#setup).
 
 ### Supabase access token expired
 
@@ -116,11 +116,4 @@ Create a new personal access token → update `SUPABASE_ACCESS_TOKEN` on both en
 
 ---
 
-## Related
-
-| Doc | Topic |
-|-----|-------|
-| [DEVELOPMENT.md](DEVELOPMENT.md) | First-time env wiring |
-| [OPERATIONS.md](OPERATIONS.md) | Backup secrets + DNS |
-| [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | Full Google OAuth + Drive setup |
-| [BACKUP.md](BACKUP.md) | Restore + OAuth troubleshooting |
+First-time laptop files: [START.md](START.md). Drive backup setup: [RECOVERY.md](RECOVERY.md#setup). Invoice OAuth: [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).

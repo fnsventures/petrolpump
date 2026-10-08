@@ -34,7 +34,7 @@ Release order:
   4. ./scripts/db.sh migrate --apply  (quiet window)
   5. Merge staging → main → smoke-test live site
 
-Docs: scripts/README.md
+Docs: docs/OPERATIONS.md  scripts/README.md
 EOF
 }
 

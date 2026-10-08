@@ -1,8 +1,6 @@
 # Troubleshooting
 
-Unified fixes. Prefer this page when something is broken; deep dives link out.
-
-**Ops playbook:** [OPERATIONS.md](OPERATIONS.md) · **Secrets:** [SECRETS.md](SECRETS.md)
+Symptom, likely cause, fix. Shipping steps are [OPERATIONS.md](OPERATIONS.md). Credentials are [SECRETS.md](SECRETS.md). Restore is [RECOVERY.md](RECOVERY.md).
 
 ---
 
@@ -11,7 +9,7 @@ Unified fixes. Prefer this page when something is broken; deep dives link out.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Banner: config missing / copy `env.example.js` | DNS or bad `env.js` on Pages | `./scripts/check-dns-siblings.sh` then open `/js/env.js`. If DNS OK → Actions → **Deploy** → `prod`. Hard-refresh after. |
-| Login works, every page empty / RLS errors | User not in `public.users` | Insert admin/supervisor row ([DEVELOPMENT.md §1.4](DEVELOPMENT.md#14-first-login)) |
+| Login works, every page empty / RLS errors | User not in `public.users` | Auth user **and** a `public.users` row ([START.md → First login](START.md#first-login)) |
 | Staging shows prod data project (or vice versa) | Wrong GitHub env secrets | Check **staging** / **prod** `SUPABASE_URL` + `SUPABASE_ANON_KEY`, redeploy |
 | Live site unchanged after merge | Deploy still running, or SW cache | Wait for Actions **Deploy**; hard-refresh / unregister SW |
 | Supervisor sees Settings / Reports | Wrong role or cached role | Confirm `public.users.role`; sign out/in |
@@ -25,11 +23,15 @@ Unified fixes. Prefer this page when something is broken; deep dives link out.
 |---------|--------------|-----|
 | Sync / migrate cannot connect (`no route to host`, timeout, `tenant/user not found`) | Direct URL, wrong pooler region, or bad password encoding | Use the Session pooler URL — [format](SECRETS.md#a-laptop-gitignored) |
 | `supabase db push` refuses: `Found local migration files to be inserted before the last migration on remote` | A migration filename sorts before one already applied (e.g. the `20250602*` files) | `supabase db push --include-all` after reviewing what it will run — [MIGRATIONS.md → Naming](MIGRATIONS.md#naming) |
-| Sync OK but photos missing on staging | Expected | Sync does **not** copy Storage file bytes ([scripts/README.md](../scripts/README.md)) |
+| Sync OK but photos missing on staging | Expected | Sync does not copy Storage file bytes |
 | Migrate says already applied but object missing | Manual stamp / drift | Do not stamp blindly; inspect `supabase_migrations.schema_migrations`; restore from backup if needed |
-| Accidental destructive SQL | — | [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md) |
-
-Full error table: [scripts/README.md](../scripts/README.md).
+| Accidental destructive SQL | — | [RECOVERY.md → Lost rows](RECOVERY.md#lost-rows) |
+| Docker not running | Dumps need Docker or `libpq` | Start Docker Desktop, or `brew install libpq` |
+| `pg_dump version mismatch` | Host `pg_dump` is older than Postgres 17 | Scripts use the `postgres:17` Docker image |
+| `must be owner of sequence` on staging truncate | Auth sequences | Fixed in `truncate-staging.sql` (no `RESTART IDENTITY` on auth) |
+| `permission denied for buckets_vectors` | Internal storage table | Excluded from dumps in `scripts/lib/constants.sh` |
+| `column net_sale of relation dsr` | Legacy prod `dsr` table | Sync transforms it into `dsr_petrol` / `dsr_diesel` |
+| `relation "supabase_migrations.schema_migrations" does not exist` | Prod never used `db push` | Preflight treats the count as 0. Review the dry-run before `--apply` |
 
 ---
 
@@ -37,11 +39,24 @@ Full error table: [scripts/README.md](../scripts/README.md).
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `unauthorized_client` | OAuth trio mismatch | [SECRETS.md → OAuth rotation](SECRETS.md#google-oauth-unauthorized_client) |
-| Workflow green but no files | Wrong folder ID | Check `GOOGLE_DRIVE_BACKUP_FOLDER_ID` |
-| Local backup works, Actions fails | Missing GitHub secrets | [SECRETS.md](SECRETS.md) prod table |
+| `unauthorized_client` / `Google OAuth token error` | The three OAuth values are not one set | Regenerate them together — [SECRETS.md](SECRETS.md#google-oauth-unauthorized_client) |
+| `PROD_DB_URL must be set` / `Missing Google OAuth env` | Prod environment secrets incomplete | [RECOVERY.md → Setup](RECOVERY.md#setup) |
+| `Drive upload failed` | Wrong folder ID, or the refresh token lacks the Drive scope | `GOOGLE_DRIVE_BACKUP_FOLDER_ID` is the backup folder, not the invoice root in Settings |
+| Workflow green but no files | Wrong folder ID, or the token’s Gmail is a different account | Same |
+| Local backup works, Actions fails | Missing GitHub **prod** secrets | [SECRETS.md](SECRETS.md#b-github-environments) |
+| Scheduled run never started | GitHub delays cron on free repos | **Run workflow** once to confirm setup |
 
-Deep guide: [BACKUP.md](BACKUP.md) · run steps: [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database).
+Token check (values from the shell, never hard-coded). Success is JSON with `access_token`:
+
+```bash
+curl -s https://oauth2.googleapis.com/token \
+  --data-urlencode "client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+  --data-urlencode "client_secret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+  --data-urlencode "refresh_token=${GOOGLE_OAUTH_REFRESH_TOKEN}" \
+  --data-urlencode "grant_type=refresh_token" | jq 'has("access_token"), .error'
+```
+
+Run a backup: [OPERATIONS.md](OPERATIONS.md#4-backup-production-database). What the files contain and how to restore: [RECOVERY.md](RECOVERY.md).
 
 ---
 
@@ -50,7 +65,7 @@ Deep guide: [BACKUP.md](BACKUP.md) · run steps: [OPERATIONS.md §4](OPERATIONS.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Upload fails / Drive errors | Edge secrets or OAuth | [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) troubleshooting sections |
-| Function missing, UI partially works | Client fallback | Deploy `invoice-documents` to that Supabase project ([DEVELOPMENT.md §2.5](DEVELOPMENT.md#25-edge-functions)) |
+| Function missing, UI partially works | Client fallback | Deploy `invoice-documents` on that Supabase project ([ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions)) |
 
 ---
 
@@ -80,7 +95,7 @@ Details: [OPERATIONS.md — DNS](OPERATIONS.md#dns-safety-net-fnsventuresin).
 | `invoice-documents` | Drive vault upload/download broken |
 | `drive-files` | Billing/letter/staff Drive archive broken |
 
-Deploy via Actions (on `supabase/functions/**` push) or CLI — [DEVELOPMENT.md §2.5](DEVELOPMENT.md#25-edge-functions).
+Deploy via Actions (on `supabase/functions/**` push) or the CLI — [ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions).
 
 ---
 
@@ -100,7 +115,7 @@ Deploy via Actions (on `supabase/functions/**` push) or CLI — [DEVELOPMENT.md 
 |----------|------------|
 | Site down / wrong config banner | DNS check → redeploy prod |
 | Bad release (frontend only) | Revert merge on `main` or redeploy previous `ref` via Actions |
-| Bad migration / data | Stop writes if possible → forward-fix or restore ([DISASTER_RECOVERY.md](DISASTER_RECOVERY.md)) |
+| Bad migration / data | Stop writes if you can → forward fix or restore ([RECOVERY.md](RECOVERY.md)) |
 | OAuth broken | Invoices + backups both affected — rotate OAuth trio ([SECRETS.md](SECRETS.md)) |
 
 ---
