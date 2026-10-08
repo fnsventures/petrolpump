@@ -341,8 +341,10 @@ create table if not exists public.audit_log (
 
 create index if not exists audit_log_table_idx on public.audit_log (table_name, performed_at desc);
 create index if not exists audit_log_record_idx on public.audit_log (record_id);
+create index if not exists audit_log_performed_at_idx on public.audit_log (performed_at);
 
-comment on table public.audit_log is 'Audit trail for sensitive operations (admin-only view).';
+comment on table public.audit_log is
+  'Audit trail for sensitive operations (admin-only view). Rows older than 6 months are deleted by purge_audit_log_batch.';
 
 alter table public.audit_log enable row level security;
 
@@ -360,6 +362,19 @@ create policy "audit_log_no_direct_write" on public.audit_log
   to authenticated
   using (false)
   with check (false);
+
+-- Staging sets key 'audit' to 'off'. No row means audit stays on (production).
+create table if not exists public.runtime_flags (
+  key text primary key,
+  value text not null
+);
+
+comment on table public.runtime_flags is
+  'Switches read by security-definer functions. Production has no audit row (logging stays on). Staging sets audit=off so the playground stores no audit_log rows.';
+
+alter table public.runtime_flags enable row level security;
+
+revoke all on table public.runtime_flags from public, anon, authenticated;
 
 -- ============================================================================
 -- SECURE ADMIN FUNCTIONS (Server-side enforcement for critical operations)
@@ -558,7 +573,7 @@ comment on table public.dsr_petrol is 'Petrol (MS) meter readings. One row per d
 comment on constraint dsr_petrol_date_unique on public.dsr_petrol is
   'One MS meter row per business date (prevents day-closing / stock double-count).';
 comment on column public.dsr_petrol.buying_price_per_litre is
-  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
+  'Pre-VAT fuel cost per litre. Not granted to authenticated; update_dsr_buying_price (admin) writes it.';
 comment on column public.dsr_petrol.supplier_invoice_no is
   'BPCL / supplier invoice number for this receipt day (GST purchase register).';
 comment on column public.dsr_petrol.supplier_gstin is
@@ -662,7 +677,7 @@ comment on table public.dsr_diesel is 'Diesel (HSD) meter readings. One row per 
 comment on constraint dsr_diesel_date_unique on public.dsr_diesel is
   'One HSD meter row per business date (prevents day-closing / stock double-count).';
 comment on column public.dsr_diesel.buying_price_per_litre is
-  'Admin: pre-VAT fuel cost per litre (from P&L ₹/KL entry); VAT/LST and delivery applied in P&L and reports.';
+  'Pre-VAT fuel cost per litre. Not granted to authenticated; update_dsr_buying_price (admin) writes it.';
 comment on column public.dsr_diesel.supplier_invoice_no is
   'BPCL / supplier invoice number for this receipt day (GST purchase register).';
 comment on column public.dsr_diesel.supplier_gstin is
@@ -691,6 +706,80 @@ create policy "dsr_diesel_select_authenticated" on public.dsr_diesel
 drop policy if exists "dsr_diesel_delete_admin" on public.dsr_diesel;
 create policy "dsr_diesel_delete_admin" on public.dsr_diesel
   for delete to authenticated using (public.is_admin());
+
+-- buying_price_per_litre stays admin-only. Table-level select would include it.
+revoke select, insert, update on table public.dsr_petrol from public, anon, authenticated;
+revoke select, insert, update on table public.dsr_diesel from public, anon, authenticated;
+
+grant select, insert, update (
+  id,
+  date,
+  tank_capacity,
+  opening_pump1_nozzle1,
+  opening_pump1_nozzle2,
+  opening_pump2_nozzle1,
+  opening_pump2_nozzle2,
+  closing_pump1_nozzle1,
+  closing_pump1_nozzle2,
+  closing_pump2_nozzle1,
+  closing_pump2_nozzle2,
+  sales_pump1,
+  sales_pump2,
+  total_sales,
+  testing,
+  dip_reading,
+  stock,
+  receipts,
+  petrol_rate,
+  diesel_rate,
+  remarks,
+  created_by,
+  created_at,
+  supplier_invoice_no,
+  supplier_gstin,
+  invoice_document_id,
+  purchase_delivery_per_kl,
+  purchase_lfr_per_kl,
+  purchase_delivery_total,
+  purchase_delivery_qty_kl,
+  purchase_lfr_total,
+  purchase_lfr_qty_kl
+) on table public.dsr_petrol to authenticated;
+
+grant select, insert, update (
+  id,
+  date,
+  tank_capacity,
+  opening_pump1_nozzle1,
+  opening_pump1_nozzle2,
+  opening_pump2_nozzle1,
+  opening_pump2_nozzle2,
+  closing_pump1_nozzle1,
+  closing_pump1_nozzle2,
+  closing_pump2_nozzle1,
+  closing_pump2_nozzle2,
+  sales_pump1,
+  sales_pump2,
+  total_sales,
+  testing,
+  dip_reading,
+  stock,
+  receipts,
+  petrol_rate,
+  diesel_rate,
+  remarks,
+  created_by,
+  created_at,
+  supplier_invoice_no,
+  supplier_gstin,
+  invoice_document_id,
+  purchase_delivery_per_kl,
+  purchase_lfr_per_kl,
+  purchase_delivery_total,
+  purchase_delivery_qty_kl,
+  purchase_lfr_total,
+  purchase_lfr_qty_kl
+) on table public.dsr_diesel to authenticated;
 
 -- Daily meter rows: closing >= opening, non-negative values, testing <= total sales.
 create or replace function public.dsr_validate_meter_row()
@@ -779,9 +868,83 @@ create trigger dsr_diesel_validate_meters
   before insert or update or delete on public.dsr_diesel
   for each row execute function public.dsr_validate_meter_row();
 
--- Backward-compatible union view (used by dashboard, sales-daily, analysis, day-closing)
-create or replace view public.dsr
+-- Staff union. Does not mention buying_price_per_litre (security invoker).
+drop view if exists public.dsr;
+create view public.dsr
 with (security_invoker = true) as
+  select id, date, 'petrol'::text as product, tank_capacity,
+    opening_pump1_nozzle1, opening_pump1_nozzle2,
+    opening_pump2_nozzle1, opening_pump2_nozzle2,
+    closing_pump1_nozzle1, closing_pump1_nozzle2,
+    closing_pump2_nozzle1, closing_pump2_nozzle2,
+    sales_pump1, sales_pump2, total_sales, testing,
+    dip_reading, stock, receipts,
+    petrol_rate, diesel_rate,
+    supplier_invoice_no, supplier_gstin, invoice_document_id,
+    remarks, created_by, created_at,
+    purchase_delivery_per_kl, purchase_lfr_per_kl,
+    purchase_delivery_total, purchase_delivery_qty_kl,
+    purchase_lfr_total, purchase_lfr_qty_kl
+  from (
+    select distinct on (date)
+      id, date, tank_capacity,
+      opening_pump1_nozzle1, opening_pump1_nozzle2,
+      opening_pump2_nozzle1, opening_pump2_nozzle2,
+      closing_pump1_nozzle1, closing_pump1_nozzle2,
+      closing_pump2_nozzle1, closing_pump2_nozzle2,
+      sales_pump1, sales_pump2, total_sales, testing,
+      dip_reading, stock, receipts,
+      petrol_rate, diesel_rate,
+      supplier_invoice_no, supplier_gstin, invoice_document_id,
+      remarks, created_by, created_at,
+      purchase_delivery_per_kl, purchase_lfr_per_kl,
+      purchase_delivery_total, purchase_delivery_qty_kl,
+      purchase_lfr_total, purchase_lfr_qty_kl
+    from public.dsr_petrol
+    order by date, created_at desc nulls last, id desc
+  ) p
+  union all
+  select id, date, 'diesel'::text as product, tank_capacity,
+    opening_pump1_nozzle1, opening_pump1_nozzle2,
+    opening_pump2_nozzle1, opening_pump2_nozzle2,
+    closing_pump1_nozzle1, closing_pump1_nozzle2,
+    closing_pump2_nozzle1, closing_pump2_nozzle2,
+    sales_pump1, sales_pump2, total_sales, testing,
+    dip_reading, stock, receipts,
+    petrol_rate, diesel_rate,
+    supplier_invoice_no, supplier_gstin, invoice_document_id,
+    remarks, created_by, created_at,
+    purchase_delivery_per_kl, purchase_lfr_per_kl,
+    purchase_delivery_total, purchase_delivery_qty_kl,
+    purchase_lfr_total, purchase_lfr_qty_kl
+  from (
+    select distinct on (date)
+      id, date, tank_capacity,
+      opening_pump1_nozzle1, opening_pump1_nozzle2,
+      opening_pump2_nozzle1, opening_pump2_nozzle2,
+      closing_pump1_nozzle1, closing_pump1_nozzle2,
+      closing_pump2_nozzle1, closing_pump2_nozzle2,
+      sales_pump1, sales_pump2, total_sales, testing,
+      dip_reading, stock, receipts,
+      petrol_rate, diesel_rate,
+      supplier_invoice_no, supplier_gstin, invoice_document_id,
+      remarks, created_by, created_at,
+      purchase_delivery_per_kl, purchase_lfr_per_kl,
+      purchase_delivery_total, purchase_delivery_qty_kl,
+      purchase_lfr_total, purchase_lfr_qty_kl
+    from public.dsr_diesel
+    order by date, created_at desc nulls last, id desc
+  ) d;
+
+comment on view public.dsr is
+  'Staff union of dsr_petrol and dsr_diesel. One row per product per date. Does not include buying_price_per_litre.';
+
+grant select on public.dsr to authenticated;
+
+create view public.dsr_cost
+with (security_invoker = false, security_barrier = true) as
+select *
+from (
   select id, date, 'petrol'::text as product, tank_capacity,
     opening_pump1_nozzle1, opening_pump1_nozzle2,
     opening_pump2_nozzle1, opening_pump2_nozzle2,
@@ -818,10 +981,15 @@ with (security_invoker = true) as
     select distinct on (date) *
     from public.dsr_diesel
     order by date, created_at desc nulls last, id desc
-  ) d;
+  ) d
+) rows
+where public.is_admin();
 
-comment on view public.dsr is
-  'Backward-compatible union view (one row per product per date). SELECT only; writes go to dsr_petrol / dsr_diesel.';
+comment on view public.dsr_cost is
+  'Admin-only DSR union, including buying_price_per_litre. Supervisors get no rows.';
+
+revoke all on public.dsr_cost from public, anon;
+grant select on public.dsr_cost to authenticated;
 
 
 -- ============================================================================
@@ -859,7 +1027,7 @@ with base as (
       opening_pump2_nozzle1, opening_pump2_nozzle2, closing_pump1_nozzle1,
       closing_pump1_nozzle2, closing_pump2_nozzle1, closing_pump2_nozzle2,
       sales_pump1, sales_pump2, total_sales, testing, dip_reading, stock,
-      receipts, petrol_rate, diesel_rate, buying_price_per_litre, remarks,
+      receipts, petrol_rate, diesel_rate, remarks,
       created_by, created_at, supplier_invoice_no, supplier_gstin,
       invoice_document_id
     from public.dsr_petrol
@@ -889,7 +1057,7 @@ with base as (
       opening_pump2_nozzle1, opening_pump2_nozzle2, closing_pump1_nozzle1,
       closing_pump1_nozzle2, closing_pump2_nozzle1, closing_pump2_nozzle2,
       sales_pump1, sales_pump2, total_sales, testing, dip_reading, stock,
-      receipts, petrol_rate, diesel_rate, buying_price_per_litre, remarks,
+      receipts, petrol_rate, diesel_rate, remarks,
       created_by, created_at, supplier_invoice_no, supplier_gstin,
       invoice_document_id
     from public.dsr_diesel
@@ -5771,8 +5939,20 @@ create or replace function public.audit_trigger_fn()
 returns trigger
 language plpgsql
 security definer
+set search_path = public
 as $$
 begin
+  -- Missing row: production, keep logging. Staging sets value 'off'.
+  if exists (
+    select 1 from public.runtime_flags
+    where key = 'audit' and value = 'off'
+  ) then
+    if TG_OP = 'DELETE' then
+      return OLD;
+    end if;
+    return NEW;
+  end if;
+
   if TG_OP = 'DELETE' then
     insert into public.audit_log (table_name, record_id, action, old_data, performed_by, performed_by_email)
     values (TG_TABLE_NAME, OLD.id, TG_OP, to_jsonb(OLD), auth.uid(), auth.jwt() ->> 'email');
@@ -5790,7 +5970,50 @@ begin
 end;
 $$;
 
-comment on function public.audit_trigger_fn() is 'Generic trigger function for audit logging.';
+comment on function public.audit_trigger_fn() is
+  'Writes audit_log unless runtime_flags.audit is off (staging).';
+
+-- One batch per call so the maintenance script can commit between deletes.
+create or replace function public.purge_audit_log_batch(
+  p_keep interval default interval '6 months',
+  p_batch integer default 5000
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cutoff timestamptz;
+  v_deleted integer;
+begin
+  if p_keep is null or p_keep < interval '30 days' then
+    raise exception 'audit retention must be at least 30 days';
+  end if;
+  if p_batch is null or p_batch < 1 or p_batch > 20000 then
+    raise exception 'audit purge batch must be between 1 and 20000';
+  end if;
+
+  v_cutoff := timezone('utc', now()) - p_keep;
+
+  delete from public.audit_log
+  where id in (
+    select id
+    from public.audit_log
+    where performed_at < v_cutoff
+    order by performed_at
+    limit p_batch
+  );
+
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$$;
+
+comment on function public.purge_audit_log_batch(interval, integer) is
+  'Delete one batch of audit_log rows older than p_keep (default 6 months). Not granted to app roles; scripts/purge-audit-log.sh calls it.';
+
+revoke all on function public.purge_audit_log_batch(interval, integer) from public, anon, authenticated, service_role;
 
 -- Audit triggers for sensitive tables (users: full trail; financial: full trail)
 drop trigger if exists audit_staff_trigger on public.users;
@@ -6068,10 +6291,26 @@ create trigger audit_meter_shift_readings_trigger
   after insert or update or delete on public.meter_shift_readings
   for each row execute function public.audit_trigger_fn();
 
+-- Cash and phone pay stay audited. credit_amount / expense_amount are a cache
+-- of the ledger and are refreshed on every attributed credit or expense write.
 drop trigger if exists audit_meter_shift_cash_trigger on public.meter_shift_cash;
 create trigger audit_meter_shift_cash_trigger
-  after insert or update or delete on public.meter_shift_cash
+  after insert or delete on public.meter_shift_cash
   for each row execute function public.audit_trigger_fn();
+
+drop trigger if exists audit_meter_shift_cash_update_trigger on public.meter_shift_cash;
+create trigger audit_meter_shift_cash_update_trigger
+  after update on public.meter_shift_cash
+  for each row
+  when (
+    old.reading_date is distinct from new.reading_date
+    or old.shift is distinct from new.shift
+    or old.employee_id is distinct from new.employee_id
+    or old.cash_collected is distinct from new.cash_collected
+    or old.phone_pay is distinct from new.phone_pay
+    or old.remarks is distinct from new.remarks
+  )
+  execute function public.audit_trigger_fn();
 
 -- get_meter_shift_readings is defined once later (with suggested openings).
 

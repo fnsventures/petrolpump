@@ -9,6 +9,7 @@ Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md
 | Object | Purpose |
 |--------|---------|
 | [audit_log](#audit_log) | Audit trail for sensitive operations (admin-only read) |
+| [runtime_flags](#runtime_flags) | Switches. Staging sets `audit=off` so the playground stores no audit rows |
 | [users](#users) | App users (login / operator roles) |
 | [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
 | [dsr_diesel](#dsr_diesel) | HSD meter readings — one row per date |
@@ -67,6 +68,7 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
+- **dsr_petrol / dsr_diesel `buying_price_per_litre`:** not granted to `authenticated` for select, insert, or update. Staff still read the other meter columns. Profit reads `dsr_cost` (admin only). `update_dsr_buying_price` writes the column.
 - **reminders:** SELECT/INSERT as default; UPDATE allowed for any provisioned staff (shared ops board); DELETE admin only.
 
 Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`.
@@ -91,7 +93,24 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **RLS:** SELECT only for admin; no direct INSERT/UPDATE/DELETE (only via triggers).
 
-**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, expenses, credit_customers, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
+**Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (insert, delete, and updates of cash, phone pay, remarks, date, shift, or employee — not cache-only refreshes of `credit_amount` / `expense_amount`), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
+
+**Retention:** Production rows older than 6 months are deleted by `purge_audit_log_batch` (maintenance script only, not granted to app roles) after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+
+---
+
+## runtime_flags
+
+**Purpose:** Switches read by security-definer functions. One row `key = audit`, `value = off` disables audit logging. Production leaves this table empty, so logging stays on.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| key | text | Primary key. `audit` is the audit switch |
+| value | text | `off` disables the matching behaviour |
+
+**RLS:** Enabled. No policies, and `anon` / `authenticated` have no grants. The audit trigger reads it as the table owner.
+
+**Staging:** `scripts/disable-staging-audit.sh` upserts `audit=off` and truncates `audit_log`. `./scripts/db.sh sync` does the same after the copy.
 
 ---
 
@@ -140,7 +159,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Index / constraint:** `unique (date)` — one MS row per business date (prevents day-closing and stock double-count).
 
-**RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)). A certified day rejects insert, update, and delete for everyone, including admin (`dsr_validate_meter_row`).
+**RLS:** SELECT provisioned staff on every column except `buying_price_per_litre` (that column is not granted). INSERT/UPDATE of meter columns for supervisor or admin; DELETE admin only. A certified day rejects insert, update, and delete for everyone, including admin (`dsr_validate_meter_row`).
 
 ---
 
@@ -208,7 +227,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## dsr (view)
 
-**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables. Older queries that name a single `dsr` relation keep working without a second copy of the rows.
+**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables. This view does not include `buying_price_per_litre`, so meter, stock, and day-closing reads work for supervisors. Profit and purchase cost use `dsr_cost`, which returns rows only when `is_admin()`.
 
 ```sql
 select ..., 'petrol' as product from dsr_petrol
@@ -837,7 +856,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
 | `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
 
-Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions, `salary_month_payable`, `write_request_replay` / `write_request_store`.
+Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions, `purge_audit_log_batch` (deletes `audit_log` rows older than 6 months; one batch per call), `salary_month_payable`, `write_request_replay` / `write_request_store`.
 
 **Retry safety:** money RPCs marked `request_id?` take an optional `p_request_id uuid`. The client sends the same id while a form's values are unchanged (`formRequestId` in `js/utils.js`); a repeat call with that id returns the stored result from `write_requests` instead of writing again. Ids are kept 14 days.
 

@@ -5,6 +5,19 @@ on:
     # 1st of each month at 03:00 UTC (08:30 IST)
     - cron: "0 3 1 * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: What to save
+        type: choice
+        options:
+          - month
+          - full
+          - year-end
+        default: month
+      year:
+        description: Finished calendar year for year-end, such as 2026. Blank on 1 January uses the previous year.
+        required: false
+        type: string
 
 concurrency:
   group: prod-db-backup
@@ -21,12 +34,60 @@ jobs:
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client jq
 
+      - name: Decide which copies to make
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_YEAR: ${{ github.event.inputs.year }}
+        run: |
+          set -euo pipefail
+          month_flag=no
+          full_flag=no
+          year_flag=no
+          purge_flag=no
+          year_number="${INPUT_YEAR:-}"
+          if [[ "${EVENT_NAME}" == "schedule" ]]; then
+            month_flag=yes
+            purge_flag=yes
+            if [[ "$(TZ=Asia/Kolkata date +%m)" == "01" ]]; then
+              year_flag=yes
+              year_number="$(( $(TZ=Asia/Kolkata date +%Y) - 1 ))"
+            fi
+          else
+            case "${INPUT_MODE:-month}" in
+              month) month_flag=yes ;;
+              full) full_flag=yes ;;
+              year-end) year_flag=yes ;;
+              *) echo "Unknown mode: ${INPUT_MODE}" >&2; exit 1 ;;
+            esac
+          fi
+          {
+            echo "month=${month_flag}"
+            echo "full=${full_flag}"
+            echo "year=${year_flag}"
+            echo "purge=${purge_flag}"
+            echo "year_number=${year_number}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Setup Supabase CLI
+        if: steps.plan.outputs.full == 'yes' || steps.plan.outputs.year == 'yes'
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Backup prod and upload to Google Drive
+      - name: Archive the finished month to Google Drive
+        if: steps.plan.outputs.month == 'yes'
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
+        run: bash scripts/backup-month-to-drive.sh
+
+      - name: Full backup to Google Drive
+        if: steps.plan.outputs.full == 'yes'
         env:
           PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
           GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
@@ -34,3 +95,21 @@ jobs:
           GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
           GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
         run: bash scripts/backup-prod-to-drive.sh
+
+      - name: Year-end full backup, then remove that year's month folders
+        if: steps.plan.outputs.year == 'yes'
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
+          YEAR: ${{ steps.plan.outputs.year_number }}
+        run: bash scripts/backup-year-to-drive.sh
+
+      - name: Purge audit log older than 6 months
+        if: steps.plan.outputs.purge == 'yes'
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          CONFIRM_PURGE_AUDIT: yes
+        run: bash scripts/purge-audit-log.sh

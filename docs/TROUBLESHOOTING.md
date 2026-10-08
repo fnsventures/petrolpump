@@ -45,6 +45,8 @@ Symptom, likely cause, fix. Shipping steps are [OPERATIONS.md](OPERATIONS.md). C
 | Workflow green but no files | Wrong folder ID, or the token’s Gmail is a different account | Same |
 | Local backup works, Actions fails | Missing GitHub **prod** secrets | [SECRETS.md](SECRETS.md#b-github-environments) |
 | Scheduled run never started | GitHub delays cron on free repos | **Run workflow** once to confirm setup |
+| Backup succeeded, purge step failed | Migration `20261008150000_audit_log_retention` is not on production yet | Apply it ([OPERATIONS.md](OPERATIONS.md)), then re-run the workflow. The dump on Drive is already safe |
+| `Drive list failed` / prune trashed nothing expected | Folder layout is not `YYYY/YYYY-MM/` | Names outside that pattern are left alone. Policy: [STORAGE_RETENTION.md](STORAGE_RETENTION.md) |
 
 Token check (values from the shell, never hard-coded). Success is JSON with `access_token`:
 

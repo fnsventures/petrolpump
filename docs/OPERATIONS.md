@@ -163,9 +163,16 @@ A backup is a read-only copy of production. It does not change data or deploy th
 
 | I want… | Do this |
 |---------|---------|
-| Monthly or ad-hoc copy on Drive | Actions → **Backup production database** → Run workflow |
-| A file on this laptop | `./scripts/db.sh backup` → `scripts/.prod-backups/` |
-| Laptop → Drive | Export the Google secrets, then `./scripts/backup-prod-to-drive.sh` |
+| Last month on Drive | Actions → **Backup production database** → Run workflow, mode **month**. The scheduled run does this every 1st |
+| A chosen month from this laptop | `ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh` |
+| A complete copy on this laptop | `./scripts/db.sh backup` → `scripts/.prod-backups/` |
+| A complete copy on Drive | `./scripts/backup-prod-to-drive.sh` → Drive `Manual/<timestamp>/` |
+| Close a finished year | `YEAR=2026 ./scripts/backup-year-to-drive.sh`, or Actions mode **year-end**. Full copy in `Yearly/2026/`, then that year’s month folders go to trash |
+| See which audit rows a purge would delete | `./scripts/purge-audit-log.sh` |
+| Delete audit rows older than 6 months | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
+| Stop audit on staging and empty it | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
+
+The scheduled run uploads the finished month, then deletes production audit rows older than 6 months. On 1 January it also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 `migrate --apply` writes a local backup before it changes schema. It does not upload to Drive.
 
@@ -181,7 +188,9 @@ Free-tier size, indexes, and archiving old years: [STORAGE_RETENTION.md](STORAGE
 | Upgrade the live schema | `./scripts/db.sh migrate --apply` |
 | Publish the live website | Merge `staging` → `main` |
 | Save the database to this laptop | `./scripts/db.sh backup` |
-| Save the database to Drive | Actions → **Backup production database** |
+| Save the finished month to Drive | Actions → **Backup production database**, mode month |
+| Save the whole database to Drive | `./scripts/backup-prod-to-drive.sh` |
+| Close a calendar year on Drive | `YEAR=2026 ./scripts/backup-year-to-drive.sh` |
 | Check sibling DNS | `./scripts/check-dns-siblings.sh` |
 | Restore a missing CNAME | `./scripts/check-dns-siblings.sh --fix` |
 

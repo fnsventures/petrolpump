@@ -68,7 +68,7 @@ async function fetchLatestReceiptsBefore(supabase: any, startDate: string, recei
   const results = await Promise.all(
     RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
       supabase
-        .from("dsr")
+        .from("dsr_cost")
         .select(DSR_SELECT_RECEIPT)
         .eq("product", product)
         .gte("date", receiptStart)
@@ -95,7 +95,7 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
     const [rangeResult, receiptResult] = await Promise.all([
       fetchAll(() =>
         supabase
-          .from("dsr")
+          .from("dsr_cost")
           .select(DSR_SELECT_PL)
           .gte("date", startDate)
           .lte("date", endDate)
@@ -121,7 +121,7 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
 
   const { data, error } = await fetchAll(() =>
     supabase
-      .from("dsr")
+      .from("dsr_cost")
       .select(DSR_SELECT_PL)
       .gte("date", receiptStart)
       .lte("date", endDate)

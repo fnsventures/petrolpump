@@ -9,7 +9,9 @@ How to **run** a backup is [OPERATIONS.md → Backup](OPERATIONS.md#4-backup-pro
 
 ## What a backup is
 
-Each run dumps production only. Staging is never included. The dump is read-only: no writes, no migrations. It is a **full snapshot**, not an incremental. Any one pair of files can be restored on its own.
+A whole-database backup is `./scripts/db.sh backup` or `./scripts/backup-prod-to-drive.sh`. The monthly Actions run is a different file: one finished month, as CSV. This section describes the whole-database files.
+
+Each whole-database run dumps production only. Staging is never included. The dump is read-only: no writes, no migrations. It is a **full snapshot**, not an incremental. Any one pair of files can be restored on its own.
 
 | File | Contents |
 |------|----------|
@@ -23,24 +25,31 @@ Zero-byte files are failed attempts. Always pair a schema file and a data file w
 
 ## Where copies live
 
-| Source | When | Where | Worst-case loss |
-|--------|------|-------|-----------------|
-| Actions **Backup production database** | 1st of the month, 03:00 UTC (08:30 IST), plus manual runs | Drive `YYYY/YYYY-MM/` | About 31 days |
-| `./scripts/db.sh migrate --apply` | Every production migration | Laptop `scripts/.prod-backups/` | Since the last release |
-| `./scripts/db.sh backup` | When you run it | Same folder | Since you last ran it |
+| Source | When | Where | What you get back |
+|--------|------|-------|-------------------|
+| Actions **Backup production database** | 1st of the month, 03:00 UTC (08:30 IST). 1 November writes October | Drive `YYYY/YYYY-MM/` | That month’s activity. Kept until 1 January, when the year’s full copy replaces them |
+| Actions, 1 January | After December is uploaded | Drive `Yearly/YYYY/` | The whole database as it stood at the start of 1 January. This is the copy that remains |
+| `./scripts/backup-prod-to-drive.sh` | When you run it | Drive `Manual/<timestamp>/` | The whole database. Not removed by the year-end cleanup |
+| `YEAR=2026 ./scripts/backup-year-to-drive.sh` | When you run it for a finished year | Drive `Yearly/2026/`, then trash `2026-01`…`2026-12` | The whole database |
+| `./scripts/db.sh migrate --apply` | Every production migration | Laptop `scripts/.prod-backups/` | The whole database, since the last release |
+| `./scripts/db.sh backup` | When you run it | Same folder | The whole database |
 | Supabase dashboard backups | Plan-dependent | Supabase | Useless if the project itself is gone |
 
-The real recovery point is the **newest** of these. Before risky work, run a manual Drive backup.
+A month folder cannot rebuild logins, customers, or staff. Use `Yearly/`, `Manual/`, or a laptop `prod-schema` / `prod-data` pair for that. After the 1st-of-the-month upload succeeds, the workflow deletes production `audit_log` rows older than 6 months. Month folders are trashed only after `Yearly/YYYY` for that year has uploaded. Trash can be restored for about 30 days. The calendar and the file list: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
-Workflow `.github/workflows/backup-prod-db.yml` uses the `prod` environment, one run at a time. It checks out the repo, installs `postgresql-client`, `jq`, and the Supabase CLI, then runs `scripts/backup-prod-to-drive.sh`. The runner deletes its temp files. **Only Drive keeps that copy.** Two runs in one month land in the same `YYYY-MM` folder with different timestamps.
+The real recovery point for the whole station is the **newest whole-database file** (`Yearly/`, `Manual/`, or the laptop pair). Before risky work, run `./scripts/backup-prod-to-drive.sh`.
+
+Workflow `.github/workflows/backup-prod-db.yml` uses the `prod` environment, one run at a time. It checks out the repo and installs `postgresql-client` and `jq`. A full or year-end run also installs the Supabase CLI. The runner deletes its temp files. **Only Drive keeps that copy.**
 
 ```
 Database Backups - Bishnupriya Fuels/
-  2026/2026-06/
-    prod-schema-20260601-030012.sql.gz
-    prod-data-20260601-030012.sql.gz
-    backup-manifest-20260601-030012.txt
+  2026/2026-10/
+    dsr_petrol-20261101-030012.csv.gz
+    credit_entries-20261101-030012.csv.gz
+    month-manifest-20261101-030012.txt
 ```
+
+Older month folders may still contain a whole-database `prod-schema-*.sql.gz` and `prod-data-*.sql.gz` from before this change. Those files age out with the folder.
 
 `./scripts/backup-prod-to-drive.sh` uses the same dump as `./scripts/db.sh backup`. Local output is `scripts/.prod-backups/` (gitignored): `prod-schema-*.sql`, `prod-data-*.sql`, and a DSR count file.
 
@@ -338,8 +347,13 @@ Not problems: object owner (`postgres` exists on Supabase), extensions (`pgcrypt
 
 | File | Role |
 |------|------|
-| `.github/workflows/backup-prod-db.yml` | Monthly and manual Drive backup |
-| `scripts/backup-prod-to-drive.sh` | Dump, gzip, upload |
+| `.github/workflows/backup-prod-db.yml` | 1st: finished month, then audit purge. 1 January: also full copy and removal of that year’s month folders |
+| `scripts/backup-month-to-drive.sh` | One month of activity, gzipped CSV, upload |
+| `scripts/backup-prod-to-drive.sh` | Whole database into `Manual/<timestamp>/` |
+| `scripts/backup-year-to-drive.sh` | Whole database into `Yearly/YYYY/`, then trash that year’s month folders |
+| `scripts/disable-staging-audit.sh` | Staging only: stop audit and empty `audit_log` |
+| `scripts/purge-audit-log.sh` | Delete `audit_log` rows older than 6 months |
+| `scripts/prune-drive-backups.sh` | Trash month folders whose year already has `Yearly/YYYY` |
 | `scripts/backup-prod.sh` | Local backup |
 | `scripts/restore-dump.sh` | Local or new-project restore |
 | `scripts/lib/backup.sh` | `supabase db dump` |

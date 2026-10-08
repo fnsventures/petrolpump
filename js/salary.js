@@ -558,6 +558,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyRoleVisibility(auth.role);
   const isAdmin = auth.role === "admin";
 
+  // A certified day, and a collected day for a supervisor, cannot take a new salary expense.
+  // Remaining salary is recorded on today instead, so the locked statement stays as certified.
+  async function paymentDateLock(dateStr) {
+    if (!dateStr || !window.supabaseClient) return null;
+    const { data, error } = await window.supabaseClient
+      .from("day_closing")
+      .select("certified, night_cash_collection_id")
+      .eq("date", dateStr)
+      .maybeSingle();
+    if (error || !data) return null;
+    if (data.certified) return "certified";
+    if (!isAdmin && data.night_cash_collection_id) return "collected";
+    return null;
+  }
+
+  function paymentDateLockMessage(kind, dateStr) {
+    const label = formatDisplayDate(dateStr);
+    if (kind === "collected") {
+      return `Night cash for ${label} is already collected, so that day is closed.`;
+    }
+    return `Day closing for ${label} is certified and locked.`;
+  }
+
   if (typeof loadPumpSettings === "function") {
     await loadPumpSettings();
   }
@@ -1444,7 +1467,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       paymentError?.classList.add("hidden");
 
       const staffId = paymentStaffSelect?.value;
-      const date = paymentDateInput?.value;
+      let date = paymentDateInput?.value;
       const amount = Number(paymentAmountInput?.value || 0);
       const note = document.getElementById("payment-note")?.value?.trim() || null;
       const salaryMonthVal = getPaymentSalaryMonth();
@@ -1498,6 +1521,36 @@ document.addEventListener("DOMContentLoaded", async () => {
         records,
         await excludedForStaff(staffId, salaryMonthVal)
       );
+      // Unpaid salary must not be written onto a certified or collected day. Offer today
+      // when that day is still open. A fully settled month stays blocked on the locked day.
+      const dateLock = await paymentDateLock(date);
+      if (dateLock) {
+        const today = getLocalDateString();
+        const unpaid = balance && balance.pending > 0.009 && amount <= balance.pending + 0.009;
+        const todayLock = date === today ? dateLock : await paymentDateLock(today);
+        if (unpaid && date !== today && !todayLock) {
+          const ok = await AppDialog.confirm(
+            `${paymentDateLockMessage(dateLock, date)} Record ${formatCurrency(amount)} on ${formatDisplayDate(today)} instead? The salary month stays ${formatMonthLabel(salaryMonthVal)}.`,
+            { title: "Record payment", confirmLabel: "Record on today" }
+          );
+          if (!ok) {
+            resetSubmitBtn();
+            return;
+          }
+          date = today;
+          if (paymentDateInput) paymentDateInput.value = today;
+        } else {
+          resetSubmitBtn();
+          paymentError?.classList.remove("hidden");
+          if (paymentError) {
+            paymentError.textContent = unpaid
+              ? `${paymentDateLockMessage(dateLock, date)} Today is locked too, so record this salary on the next open day.`
+              : `${paymentDateLockMessage(dateLock, date)} Remaining salary can be recorded on an open day. This day stays locked.`;
+          }
+          return;
+        }
+      }
+
       // Browser check is for a friendly prompt; record_salary_payment re-checks under a lock.
       let allowOverpay = false;
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
@@ -1584,10 +1637,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   paymentStaffSelect?.addEventListener("change", updatePaymentMonthHint);
   paymentFillRemainingBtn?.addEventListener("click", fillPaymentRemaining);
 
-  function onPaymentSalaryMonthChange() {
+  async function onPaymentSalaryMonthChange() {
     const monthVal = getPaymentSalaryMonth();
     if (paymentDateInput && monthVal) {
-      paymentDateInput.value = suggestPaymentDate(monthVal);
+      let suggested = suggestPaymentDate(monthVal);
+      if (await paymentDateLock(suggested)) {
+        const today = getLocalDateString();
+        if (!(await paymentDateLock(today))) suggested = today;
+      }
+      paymentDateInput.value = suggested;
     }
     updatePaymentMonthHint();
   }
