@@ -137,6 +137,7 @@
       "title": "Vault · Bishnupriya Fuels",
       "pageTitle": "Vault",
       "bodyClass": "invoices-page",
+      "css": ["css/app-invoices.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
       "afterAuth": ["js/driveFiles.js"],
       "page": "js/invoices.js"

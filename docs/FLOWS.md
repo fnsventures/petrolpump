@@ -234,7 +234,9 @@ Upload (invoices.html → Upload tab)
    → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/Year/given name); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
-   → SELECT invoice_documents (this year / last year / all time)
+   → SELECT invoice_documents (this year / last year / all time, optional type)
+   → grouped by document type; each type stays collapsed until opened
+   → search filters the loaded list by title, party, or file name
    → View and Download: edge function (the Drive file is not shared with anyone) | Delete: edge function, admin only
 ```
 
