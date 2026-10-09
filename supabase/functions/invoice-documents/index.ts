@@ -14,6 +14,7 @@ import {
   parseIsoDate,
   readPumpSettings,
   revokeAnyonePermission,
+  otherDocumentFileName,
   sanitizeFileName,
   supabaseAdmin,
   uploadToDrive,
@@ -76,7 +77,10 @@ Deno.serve(async (req: Request) => {
       const { year, month } = parsed;
       const amountRaw = String(form.get("amount") || "").trim();
       const amount = amountRaw ? Number(amountRaw) : null;
-      const safeName = sanitizeFileName(file.name, "document");
+      const title = String(form.get("title") || "").trim();
+      const safeName = category === "purchase"
+        ? sanitizeFileName(file.name, "document")
+        : otherDocumentFileName(title, file.name);
       const categoryLabel = String(categoryRow.label || category);
 
       const bytesPromise = file.arrayBuffer();
@@ -112,7 +116,7 @@ Deno.serve(async (req: Request) => {
           year,
           month,
           category,
-          title: String(form.get("title") || "").trim() || null,
+          title: title || null,
           vendor: String(form.get("vendor") || "").trim() || null,
           amount: Number.isFinite(amount) ? amount : null,
           file_name: safeName,

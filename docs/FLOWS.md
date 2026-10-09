@@ -208,7 +208,7 @@ Create invoice (billing.html)
    → Rejects non-positive quantity or rate, negative discount, and discount above subtotal
    → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
    → Save returns immediately after the save overlay finishes (DB + Drive PDF)
-      (Billing invoices / 2026)
+      (Billing invoices / 2026 / invoice name)
    → Drive PDF uses the same letterhead, tax summary, and payment layout as print
       (css/invoice-print.css)
 
@@ -231,7 +231,7 @@ Admin one-time setup (Settings → Integrations + Supabase secrets + edge functi
 
 Upload (invoices.html → Upload tab)
    → multipart POST to edge function invoice-documents
-   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/{type}/Year); metadata → invoice_documents
+   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/Year/given name); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
    → SELECT invoice_documents (this year / last year / all time)
@@ -250,7 +250,7 @@ Library (invoices.html → Library tab)
 Compose (letterhead.html)
    → Save / Print letter / Download Word writes letterhead_letters first
    → The page then calls drive-files to store the PDF in Google Drive
-      (Letters / year). A deferred trigger queues the same archive if the
+      (Letters, with no year folder). A deferred trigger queues the same archive if the
       browser closes after the save.
    → After the PDF is stored, the letter body is cleared
    → Drive PDF uses the same station letterhead as print (css/letterhead-print.css)
