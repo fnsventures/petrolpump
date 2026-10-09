@@ -106,6 +106,7 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 | `stamp-staging-migrations.sql` | Staging only — mark history applied |
 | `stamp-prod-migrations.sql` | Legacy prod only — mark pre-DSR-split history applied |
 | `truncate-staging.sql` | Staging only — clear before import |
+| `relink-app-users.sql` | Staging sync — set `users.auth_user_id` from Auth emails |
 | `create-dsr-import-table.sql` | Staging sync — temp legacy `dsr` import |
 | `dsr-import-from-prod.sql` | Staging sync — split into petrol/diesel |
 | `migrate-prod-preflight.sql` | Checks before a production migration |

@@ -10,6 +10,7 @@ Symptom, likely cause, fix. Shipping steps are [OPERATIONS.md](OPERATIONS.md). C
 |---------|--------------|-----|
 | Banner: config missing / copy `env.example.js` | DNS or bad `env.js` on Pages | `./scripts/check-dns-siblings.sh` then open `/js/env.js`. If DNS OK → Actions → **Deploy** → `prod`. Hard-refresh after. |
 | Login works, every page empty / RLS errors | User not in `public.users` | Auth user **and** a `public.users` row ([START.md → First login](START.md#first-login)) |
+| After sync: “Your account is not set up yet” | Prod has no `users.auth_user_id` yet, so the loaded rows are unlinked | Sync runs `scripts/relink-app-users.sql`. To repair a sync that already finished, run that file against staging, then sign in again |
 | Staging shows prod data project (or vice versa) | Wrong GitHub env secrets | Check **staging** / **prod** `SUPABASE_URL` + `SUPABASE_ANON_KEY`, redeploy |
 | Live site unchanged after merge | Deploy still running, or SW cache | Wait for Actions **Deploy**; hard-refresh / unregister SW |
 | Supervisor sees Settings / Reports | Wrong role or cached role | Confirm `public.users.role`; sign out/in |

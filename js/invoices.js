@@ -2,7 +2,6 @@
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const FALLBACK_DOCUMENT_CATEGORIES = [
   { value: "purchase", label: "Purchase invoices" },
   { value: "license", label: "License / permit" },
@@ -432,7 +431,9 @@ async function loadVaultDocuments() {
 
   const isAdmin = currentAuth?.role === "admin";
   tbody.innerHTML = data.map((row) => {
-    const folderLabel = `${row.year} / ${MONTH_NAMES[(row.month || 1) - 1] || row.month}`;
+    const folderLabel = row.category === "purchase"
+      ? `Purchase invoices / ${row.year}`
+      : `Other documents / ${row.year}`;
     const viewBtn = `<button type="button" class="link" data-action="view" data-id="${escapeHtml(row.id)}">View</button>`;
     const downloadBtn = `<button type="button" class="link" data-action="download" data-id="${escapeHtml(row.id)}">Download</button>`;
     const deleteBtn = isAdmin

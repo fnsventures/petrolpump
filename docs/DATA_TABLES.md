@@ -306,7 +306,7 @@ A single table with a `product` column would match today’s view plus two table
 | notes | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at, updated_at | timestamptz | Timestamps |
-| drive_file_id, drive_folder_id, drive_file_name | text | Archived cash memo PDF in Google Drive (`Billing invoices / Year`) |
+| drive_file_id, drive_folder_id, drive_file_name | text | Archived cash memo PDF in Google Drive (`Billing invoices / Year / invoice name`). No month folder |
 | drive_web_view_link | text | Drive view link |
 
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
@@ -339,14 +339,14 @@ A single table with a `product` column would match today’s view plus two table
 
 ## invoice_documents
 
-**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (`Purchase invoices / Year`; other types: `Other documents / {type} / Year`). Not related to billing table `invoices`.
+**Purpose:** **Supplier / purchase invoice** file metadata. Binary files live in **Google Drive** (`Purchase invoices / Year`; other types: `Other documents / Year`, file named from the title). Not related to billing table `invoices`.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
 | invoice_date | date | Supplier invoice date |
 | year | smallint | Folder year (from date) |
-| month | smallint | Folder month 1–12 |
+| month | smallint | Calendar month 1–12 from the document date. Not used as a Drive folder |
 | title | text | Optional description |
 | vendor | text | Supplier name |
 | amount | numeric(14,2) | Optional amount |
@@ -354,7 +354,7 @@ A single table with a `product` column would match today’s view plus two table
 | mime_type | text | e.g. `application/pdf` |
 | file_size | bigint | Size in bytes |
 | drive_file_id | text | Google Drive file ID |
-| drive_folder_id | text | Drive folder ID (month folder for purchase; year folder for other types) |
+| drive_folder_id | text | Drive folder ID (the year folder: `Purchase invoices / Year` or `Other documents / Year`) |
 | drive_web_view_link | text | Drive URL. Not shared publicly; View and Download go through the edge function |
 | public_link_revoked_at | timestamptz | When the file-level anyone permission was confirmed absent |
 | notes | text | Optional |
@@ -369,7 +369,7 @@ A single table with a `product` column would match today’s view plus two table
 
 ## letterhead_letters
 
-**Purpose:** Index of typed station letters. The PDF is stored in Google Drive (`Letters / Year`). `body` is held only until archive succeeds, then cleared so Postgres stays small.
+**Purpose:** Index of typed station letters. The PDF is stored in Google Drive (`Letters`, no year folder). `body` is held only until archive succeeds, then cleared so Postgres stays small.
 
 | Column | Type | Description |
 |--------|------|-------------|

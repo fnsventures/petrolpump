@@ -307,25 +307,41 @@ export async function ensureFolderPath(token: string, rootFolderId: string, segm
   return parentId;
 }
 
+export function fileExtension(name: string): string {
+  const base = String(name || "").split(/[/\\]/).pop() || "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return "";
+  const ext = base.slice(dot).toLowerCase();
+  return /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : "";
+}
+
+/** Title the user typed, keeping the uploaded file's extension. */
+export function otherDocumentFileName(title: string, originalName: string): string {
+  const ext = fileExtension(originalName);
+  const given = String(title || "").trim();
+  if (!given) return sanitizeFileName(originalName, "document");
+  const named = ext && !given.toLowerCase().endsWith(ext) ? `${given}${ext}` : given;
+  return sanitizeFileName(named, "document");
+}
+
 export function vaultDocumentFolderSegments(
   categoryName: string,
-  categoryLabel: string,
+  _categoryLabel: string,
   year: number,
   _month: number
 ): string[] {
   if (categoryName === "purchase") {
     return [DRIVE_TREE.purchaseInvoices, String(year)];
   }
-  const label = (categoryLabel || "Other").trim() || "Other";
-  return [DRIVE_TREE.otherDocuments, label, String(year)];
+  return [DRIVE_TREE.otherDocuments, String(year)];
 }
 
 export function salesInvoiceFolderSegments(year: number, _month: number): string[] {
   return [DRIVE_TREE.billing, String(year)];
 }
 
-export function letterFolderSegments(year: number, _month: number): string[] {
-  return [DRIVE_TREE.letters, String(year)];
+export function letterFolderSegments(): string[] {
+  return [DRIVE_TREE.letters];
 }
 
 export function staffRecordFolderSegments(staffFolderName: string): string[] {

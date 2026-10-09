@@ -300,8 +300,7 @@ async function handleLetterArchive(letterIdRaw: string, _auth: AuthUser) {
   }
 
   const letterDate = String(letter.letter_date || "").slice(0, 10);
-  const parsed = parseIsoDate(letterDate);
-  if (!parsed) return jsonResponse({ error: "letter date is invalid" }, 400);
+  if (!parseIsoDate(letterDate)) return jsonResponse({ error: "letter date is invalid" }, 400);
 
   const [token, pdfBytes] = await Promise.all([
     getDriveAccessToken(),
@@ -310,7 +309,7 @@ async function handleLetterArchive(letterIdRaw: string, _auth: AuthUser) {
   const folderId = await ensureFolderPath(
     token,
     settings.rootFolderId,
-    letterFolderSegments(parsed.year, parsed.month)
+    letterFolderSegments()
   );
   const fallbackName = `${letterDate} - ${letter.subject || "letter"}.pdf`;
   const safeName = sanitizeFileName(fallbackName, `${letterDate}.pdf`);

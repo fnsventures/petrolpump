@@ -142,7 +142,7 @@ Push to `staging` (test at `/staging/`), then merge to `main` ([OPERATIONS.md](O
 ### Step 7 — Verify end-to-end
 
 1. Open **Finance → Invoices** as admin or supervisor. There should be no yellow banner.
-2. Upload a small PDF of type Purchase. It should appear in the library and in Drive under `Root/Purchase invoices/YYYY/`.
+2. Upload a small PDF of type Purchase. It should appear in the library and in Drive under `Root/Purchase invoices/YYYY/`. A non-purchase type is filed as `Root/Other documents/YYYY/{title}`.
 3. Run `select * from invoice_documents order by created_at desc limit 1` and check that `drive_file_id` is set.
 4. **View** should open Drive in a new tab, and **Download** should save the file.
 5. As supervisor, upload/list/download should work with no Delete button. As admin, Delete removes the file from both Drive and the DB.
@@ -179,17 +179,17 @@ Enforcement happens in three places. `check_page_access('invoices')` runs in bot
 
 ## 7. How it works at runtime
 
-**Upload fields:** document type (required, a `document_categories.name`), date (required, `YYYY-MM-DD`, which picks the year folder), file (required), and the optional vendor ("From / party"), title, amount, and notes.
+**Upload fields:** document type (required, a `document_categories.name`), date (required, `YYYY-MM-DD`, which picks the year folder for vault files), file (required), and the optional vendor ("From / party"), title, amount, and notes. For any type other than purchase, the title is the Drive file name (the uploaded name is used when the title is blank).
 
-**Drive layout.** Folders are created on first use, and their IDs are cached in `drive_folder_cache`.
+**Drive layout.** Folders are created on first use, and their IDs are cached in `drive_folder_cache`. There are no month folders.
 
 ```
 Root (Settings)
-├── Purchase invoices/YYYY/            ← vault, type "purchase"
-├── Other documents/<Type label>/YYYY/ ← vault, any other type
-├── Billing invoices/YYYY/             ← drive-files (sales_invoice)
-├── Letters/YYYY/                      ← drive-files (letter)
-└── Staff/<Name · ID4>/                ← drive-files (photo ≤ 2 MB, Aadhaar ≤ 10 MB)
+├── Purchase invoices/YYYY/{file}         ← vault, type "purchase"
+├── Other documents/YYYY/{given name}     ← vault, any other type
+├── Billing invoices/YYYY/{invoice name}  ← drive-files (sales_invoice)
+├── Letters/{letter name}                 ← drive-files (letter); no year folder
+└── Staff/<Name · ID4>/                   ← drive-files (photo ≤ 2 MB, Aadhaar ≤ 10 MB)
 ```
 
 Files uploaded before this layout keep their old Drive IDs, and Download still works for them. The `document_categories.folder_layout` column (`year_month` / `year`) exists in the DB, but the current edge code ignores it and always uses the layout above.
