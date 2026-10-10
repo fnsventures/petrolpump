@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Expenses · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css?v=048fb05352" />
+    <script src="js/roleBootstrap.js?v=4498985c28"></script>
+    <script src="js/appNav.js?v=2dfde199ca"></script>
+    <link rel="stylesheet" href="css/app-layout.css?v=aa3180e6bd" />
+    <link rel="stylesheet" href="css/app-core.css?v=c9f372d42f" />
+    <script defer src="js/vendor/supabase.min.js?v=d7e6895fca"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=587d98983b"></script>
+    <script defer src="js/appDialog.js?v=87e711179c"></script>
+    <script defer src="js/cache.js?v=d8981a514b"></script>
+    <script defer src="js/appConfig.js?v=6d2ab4a0ae"></script>
+    <script defer src="js/utils.js?v=507213e2da"></script>
+    <script defer src="js/pwa.js?v=3643df044e"></script>
+    <script defer src="js/supabase.js?v=1f709e799e"></script>
+    <script defer src="js/queryPages.js?v=9994186c8c"></script>
+    <script defer src="js/creditCustomerSearch.js?v=90a45efb81"></script>
+    <script defer src="js/pumpSettings.js?v=5a2ad92992"></script>
+    <script defer src="js/dateRangeFilter.js?v=c3754477b6"></script>
+    <script defer src="js/pageSections.js?v=83521d96a3"></script>
+    <script defer src="js/auth.js?v=77099430cc"></script>
+    <script defer src="js/taskUtils.js?v=d1f4b708a5"></script>
+    <script defer src="js/dsrQueries.js?v=9d665a3f7d"></script>
+    <script defer src="js/notifications.js?v=9eaa860f2a"></script>
+    <script defer src="js/expenses.js?v=8c04d1f5b2"></script>
+  </head>
+  <body class="expenses-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+  </div>
+  <div class="page-title-stack">
+    <span class="page-subtitle">Expenses</span>
+    <span class="page-layer">Finance</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
+</header>
+
+    <main class="app-layout settings-layout">
+      <nav class="settings-nav card" aria-label="Expense sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="record">Record expense</button>
+        <button type="button" class="settings-nav-item" data-section="history">Recent expenses</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card is-visible" data-panel="record">
+        <div class="panel-head">
+          <div>
+            <h2 class="dashboard-section-title">Record expense</h2>
+            <p class="muted panel-lead">For staff salary installments, use <a href="salary.html#record">Salary → Record payment</a> instead.</p>
+          </div>
+        </div>
+        <form id="expense-form" class="form" autocomplete="off">
+          <div class="form-grid">
+            <div class="form-field">
+              <label for="expense-date">Date</label>
+              <input id="expense-date" name="date" type="date" required />
+            </div>
+
+            <div class="form-field">
+              <label for="expense-category">Category</label>
+              <select id="expense-category" name="category">
+                <option value="">Select category</option>
+              </select>
+            </div>
+
+            <div class="form-field">
+              <label for="expense-amount">Amount (₹)</label>
+              <input
+                id="expense-amount"
+                name="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0"
+                required
+              />
+            </div>
+
+            <div class="form-field">
+              <label for="expense-description">Description</label>
+              <textarea
+                id="expense-description"
+                name="description"
+                rows="2"
+                placeholder="Optional note"
+              ></textarea>
+            </div>
+          </div>
+
+          <button type="submit">Save expense</button>
+          <p id="expense-success" class="success hidden">Expense saved.</p>
+          <p id="expense-error" class="error hidden"></p>
+        </form>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="history" hidden>
+        <div class="panel-head card-head snapshot-head">
+          <div>
+            <h2 class="dashboard-section-title">Recent expenses</h2>
+            <p class="muted panel-lead">Filter by date range. Total shown for selected period. Salary payments are recorded on <a href="salary.html#recent">Salary → Payment history</a> and still count toward day closing expenses.</p>
+          </div>
+          <div class="snapshot-controls">
+            <div class="form-field">
+              <label for="expense-range">Period</label>
+              <select id="expense-range">
+                <option value="this-month" selected>This month</option>
+                <option value="this-week">This week</option>
+                <option value="custom">Custom dates</option>
+              </select>
+            </div>
+            <div id="expense-custom-range" class="custom-range hidden" aria-hidden="true">
+              <div class="form-field">
+                <label for="expense-start">From</label>
+                <input id="expense-start" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="expense-end">To</label>
+                <input id="expense-end" type="date" />
+              </div>
+            </div>
+            <div class="filter-actions">
+              <button type="button" id="expense-apply-filter">Apply</button>
+            </div>
+          </div>
+        </div>
+        <p id="expense-total-row" class="muted margin-top hidden">Total for selected period: <strong id="expense-total-value">—</strong></p>
+        <div class="table-wrap margin-top">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Category</th>
+                <th>Description</th>
+                <th>Amount (₹)</th>
+                <th id="expense-actions-head" class="table-actions" hidden>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="expense-table-body">
+              <tr>
+                <td colspan="4" class="muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="expense-empty-cta" class="empty-state hidden">
+          <p>No expenses recorded for this period.</p>
+          <p class="empty-cta">Add an expense using the form above.</p>
+        </div>
+        </section>
+      </div>
+    </main>
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

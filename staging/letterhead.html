@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Letterhead · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="stylesheet" href="css/base.css?v=048fb05352" />
+    <script src="js/roleBootstrap.js?v=4498985c28"></script>
+    <script src="js/appNav.js?v=2dfde199ca"></script>
+    <link rel="stylesheet" href="css/app-layout.css?v=aa3180e6bd" />
+    <link rel="stylesheet" href="css/app-core.css?v=c9f372d42f" />
+    <link rel="stylesheet" href="css/app-letterhead.css?v=84aca3db84" />
+    <script defer src="js/vendor/supabase.min.js?v=d7e6895fca"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=587d98983b"></script>
+    <script defer src="js/appDialog.js?v=87e711179c"></script>
+    <script defer src="js/cache.js?v=d8981a514b"></script>
+    <script defer src="js/appConfig.js?v=6d2ab4a0ae"></script>
+    <script defer src="js/utils.js?v=507213e2da"></script>
+    <script defer src="js/pwa.js?v=3643df044e"></script>
+    <script defer src="js/supabase.js?v=1f709e799e"></script>
+    <script defer src="js/queryPages.js?v=9994186c8c"></script>
+    <script defer src="js/creditCustomerSearch.js?v=90a45efb81"></script>
+    <script defer src="js/pumpSettings.js?v=5a2ad92992"></script>
+    <script defer src="js/dateRangeFilter.js?v=c3754477b6"></script>
+    <script defer src="js/pageSections.js?v=83521d96a3"></script>
+    <script defer src="js/auth.js?v=77099430cc"></script>
+    <script defer src="js/taskUtils.js?v=d1f4b708a5"></script>
+    <script defer src="js/dsrQueries.js?v=9d665a3f7d"></script>
+    <script defer src="js/notifications.js?v=9eaa860f2a"></script>
+    <script defer src="js/printUtils.js?v=e97c39c085"></script>
+    <script defer src="js/driveFiles.js?v=24ea775c86"></script>
+    <script defer src="js/letterhead.js?v=c4d211a080"></script>
+  </head>
+  <body class="letterhead-page">
+    <header class="topbar no-print">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+  </div>
+  <div class="page-title-stack">
+    <span class="page-subtitle">Letterhead</span>
+    <span class="page-layer">HR</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
+</header>
+
+    <main class="app-layout settings-layout page-layout-wide no-print">
+      <nav class="settings-nav card" aria-label="Letterhead sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="compose">Compose</button>
+        <button type="button" class="settings-nav-item" data-section="history">Letter history</button>
+        <button type="button" class="settings-nav-item" data-section="guide">How to use</button>
+      </nav>
+
+      <div class="settings-panels letterhead-panels">
+        <section class="settings-panel card dashboard-card letterhead-compose-panel is-visible" data-panel="compose" aria-label="Compose letterhead">
+          <header class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Compose letterhead</h2>
+              <p class="muted panel-lead">
+                Print blank stationery or type a letter on the station letterhead.
+                Created letters are archived to Google Drive. Branding is taken from
+                <a href="settings.html#station">Settings → Station &amp; branding</a>.
+              </p>
+            </div>
+          </header>
+          <p id="letterhead-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
+
+          <div class="letterhead-compose-layout">
+            <div class="letterhead-compose-main">
+              <form id="letterhead-form" class="form letterhead-form" autocomplete="off">
+                <div class="form-grid letterhead-meta-grid">
+                  <div class="form-field">
+                    <label for="letterhead-date">Date <span class="optional-label">(optional)</span></label>
+                    <input id="letterhead-date" name="date" type="date" />
+                  </div>
+                  <div class="form-field letterhead-subject-field">
+                    <label for="letterhead-subject">Subject <span class="optional-label">(optional)</span></label>
+                    <input
+                      id="letterhead-subject"
+                      name="subject"
+                      type="text"
+                      maxlength="200"
+                      placeholder="e.g. Request for documents"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-field">
+                  <label for="letterhead-body">Letter body <span class="optional-label">(optional — leave blank for empty stationery)</span></label>
+                  <textarea
+                    id="letterhead-body"
+                    name="body"
+                    rows="14"
+                    maxlength="20000"
+                    placeholder="Type your letter here…"
+                  ></textarea>
+                </div>
+
+                <div class="form-field letterhead-sign-option">
+                  <label class="checkbox-label" for="letterhead-include-sign">
+                    <input id="letterhead-include-sign" name="include_sign" type="checkbox" checked />
+                    Include signature footer (From … / Authorised Signatory)
+                  </label>
+                </div>
+
+                <div class="letterhead-export" aria-label="Export options">
+                  <div class="letterhead-export-group letterhead-export-group--save">
+                    <p class="letterhead-export-label">Save</p>
+                    <p class="muted letterhead-export-hint">Saves a PDF to Google Drive. History keeps only the date, subject, and Drive link — not the letter text.</p>
+                    <div class="letterhead-export-actions">
+                      <button type="button" id="letterhead-save" class="button-primary">Save letter</button>
+                    </div>
+                  </div>
+                  <div class="letterhead-export-group">
+                    <p class="letterhead-export-label">Print / PDF</p>
+                    <p class="muted letterhead-export-hint">Opens the print dialog. Choose “Save as PDF” for a PDF file.</p>
+                    <div class="letterhead-export-actions">
+                      <button type="button" id="letterhead-print-blank" class="button-secondary">Print blank</button>
+                      <button type="submit" id="letterhead-print-content">Print letter</button>
+                    </div>
+                  </div>
+                  <div class="letterhead-export-group">
+                    <p class="letterhead-export-label">Word</p>
+                    <p class="muted letterhead-export-hint">Downloads a <code>.doc</code> file for Word or Google Docs.</p>
+                    <div class="letterhead-export-actions">
+                      <button type="button" id="letterhead-word-blank" class="button-secondary">Download blank</button>
+                      <button type="button" id="letterhead-word-content" class="button-secondary">Download letter</button>
+                    </div>
+                  </div>
+                </div>
+
+                <p id="letterhead-success" class="success hidden" role="status"></p>
+                <p id="letterhead-error" class="error hidden" role="alert"></p>
+              </form>
+            </div>
+
+            <aside class="letterhead-preview-aside" aria-label="Letterhead preview">
+              <div class="letterhead-preview-head">
+                <h3 class="letterhead-preview-title">Preview</h3>
+                <p class="muted letterhead-preview-desc">Live view of the printed page</p>
+              </div>
+              <div class="letterhead-preview-wrap">
+                <div id="letterhead-preview" class="letterhead-preview-sheet" aria-live="polite"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card letterhead-history-panel" data-panel="history" aria-label="Letter history" hidden>
+          <header class="panel-head card-head snapshot-head" id="letterhead-history-head">
+            <div>
+              <h2 class="dashboard-section-title">Letter history</h2>
+              <p class="muted panel-lead">
+                Saved letters as PDFs in Google Drive. The database keeps only the date, subject, and Drive link.
+              </p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field form-field-inline">
+                <label for="letterhead-range">Period</label>
+                <select id="letterhead-range">
+                  <option value="this-year" selected>This year</option>
+                  <option value="last-year">Last year</option>
+                  <option value="all-time">All time</option>
+                </select>
+              </div>
+              <div id="letterhead-custom-range" class="custom-range hidden" aria-hidden="true">
+                <div class="form-field form-field-inline">
+                  <label for="letterhead-start">From</label>
+                  <input type="date" id="letterhead-start" />
+                </div>
+                <div class="form-field form-field-inline">
+                  <label for="letterhead-end">To</label>
+                  <input type="date" id="letterhead-end" />
+                </div>
+              </div>
+              <div class="filter-actions">
+                <button type="button" id="letterhead-apply-filter">Apply</button>
+              </div>
+            </div>
+          </header>
+
+          <div id="letterhead-history-list">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Subject</th>
+                    <th>Preview</th>
+                    <th>Via</th>
+                    <th id="letterhead-actions-head">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="letterhead-history-body">
+                  <tr><td colspan="5" class="muted">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="pagination-controls">
+              <span id="letterhead-pagination-info" class="muted"></span>
+              <button type="button" id="letterhead-load-more" class="button-secondary hidden">Load more</button>
+            </div>
+          </div>
+
+          <div id="letterhead-report-view" class="letterhead-report-view hidden" aria-label="Letter report" aria-hidden="true">
+            <div class="letterhead-report-output-head">
+              <div>
+                <h2 class="letterhead-report-title">Letter</h2>
+                <p id="letterhead-report-subtitle" class="muted letterhead-report-subtitle"></p>
+              </div>
+              <div class="letterhead-report-actions">
+                <button type="button" id="letterhead-report-print-btn" class="button-secondary">Print this letter</button>
+                <button type="button" id="letterhead-report-edit-btn" class="button-secondary">Edit in Compose</button>
+                <button type="button" id="letterhead-report-history-btn" class="button-secondary">Back to list</button>
+              </div>
+            </div>
+            <p id="letterhead-report-error" class="error hidden" role="alert"></p>
+            <div id="letterhead-sheet-preview" class="letterhead-sheet-preview" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card letterhead-guide-panel" data-panel="guide" id="letterhead-guide" aria-label="How to use" hidden>
+          <header class="panel-head">
+            <div>
+              <p class="letterhead-guide-eyebrow">Documentation</p>
+              <h2 class="dashboard-section-title">How to use</h2>
+              <p class="muted panel-lead">
+                Letterhead uses the same station branding as invoices and reports.
+              </p>
+            </div>
+          </header>
+
+          <div class="letterhead-guide-list">
+            <article class="letterhead-guide-item">
+              <h3>Blank stationery</h3>
+              <p class="muted">Leave subject and body empty, then use <strong>Print blank</strong> or <strong>Download blank</strong>. Useful for handwritten notes or filling later in Word. Blank sheets are not added to history.</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Typed letter</h3>
+              <p class="muted">Enter a date and subject, type the body, then <strong>Save letter</strong>, <strong>Print letter</strong>, or <strong>Download letter</strong>. Save stores a PDF in Google Drive. The database keeps only the date, subject, and Drive link.</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Letter history</h3>
+              <p class="muted"><strong>View</strong> opens the Drive PDF on this page. Print opens that PDF. Letter text is not kept in the database after archive. Only admins can delete history rows (and the Drive file).</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>PDF files</h3>
+              <p class="muted">There is no separate PDF download. Use Print → <strong>Save as PDF</strong> in the browser print dialog (same pattern as invoices and reports).</p>
+            </article>
+            <article class="letterhead-guide-item">
+              <h3>Update branding</h3>
+              <p class="muted">Change name, address, GSTIN, or contact details in <a href="settings.html#station">Settings → Station &amp; branding</a>. The letterhead updates on the next load.</p>
+            </article>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
