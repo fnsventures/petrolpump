@@ -3,7 +3,7 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger */
+/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
@@ -2392,6 +2392,12 @@
     fillShiftSelect();
     applyUrlParams();
     bindEvents();
+    if (dateInput && typeof mountDateStepper === "function") {
+      mountDateStepper(dateInput, {
+        compact: true,
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
     if (typeof ShiftStaffLedger?.init === "function") ShiftStaffLedger.init();
     await loadStaff();
     initialized = true;

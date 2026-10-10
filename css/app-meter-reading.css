@@ -147,8 +147,14 @@ body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input[t
   min-width: 0;
 }
 
+body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact .date-stepper > input[type="date"] {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
 body.meter-reading-page .meter-table .meter-col-date {
-  width: 11.5rem;
+  width: 15.5rem;
 }
 
 body.meter-reading-page .meter-table--closing .meter-col-date--spacer {
@@ -497,7 +503,7 @@ body.meter-reading-page .shift-status-badge--locked {
 
 body.meter-reading-page .shift-meter-controls {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: minmax(14.5rem, 1.4fr) repeat(3, minmax(0, 1fr)) auto;
   gap: 0.45rem 0.55rem;
   align-items: end;
   padding: 0.5rem 0.6rem;
@@ -544,6 +550,11 @@ body.meter-reading-page .shift-meter-controls .form-field select {
   width: 100%;
   min-height: 2.3rem;
   box-sizing: border-box;
+}
+
+body.meter-reading-page .shift-meter-controls .form-field .date-stepper > input[type="date"] {
+  width: auto;
+  min-width: 0;
 }
 
 body.meter-reading-page .shift-control-actions {

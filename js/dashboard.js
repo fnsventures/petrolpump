@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper */
 
 /**
  * Generate cache key for dashboard data queries
@@ -616,6 +616,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       fallback: yesterdayStr,
       onChange: onSnapshotDate,
     });
+    if (typeof mountDateStepper === "function") {
+      mountDateStepper(snapshotDateInput, {
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
     updateHeroDate();
     updateSalesDailyLink();
     const rememberSnapshotDateForDsr = () => {

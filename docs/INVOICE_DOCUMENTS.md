@@ -13,7 +13,7 @@ Billing PDFs, letters, and staff photos/Aadhaar use the same Drive root and Goog
 
 - Staff upload a document from **Finance → Invoices** (`invoices.html`). Each upload has a type from `document_categories` (default `purchase`) and must be a PDF, JPEG, PNG, or WebP of 1 byte to 15 MB.
 - The file goes to Google Drive and its metadata (date, type, vendor, amount, Drive IDs) goes to `invoice_documents`.
-- The library lists documents by date range and type. Users can **View** (Drive link), **Download** (through the edge function), or **Delete** (admin only).
+- The library lists documents for the selected period, grouped by type. Each type stays collapsed until opened. Search filters the loaded list by title, party, or file name. Users can **View** (Drive link), **Download** (through the edge function), or **Delete** (admin only).
 - Settings live in **Settings → Integrations** (admin only): an enable flag and the root folder ID. Google credentials live only in **Supabase Edge Function secrets**, never in the frontend or GitHub.
 
 ## 2. Prerequisites
@@ -194,7 +194,7 @@ Root (Settings)
 
 Files uploaded before this layout keep their old Drive IDs, and Download still works for them. The `document_categories.folder_layout` column (`year_month` / `year`) exists in the DB, but the current edge code ignores it and always uses the layout above.
 
-**Library:** the period filter offers **This year** (default), **Last year**, and **All time**, plus a type filter. It queries Postgres and never lists Drive.
+**Library:** the period filter offers **This year** (default), **Last year**, and **All time**, plus a type filter. It queries Postgres and never lists Drive. Results are grouped by `document_categories` order, collapsed until opened, and a search box filters that loaded list in the browser.
 
 **Status banner:** on load the page calls `{action:"status"}`, and upload stays disabled until `configured: true`. That requires a resolved auth mode, a root folder ID, and the integration enabled. Supervisors see "Ask an admin to complete Google Drive setup". Admins are pointed to Settings → Integrations.
 

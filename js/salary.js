@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -623,6 +623,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   writeMonthYearValue(salaryMonthSelect, salaryYearSelect, currentMonth);
   writeMonthYearValue(historyMonthSelect, historyYearSelect, currentMonth);
   writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, currentMonth);
+  if (typeof mountMonthStepper === "function") {
+    const monthMax = () => (typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth);
+    mountMonthStepper(salaryMonthSelect, salaryYearSelect, { max: monthMax });
+    mountMonthStepper(historyMonthSelect, historyYearSelect, { max: monthMax });
+  }
 
   let staffList = [];
   let monthPayments = [];
@@ -867,6 +872,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function syncHistoryMonth() {
     writeMonthYearValue(historyMonthSelect, historyYearSelect, getSelectedMonth());
+    historyMonthSelect?._monthStepper?.sync();
   }
 
   function openDetailModal(staffId) {

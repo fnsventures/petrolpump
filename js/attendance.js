@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel, mountDateStepper, mountMonthStepper */
 
 const STATUS_LABELS = {
   present: "Present",
@@ -166,11 +166,22 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (attendanceDateInput) {
     initPersistedDateInput(attendanceDateInput, RECORD_DATE_KEYS.attendance, { urlParam: "date" });
+    if (attendanceDateInput && typeof mountDateStepper === "function") {
+      mountDateStepper(attendanceDateInput, {
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
   }
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   populateMonthYearSelects(historyMonthSelect, historyYearSelect);
   writeMonthYearValue(historyMonthSelect, historyYearSelect, currentMonth);
+  if (typeof mountMonthStepper === "function") {
+    mountMonthStepper(historyMonthSelect, historyYearSelect, {
+      wrapSelector: ".att-month-control",
+      max: () => (typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : ""),
+    });
+  }
 
   let staffList = [];
   let attendanceByDate = new Map();

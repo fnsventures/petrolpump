@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -604,8 +604,8 @@ function setMeterFormSupervisorLocked(form, locked, { hint = null } = {}) {
 
   form.querySelectorAll("input, textarea, button").forEach((el) => {
     if (el.name === "date" || el.type === "hidden") return;
-    // Refresh must stay available so supervisors can clear stale closings after a date change.
-    if (el.classList?.contains("dsr-refresh-form")) return;
+    // Refresh and day stepper stay available so a locked day can still be left.
+    if (el.classList?.contains("dsr-refresh-form") || el.classList?.contains("date-step")) return;
     if (el.hasAttribute("data-dsr-supervisor-lock")) return;
 
     if (el.tagName === "BUTTON") {
@@ -801,6 +801,12 @@ function initReadingForm(product) {
     };
     dateInput.addEventListener("change", onDateChange);
     dateInput.addEventListener("input", onDateChange);
+    if (typeof mountDateStepper === "function") {
+      mountDateStepper(dateInput, {
+        compact: true,
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
     void onDateChange();
   } else {
     updateDerivedFields(form);

@@ -1625,9 +1625,13 @@ const loadSteppedDayClosingDate = debounce(async (dateStr) => {
 }, 250);
 
 async function stepDayClosingDate(days) {
-  const current = dcDom?.dateInput?.value?.trim() || dcTodayStr();
+  const input = dcDom?.dateInput;
+  if (!input) return;
+  const current = input.value?.trim() || dcTodayStr();
   const today = dcTodayStr();
-  let target = addDaysToDateString(current, days);
+  // Always one calendar day. A focused weekday segment on the date input steps a week.
+  const delta = Number(days) < 0 ? -1 : 1;
+  let target = addDaysToDateString(current, delta);
   if (target > today) target = today;
   if (target === current) return;
   if (
@@ -1643,7 +1647,10 @@ async function stepDayClosingDate(days) {
   // Show the new date immediately; drop any in-flight load for an intermediate day.
   dcStepPendingDate = target;
   dcBreakdownRequestId++;
-  dcDom.dateInput.value = target;
+  input.blur();
+  input.step = "1";
+  input.value = target;
+  if (input.value !== target) input.value = target;
   syncDayClosingDateStepper(target);
   setBreakdownAmounts(DC_LOADING);
   [dcDom.nightCashInput, dcDom.phonePayInput, dcDom.remarksInput].forEach((el) => {
@@ -1668,6 +1675,7 @@ async function initializeDayClosing() {
   if (!dateInput || !form) return;
 
   const todayStr = dcTodayStr();
+  dateInput.step = "1";
   const dateStr = initPersistedDateInput(dateInput, "day_closing_close", {
     urlParam: "date",
     fallback: todayStr,
@@ -1819,8 +1827,14 @@ async function initializeDayClosing() {
   document.getElementById("day-closing-print")?.addEventListener("click", () => {
     printDayClosingStatement();
   });
-  dcDom.prevDayBtn?.addEventListener("click", () => stepDayClosingDate(-1));
-  dcDom.nextDayBtn?.addEventListener("click", () => stepDayClosingDate(1));
+  dcDom.prevDayBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    void stepDayClosingDate(-1);
+  });
+  dcDom.nextDayBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    void stepDayClosingDate(1);
+  });
 
   dcDom.certifyBtn?.addEventListener("click", () => setDayClosingCertified(true));
   dcDom.uncertifyBtn?.addEventListener("click", () => setDayClosingCertified(false));
