@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees, mountDateStepper */
 
 (function () {
   /** Part B checks every 2 hours, from morning-shift start through afternoon-shift end. */
@@ -84,6 +84,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       fallback: today,
       onChange: (value) => void loadRegister(value),
     });
+    if (dom.dateInput && typeof mountDateStepper === "function") {
+      mountDateStepper(dom.dateInput, { max: () => getLocalDateString() });
+    }
 
     await loadPumpSettings();
     await Promise.all([

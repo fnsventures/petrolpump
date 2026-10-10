@@ -140,6 +140,204 @@ function addDaysToDateString(yyyyMmDd, days) {
 }
 
 /**
+ * Shift a YYYY-MM value by whole months in local calendar time.
+ * @param {string} yyyyMm
+ * @param {number} months
+ * @returns {string}
+ */
+function addMonthsToMonthValue(yyyyMm, months) {
+  const [y, m] = String(yyyyMm || "").split("-").map(Number);
+  if (!y || !m) return String(yyyyMm || "");
+  const dt = new Date(y, m - 1 + (Number(months) || 0), 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function dateStepBound(value) {
+  if (typeof value === "function") value = value();
+  const s = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function monthStepBound(value) {
+  if (typeof value === "function") value = value();
+  const s = String(value || "").slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(s) ? s : "";
+}
+
+function createDateStepButton(label, glyph, text, iconFirst) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "button-secondary date-step";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = glyph;
+  const words = document.createElement("span");
+  words.className = "date-step-text";
+  words.textContent = text;
+  if (iconFirst) btn.append(icon, words);
+  else btn.append(words, icon);
+  return btn;
+}
+
+/**
+ * Previous / next day around a date input.
+ * Steps exactly one local calendar day. The browser's own date spinner is not used:
+ * on some desktop browsers that control moves a week when the weekday segment is active.
+ *
+ * @param {HTMLInputElement} input
+ * @param {{ compact?: boolean, min?: string|(() => string), max?: string|(() => string), dispatch?: boolean, beforeStep?: (target: string, current: string) => boolean|Promise<boolean>, onStep?: (target: string, current: string) => void }} [opts]
+ * @returns {{ sync: () => void } | null}
+ */
+function mountDateStepper(input, opts = {}) {
+  if (!input || input.dataset.dateStepper === "1") return input?._dateStepper || null;
+  if (!input.parentNode) return null;
+  input.dataset.dateStepper = "1";
+  input.step = "1";
+
+  const wrap = document.createElement("div");
+  wrap.className = "date-stepper" + (opts.compact ? " date-stepper--compact" : "");
+  const prev = createDateStepButton("Previous day", "‹", "Prev", true);
+  const next = createDateStepButton("Next day", "›", "Next", false);
+  input.parentNode.insertBefore(wrap, input);
+  wrap.append(prev, input, next);
+
+  function sync() {
+    const value = input.value || "";
+    const min = dateStepBound(opts.min);
+    const max = dateStepBound(opts.max);
+    prev.disabled = !!(value && min && value <= min);
+    next.disabled = !!(value && max && value >= max);
+    prev.title = prev.disabled ? "Already at the earliest day" : "Previous day";
+    next.title = next.disabled ? "Already at the latest day" : "Next day";
+  }
+
+  async function step(days, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const delta = Number(days) < 0 ? -1 : 1;
+    const current = input.value?.trim() || "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(current)) return;
+    let target = addDaysToDateString(current, delta);
+    const min = dateStepBound(opts.min);
+    const max = dateStepBound(opts.max);
+    if (min && target < min) target = min;
+    if (max && target > max) target = max;
+    if (!target || target === current) {
+      sync();
+      return;
+    }
+    if (typeof opts.beforeStep === "function") {
+      const ok = await opts.beforeStep(target, current);
+      if (!ok) return;
+    }
+    // Blur before writing. A focused weekday segment treats a value change as a one-week step.
+    input.blur();
+    input.step = "1";
+    input.value = target;
+    if (input.value !== target) input.value = target;
+    sync();
+    if (opts.dispatch !== false) {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (typeof opts.onStep === "function") opts.onStep(target, current);
+  }
+
+  prev.addEventListener("click", (event) => {
+    void step(-1, event);
+  });
+  next.addEventListener("click", (event) => {
+    void step(1, event);
+  });
+  input.addEventListener("change", sync);
+
+  const api = { sync };
+  input._dateStepper = api;
+  sync();
+  return api;
+}
+
+/**
+ * Previous / next month for a month + year select pair.
+ * Pass wrapSelector to put the buttons around an existing control (attendance).
+ * Otherwise the two selects are grouped between the buttons.
+ *
+ * @param {HTMLSelectElement} monthSelect
+ * @param {HTMLSelectElement} yearSelect
+ * @param {{ wrapSelector?: string, min?: string|(() => string), max?: string|(() => string) }} [opts]
+ * @returns {{ sync: () => void } | null}
+ */
+function mountMonthStepper(monthSelect, yearSelect, opts = {}) {
+  if (!monthSelect || !yearSelect || monthSelect.dataset.monthStepper === "1") {
+    return monthSelect?._monthStepper || null;
+  }
+  if (!monthSelect.parentNode) return null;
+  monthSelect.dataset.monthStepper = "1";
+
+  const prev = createDateStepButton("Previous month", "‹", "Prev", true);
+  const next = createDateStepButton("Next month", "›", "Next", false);
+  const host = opts.wrapSelector ? monthSelect.closest(opts.wrapSelector) : null;
+  if (host?.parentNode) {
+    const outer = document.createElement("div");
+    outer.className = "date-stepper date-stepper--month";
+    host.parentNode.insertBefore(outer, host);
+    outer.append(prev, host, next);
+  } else {
+    const group = document.createElement("div");
+    group.className = "date-stepper date-stepper--month";
+    monthSelect.before(group);
+    group.append(prev, monthSelect, yearSelect, next);
+  }
+
+  function earliestMonth() {
+    const years = [...yearSelect.options].map((opt) => opt.value).filter((value) => /^\d{4}$/.test(value));
+    if (!years.length) return "";
+    years.sort();
+    return `${years[0]}-01`;
+  }
+
+  function sync() {
+    const value = readMonthYearValue(monthSelect, yearSelect);
+    const min = monthStepBound(opts.min) || earliestMonth();
+    const max = monthStepBound(opts.max);
+    prev.disabled = !!(value && min && value <= min);
+    next.disabled = !!(value && max && value >= max);
+    prev.title = prev.disabled ? "Already at the earliest month" : "Previous month";
+    next.title = next.disabled ? "Already at the latest month" : "Next month";
+  }
+
+  function step(delta, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const value = readMonthYearValue(monthSelect, yearSelect);
+    if (!/^\d{4}-\d{2}$/.test(value)) return;
+    let target = addMonthsToMonthValue(value, delta < 0 ? -1 : 1);
+    const min = monthStepBound(opts.min) || earliestMonth();
+    const max = monthStepBound(opts.max);
+    if (min && target < min) target = min;
+    if (max && target > max) target = max;
+    if (target === value) {
+      sync();
+      return;
+    }
+    writeMonthYearValue(monthSelect, yearSelect, target);
+    sync();
+    monthSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  prev.addEventListener("click", (event) => step(-1, event));
+  next.addEventListener("click", (event) => step(1, event));
+  monthSelect.addEventListener("change", sync);
+  yearSelect.addEventListener("change", sync);
+
+  const api = { sync };
+  monthSelect._monthStepper = api;
+  sync();
+  return api;
+}
+
+/**
  * Append a dated follow-up line to notes (max 2000 chars).
  * Returns null when noteText is empty.
  * @param {string|null|undefined} existingNotes
@@ -1041,6 +1239,9 @@ window.localDateToUtcEnd = localDateToUtcEnd;
 window.getUtcRangeForLocalDate = getUtcRangeForLocalDate;
 window.parseDateAsUtc = parseDateAsUtc;
 window.addDaysToDateString = addDaysToDateString;
+window.addMonthsToMonthValue = addMonthsToMonthValue;
+window.mountDateStepper = mountDateStepper;
+window.mountMonthStepper = mountMonthStepper;
 window.appendDatedNote = appendDatedNote;
 window.formatDateInput = formatDateInput;
 window.formatDisplayDate = formatDisplayDate;

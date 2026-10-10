@@ -23,8 +23,22 @@
 .att-date-field,
 .att-month-field {
   margin: 0;
-  flex: 0 1 16rem;
   min-width: min(100%, 12rem);
+}
+
+.att-date-field {
+  flex: 1 1 22rem;
+  max-width: 28rem;
+}
+
+.att-month-field {
+  flex: 1 1 26rem;
+  max-width: 36rem;
+}
+
+.date-stepper--month > .att-month-control {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .att-date-field label,
