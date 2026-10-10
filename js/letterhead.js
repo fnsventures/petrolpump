@@ -1,7 +1,9 @@
 /* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress */
 
 (function () {
-  const PRINT_CSS = "css/letterhead-print.css?v=4";
+  const PRINT_CSS = "css/letterhead-print.css";
+  /** Full 512px station mark. Printed at 28mm; the larger bitmap is what keeps A4 sharp. */
+  const LETTER_LOGO_SRC = "assets/bishnupriya-fuels-logo.png";
   const PAGE_SIZE = 20;
   const HISTORY_COLSPAN = 5;
   const LETTER_LIST_SELECT =
@@ -96,13 +98,13 @@
       .join("");
   }
 
+  function letterLogoUrl() {
+    return letterheadAssetUrl(LETTER_LOGO_SRC);
+  }
+
   function buildLetterheadBannerHtml({ logoSrc } = {}) {
     const s = stationParts();
-    const logo =
-      logoSrc ||
-      (typeof PrintUtils !== "undefined" && PrintUtils.getStationLogoPrintUrl
-        ? PrintUtils.getStationLogoPrintUrl()
-        : "assets/logo-print.webp");
+    const logo = logoSrc || letterLogoUrl();
 
     const contactBits = [];
     if (s.email) contactBits.push(`<span><em>Email</em> ${escapeHtml(s.email)}</span>`);
@@ -115,7 +117,7 @@
         <div class="invoice-logo-wrap">
           ${
             logo
-              ? `<img src="${logo}" alt="${escapeHtml(s.displayName)}" class="station-logo invoice-bpcl-logo" width="192" height="192" />`
+              ? `<img src="${logo}" alt="${escapeHtml(s.displayName)}" class="station-logo invoice-bpcl-logo" width="512" height="512" />`
               : ""
           }
         </div>
@@ -270,6 +272,47 @@
     return Boolean(local?.enabled && local?.rootFolderId);
   }
 
+  /** Store the letter PDF in Google Drive after the history row has committed. */
+  async function fileLetterToDrive(letterId) {
+    if (!letterId || typeof DriveFiles === "undefined" || typeof DriveFiles.archive !== "function") {
+      if (driveConfiguredLocally()) {
+        throw new Error("The letter was saved, but the PDF was not filed to Google Drive.");
+      }
+      return { filed: false, reason: "unavailable" };
+    }
+    if (!driveConfiguredLocally()) {
+      return { filed: false, reason: "not_configured" };
+    }
+    const data = await DriveFiles.archive({ kind: "letter", letterId });
+    if (data?.letter?.drive_file_id) return { filed: true };
+    if (data?.skipped && data?.reason === "drive_disabled") {
+      return { filed: false, reason: "not_configured" };
+    }
+    if (data?.skipped && DriveFiles.waitUntilArchived) {
+      const waited = await DriveFiles.waitUntilArchived({
+        table: "letterhead_letters",
+        id: letterId,
+        timeoutMs: 8000,
+      });
+      if (waited) return { filed: true };
+    }
+    throw new Error("The letter was saved, but the PDF was not filed to Google Drive.");
+  }
+
+  async function noteAfterLetterSave(saved, { failedSave, failedDrive }) {
+    if (!saved?.ok) return failedSave;
+    if (saved.skipped) return "";
+    try {
+      const filed = await fileLetterToDrive(saved.letter?.id);
+      if (location.hash === "#history") loadHistory(true);
+      return filed.filed ? " PDF filed to Google Drive." : " Saved to history.";
+    } catch (err) {
+      AppError?.report?.(err, { context: "letterheadDriveArchive" });
+      if (location.hash === "#history") loadHistory(true);
+      return failedDrive;
+    }
+  }
+
   async function saveLetterHistory(values, exportType) {
     if (!hasLetterContent(values)) return { ok: true, skipped: true };
     const saved = await saveLetterHistoryToDatabase(values, exportType);
@@ -306,20 +349,26 @@
               if (!result.ok) {
                 throw result.error || new Error("Could not save the letter.");
               }
-              if (driveConfiguredLocally() && result.letter?.id && DriveFiles?.waitUntilArchived) {
+              let filed = false;
+              if (driveConfiguredLocally() && result.letter?.id) {
                 p.setStep(1, "Filing PDF to Google Drive…");
-                await DriveFiles.waitUntilArchived({ table: "letterhead_letters", id: result.letter.id });
+                filed = (await fileLetterToDrive(result.letter.id)).filed;
               }
-              return result;
+              return { ...result, filed };
             }
           )
-        : saveLetterHistory(values, "save"));
+        : (async () => {
+            const result = await saveLetterHistory(values, "save");
+            if (!result.ok || !driveConfiguredLocally() || !result.letter?.id) return result;
+            const filed = await fileLetterToDrive(result.letter.id);
+            return { ...result, filed: filed.filed };
+          })());
       if (!saved?.ok) {
         showError(AppError?.getUserMessage?.(saved?.error) || "Could not save the letter. Try again.");
         return;
       }
       showSuccess(
-        driveConfiguredLocally()
+        saved.filed
           ? "Letter saved. PDF filed to Google Drive."
           : "Letter saved. Open Letter history to view it."
       );
@@ -361,7 +410,8 @@
               subject: useContent ? values.subject : "",
               body: useContent ? values.body : "",
               includeSign: useContent && hasLetterContent(values) && values.includeSign,
-            })
+            }),
+            letterLogoUrl()
           )
         ),
         getLetterheadPrintCssText(),
@@ -380,14 +430,10 @@
       let historyNote = "";
       if (useContent && saveHistory) {
         const saved = await saveLetterHistory(values, "print");
-        if (saved.ok && !saved.skipped) {
-          historyNote = driveConfiguredLocally()
-            ? " Saved. PDF is being archived to Google Drive."
-            : " Saved to history.";
-          if (location.hash === "#history") loadHistory(true);
-        } else if (!saved.ok) {
-          historyNote = " (Could not save to history — print still opened.)";
-        }
+        historyNote = await noteAfterLetterSave(saved, {
+          failedSave: " (Could not save to history — print still opened.)",
+          failedDrive: " Saved to history, but the PDF was not filed to Google Drive.",
+        });
       }
 
       showSuccess(
@@ -572,14 +618,10 @@
       let historyNote = "";
       if (useContent) {
         const saved = await saveLetterHistory(values, "word");
-        if (saved.ok && !saved.skipped) {
-          historyNote = driveConfiguredLocally()
-            ? " Saved. PDF is being archived to Google Drive."
-            : " Saved to history.";
-          if (location.hash === "#history") loadHistory(true);
-        } else if (!saved.ok) {
-          historyNote = " (Could not save to history — file still downloaded.)";
-        }
+        historyNote = await noteAfterLetterSave(saved, {
+          failedSave: " (Could not save to history — file still downloaded.)",
+          failedDrive: " Saved to history, but the PDF was not filed to Google Drive.",
+        });
       }
 
       showSuccess(

@@ -69,7 +69,13 @@ if [[ "${NEED_DSR_IMPORT:-0}" == "1" ]]; then
 fi
 
 echo
+echo "==> Staging keeps no audit log"
+CONFIRM_STAGING_AUDIT=from-sync bash "${ROOT}/scripts/disable-staging-audit.sh"
+
+echo
 echo "Done. Staging mirrors production data."
+echo "    Link app users to imported Auth accounts…"
+run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/relink-app-users.sql"
 echo "    Reseed vault document types (not in older prod dumps)…"
 run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/seed-document-categories.sql"
 echo "Dumps: ${DUMP_DIR}/"

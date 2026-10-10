@@ -1,9 +1,6 @@
 # Database migrations
 
-How to change the schema safely without guessing.
-
-**Day-to-day apply steps:** [OPERATIONS.md §3 Step C](OPERATIONS.md#3-release-to-production)  
-**Script internals / errors:** [scripts/README.md](../scripts/README.md)
+How to write a schema change. Applying it is [OPERATIONS.md](OPERATIONS.md): staging first, production only from `./scripts/db.sh migrate`. Script internals: [scripts/README.md](../scripts/README.md).
 
 ---
 
@@ -26,71 +23,87 @@ Do **not** edit an already-applied migration on prod. Add a new timestamped file
 supabase/migrations/YYYYMMDDHHMMSS_short_snake_description.sql
 ```
 
-Examples already in the repo: `20260708120000_batch_credit_settle_rpc.sql`.
+Create files with the CLI so the timestamp is **now** (UTC):
 
-Use UTC-ish ordering; filenames must sort correctly — later change = later timestamp.
+```bash
+supabase migration new short_snake_description
+```
+
+**Rule:** a new migration must sort **after every existing file**. `supabase db push` refuses to run a local file whose version is older than the latest version already applied on the remote (`Found local migration files to be inserted before the last migration on remote`). The PR check `scripts/check-migration-order.sh` enforces this.
+
+**Known exception — do not rename:** `20250602100000_credit_customer_contact.sql`, `20250602120000_salary_slip_pf.sql`, `20250602130000_employee_pf_contribution.sql` were committed on 2026-06-02 (year typo) and sort before `20260528*`. They are already recorded in prod/staging `supabase_migrations.schema_migrations`; renaming them would make the CLI treat them as new and re-run them. On a fresh database they apply in filename order without error. If any database applied `20260528*` *before* these three existed, push once with:
+
+```bash
+supabase db push --db-url "$DB_URL" --include-all --dry-run   # review
+supabase db push --db-url "$DB_URL" --include-all
+```
 
 ---
 
 ## Author a change
 
 1. Branch from `staging`.
-2. Add one focused SQL file under `supabase/migrations/`.
+2. `supabase migration new <name>` — one focused SQL file.
+   - Redefining an existing function? Copy the **latest** definition: `grep -lE "create( or replace)? function public\.<name>\b" supabase/migrations/* | sort | tail -1`. A pattern of `function public.<name>` also matches `grant` and `comment on function`.
 3. Prefer additive, safe changes:
    - New columns nullable or with defaults
    - New RPCs / views / indexes
    - RLS policy updates that do not lock out admins
 4. Avoid destructive drops on prod data unless you have an explicit restore plan and a quiet window.
-5. Update docs if the public model changed:
-   - [DATA_TABLES.md](DATA_TABLES.md) / [DSR_TABLES.md](DSR_TABLES.md)
-   - `supabase/schema.sql` (keep greenfield in sync)
-6. Test on staging (below), then ship via Operations release order.
+5. Update `supabase/schema.sql` and check with `./scripts/check-schema-drift.sh`.
+6. Update docs if the public model changed: [DATA_TABLES.md](DATA_TABLES.md) (meter and stock model included); day-closing RPCs → [DAY_CLOSING.md](DAY_CLOSING.md).
+7. Test on staging, then ship with the [Operations](OPERATIONS.md#3-release-to-production) release order.
 
 ---
 
-## Apply order (staging → prod)
+## Apply
 
-### Staging (usual path)
+Staging first, then smoke-test `/staging/`, then production. The click-path is [OPERATIONS.md](OPERATIONS.md#apply-migrations-to-staging-only) and [Release](OPERATIONS.md#3-release-to-production).
 
-`./scripts/db.sh sync` stamps pending migrations and pushes schema to staging **before** loading prod data. So after sync, staging schema matches the repo.
+<a id="staging-schema-only"></a>
 
-You can also push to the staging project with Supabase CLI if you are iterating on schema only (see CLI docs); day-to-day this repo uses `db.sh sync` / `migrate`.
+### Staging schema only
 
-### Production (release)
+`supabase db push --db-url "$STAGING_DB_URL"` changes staging schema and keeps its rows. `./scripts/db.sh migrate` and `--apply` change **production**. `./scripts/db.sh sync` pushes schema and then **replaces** staging data.
 
-```bash
-# 1) Safe — no prod change
-./scripts/db.sh migrate
+Stop if the dry-run lists migrations older than the latest version already on staging, or says a local file would be inserted before the last remote migration.
 
-# 2) Quiet window — backup then apply
-./scripts/db.sh migrate --apply
-```
-
-Then merge frontend `staging` → `main` if the UI depends on the new schema ([OPERATIONS.md](OPERATIONS.md)).
-
-**Never** run `stamp-staging-migrations.sql` on production.
+`scripts/stamp-staging-migrations.sql` only marks the old bootstrap history as applied (`on conflict do nothing`). It does not run SQL. `./scripts/db.sh sync` runs it; a staging database that already has migration history does not need it for new files. **Never** run that stamp file on production.
 
 ---
 
 ## Greenfield database
 
-Either:
+Run **`supabase/schema.sql`** on the new project (SQL Editor or `psql -v ON_ERROR_STOP=1 -f supabase/schema.sql`). It is the only file that builds a database from empty, including Storage buckets and policies. `scripts/check-schema-drift.sh` keeps it equal to the migrations.
 
-1. Run all of `supabase/schema.sql` in the SQL Editor, **or**
-2. Apply every file in `supabase/migrations/` in filename order.
+**Do not** `supabase db push` onto an empty project: the oldest migrations are patches on top of the pre-migrations schema (commit `5383acd`), so the first file fails on a bare database. After loading `schema.sql`, mark every migration as applied so future pushes only run new files:
 
-Then create Auth user + `public.users` row ([DEVELOPMENT.md §1.4](DEVELOPMENT.md#14-first-login)). Storage buckets come from avatar/photo migrations — if you only pasted `schema.sql`, also apply those migration files if buckets are missing.
+```bash
+supabase migration repair --db-url "$NEW_DB_URL" --status applied $(ls supabase/migrations | cut -c1-14)
+```
+
+Then create the first admin ([CHECKLISTS.md → Add a user](CHECKLISTS.md#add-a-user)). Restoring from a backup instead: [RECOVERY.md](RECOVERY.md).
 
 ---
 
 ## Keeping `schema.sql` in sync
 
-After migrations land on prod:
+Every PR that adds a migration must also update `supabase/schema.sql`. Check locally (needs Docker, ~15 s):
 
-1. Diff what you added (new table/RPC/policy) into `supabase/schema.sql`, **or**
-2. Dump a fresh schema from a fully migrated DB and replace carefully (preserve comments/sections the team relies on).
+```bash
+./scripts/check-schema-drift.sh            # 0 = in sync, 1 = drift (prints diff), 2 = a SQL file failed
+KEEP_DRIFT_CONTAINERS=1 ./scripts/check-schema-drift.sh   # leave both DBs up to inspect
+```
 
-If you skip this, the next greenfield install from `schema.sql` will drift from production.
+It builds DB A from the `5383acd` baseline + every migration in filename order, DB B from `schema.sql`, and diffs normalized schema dumps. CI runs it on PRs that touch `supabase/`.
+
+**Stale overloads:** when a migration changes a function's signature, `drop function if exists` the old signature in the same file — `create or replace` with new arguments adds an overload and leaves the old one callable. `20261006054630_money_write_integrity.sql` dropped the four that had accumulated (`add_credit_entry` 7-arg, `record_credit_payment(uuid,date,numeric,text)`, `save_day_closing(date,numeric,numeric)`, `upsert_staff(text,text)`). `LEGACY_OVERLOADS` in the drift script is now empty; only add to it as a stopgap.
+
+---
+
+## Rollback
+
+There are no down-migrations. Prefer a **forward fix** (new migration). Inverse migrations, `migration repair`, and the automatic pre-migrate backup: [RECOVERY.md → Schema rollback](RECOVERY.md#schema-rollback).
 
 ---
 
@@ -112,17 +125,8 @@ Smoke-test on staging/prod: login → dashboard → the page that uses the new o
 |---------|--------|
 | Only edit `schema.sql`, no migration | Prod never gets the change via `db push` |
 | Apply migration on prod before testing on staging | Harder rollback |
-| Use Direct DB URL in `db.env` | Connection failures — use Session pooler |
+| `./scripts/db.sh migrate --apply` when you meant staging | Production schema changes |
+| `./scripts/db.sh sync` when you only wanted the new SQL | Staging data replaced with prod |
+| Use Direct DB URL in `db.env` | Connection failures — [use Session pooler](SECRETS.md#a-laptop-gitignored) |
 | Commit `scripts/db.env` | Credential leak |
 | Run stamp-staging SQL on prod | Migrations marked applied without running |
-
----
-
-## Related commands
-
-| Command | Effect |
-|---------|--------|
-| `./scripts/db.sh migrate` | Preflight / dry-run on prod |
-| `./scripts/db.sh migrate --apply` | Backup + push migrations to prod |
-| `./scripts/db.sh sync` | Staging schema + replace staging data from prod |
-| `./scripts/db.sh backup` | Local prod dump only |

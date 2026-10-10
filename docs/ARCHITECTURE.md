@@ -1,8 +1,6 @@
 # Architecture
 
-This document describes the architecture of **Bishnupriya Fuels** (Petrol Pump): technology stack, project structure, runtime components, security, and deployment. It is the single source of truth for how the application is organized and how it runs.
-
-> **Documentation hub:** [README.md](README.md) · **See also:** [Data Tables](DATA_TABLES.md) · [Flows](FLOWS.md) · [Development guide](DEVELOPMENT.md)
+How Bishnupriya Fuels is put together: pages, runtime, security, and deploy. Tables and RLS are [DATA_TABLES.md](DATA_TABLES.md). Page behaviour is [FLOWS.md](FLOWS.md). Laptop setup is [START.md](START.md).
 
 ---
 
@@ -52,16 +50,20 @@ petrolPump/
 ├── credit-customer.html    # Legacy URL → redirects to credit.html (preserves query/hash)
 ├── expenses.html           # Daily expenses by category
 ├── day-closing.html        # Day closing & short; admin certify; night-cash collection register
+├── reminders.html          # Station tasks (dated reminders + undated todos)
+├── e20-register.html       # E-20 fuel testing register
 ├── billing.html            # Lube/accessory invoicing (cash memos)
 ├── invoices.html           # Supplier/purchase invoice documents (Google Drive)
 ├── attendance.html         # Employee attendance (status, check-in/out)
 ├── salary.html             # Salary payments, pay-period tracking, printable slips
 ├── staff.html              # Employee roster, profile, photo, BPCL ID card (admin only)
+├── letterhead.html         # Letter Desk: letters on station letterhead (print + Drive archive)
 ├── analysis.html           # Business intelligence: KPIs, charts, insights (admin only)
 ├── reports.html            # Printable reports: DSR, GST, trading/P&L (admin only)
 ├── settings.html           # Station config, users, salaries, products, integrations (admin only)
 ├── about.html              # About / info page
 ├── 404.html                # Not found page
+├── offline.html            # Offline fallback shown by the service worker
 ├── assets/                 # BPCL logo, landing images
 ├── CNAME                   # GitHub Pages custom domain
 ├── sw.js                   # Service worker (PWA / offline caching)
@@ -78,7 +80,6 @@ css/
 ├── app-layout.css           # Page shell: app-layout / section nav / panels
 ├── app-core.css             # Shared components (panel-head, fuel badges, toasts, …)
 ├── app-{route}.css          # Per-page styles (dashboard, dsr, credit, reports, …)
-├── app.css                  # Legacy aggregator (not linked in HTML)
 ├── login.css                # Login page
 ├── landing.css              # Public landing (index.html)
 └── *-print.css              # Print layouts (invoice, salary slip, reports, …)
@@ -117,6 +118,7 @@ js/
 │   └── supabase-login.min.js     # Auth-only bundle (login.html)
 ├── appConfig.js        # Default pump settings, GST slabs, branding constants
 ├── supabase.js         # Supabase client from window.__APP_CONFIG__
+├── supabaseLoginClient.js # Minimal auth client source for login.html (bundled → vendor/supabase-login.min.js)
 ├── auth.js             # Session guard, role, check_page_access, nav
 ├── appNav.js           # Dev fallback: inject nav when HTML partials not built
 ├── roleBootstrap.js    # Early role visibility from cache (FOUC prevention)
@@ -124,16 +126,26 @@ js/
 ├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
 ├── dsrQueries.js       # Shared DSR fetch/select helpers; receipt-history split
 ├── dsrSummary.js       # DSR summary section (lazy-loaded from dsr.js)
+├── dsrSections.js      # DSR summary section ids and copy
+├── dsrFuelNav.js       # Fuel sidebar labels (MS/HSD + tank capacity)
 ├── errorHandler.js     # Centralized error reporting
+├── appDialog.js        # Shared confirm, prompt, and form <dialog>
+├── pwa.js              # Service worker registration, install / update / offline banners
 ├── cache.js            # AppCache (role, reports, settings, …)
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
 ├── pageSections.js     # Settings-style section tabs
+├── notifications.js    # Header notification inbox (same feed as Dashboard)
+├── printUtils.js       # Shared hidden-iframe print pipeline (invoice, reports, slips, ID card, letters)
+├── driveFiles.js       # Client for the drive-files edge function
+├── taskUtils.js        # Shared Tasks helpers (reminders.js + dashboard.js)
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
 ├── buyingPriceEntry.js # Admin receipt-day ₹/KL entry (Meter Reading → Purchase cost)
 ├── landing.js          # Landing page
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
+├── dsrSalesBreakdown.js # DSR sales detail by pump / shift / salesman
 ├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
+├── meterShiftReading.js # Shift register: nozzles, staff, cash (Meter Reading)
 ├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
 ├── credit.js           # Credit list view, lazy tab modules
 ├── creditOverview.js   # Credit overview tab (lazy)
@@ -143,18 +155,30 @@ js/
 ├── expenses.js         # Expenses
 ├── reminders.js        # Station tasks (dated reminders + undated todos)
 ├── day-closing.js      # Day closing
+├── shiftStaffLedger.js # Shift staff ledger: credit/expense rows from staff collections
+├── e20Register.js      # E-20 testing register
 ├── billing.js          # Sales invoices → save_invoice RPC
 ├── invoices.js         # Supplier invoice documents → edge function
 ├── attendance.js       # Attendance batch save
 ├── salary.js           # Salary payments, pay-period tracking, expense linkage
+├── payrollRules.js     # Leave allowance, loss of pay, over-duty pay
 ├── staff.js            # Employee roster CRUD, photo upload, ID card (admin)
 ├── staffEmployees.js   # Cached employee loader (admin table vs supervisor RPCs)
+├── letterhead.js       # Letter Desk
 ├── analysis.js         # BI dashboard: KPIs, charts, insights (admin)
-├── reports.js          # Report catalog and print views (admin)
+├── reports.js          # Report catalog, data load, and print (admin)
+├── reportsGst.js       # GST sales and purchase reports
+├── reportsGstr1.js     # GSTR-1 register, CSV, and JSON
+├── reportsGstr3b.js    # GSTR-3B summary and JSON
+├── reportsPl.js        # Trading account and profit & loss
+├── reportsSales.js     # Tank DSR, fuel income, pump / shift / salesman
+├── queryPages.js       # Page PostgREST reads past the 1000-row cap
+├── creditCustomerSearch.js # Credit-customer autocomplete (limited search)
+├── dayClosingMath.js   # Day-closing short and shift-credit formulas
 └── settings.js         # pump_settings, users, salaries, products, integrations (admin)
 ```
 
-**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `cache.js`, `pageSections.js`. **Do not copy `<head>` or script lists between HTML files** — add CSS/JS to `_partials/app-pages.json` instead.
+**Convention:** Each feature page has a corresponding script (e.g. `meter-reading.html` → `js/meterReading.js`, `dsr.html` → `js/dsr.js`). Shared behaviour lives in `auth.js`, `utils.js`, `dsrQueries.js`, `errorHandler.js`, `appDialog.js`, `cache.js`, `pageSections.js`. **Do not copy `<head>` or script lists between HTML files** — add CSS/JS to `_partials/app-pages.json` instead.
 
 ### 3.4 Navigation (authenticated pages)
 
@@ -181,8 +205,8 @@ Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `cred
 
 ```
 supabase/
-├── schema.sql     # Full schema (tables, views, RLS, RPCs) — source of truth
-├── migrations/    # Incremental migrations (apply in filename order)
+├── schema.sql     # Greenfield snapshot; must match migrations (scripts/check-schema-drift.sh)
+├── migrations/    # Incremental migrations — the source of truth (apply in filename order)
 │   ├── 20250129*_dsr_*.sql
 │   ├── 202502*_credit_*.sql
 │   ├── 20250526*_split_dsr_petrol_diesel.sql
@@ -197,23 +221,8 @@ supabase/
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
     ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
-    └── _shared/googleDrive.ts
+    └── _shared/        # googleDrive.ts (OAuth / service-account auth), archivePdf.ts, logoPng.ts
 ```
-
-### 3.6 Documentation
-
-```
-docs/
-├── README.md       # Documentation index and how to use the docs
-├── ARCHITECTURE.md # This file — structure, stack, security, deployment
-├── DATA_TABLES.md  # Database tables: purpose, columns, RLS
-├── FLOWS.md        # User and data flows
-├── DSR_TABLES.md         # DSR petrol/diesel tables and computed stock
-├── DEVELOPMENT.md        # Local setup, deployment, supervisor login
-└── INVOICE_DOCUMENTS.md  # Supplier invoices + Google Drive setup (full guide)
-```
-
----
 
 ## 4. System diagram
 
@@ -288,7 +297,7 @@ docs/
 | `salary.html` | `salary.js` | Pay-period tracking, installments, slips, linked expenses |
 | `staff.html` | `staff.js` | Employee roster, photo, ID card print (admin only) |
 | `analysis.html` | `analysis.js` | BI: KPIs, daily series, Chart.js charts, insights (admin) |
-| `reports.html` | `reports.js` | Printable DSR, GST, trading account, P&amp;L (admin) |
+| `reports.html` | `reports.js` plus `reportsGst.js`, `reportsGstr1.js`, `reportsGstr3b.js`, `reportsPl.js`, `reportsSales.js` | Printable DSR, GST, GSTR, trading account, P&amp;L (admin) |
 | `settings.html` | `settings.js` | Station, billing, pumps, users, salaries, shifts, alerts, categories, integrations |
 
 **Invoice documents:** Supplier/purchase invoice files upload to Google Drive via edge function `invoice-documents`; metadata in `invoice_documents`. Created **billing invoices**, **letters**, **staff photos**, and **Aadhaar cards** use `drive-files`. Setup: [Invoice documents guide](INVOICE_DOCUMENTS.md).
@@ -300,8 +309,8 @@ docs/
 ### 5.4 Caching and offline (PWA)
 
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
-- **`asset-version.json` + `scripts/sync-asset-versions.mjs`:** Single source of truth for shared static asset `?v=` query strings (utils, pwa, cache, auth, supabase, app-core.css) and `sw.js` `CACHE_VERSION`. Run before deploy when shared JS/CSS changes.
-- **`sw.js` (`CACHE_VERSION` `v188`):** Lean app-shell precache + runtime LRU caches. Strategies:
+- **`scripts/stamp-assets.mjs` (build time only):** Rewrites every local JS/CSS reference in the deploy output (HTML `src`/`href`, CSS `@import`, JS string literals like `"css/invoice-print.css"`) to `?v=<content hash>`, and generates `sw.js` `CACHE_VERSION` + `STATIC_ASSET_PATHS`. Source files never carry `?v=`; nothing is bumped by hand.
+- **`sw.js`:** Lean app-shell precache + runtime LRU caches. Strategies:
   - HTML navigations: **network-first** while online; cached page or `offline.html` only when offline
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
@@ -310,7 +319,7 @@ docs/
 - **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume` (cache invalidation on reconnect/resume is centralized in `js/utils.js` → `onAppResumeEvent`)
 - **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` with stale-while-revalidate, in-flight dedup, cross-tab invalidation (`BroadcastChannel` + `storage`), local `bpf:cache-invalidate` events, and `invalidateOperational()` for live data
 - **`js/utils.js`:** `bindLiveRefresh()` wires a page handler to both `bpf:app-resume` and `bpf:cache-invalidate` (same-tab mutations and cross-tab edits)
-- **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches` helpers that coordinate `AppCache` and the service worker (SW static/dynamic caches only — API is not SW-cached)
+- **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches`. Logout calls `clearAllCaches`, which drops every `bpf_cache_` entry (including employee Aadhaar, PAN, phone, and address) and asks the service worker to clear its caches. `clearApiCaches` only drops live operational snapshots.
 - Scope works for prod root and `/staging/`
 
 ---
@@ -320,14 +329,14 @@ docs/
 ### 6.1 Authentication
 
 - **Provider:** Supabase Auth (email/password).
-- **App roles:** Stored in `public.users` (email, role, display_name). Role is resolved by matching `auth.jwt() ->> 'email'` to `users.email` (case-insensitive). Roles: `admin`, `supervisor`.
+- **App roles:** Stored in `public.users` (`email`, `auth_user_id`, `role`, `display_name`). Role is resolved by matching `auth.uid()` to `users.auth_user_id`. Roles: `admin`, `supervisor`.
 
 ### 6.2 Database
 
 - **Engine:** PostgreSQL (Supabase).
 - **Schema:** Defined in `supabase/schema.sql`; changes are applied via migrations under `supabase/migrations/`.
 - **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()`, and `require_staff_access()` (security definer). Only users provisioned in `public.users` (admin or supervisor) can read or write operational data.
-- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`.
+- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. Production deletes rows older than 6 months after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
 
 ### 6.3 Key server-side constructs
 
@@ -337,10 +346,10 @@ docs/
 - **Operator profile:** `update_my_avatar(url)`, `my_avatar_storage_folder()` (path helper for Storage RLS).
 - **Credit RPCs:** `add_credit_entry`, `record_credit_payment`, `batch_record_credit_settlements`, `get_credit_ledger_aggregated`, `get_open_credit_as_of`, `get_outstanding_credit_list_as_of`, `get_customer_credit_detail_as_of`, `delete_credit_entry` (admin), `delete_credit_payment` (admin).
 - **Day closing RPCs:** `get_day_closing_breakdown(date)` (returns `already_saved`, `can_overwrite`, `certified`, `can_certify`), `save_day_closing(...)` (rejects certified rows), `set_day_closing_certified(date, boolean)` (admin certify/revoke), `compute_day_closing_components(date)`, `delete_day_closing(uuid)` (admin — latest uncertified date only), `recascade_day_closing_short_from(date)` (internal; skips later certified days).
-- **Billing:** `generate_invoice_number()`, `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
+- **Billing:** `generate_invoice_number()` (provisioned staff only), `save_invoice(...)` — atomic header + line items; `invoice_items` client mutations denied by RLS.
 - **DSR admin:** `update_dsr_buying_price(uuid, value)` — pre-VAT cost per litre for P&amp;L.
 - **User management:** `upsert_staff(...)`, `delete_staff(email)` — admin staff provisioning with bootstrap rules.
-- **Audit:** Triggers on users, dsr_petrol, dsr_diesel, expenses, credit_customers, employees, salary_payments, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
+- **Audit:** Triggers on users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (not cache-only credit/expense refreshes), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices → `audit_log`.
 
 ### 6.4 Supabase Storage buckets
 
@@ -361,7 +370,20 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
 | `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
 
-Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`. Requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF` per environment. See [Development guide §2.5](DEVELOPMENT.md#25-edge-functions).
+Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`, when `supabase/functions/**` changes on `main` or `staging`. Each environment needs `SUPABASE_ACCESS_TOKEN` ([Account → Tokens](https://supabase.com/dashboard/account/tokens)) and `SUPABASE_PROJECT_REF` (Project Settings → General). Register a new function in the `for fn in …` list in that workflow or it is never deployed. Google secrets for `invoice-documents` and `drive-files` live in Supabase → **Edge Functions → Secrets**, not in GitHub — [SECRETS.md](SECRETS.md#c-supabase-edge-function-secrets).
+
+The client falls back to direct queries if a read function is missing. Deploy the function before or with the frontend that calls it.
+
+```bash
+supabase login
+supabase functions deploy get-dashboard-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-reports-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy get-pl-data --project-ref YOUR_PROJECT_REF
+supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
+```
+
+Repeat for staging and prod. After the batch credit migration, confirm `batch_record_credit_settlements` with `scripts/verify-batch-rpc.sql` in the SQL Editor.
 
 Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
@@ -370,7 +392,10 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 ## 7. Security model
 
 - **Enforcement:** RLS and security-definer RPC guards are the primary authorization layer. Client-side checks only affect the UI.
-- **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. Authenticated users without a `public.users` row cannot read or write application data — policies and RPCs use `is_supervisor_or_admin()` / `require_staff_access()`.
+- **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. `get_user_role()` matches `users.auth_user_id` to `auth.uid()`. A signed-in user without that link gets `is_admin()` / `is_supervisor_or_admin()` = false, and `require_staff_access()` rejects them. A session with no login (restore, SQL editor) is unchanged.
+- **Public sign-up:** Turn off **Allow new users to sign up** in the Supabase dashboard (prod and staging). The browser cannot change that setting. Settings saves a role only after the Auth user already exists.
+- **Browser policy:** Pages send a Content-Security-Policy (`_partials/app-head.njk` and the standalone HTML files). Scripts are same-origin, plus Chart.js from `cdn.jsdelivr.net`. Styles allow inline CSS because print and a few pages set style attributes.
+- **Logout:** Clears every `bpf_cache_` entry, including employee Aadhaar, PAN, phone, and address (`clearAllCaches`).
 - **Roles:**
 
 | Capability | Admin | Supervisor |
@@ -401,22 +426,5 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 ## 8. Deployment
 
 - **Hosting:** GitHub Pages (custom domain via `CNAME`).
-- **Environments:**
-  - **Prod:** `main` branch → root URL (e.g. `https://bishnupriyafuels.fnsventures.in/`).
-  - **Staging:** `staging` branch → `/staging/` path.
-- **CI:** `.github/workflows/deploy-pages.yml` — builds env, vendor bundle, HTML partials, minifies assets, pushes to **`gh-pages`** (staging → `/staging/`, prod → root). Edge functions: `.github/workflows/deploy-supabase-functions.yml`.
-- **Details:** Step-by-step local setup, deploy flow, and supervisor login are in [Development guide](DEVELOPMENT.md).
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Data Tables](DATA_TABLES.md) | Tables, columns, relationships, RLS |
-| [Flows](FLOWS.md) | User and data flows (auth, daily ops, credit, HR, admin) |
-| [DSR Tables](DSR_TABLES.md) | `dsr_petrol` / `dsr_diesel`, views, stock reconciliation |
-| [Development guide](DEVELOPMENT.md) | Local development, deployment, supervisor login |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive integration, edge function, full setup |
-| [Backup](BACKUP.md) | Production database backup to Google Drive |
-| [Documentation hub](README.md) | Index of all guides |
+- **Environments:** `main` → site root. `staging` → `/staging/`.
+- **CI:** `.github/workflows/deploy-pages.yml` builds env, the vendor bundle, HTML partials, and minified assets, then pushes `gh-pages`. The release order is [OPERATIONS.md](OPERATIONS.md).

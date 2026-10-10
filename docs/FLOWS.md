@@ -1,8 +1,6 @@
 # Flows
 
-This document describes the main **user and data flows** in the Petrol Pump application: how features connect and in what order data is typically entered. Use it to understand end-to-end behaviour and the page → data mapping.
-
-> **Documentation hub:** [README.md](README.md)
+How a feature writes data, and in what order a normal day is entered. The table and column reference is [DATA_TABLES.md](DATA_TABLES.md).
 
 ### Flow overview
 
@@ -29,7 +27,7 @@ This document describes the main **user and data flows** in the Petrol Pump appl
 User opens app (index.html / login.html)
     → Enters email + password (or uses Forgot password → reset email)
     → Supabase Auth signs in
-    → auth.js: fetch role from public.users (by email) — NOT from JWT metadata
+    → auth.js: fetch role from public.users where auth_user_id = the login id — NOT from the email claim or JWT metadata
     → If no public.users row: role unset → login.html?error=unprovisioned
     → Role cached (AppCache), stored in session
     → Redirect: admin/supervisor → dashboard.html
@@ -38,7 +36,7 @@ User opens app (index.html / login.html)
     → Topbar user menu: profile avatar upload (user-avatars bucket), logout
 ```
 
-**Important:** All data access is enforced by RLS and security-definer RPC guards in the database. A user must exist in both Auth and `public.users`. Hiding links and `check_page_access` are for UX and defense-in-depth.
+**Important:** All data access is enforced by RLS and security-definer RPC guards in the database. A user must exist in both Auth and `public.users`. Hiding links and `check_page_access` are for UX and defense-in-depth. Supervisors can read DSR, expenses, invoices, and credit because those pages are their job. Analysis and Reports stay off their menu. `buying_price_per_litre` is not granted to the browser role; only an admin sees it, through `dsr_cost`.
 
 ### `check_page_access` page identifiers
 
@@ -101,7 +99,7 @@ A typical daily sequence:
 
 ```
 1. Meter Reading (meter-reading.html)
-   → Upsert dsr_petrol and/or dsr_diesel for today
+   → Upsert dsr_petrol and/or dsr_diesel for today (rejected when that day is certified, including for admin)
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → Optional: Shift register — staff per nozzle, shift meters, cash + phone pay, short (₹)
    → Supervisors may re-save a shift with updates until day closing is saved (then admin only)
@@ -110,17 +108,19 @@ A typical daily sequence:
    → Optional: open dsr.html for listing / stock summary
 
 2. Credit (credit.html)
-   → Add credit sale → credit_entries (transaction_date = today)
-   → Record payment → record_credit_payment (FIFO allocation)
+   → Add credit sale → add_credit_entry(...) (locks the customer row; optional p_request_id; IST "today"; rejected when that day is certified)
+   → Record payment → record_credit_payment(..., same_day_settlement?, request_id?) (locks the customer row; rejected when that day is certified)
    → Overpayment stored as prepaid_balance (net = amount_due − prepaid)
 
 3. Expenses (expenses.html)
-   → Add expenses for the day → expenses
+   → Add expenses for the day → expenses (client_request_id so a retry cannot duplicate; rejected when that day is certified)
+   → Shift-register expenses go through add_shift_expense(...), not this form
 
 4. Day closing (day-closing.html)
    → get_day_closing_breakdown(date) — live components or saved snapshot
-   → night_cash / phone_pay prefilled from sum of both shifts (meter_shift_cash)
+   → night_cash / phone_pay are typed. Shift cash and Cash/UPI settlements are a hint, not a prefill
    → Review/adjust, then save_day_closing(...) → short_today, snapshot, closing_reference (DC-YYYY-NNNNN)
+   → Table insert, update, and delete are denied. save_day_closing writes night cash and short; delete_day_closing is the only delete
    → short_today becomes next day’s short_previous
    → Supervisor: may edit day closing until certified or night cash is collected
    → After day closing is saved: supervisors cannot change that day’s shifts (admin can)
@@ -137,15 +137,15 @@ A typical daily sequence:
    → After collection: supervisors cannot edit those closings; admins may still edit unless the day is certified
 ```
 
-**Data dependencies:**
+**Data dependencies** (full formula: [DAY_CLOSING.md](DAY_CLOSING.md)):
 
-- **Total sale:** From `dsr_petrol` / `dsr_diesel` (net litres × rate).
-- **Collection:** Sum of `credit_payments.amount` for that date.
-- **Credit today:** Sum of `credit_entries` for `transaction_date` plus legacy `credit_customers` where applicable.
+- **Total sale:** Gross litres × rate (testing included), from the latest `dsr` row per product.
+- **Collection:** `credit_payments` that day with `same_day_settlement = false` (all modes).
+- **Credit today:** Open credit (entries minus same-day payments, floored at 0) plus legacy `credit_customers.amount_due` when that customer has no entries.
 - **Expenses today:** Sum of `expenses.amount` for that date.
 - **Short previous:** Previous `day_closing.short_today`.
-- **Night cash / Phone pay:** Sum of `meter_shift_cash.cash_collected` / `phone_pay` for both shifts (prefilled until locked).
-- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save). While certified, the statement is frozen for everyone until revoke.
+- **Night cash / Phone pay:** Typed amounts. The hint is shift cash/phone pay plus Cash/UPI settlements.
+- **Certified:** `day_closing.certified` set by `set_day_closing_certified` (admin acknowledgment after save). While certified, the statement, that day's expenses, credit sales, payments, and meter rows are frozen for everyone until revoke.
 - **Night cash collected:** `day_closing.night_cash_collection_id` set by `collect_night_cash`.
 ---
 
@@ -154,24 +154,27 @@ A typical daily sequence:
 ```
 Create / identify customer
    → credit_customers
-   → add_credit_entry(...) or insert credit_entries
-   → Trigger updates credit_customers.amount_due
+   → add_credit_entry(...) — locks the customer row, checks amount, IST date, and shift pairing; applies prepaid oldest-first; rejects a certified day
+   → authenticated cannot insert or update credit_entries. Payment RPCs still update amount_settled. ledger_guard_certified_day still rejects a certified sale date.
 
 Customer detail (credit.html#…)
    → Balance hero + period filter (this month, last 30 days, custom)
    → get_customer_credit_detail_as_of(name, date) for summary and line lists
 
 Receive payment
-   → record_credit_payment(customer_id, date, amount, note, payment_mode)
-   → FIFO allocation to credit_entries; insert credit_payments
+   → record_credit_payment(customer_id, date, amount, note, payment_mode, same_day_settlement?, request_id?)
+   → Locks the customer row, then LIFO allocation to credit_entries (newest open sale on or before the payment date); insert credit_payments
+   → authenticated cannot insert or update credit_payments (same pattern as salary_payments)
+   → Rejects a certified payment date
    → Overpayment increases prepaid_balance (sync RPC updates amount_due + prepaid)
+   → Calls apply_credit_payment_to_day_closing (same-day Cash/UPI also adds to night cash / phone pay)
 
 Batch settle (multiple customers)
    → batch_record_credit_settlements(...)
 
 Admin corrections (admin only)
    → delete_credit_entry(id) — only if amount_settled = 0
-   → delete_credit_payment(id) — re-allocates remaining payments FIFO
+   → delete_credit_payment(id) — re-allocates remaining payments LIFO
 ```
 
 - **Net balance:** `amount_due − prepaid_balance`.
@@ -190,7 +193,7 @@ Admin corrections (admin only)
 - **Legacy hashes** on `dsr.html` (`#meter`, `#petrol`, `#diesel`) redirect to `meter-reading.html`.
 - **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
-See [DSR_TABLES.md](DSR_TABLES.md).
+Stock formulas and why petrol and diesel are separate tables: [DATA_TABLES.md → dsr_stock](DATA_TABLES.md#dsr_stock-view).
 ---
 
 ## 5. Billing flow (lube / accessories)
@@ -201,10 +204,11 @@ Product catalog (admin: Settings → Billing → Products)
 
 Create invoice (billing.html)
    → Line items with GST slabs (from AppConfig.GST_SLABS)
-   → save_invoice(date, type, party, …, items jsonb)
+   → save_invoice(date, type, party, …, items jsonb, request_id?)
+   → Rejects non-positive quantity or rate, negative discount, and discount above subtotal
    → invoices + invoice_items; invoice_number from sequence + prefix in pump_settings.billing
    → Save returns immediately after the save overlay finishes (DB + Drive PDF)
-      (Billing invoices / 2026)
+      (Billing invoices / 2026 / invoice name)
    → Drive PDF uses the same letterhead, tax summary, and payment layout as print
       (css/invoice-print.css)
 
@@ -227,11 +231,13 @@ Admin one-time setup (Settings → Integrations + Supabase secrets + edge functi
 
 Upload (invoices.html → Upload tab)
    → multipart POST to edge function invoice-documents
-   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/{type}/Year); metadata → invoice_documents
+   → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/Year/given name); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
-   → SELECT invoice_documents (this year / last year / all time)
-   → View: drive_web_view_link | Download/Delete: edge function actions
+   → SELECT invoice_documents (this year / last year / all time, optional type)
+   → grouped by document type; each type stays collapsed until opened
+   → search filters the loaded list by title, party, or file name
+   → View and Download: edge function (the Drive file is not shared with anyone) | Delete: edge function, admin only
 ```
 
 **Roles:** Admin and supervisor can upload, list, view, download. **Delete** (Drive file + DB row) is **admin only**.
@@ -244,14 +250,16 @@ Library (invoices.html → Library tab)
 
 ```
 Compose (letterhead.html)
-   → Save (DB metadata first) / Print letter / Download Word (local only)
-   → A DB trigger queues a Drive PDF archive, then letter body is cleared
-      (Letters / 2026)
+   → Save / Print letter / Download Word writes letterhead_letters first
+   → The page then calls drive-files to store the PDF in Google Drive
+      (Letters, with no year folder). A deferred trigger queues the same archive if the
+      browser closes after the save.
+   → After the PDF is stored, the letter body is cleared
    → Drive PDF uses the same station letterhead as print (css/letterhead-print.css)
    → letterhead_letters stores date, subject, Drive file ID (not the letter text)
 
 History
-   → View / Print from saved body
+   → View / Print opens the Drive PDF
    → Drive link opens the archived file
    → Admin delete removes Drive file + history row
 ```
@@ -267,7 +275,7 @@ Reports (reports.html)
    → requireAuth({ pageName: 'reports' })
    → Section nav: About | Generate report
    → Date range filter (shared dateRangeFilter.js)
-   → Report catalog (REPORT_CATALOG in reports.js):
+   → Report catalog (REPORT_CATALOG in reports.js; figures in reportsGst.js, reportsGstr1.js, reportsGstr3b.js, reportsPl.js, reportsSales.js):
 
        Operations
          → dsr — Tank-wise DSR (HSD + MS; shortage, book total, variance, TVA)
@@ -355,11 +363,14 @@ Settings → Staff salaries (admin)
 Salary (salary.html)
    → list_employees_salary() for employee data + slips
    → Select salary_month (pay period — first of month) separate from payment date
-   → Record installment → salary_payments (date = when paid, salary_month = period)
-   → Auto-creates linked expenses row (category Salary, salary_payment_id FK)
+   → Record installment → record_salary_payment() writes salary_payments (date = when paid,
+     salary_month = period) and the linked expenses row (category Salary, salary_payment_id FK)
+     in one transaction; rejects overpay unless confirmed
+   → A certified payment date is rejected, and a collected date is rejected for a supervisor.
+     If that month still has salary due, the form records the cash on today instead of the locked day
    → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
    → Printable salary slips (css/salary-slip-print.css) with PF, loss of pay, over duty, establishment code
-   → Admin can delete payment → removes linked expense
+   → Admin can delete payment → delete_salary_payment() removes payment + linked expense
 ```
 
 ---
@@ -394,7 +405,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Reports (`reports.html`):** Printable registers — see §6.
 - **Dashboard Net profit:** Quick glance — see §1b.
 - **Meter Reading → Purchase cost:** Inline buying price — see §1b.
-- **Audit log:** Admins read `audit_log`; writes via triggers only.
+- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months after the monthly Drive backup. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
 
 ---
 
@@ -419,17 +430,3 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Reports | dsr_*, invoices, expenses, pump_settings (admin) |
 | Analysis | dsr_*, expenses via DsrQueries (admin) |
 | Settings | pump_settings, users, employees, products, expense_categories, upsert_staff, delete_staff (admin) |
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Documentation hub](README.md) | Index and release checklist |
-| [Architecture](ARCHITECTURE.md) | Project structure, tech stack, security, deployment |
-| [Data Tables](DATA_TABLES.md) | Table reference and RLS |
-| [DSR Tables](DSR_TABLES.md) | DSR tables and computed stock |
-| [Development guide](DEVELOPMENT.md) | Local setup, deployment, supervisor login |
-| [Invoice documents](INVOICE_DOCUMENTS.md) | Google Drive setup, edge function, troubleshooting |
-| [Backup](BACKUP.md) | Production database backup to Google Drive |

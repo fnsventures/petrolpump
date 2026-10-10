@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper */
 
 /**
  * Generate cache key for dashboard data queries
@@ -83,70 +83,7 @@ function getCreditSummaryCacheKey(dateStr) {
 }
 
 let lastCreditTotalRupees = null;
-let lastPetrolVariation = null;
-let lastDieselVariation = null;
 let dashboardRole = null;
-
-const DAY_CLOSING_LOOKBACK_DAYS = 7;
-
-/**
- * Shared notification card markup for the inbox feed.
- * @param {{ type: string, label: string, message: string, meta?: string, cta?: string, href?: string, role?: string, dataNotif?: string, expandHtml?: string }} opts
- */
-function renderNotifItem({
-  type,
-  label,
-  message,
-  meta,
-  cta,
-  href,
-  role = "alert",
-  dataNotif,
-  expandHtml,
-}) {
-  const metaHtml = meta ? `<span class="notif-item-meta">${escapeHtml(meta)}</span>` : "";
-  const expandBlock = expandHtml || "";
-  const ctaHtml =
-    cta && href
-      ? `<a href="${escapeHtml(href)}" class="button-secondary notif-item-cta">${escapeHtml(cta)}</a>`
-      : "";
-  const dataAttr = dataNotif ? ` data-notif="${escapeHtml(dataNotif)}"` : "";
-  return `<article class="notif-item notif-item--${escapeHtml(type)}" role="${escapeHtml(role)}"${dataAttr}>
-    <div class="notif-item-body">
-      <span class="notif-item-label">${escapeHtml(label)}</span>
-      <p class="notif-item-message">${escapeHtml(message)}</p>
-      ${metaHtml}
-      ${expandBlock}
-    </div>
-    ${ctaHtml}
-  </article>`;
-}
-
-function creditCustomerDetailHref(customerName) {
-  return `credit.html?${new URLSearchParams({ name: customerName || "" }).toString()}`;
-}
-
-/**
- * Expandable customer list for credit alerts.
- * @param {{ name: string, href: string, detail: string }[]} rows
- * @param {string} summaryLabel
- */
-function renderNotifCustomerExpand(rows, summaryLabel) {
-  if (!rows?.length) return "";
-  const items = rows
-    .map(
-      (r) =>
-        `<li class="notif-customer-row">
-          <a class="notif-customer-link" href="${escapeHtml(r.href)}">${escapeHtml(r.name)}</a>
-          <span class="notif-customer-detail">${escapeHtml(r.detail)}</span>
-        </li>`
-    )
-    .join("");
-  return `<details class="notif-customer-expand">
-    <summary>${escapeHtml(summaryLabel)}</summary>
-    <ul class="notif-customer-list">${items}</ul>
-  </details>`;
-}
 
 function formatRatePerLitre(value) {
   if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(value) <= 0) {
@@ -246,33 +183,6 @@ function setTankFillLevel(fillEl, level01) {
 
 const DSR_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
 
-/**
- * Latest non-zero selling rate for a product (same logic as Meter Reading prefill).
- */
-async function fetchLastDsrRate(product) {
-  const rateField = DSR_RATE_FIELD[product];
-  if (!rateField) return null;
-  const { data, error } = await window.supabaseClient
-    .from("dsr")
-    .select(`date, ${rateField}`)
-    .eq("product", product)
-    .not(rateField, "is", null)
-    .order("date", { ascending: false })
-    .limit(30);
-
-  if (error) {
-    AppError.report(error, { context: "fetchLastDsrRate", product });
-    return null;
-  }
-  for (const row of data ?? []) {
-    const num = Number(row[rateField]);
-    if (Number.isFinite(num) && num > 0) {
-      return { rate: num, date: row.date ?? null };
-    }
-  }
-  return null;
-}
-
 function rateFromDsrRows(rows, product) {
   const field = DSR_RATE_FIELD[product];
   const entry = (rows ?? []).find((row) => normalizeProduct(row.product) === product);
@@ -301,8 +211,8 @@ async function resolveRatesForDate(selectedDate, rows) {
   let dieselFallback = false;
 
   const [lastPetrol, lastDiesel] = await Promise.all([
-    !petrolRate ? fetchLastDsrRate("petrol") : Promise.resolve(null),
-    !dieselRate ? fetchLastDsrRate("diesel") : Promise.resolve(null),
+    !petrolRate ? DsrQueries.fetchLastDsrRate("petrol") : Promise.resolve(null),
+    !dieselRate ? DsrQueries.fetchLastDsrRate("diesel") : Promise.resolve(null),
   ]);
   if (!petrolRate && lastPetrol) {
     petrolRate = lastPetrol.rate;
@@ -457,12 +367,15 @@ async function loadHeroStock(dateStr) {
         p_start: historyStart,
         p_end: selectedDate,
       }),
-      window.supabaseClient
-        .from("dsr")
-        .select("date, product, stock, dip_reading")
-        .gte("date", historyStart)
-        .lte("date", selectedDate)
-        .order("date", { ascending: false }),
+      fetchAllRows(() =>
+        window.supabaseClient
+          .from("dsr")
+          .select("date, product, stock, dip_reading")
+          .gte("date", historyStart)
+          .lte("date", selectedDate)
+          .order("date", { ascending: false })
+          .order("product", { ascending: true })
+      ),
     ]);
 
     if (stockResult.error) {
@@ -547,115 +460,17 @@ function updateFuelVolumeSplit(petrolLiters, dieselLiters) {
 }
 
 function getLowStockThresholds() {
-  const t = getAlertThresholds();
+  const t = PumpSettings.getAlertThresholds();
   return { petrol: t.petrol, diesel: t.diesel };
 }
 
 function updateLowStockAlert(petrolStock, dieselStock) {
-  if (window.AppNotifications?.updateLowStock) {
-    window.AppNotifications.updateLowStock(petrolStock, dieselStock);
-    return;
-  }
-  const wrap = document.getElementById("low-stock-alert");
-  const msg = document.getElementById("low-stock-message");
-  if (!wrap || !msg) return;
-  const th = getLowStockThresholds();
-  const parts = [];
-  if (Number.isFinite(petrolStock) && petrolStock < th.petrol) {
-    parts.push(`Petrol ${formatQuantity(petrolStock)} L (below ${formatQuantity(th.petrol)} L)`);
-  }
-  if (Number.isFinite(dieselStock) && dieselStock < th.diesel) {
-    parts.push(`Diesel ${formatQuantity(dieselStock)} L (below ${formatQuantity(th.diesel)} L)`);
-  }
-  if (parts.length === 0) {
-    wrap.classList.add("hidden");
-    updateDashboardAlertsVisibility();
-    return;
-  }
-  msg.textContent = parts.join(" · ");
-  wrap.classList.remove("hidden");
-  updateDashboardAlertsVisibility();
+  window.AppNotifications?.updateLowStock?.(petrolStock, dieselStock);
 }
 
-function countVisibleNotificationItems() {
-  let count = 0;
-  const reminders = document.getElementById("reminders-banners");
-  if (reminders) {
-    count += reminders.querySelectorAll(".notif-item").length;
-  }
-  const dayClosing = document.getElementById("day-closing-banners");
-  if (dayClosing) {
-    count += dayClosing.querySelectorAll(".notif-item:not(.notif-item--success)").length;
-  }
-  const alerts = document.getElementById("dashboard-alerts");
-  const alertsVisible = alerts && !alerts.classList.contains("dashboard-alerts-empty");
-  if (alertsVisible) {
-    const lowStock = document.getElementById("low-stock-alert");
-    if (lowStock && !lowStock.classList.contains("hidden")) count += 1;
-    const smartPanel = document.getElementById("smart-alerts-panel");
-    if (smartPanel && !smartPanel.classList.contains("hidden")) {
-      count += smartPanel.querySelectorAll(".notif-item").length;
-    }
-  }
-  const plTodo = document.getElementById("pl-todo-banner");
-  if (plTodo && !plTodo.classList.contains("hidden")) count += 1;
-  return count;
-}
 
-function updateNotificationsPanelState() {
-  if (window.AppNotifications?.updateBadge) {
-    window.AppNotifications.updateBadge();
-    return;
-  }
-  const feed = document.getElementById("notifications-feed");
-  const empty = document.getElementById("notifications-empty");
-  const countBadge = document.getElementById("notifications-count-badge");
-  const navBadge = document.getElementById("notifications-nav-badge");
 
-  const remindersBlock = document.getElementById("reminders-block");
-  const remindersHasItems = remindersBlock && !remindersBlock.classList.contains("hidden");
-  const dayBlock = document.getElementById("day-closing-block");
-  const dayHasItems = dayBlock && !dayBlock.classList.contains("hidden");
-  const alerts = document.getElementById("dashboard-alerts");
-  const alertsVisible = alerts && !alerts.classList.contains("dashboard-alerts-empty");
-  const plTodo = document.getElementById("pl-todo-banner");
-  const plVisible = plTodo && !plTodo.classList.contains("hidden");
 
-  const hasAny = Boolean(remindersHasItems || dayHasItems || alertsVisible || plVisible);
-  feed?.classList.toggle("hidden", !hasAny);
-  empty?.classList.toggle("hidden", hasAny);
-
-  const openCount = countVisibleNotificationItems();
-  if (countBadge) {
-    if (openCount > 0) {
-      countBadge.textContent = openCount === 1 ? "1 open" : `${openCount} open`;
-      countBadge.classList.remove("hidden");
-    } else {
-      countBadge.classList.add("hidden");
-    }
-  }
-  if (navBadge) {
-    if (openCount > 0) {
-      navBadge.textContent = String(openCount);
-      navBadge.classList.remove("hidden");
-      navBadge.setAttribute("aria-label", `${openCount} open notification${openCount === 1 ? "" : "s"}`);
-    } else {
-      navBadge.classList.add("hidden");
-      navBadge.removeAttribute("aria-label");
-    }
-  }
-}
-
-function updateDashboardAlertsVisibility() {
-  const container = document.getElementById("dashboard-alerts");
-  if (!container) return;
-  const lowStock = document.getElementById("low-stock-alert");
-  const smartPanel = document.getElementById("smart-alerts-panel");
-  const hasVisible = (lowStock && !lowStock.classList.contains("hidden")) ||
-    (smartPanel && !smartPanel.classList.contains("hidden") && smartPanel.children.length > 0);
-  container.classList.toggle("dashboard-alerts-empty", !hasVisible);
-  updateNotificationsPanelState();
-}
 
 let snapshotDsrRows = [];
 
@@ -756,17 +571,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  const notificationsPanel = document.querySelector(".notifications-panel");
-  const notificationsBody = document.getElementById("topbar-notifications-body");
-  if (notificationsPanel && notificationsBody && !window.AppNotifications) {
-    document.getElementById("topbar-notifications-fallback")?.remove();
-    document.querySelector(".topbar-notifications-head")?.setAttribute("hidden", "");
-    notificationsPanel.hidden = false;
-    notificationsPanel.classList.add("is-visible");
-    notificationsPanel.removeAttribute("data-panel");
-    notificationsBody.appendChild(notificationsPanel);
-  }
-
   window.AppNotifications?.mount?.();
 
   const operatorNameEl = document.getElementById("operator-name");
@@ -812,6 +616,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       fallback: yesterdayStr,
       onChange: onSnapshotDate,
     });
+    if (typeof mountDateStepper === "function") {
+      mountDateStepper(snapshotDateInput, {
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
     updateHeroDate();
     updateSalesDailyLink();
     const rememberSnapshotDateForDsr = () => {
@@ -856,16 +665,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       await ensurePlSectionLoaded();
     }
 
-    if (!window.AppNotifications) {
-      const closingWindow = await fetchDayClosingWindow();
-      await Promise.all([
-        updateSmartAlerts({ closingRows: closingWindow.data, todayStr: closingWindow.todayStr }),
-        loadDayClosingBanners(closingWindow),
-        loadRemindersBanners(),
-        role === "admin" ? refreshMissingBuyingPriceUi() : Promise.resolve(),
-      ]);
-      updateDashboardAlertsVisibility();
-    }
     scheduleAutoFitStats();
   } catch (error) {
     AppError.handle(error, { context: { source: "dashboardInit" } });
@@ -875,620 +674,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-function getAlertThresholds() {
-  const t = PumpSettings.getAlertThresholds();
-  return {
-    petrol: t.petrol,
-    diesel: t.diesel,
-    highCredit: t.highCredit > 0 ? t.highCredit : 0,
-    individualHighCredit: t.individualHighCredit > 0 ? t.individualHighCredit : 0,
-    highVariation: t.highVariation > 0 ? t.highVariation : 0,
-    dayClosingReminder: t.dayClosingReminder,
-    dayClosingShortage: t.dayClosingShortage,
-    shortageAlert: t.shortageAlert,
-    surplusAlert: t.surplusAlert,
-    nightCashAlert: t.nightCashAlert,
-    nightCashMinAmount: t.nightCashMinAmount,
-    missingMeterAlert: t.missingMeterAlert,
-    missingRateAlert: t.missingRateAlert,
-    missingDipAlert: t.missingDipAlert,
-    staleCreditAlert: t.staleCreditAlert,
-    staleCreditDays: t.staleCreditDays,
-    unpaidSalaryAlert: t.unpaidSalaryAlert,
-    attendanceAlert: t.attendanceAlert,
-    expenseRatioAlert: t.expenseRatioAlert,
-    expenseRatioPct: t.expenseRatioPct,
-    missingInvoiceAlert: t.missingInvoiceAlert,
-    missingInvoiceLookbackDays: t.missingInvoiceLookbackDays,
-  };
-}
 
-function daysBetweenDateStrings(fromStr, toStr) {
-  if (!fromStr || !toStr) return null;
-  const from = new Date(`${fromStr}T00:00:00`);
-  const to = new Date(`${toStr}T00:00:00`);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
-  return Math.floor((to.getTime() - from.getTime()) / 86400000);
-}
-
-function isPastLocalHm(hhmm) {
-  const parts = String(hhmm || "22:00").split(":");
-  const h = Number(parts[0]);
-  const m = Number(parts[1] || 0);
-  if (!Number.isFinite(h)) return false;
-  const now = new Date();
-  const minsNow = now.getHours() * 60 + now.getMinutes();
-  return minsNow >= h * 60 + (Number.isFinite(m) ? m : 0);
-}
-
-function currentSalaryMonthValue(date = new Date()) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-/**
- * One day_closing window for banners (date) + shortage/surplus alert (short_today).
- */
-async function fetchDayClosingWindow() {
-  const today = new Date();
-  const todayStr = formatDateInput(today);
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - DAY_CLOSING_LOOKBACK_DAYS);
-  const startStr = formatDateInput(startDate);
-  const th = getAlertThresholds();
-
-  if (!th.dayClosingReminder && !th.shortageAlert && !th.surplusAlert) {
-    return { data: [], error: null, todayStr, startStr };
-  }
-
-  const { data, error } = await window.supabaseClient
-    .from("day_closing")
-    .select("date, short_today, certified")
-    .gte("date", startStr)
-    .lte("date", todayStr);
-
-  return { data: data ?? [], error, todayStr, startStr };
-}
-
-/**
- * Patch only the outstanding-credit smart alert (no network).
- * Used when credit SWR refreshes so the inbox stays in sync.
- */
 function syncCreditSmartAlert() {
-  if (window.AppNotifications?.syncCreditTotal) {
-    window.AppNotifications.syncCreditTotal(lastCreditTotalRupees);
-    return;
-  }
-  const panel = document.getElementById("smart-alerts-panel");
-  if (!panel) return;
-  const th = getAlertThresholds();
-  const existing = panel.querySelector('[data-notif="credit"]');
-  const shouldShow =
-    th.highCredit > 0 &&
-    Number.isFinite(lastCreditTotalRupees) &&
-    lastCreditTotalRupees > th.highCredit;
-
-  if (!shouldShow) {
-    if (!existing) return;
-    existing.remove();
-    if (!panel.querySelector(".notif-item")) {
-      panel.classList.add("hidden");
-      panel.innerHTML = "";
-    }
-    updateDashboardAlertsVisibility();
-    return;
-  }
-
-  const html = renderNotifItem({
-    type: "warning",
-    label: "Total high credit",
-    message: `${formatCurrency(lastCreditTotalRupees)} is above your portfolio limit (${formatCurrency(th.highCredit)}).`,
-    cta: "Open credit",
-    href: "credit.html#outstanding",
-    dataNotif: "credit",
-  });
-  if (existing) existing.outerHTML = html;
-  else {
-    panel.insertAdjacentHTML("afterbegin", html);
-    panel.classList.remove("hidden");
-  }
-  updateDashboardAlertsVisibility();
+  window.AppNotifications?.syncCreditTotal?.(lastCreditTotalRupees);
 }
 
-async function updateSmartAlerts(options = {}) {
-  if (window.AppNotifications?.refreshSmartAlerts) {
-    await window.AppNotifications.refreshSmartAlerts(options);
-    return;
-  }
-  const panel = document.getElementById("smart-alerts-panel");
-  if (!panel) return;
-  const alerts = [];
-  const th = getAlertThresholds();
-  const todayStr = options.todayStr || getLocalDateString();
-  const driveEnabled = PumpSettings.getCachedSync()?.integrations?.googleDrive?.enabled === true;
-  const isAdmin = dashboardRole === "admin";
 
-  if (th.highCredit > 0 && Number.isFinite(lastCreditTotalRupees) && lastCreditTotalRupees > th.highCredit) {
-    alerts.push({
-      type: "warning",
-      label: "Total high credit",
-      message: `${formatCurrency(lastCreditTotalRupees)} is above your portfolio limit (${formatCurrency(th.highCredit)}).`,
-      cta: "Open credit",
-      href: "credit.html#outstanding",
-      dataNotif: "credit",
-    });
-  }
-
-  const needClosingFetch = (th.shortageAlert || th.surplusAlert) && !Array.isArray(options.closingRows);
-  const needDsrToday = th.missingMeterAlert || th.missingRateAlert || th.missingDipAlert;
-  const needStockToday = th.missingDipAlert || th.highVariation > 0;
-  const needCreditList = th.staleCreditAlert || th.individualHighCredit > 0;
-  const salaryMonth = currentSalaryMonthValue();
-  const monthRange = getMonthRange(new Date().getFullYear(), new Date().getMonth());
-  const invoiceStart = (() => {
-    const d = new Date(`${todayStr}T00:00:00`);
-    d.setDate(d.getDate() - (Number(th.missingInvoiceLookbackDays) || 30));
-    return formatDateInput(d);
-  })();
-
-  const [
-    closingRes,
-    nightRes,
-    dsrRes,
-    stockRes,
-    creditListRes,
-    rosterRes,
-    attendanceRes,
-    salaryEmpRes,
-    salaryPayRes,
-    mtdDsrRes,
-    mtdExpenseRes,
-    missingInvoiceRes,
-  ] = await Promise.all([
-    needClosingFetch
-      ? window.supabaseClient.from("day_closing").select("short_today").eq("date", todayStr).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    th.nightCashAlert
-      ? window.supabaseClient.rpc("get_night_cash_available")
-      : Promise.resolve({ data: null, error: null }),
-    needDsrToday
-      ? window.supabaseClient
-          .from("dsr")
-          .select("date, product, petrol_rate, diesel_rate, stock, dip_reading")
-          .eq("date", todayStr)
-      : Promise.resolve({ data: [], error: null }),
-    needStockToday
-      ? window.supabaseClient.rpc("get_dsr_stock_range", { p_start: todayStr, p_end: todayStr })
-      : Promise.resolve({ data: [], error: null }),
-    needCreditList
-      ? window.supabaseClient.rpc("get_outstanding_credit_list_as_of", { p_date: todayStr })
-      : Promise.resolve({ data: [], error: null }),
-    th.attendanceAlert
-      ? window.supabaseClient.rpc("list_employees_roster")
-      : Promise.resolve({ data: [], error: null }),
-    th.attendanceAlert
-      ? window.supabaseClient
-          .from("employee_attendance")
-          .select("id, employee_id")
-          .eq("date", todayStr)
-      : Promise.resolve({ data: [], error: null }),
-    th.unpaidSalaryAlert && isAdmin
-      ? window.supabaseClient.rpc("list_employees_salary")
-      : Promise.resolve({ data: [], error: null }),
-    th.unpaidSalaryAlert && isAdmin
-      ? window.supabaseClient
-          .from("salary_payments")
-          .select("employee_id, amount")
-          .eq("salary_month", salaryMonth)
-      : Promise.resolve({ data: [], error: null }),
-    th.expenseRatioAlert
-      ? window.supabaseClient
-          .from("dsr")
-          .select("product, total_sales, testing, petrol_rate, diesel_rate")
-          .gte("date", monthRange.start)
-          .lte("date", monthRange.end)
-      : Promise.resolve({ data: [], error: null }),
-    th.expenseRatioAlert
-      ? window.supabaseClient
-          .from("expenses")
-          .select("amount")
-          .gte("date", monthRange.start)
-          .lte("date", monthRange.end)
-      : Promise.resolve({ data: [], error: null }),
-    th.missingInvoiceAlert && driveEnabled
-      ? window.supabaseClient
-          .from("dsr")
-          .select("date, product, receipts, invoice_document_id")
-          .gt("receipts", 0)
-          .is("invoice_document_id", null)
-          .gte("date", invoiceStart)
-          .lte("date", todayStr)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  const dsrToday = dsrRes.error ? [] : dsrRes.data ?? [];
-  const stockToday = stockRes.error ? [] : stockRes.data ?? [];
-
-  if (lastPetrolVariation == null && stockToday.length) {
-    lastPetrolVariation = sumByProduct(stockToday, "petrol", (row) => row.variation);
-    lastDieselVariation = sumByProduct(stockToday, "diesel", (row) => row.variation);
-  }
-
-  if (th.highVariation > 0) {
-    const petrolVar = Math.abs(Number(lastPetrolVariation));
-    const dieselVar = Math.abs(Number(lastDieselVariation));
-    const petrolOver = Number.isFinite(petrolVar) && petrolVar > th.highVariation;
-    const dieselOver = Number.isFinite(dieselVar) && dieselVar > th.highVariation;
-    if (petrolOver || dieselOver) {
-      const parts = [];
-      if (petrolOver) parts.push(`Petrol ${formatQuantity(petrolVar)} L`);
-      if (dieselOver) parts.push(`Diesel ${formatQuantity(dieselVar)} L`);
-      alerts.push({
-        type: "warning",
-        label: "Stock variation",
-        message: `Above ${formatQuantity(th.highVariation)} L: ${parts.join(", ")}. Verify meter readings.`,
-        cta: "View DSR",
-        href: "dsr.html",
-      });
-    }
-  }
-
-  let shortAmount = null;
-  if (th.shortageAlert || th.surplusAlert) {
-    if (Array.isArray(options.closingRows)) {
-      const row = options.closingRows.find((r) => r.date === todayStr);
-      if (row?.short_today != null) shortAmount = Number(row.short_today);
-    } else if (!closingRes.error && closingRes.data?.short_today != null) {
-      shortAmount = Number(closingRes.data.short_today);
-    }
-  }
-
-  if (shortAmount != null) {
-    const thresholdLabel =
-      th.dayClosingShortage > 0
-        ? `your threshold (${formatCurrency(th.dayClosingShortage)})`
-        : "zero";
-    if (th.shortageAlert && PumpSettings.isDayClosingShortage(shortAmount)) {
-      alerts.push({
-        type: "warning",
-        label: "Cash shortage",
-        message: `Today's short is ${formatCurrency(shortAmount)} (above ${thresholdLabel}). Review night cash and PhonePe.`,
-        cta: "Day closing",
-        href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
-      });
-    } else if (th.surplusAlert && PumpSettings.isDayClosingSurplus(shortAmount)) {
-      alerts.push({
-        type: "warning",
-        label: "Cash surplus",
-        message: `Today's closing is over by ${formatCurrency(Math.abs(shortAmount))} (beyond ${thresholdLabel}). Check PhonePe and night cash.`,
-        cta: "Day closing",
-        href: `day-closing.html?date=${encodeURIComponent(todayStr)}`,
-      });
-    }
-  }
-
-  if (th.nightCashAlert) {
-    if (!nightRes.error && nightRes.data) {
-      const nightTotal = Number(nightRes.data.total_available ?? 0);
-      const nightDays = Number(nightRes.data.day_count ?? 0);
-      const minAmount = Number(th.nightCashMinAmount) || 0;
-      if (nightDays > 0 && nightTotal > 0 && nightTotal >= minAmount) {
-        const rangeHint =
-          nightRes.data.from_date && nightRes.data.to_date
-            ? nightRes.data.from_date === nightRes.data.to_date
-              ? formatDisplayDate(nightRes.data.from_date)
-              : `${formatDisplayDate(nightRes.data.from_date)} – ${formatDisplayDate(nightRes.data.to_date)}`
-            : "";
-        alerts.push({
-          type: "warning",
-          label: "Night cash at pump",
-          message: `${formatCurrency(nightTotal)} across ${nightDays} day${nightDays === 1 ? "" : "s"} still uncollected${rangeHint ? ` (${rangeHint})` : ""}.`,
-          cta: "Collect",
-          href: "day-closing.html#register",
-        });
-      }
-    } else if (nightRes.error) {
-      AppError.report(nightRes.error, { context: "updateSmartAlerts", type: "night_cash" });
-    }
-  }
-
-  if (dsrRes.error) AppError.report(dsrRes.error, { context: "updateSmartAlerts", type: "dsr_today" });
-  if (stockRes.error) AppError.report(stockRes.error, { context: "updateSmartAlerts", type: "stock_today" });
-
-  const hasPetrolMeter = dsrToday.some((row) => normalizeProduct(row.product) === "petrol");
-  const hasDieselMeter = dsrToday.some((row) => normalizeProduct(row.product) === "diesel");
-
-  const missingMeter = [];
-  if (th.missingMeterAlert) {
-    if (!hasPetrolMeter) missingMeter.push("Petrol");
-    if (!hasDieselMeter) missingMeter.push("Diesel");
-    if (missingMeter.length > 0) {
-      const hash = !hasPetrolMeter && hasDieselMeter ? "#petrol" : hasPetrolMeter && !hasDieselMeter ? "#diesel" : "";
-      alerts.push({
-        type: "danger",
-        label: "Meter reading",
-        message: `No reading for today (${missingMeter.join(" · ")}). Enter nozzle totals before day closing.`,
-        cta: "Enter reading",
-        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
-      });
-    }
-  }
-
-  if (th.missingRateAlert) {
-    // Match settings copy: alert only when there is no usable rate (today or last entered).
-    const rates = await resolveRatesForDate(todayStr, dsrToday);
-    const missingRate = [];
-    if (!(Number.isFinite(rates.petrolRate) && rates.petrolRate > 0)) missingRate.push("Petrol");
-    if (!(Number.isFinite(rates.dieselRate) && rates.dieselRate > 0)) missingRate.push("Diesel");
-    if (missingRate.length > 0) {
-      const hash =
-        missingRate.length === 1 && missingRate[0] === "Petrol"
-          ? "#petrol"
-          : missingRate.length === 1
-            ? "#diesel"
-            : "";
-      alerts.push({
-        type: "warning",
-        label: "Selling rate",
-        message: `No selling rate for ${missingRate.join(" · ")}. Enter today's rate so sale value is correct.`,
-        cta: "Enter rate",
-        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
-      });
-    }
-  }
-
-  if (th.missingDipAlert) {
-    const meterMissingPetrol = th.missingMeterAlert ? missingMeter.includes("Petrol") : !hasPetrolMeter;
-    const meterMissingDiesel = th.missingMeterAlert ? missingMeter.includes("Diesel") : !hasDieselMeter;
-    const missingDip = [];
-    if (!meterMissingPetrol && !dipStockOnDate(stockToday, dsrToday, "petrol", todayStr)) {
-      missingDip.push("Petrol");
-    }
-    if (!meterMissingDiesel && !dipStockOnDate(stockToday, dsrToday, "diesel", todayStr)) {
-      missingDip.push("Diesel");
-    }
-    if (missingDip.length > 0) {
-      const hash =
-        missingDip.length === 1 && missingDip[0] === "Petrol"
-          ? "#petrol"
-          : missingDip.length === 1
-            ? "#diesel"
-            : "";
-      alerts.push({
-        type: "warning",
-        label: "Dip stock",
-        message: `No dip for today (${missingDip.join(" · ")}). Tank levels and variation need a current reading.`,
-        cta: "Enter dip",
-        href: `meter-reading.html?date=${encodeURIComponent(todayStr)}${hash}`,
-      });
-    }
-  }
-
-  if (th.staleCreditAlert || th.individualHighCredit > 0) {
-    if (creditListRes.error) {
-      AppError.report(creditListRes.error, { context: "updateSmartAlerts", type: "credit_list" });
-    } else {
-      const creditRows = creditListRes.data ?? [];
-
-      if (th.individualHighCredit > 0) {
-        const overLimit = creditRows
-          .filter((row) => Number(row.amount_due_as_of ?? 0) > th.individualHighCredit)
-          .sort((a, b) => Number(b.amount_due_as_of ?? 0) - Number(a.amount_due_as_of ?? 0));
-        if (overLimit.length > 0) {
-          const totalOver = overLimit.reduce((s, r) => s + Number(r.amount_due_as_of ?? 0), 0);
-          const expandRows = overLimit.map((row) => {
-            const due = Number(row.amount_due_as_of ?? 0);
-            const overBy = due - th.individualHighCredit;
-            return {
-              name: row.customer_name || "Customer",
-              href: creditCustomerDetailHref(row.customer_name),
-              detail: `${formatCurrency(due)} · over by ${formatCurrency(overBy)}`,
-            };
-          });
-          alerts.push({
-            type: "warning",
-            label: "Individual high credit",
-            message: `${overLimit.length} customer${overLimit.length === 1 ? "" : "s"} above ${formatCurrency(th.individualHighCredit)} (${formatCurrency(totalOver)} total).`,
-            cta: "Outstanding",
-            href: "credit.html#outstanding",
-            dataNotif: "credit-individual",
-            expandHtml: renderNotifCustomerExpand(
-              expandRows,
-              `Show ${overLimit.length} customer${overLimit.length === 1 ? "" : "s"}`
-            ),
-          });
-        }
-      }
-
-      if (th.staleCreditAlert) {
-        const staleDays = Number(th.staleCreditDays) || 30;
-        const stale = creditRows
-          .filter((row) => {
-            const due = Number(row.amount_due_as_of ?? 0);
-            if (!(due > 0)) return false;
-            const anchor = row.last_payment_date || row.sale_date;
-            const age = daysBetweenDateStrings(anchor, todayStr);
-            return age != null && age >= staleDays;
-          })
-          .sort((a, b) => Number(b.amount_due_as_of ?? 0) - Number(a.amount_due_as_of ?? 0));
-        if (stale.length > 0) {
-          const totalDue = stale.reduce((s, r) => s + Number(r.amount_due_as_of ?? 0), 0);
-          const expandRows = stale.map((row) => {
-            const due = Number(row.amount_due_as_of ?? 0);
-            const age = daysBetweenDateStrings(row.last_payment_date || row.sale_date, todayStr);
-            const ageLabel = age != null ? `${age} day${age === 1 ? "" : "s"}` : "—";
-            return {
-              name: row.customer_name || "Customer",
-              href: creditCustomerDetailHref(row.customer_name),
-              detail: `${formatCurrency(due)} · ${ageLabel}`,
-            };
-          });
-          alerts.push({
-            type: "warning",
-            label: "Stale credit",
-            message: `${stale.length} customer${stale.length === 1 ? "" : "s"} unpaid ${staleDays}+ days (${formatCurrency(totalDue)}).`,
-            cta: "Outstanding",
-            href: "credit.html#outstanding",
-            dataNotif: "credit-stale",
-            expandHtml: renderNotifCustomerExpand(
-              expandRows,
-              `Show ${stale.length} customer${stale.length === 1 ? "" : "s"}`
-            ),
-          });
-        }
-      }
-    }
-  }
-
-  if (th.unpaidSalaryAlert && isAdmin) {
-    if (salaryEmpRes.error) {
-      AppError.report(salaryEmpRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_employees" });
-    } else if (salaryPayRes.error) {
-      AppError.report(salaryPayRes.error, { context: "updateSmartAlerts", type: "unpaid_salary_payments" });
-    } else {
-      const paidMap = new Map();
-      for (const p of salaryPayRes.data ?? []) {
-        paidMap.set(p.employee_id, (paidMap.get(p.employee_id) || 0) + Number(p.amount ?? 0));
-      }
-      let unpaidCount = 0;
-      let pendingTotal = 0;
-      let salaryAttendance = null;
-      let lopExcludedIds = new Set();
-      const payrollActive = typeof PayrollRules !== "undefined" && PayrollRules.rulesAffectPay();
-      if (payrollActive) {
-        try {
-          const lopOn = PayrollRules.getPayrollConfig().lossOfPayEnabled;
-          const [attendance, exclusions] = await Promise.all([
-            PayrollRules.fetchMonthAttendance(window.supabaseClient, salaryMonth),
-            lopOn
-              ? PayrollRules.fetchLopExclusions(window.supabaseClient, salaryMonth)
-              : Promise.resolve({ ids: new Set() }),
-          ]);
-          salaryAttendance = attendance;
-          lopExcludedIds = exclusions.ids;
-        } catch (err) {
-          AppError.report(err, { context: "updateSmartAlerts", type: "salary_attendance" });
-        }
-      }
-      for (const emp of salaryEmpRes.data ?? []) {
-        const gross = Math.max(0, Number(emp.monthly_salary ?? 0));
-        const pfFixed = Math.min(Math.max(0, Number(emp.pf_contribution ?? 0)), gross);
-        let lopAmount = 0;
-        let overDutyAmount = 0;
-        if (salaryAttendance) {
-          const records = salaryAttendance.byEmployee.get(emp.id) || [];
-          const pay = PayrollRules.applyLopExclusion(
-            PayrollRules.computeMonthPay(gross, records, salaryMonth),
-            lopExcludedIds.has(emp.id)
-          );
-          lopAmount = pay.lopAmount;
-          overDutyAmount = pay.overDutyAmount;
-        }
-        const payable =
-          typeof PayrollRules !== "undefined"
-            ? PayrollRules.settleTakeHome(gross, lopAmount, overDutyAmount, pfFixed).net
-            : Math.max(0, gross - pfFixed);
-        if (payable <= 0) continue;
-        const pending = Math.max(0, payable - (paidMap.get(emp.id) || 0));
-        if (pending > 0.009) {
-          unpaidCount += 1;
-          pendingTotal += pending;
-        }
-      }
-      if (unpaidCount > 0) {
-        alerts.push({
-          type: "info",
-          label: "Unpaid salary",
-          message: `${unpaidCount} staff with ${formatCurrency(pendingTotal)} pending for ${salaryMonth}.`,
-          cta: "Open salary",
-          href: "salary.html",
-        });
-      }
-    }
-  }
-
-  if (th.attendanceAlert) {
-    const shifts = PumpSettings.getShiftConfig();
-    if (isPastLocalHm(shifts.afternoonEnd)) {
-      if (rosterRes.error) {
-        AppError.report(rosterRes.error, { context: "updateSmartAlerts", type: "attendance_roster" });
-      } else if (attendanceRes.error) {
-        AppError.report(attendanceRes.error, { context: "updateSmartAlerts", type: "attendance_today" });
-      } else {
-        const rosterCount = (rosterRes.data ?? []).length;
-        const markedCount = (attendanceRes.data ?? []).length;
-        if (rosterCount > 0 && markedCount === 0) {
-          alerts.push({
-            type: "warning",
-            label: "Attendance",
-            message: `No attendance marked for today after ${shifts.afternoonEnd} (${rosterCount} on roster).`,
-            cta: "Mark attendance",
-            href: `attendance.html?date=${encodeURIComponent(todayStr)}`,
-          });
-        }
-      }
-    }
-  }
-
-  if (th.expenseRatioAlert) {
-    if (mtdDsrRes.error) {
-      AppError.report(mtdDsrRes.error, { context: "updateSmartAlerts", type: "expense_ratio_dsr" });
-    } else if (mtdExpenseRes.error) {
-      AppError.report(mtdExpenseRes.error, { context: "updateSmartAlerts", type: "expense_ratio_expenses" });
-    } else {
-      const sales = calculateDsrSaleRupees(mtdDsrRes.data ?? [], { includeTesting: true });
-      const expenses = (mtdExpenseRes.data ?? []).reduce((s, r) => s + Number(r.amount ?? 0), 0);
-      if (sales > 0) {
-        const ratioPct = (expenses / sales) * 100;
-        if (ratioPct > th.expenseRatioPct) {
-          alerts.push({
-            type: "warning",
-            label: "Expense ratio",
-            message: `MTD expenses are ${ratioPct.toFixed(1)}% of fuel sales (threshold ${th.expenseRatioPct}%).`,
-            cta: "Open analysis",
-            href: "analysis.html",
-          });
-        }
-      }
-    }
-  }
-
-  if (th.missingInvoiceAlert && driveEnabled) {
-    if (missingInvoiceRes.error) {
-      AppError.report(missingInvoiceRes.error, { context: "updateSmartAlerts", type: "missing_invoice" });
-    } else {
-      const rows = missingInvoiceRes.data ?? [];
-      if (rows.length > 0) {
-        const uniqueDays = new Set(rows.map((r) => r.date)).size;
-        alerts.push({
-          type: "info",
-          label: "Invoice upload",
-          message: `${rows.length} receipt row${rows.length === 1 ? "" : "s"} across ${uniqueDays} day${uniqueDays === 1 ? "" : "s"} missing a linked invoice PDF.`,
-          cta: "Open vault",
-          href: "invoices.html",
-        });
-      }
-    }
-  }
-
-  if (alerts.length === 0) {
-    panel.classList.add("hidden");
-    panel.innerHTML = "";
-    updateDashboardAlertsVisibility();
-    return;
-  }
-  panel.innerHTML = alerts.map((a) => renderNotifItem(a)).join("");
-  panel.classList.remove("hidden");
-  updateDashboardAlertsVisibility();
+async function updateSmartAlerts(options) {
+  await window.AppNotifications?.refreshSmartAlerts?.(options);
 }
+
 
 const REMINDERS_POPUP_SESSION_KEY = "bpf_reminders_landing_dismissed";
 const TASKS_PREVIEW_COUNT = 3;
-const TASKS_FETCH_LIMIT = 24;
 
 let dueRemindersCache = [];
 let remindersLandingBound = false;
 let remindersLandingEscapeHandler = null;
-let remindersLoadGen = 0;
 
 function wasRemindersLandingDismissed() {
   try {
@@ -1533,57 +735,6 @@ function taskContactHtml(row) {
   return TaskUtils.contactRowHtml(mobile, waText);
 }
 
-function buildDashboardNotifTaskHtml(row, todayStr) {
-  const undated = !row.due_date;
-  const overdue = !undated && row.due_date < todayStr;
-  const isHigh = row.priority === "high";
-  const isCredit = TaskUtils.isCreditTask(row);
-  const type = overdue || isHigh ? "danger" : "warning";
-  const label = overdue
-    ? isCredit
-      ? "Credit call overdue"
-      : "Overdue"
-    : undated
-      ? "Urgent todo"
-      : isCredit
-        ? "Credit collection"
-        : isHigh
-          ? "High priority"
-          : "Due today";
-  const customerName = TaskUtils.customerNameOf(row);
-  const outstanding = taskOutstandingLabel(row);
-  const when = undated
-    ? "No date"
-    : overdue
-      ? `Overdue · ${formatDisplayDate(row.due_date)}`
-      : "Due today";
-  const href = TaskUtils.customerHref(customerName);
-  const accountLink = customerName
-    ? `<a class="task-dash-account" href="${escapeHtml(href)}">Account</a>`
-    : `<a class="task-dash-account" href="reminders.html">Open</a>`;
-
-  return `<article class="notif-item notif-item--task notif-item--${type}" role="alert" data-reminder-id="${escapeHtml(row.id)}">
-    <div class="notif-item-body">
-      <span class="notif-item-label">${escapeHtml(label)}</span>
-      <p class="notif-item-message">${escapeHtml(row.title)}</p>
-      ${
-        outstanding
-          ? `<p class="notif-item-amount">${escapeHtml(outstanding)}</p>`
-          : ""
-      }
-      <span class="notif-item-meta"><span>${escapeHtml(when)}</span>${
-        customerName ? `<span>${escapeHtml(customerName)}</span>` : ""
-      }${accountLink}</span>
-      ${taskContactHtml(row)}
-    </div>
-    <div class="notif-item-actions task-action-bar">
-      <button type="button" class="button-secondary button-small reminder-done-btn" data-reminder-id="${escapeHtml(row.id)}">Done</button>
-      <button type="button" class="button-secondary button-small reminder-later-btn" data-reminder-later="reschedule" data-reminder-id="${escapeHtml(row.id)}" data-days="3" title="Follow up in 3 days">+3 days</button>
-      <button type="button" class="button-secondary button-small reminder-later-toggle" data-reminder-id="${escapeHtml(row.id)}" aria-expanded="false">More…</button>
-    </div>
-    ${buildDashboardLaterPanel(row.id, { credit: isCredit })}
-  </article>`;
-}
 
 function buildLandingTaskHtml(row, todayStr) {
   const undated = !row.due_date;
@@ -1643,70 +794,10 @@ function renderTaskGroupHtml(rows, todayStr, builder) {
 }
 
 async function loadRemindersBanners() {
-  if (window.AppNotifications?.refreshReminders) {
-    await window.AppNotifications.refreshReminders();
-    return;
-  }
-  const todayStr = getLocalDateString();
-  const loadGen = ++remindersLoadGen;
-  const { data, error } = await window.supabaseClient
-    .from("reminders")
-    .select(
-      "id, title, notes, due_date, priority, reminder_type, credit_customer_id, credit_customers(customer_name, mobile, amount_due)"
-    )
-    .eq("status", "open")
-    .or(`due_date.lte.${todayStr},and(due_date.is.null,priority.eq.high)`)
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .limit(TASKS_FETCH_LIMIT);
-
-  if (loadGen !== remindersLoadGen) return;
-
-  if (error) {
-    if (error.code !== "42P01" && error.code !== "PGRST205") {
-      AppError.report(error, { context: "loadRemindersBanners" });
-    }
-    dueRemindersCache = [];
-    renderRemindersNotifications([]);
-    renderSnapshotRemindersStrip([]);
-    closeRemindersLanding({ dismissSession: false });
-    updateNotificationsPanelState();
-    return;
-  }
-
-  dueRemindersCache = TaskUtils.sortTasks(data || [], todayStr);
-  renderRemindersNotifications(dueRemindersCache, todayStr);
-  renderSnapshotRemindersStrip(dueRemindersCache, todayStr);
-  maybeShowRemindersLanding(dueRemindersCache, todayStr);
-  updateNotificationsPanelState();
+  await window.AppNotifications?.refreshReminders?.();
 }
 
-function renderRemindersNotifications(rows, todayStr = getLocalDateString()) {
-  const block = document.getElementById("reminders-block");
-  const container = document.getElementById("reminders-banners");
-  if (!block || !container) return;
 
-  if (!rows.length) {
-    block.classList.add("hidden");
-    container.innerHTML = "";
-    return;
-  }
-
-  const { credit, todo } = TaskUtils.splitCreditTodo(rows);
-  const parts = [];
-  if (credit.length) {
-    parts.push(
-      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Credit collection</h4>${renderTaskGroupHtml(credit, todayStr, buildDashboardNotifTaskHtml)}</div>`
-    );
-  }
-  if (todo.length) {
-    parts.push(
-      `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Todo</h4>${renderTaskGroupHtml(todo, todayStr, buildDashboardNotifTaskHtml)}</div>`
-    );
-  }
-  container.innerHTML = parts.join("");
-  block.classList.remove("hidden");
-  bindReminderDoneButtons(container);
-}
 
 function renderSnapshotRemindersStrip(rows, todayStr = getLocalDateString()) {
   const strip = document.getElementById("snapshot-reminders-strip");
@@ -1782,21 +873,17 @@ function openRemindersLanding(rows, todayStr = getLocalDateString(), { force = f
 
   if (!force && wasRemindersLandingDismissed()) return;
 
-  overlay.hidden = false;
-  overlay.setAttribute("aria-hidden", "false");
-  document.body.classList.add("modal-open");
   // Don't steal focus when refreshing an already-open popup after Done/defer.
-  if (!wasOpen) {
-    requestAnimationFrame(() => document.getElementById("reminders-landing-dismiss")?.focus());
-  }
+  AppDialog.show(overlay, {
+    onDismiss: () => closeRemindersLanding({ dismissSession: true }),
+    focus: wasOpen ? false : "#reminders-landing-dismiss",
+  });
 }
 
 function closeRemindersLanding({ dismissSession = true } = {}) {
   const overlay = document.getElementById("reminders-landing-overlay");
-  if (!overlay) return;
-  overlay.setAttribute("aria-hidden", "true");
-  overlay.hidden = true;
-  document.body.classList.remove("modal-open");
+  if (!overlay || overlay.hidden) return;
+  AppDialog.hide(overlay);
   if (dismissSession) markRemindersLandingDismissed();
   if (remindersLandingEscapeHandler) {
     document.removeEventListener("keydown", remindersLandingEscapeHandler);
@@ -1863,29 +950,22 @@ function setLaterControlsDisabled(panel, disabled) {
   });
 }
 
-/** Drop a task card from dashboard surfaces immediately after Done / defer. */
 function removeDashboardTaskCard(id) {
   if (!id) return;
-  document
-    .querySelectorAll(`article[data-reminder-id="${CSS.escape(id)}"]`)
-    .forEach((el) => {
-      const group = el.closest(".tasks-dash-group");
-      el.remove();
-      if (group && !group.querySelector("article[data-reminder-id]")) group.remove();
-    });
-  dueRemindersCache = (dueRemindersCache || []).filter((r) => r.id !== id);
-
+  document.querySelectorAll(`article[data-reminder-id="${CSS.escape(id)}"]`).forEach((el) => {
+    const group = el.closest(".tasks-dash-group");
+    el.remove();
+    if (group && !group.querySelector("article[data-reminder-id]")) group.remove();
+  });
+  dueRemindersCache = (dueRemindersCache || []).filter((row) => row.id !== id);
   if (!dueRemindersCache.length) {
-    renderRemindersNotifications([]);
     renderSnapshotRemindersStrip([]);
     closeRemindersLanding({ dismissSession: false });
-    updateNotificationsPanelState();
     return;
   }
-
   renderSnapshotRemindersStrip(dueRemindersCache, getLocalDateString());
-  updateNotificationsPanelState();
 }
+
 
 function bindReminderDoneButtons(container) {
   if (!container || container.dataset.reminderDoneBound) return;
@@ -2077,112 +1157,10 @@ function bindReminderDoneButtons(container) {
   });
 }
 
-async function loadDayClosingBanners(prefetched = null) {
-  if (window.AppNotifications?.refreshDayClosing) {
-    await window.AppNotifications.refreshDayClosing(prefetched);
-    return;
-  }
-  const block = document.getElementById("day-closing-block");
-  const container = document.getElementById("day-closing-banners");
-  if (!block || !container) return;
-
-  const th = getAlertThresholds();
-  if (!th.dayClosingReminder) {
-    block.classList.add("hidden");
-    container.innerHTML = "";
-    updateNotificationsPanelState();
-    return;
-  }
-
-  let closedRows;
-  let error;
-  let todayStr;
-
-  if (prefetched) {
-    closedRows = prefetched.data;
-    error = prefetched.error;
-    todayStr = prefetched.todayStr || getLocalDateString();
-  } else {
-    const windowResult = await fetchDayClosingWindow();
-    closedRows = windowResult.data;
-    error = windowResult.error;
-    todayStr = windowResult.todayStr;
-  }
-
-  if (error) {
-    AppError.report(error, { context: "loadDayClosingBanners" });
-    block.classList.add("hidden");
-    container.innerHTML = "";
-    updateNotificationsPanelState();
-    return;
-  }
-
-  const closedByDate = new Map((closedRows ?? []).map((r) => [r.date, r]));
-  const today = new Date();
-  const datesToShow = [];
-  for (let i = 0; i <= DAY_CLOSING_LOOKBACK_DAYS; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    datesToShow.push(formatDateInput(d));
-  }
-
-  function bannerForDate(dateStr, showDone) {
-    const row = closedByDate.get(dateStr);
-    const done = !!row;
-    const certified = !!row?.certified;
-    if (!showDone && done && certified) return null;
-    const label = formatDisplayDate(dateStr);
-    const isToday = dateStr === todayStr;
-    const dayLabel = isToday ? "Today" : label;
-    if (done && !certified) {
-      const isAdminUser = dashboardRole === "admin";
-      return renderNotifItem({
-        type: "warning",
-        label: dayLabel,
-        message: "Day closing awaiting acknowledgment",
-        meta: isAdminUser
-          ? isToday
-            ? "Saved — acknowledge tonight's statement on Day closing."
-            : "Saved but not yet certified. Open Day closing to acknowledge."
-          : isToday
-            ? "Saved — waiting for admin acknowledgment."
-            : "Saved but not yet certified. Waiting for admin acknowledgment.",
-        cta: isAdminUser ? "Acknowledge" : "View",
-        href: `day-closing.html?date=${encodeURIComponent(dateStr)}`,
-      });
-    }
-    if (done) {
-      return renderNotifItem({
-        type: "success",
-        label: "Done",
-        message: `Day closing complete for ${isToday ? "today" : label}`,
-        role: "status",
-      });
-    }
-    return renderNotifItem({
-      type: isToday ? "warning" : "danger",
-      label: dayLabel,
-      message: "Day closing not done",
-      meta: isToday
-        ? "Finish tonight's cash, PhonePe, and short before you leave."
-        : "Past day still open — fill it to keep DSR and cash aligned.",
-      cta: "Fill day closing",
-      href: `day-closing.html?date=${encodeURIComponent(dateStr)}`,
-    });
-  }
-
-  const parts = [];
-  parts.push(bannerForDate(datesToShow[0], true));
-  datesToShow.slice(1).forEach((dateStr) => {
-    const html = bannerForDate(dateStr, false);
-    if (html) parts.push(html);
-  });
-
-  const visible = parts.filter(Boolean);
-  container.innerHTML = visible.join("");
-  block.classList.toggle("hidden", visible.length === 0);
-  updateNotificationsPanelState();
+async function loadDayClosingBanners(prefetched) {
+  await window.AppNotifications?.refreshDayClosing?.(prefetched);
 }
+
 
 let dsrFilterApi = null;
 let plFilterApi = null;
@@ -2289,14 +1267,18 @@ async function fetchProfitLossData(range, onUpdate = null) {
         }),
         DsrQueries.fetchExpenses(range.start, range.end),
         DsrQueries.fetchLubeSales(range.start, range.end),
-        supabaseClient
-          .from("invoice_documents")
-          .select("amount")
-          .eq("category", "purchase")
-          .gte("invoice_date", range.start)
-          .lte("invoice_date", range.end)
-          .gt("amount", 0),
-        window.supabaseClient.from("expense_categories").select("name, label"),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("invoice_documents")
+            .select("id, amount")
+            .eq("category", "purchase")
+            .gte("invoice_date", range.start)
+            .lte("invoice_date", range.end)
+            .gt("amount", 0)
+            .order("invoice_date", { ascending: true })
+            .order("id", { ascending: true })
+        ),
+        window.supabaseClient.from("expense_categories").select("name, label").limit(LOOKUP_ROW_LIMIT),
       ]);
 
       const lubeCogs = (vaultResult.data ?? []).reduce(
@@ -2338,7 +1320,8 @@ async function loadTodaySales(dateStr) {
     const { data, error } = await window.supabaseClient
       .from("dsr")
       .select("product, total_sales, testing, petrol_rate, diesel_rate")
-      .eq("date", selectedDate);
+      .eq("date", selectedDate)
+      .limit(10);
 
     if (error) {
       AppError.report(error, { context: "loadTodaySales", date: selectedDate });
@@ -2625,22 +1608,33 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
     } catch {
       // Fallback: use parallel client-side queries
       const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
-        supabaseClient
-          .from("dsr")
-          .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
-          .gte("date", startDate)
-          .lte("date", endDate),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("dsr")
+            .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: true })
+            .order("product", { ascending: true })
+        ),
         window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-        supabaseClient
-          .from("expenses")
-          .select("date, amount, category, description")
-          .gte("date", startDate)
-          .lte("date", endDate),
-        supabaseClient
-          .from("credit_entries")
-          .select("amount, amount_settled")
-          .gte("transaction_date", startDate)
-          .lte("transaction_date", endDate),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("expenses")
+            .select("date, amount, category, description")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: true })
+        ),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("credit_entries")
+            .select("amount, amount_settled")
+            .gte("transaction_date", startDate)
+            .lte("transaction_date", endDate)
+            .order("transaction_date", { ascending: true })
+            .order("id", { ascending: true })
+        ),
       ]);
 
       return {
@@ -2698,11 +1692,15 @@ async function loadDsrSummary(range) {
   if (!dsrSummaryGuard.isCurrent(loadId)) return;
 
   if (dashboardData.creditError) {
-    const { data: creditRows, error: creditErr } = await window.supabaseClient
-      .from("credit_entries")
-      .select("amount, amount_settled")
-      .gte("transaction_date", range.start)
-      .lte("transaction_date", range.end);
+    const { data: creditRows, error: creditErr } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("credit_entries")
+        .select("amount, amount_settled")
+        .gte("transaction_date", range.start)
+        .lte("transaction_date", range.end)
+        .order("transaction_date", { ascending: true })
+        .order("id", { ascending: true })
+    );
     if (!creditErr) {
       dashboardData.creditData = creditRows ?? [];
       dashboardData.creditError = null;
@@ -2726,15 +1724,10 @@ async function loadDsrSummary(range) {
       range.end
     );
     updateLowStockAlert(petrolStock, dieselStock);
-    lastPetrolVariation = sumByProduct(lastDayStockForAlert, "petrol", (row) => row.variation);
-    lastDieselVariation = sumByProduct(lastDayStockForAlert, "diesel", (row) => row.variation);
     updateSmartAlerts();
     loadDayClosingBanners();
   } else {
-    lastPetrolVariation = null;
-    lastDieselVariation = null;
-    const wrap = document.getElementById("low-stock-alert");
-    if (wrap) wrap.classList.add("hidden");
+    updateLowStockAlert(null, null);
     updateSmartAlerts();
   }
 }
@@ -2867,36 +1860,10 @@ function renderDsrSummary(data, elements, range) {
   scheduleAutoFitStats();
 }
 
-/**
- * Fetch missing buying-price rows and update the notifications banner.
- */
 async function refreshMissingBuyingPriceUi() {
-  if (window.AppNotifications?.refreshBuyingPrice) {
-    return window.AppNotifications.refreshBuyingPrice();
-  }
-  const bannerEl = document.getElementById("pl-todo-banner");
-  const countEl = document.getElementById("pl-todo-count");
-
-  const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows();
-  if (error) {
-    AppError.report(error, { context: "refreshMissingBuyingPriceUi" });
-    bannerEl?.classList.add("hidden");
-    updateNotificationsPanelState();
-    return [];
-  }
-
-  const rows = data ?? [];
-  if (bannerEl && countEl) {
-    if (rows.length > 0) {
-      countEl.textContent = String(rows.length);
-      bannerEl.classList.remove("hidden");
-    } else {
-      bannerEl.classList.add("hidden");
-    }
-  }
-  updateNotificationsPanelState();
-  return rows;
+  return window.AppNotifications?.refreshBuyingPrice?.();
 }
+
 
 async function loadProfitLossSummary(range) {
   const loadId = plSummaryGuard.next();
@@ -2987,9 +1954,6 @@ window.addEventListener("storage", (e) => {
     const date = dateInput?.value || getLocalDateString();
     loadCreditSummary(date);
     return;
-  }
-  if (e.key === "reminders-updated") {
-    void loadRemindersBanners();
   }
 });
 

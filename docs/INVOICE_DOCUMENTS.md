@@ -1,221 +1,86 @@
 # Invoice documents (supplier invoices + Google Drive)
 
-This guide explains how to set up, deploy, and operate the **supplier / purchase invoice** feature from scratch. A new person should be able to follow it end-to-end without reading source code first.
-
-> **Documentation hub:** [README.md](README.md)
-
-**Important naming distinction**
+This guide covers setting up, deploying, and running the **supplier / purchase invoice vault**.
 
 | Name in the app | What it is | Page / table |
 |-----------------|------------|--------------|
-| **Billing** / sales invoices | Outward lube cash memos you issue to customers | `billing.html` → `invoices` + `invoice_items` |
-| **Invoice documents** | Inward supplier/purchase invoices (PDFs, scans) | `invoices.html` → `invoice_documents` + Google Drive |
+| **Billing** / sales invoices | Outward lube cash memos issued to customers | `billing.html` → `invoices` + `invoice_items` |
+| **Invoice documents** (this doc) | Inward supplier invoices and other vault files (PDFs, scans) | `invoices.html` → `invoice_documents` + Google Drive |
 
-These are separate features. This document covers **invoice documents** only.
-
----
-
-## Table of contents
-
-1. [What the feature does](#1-what-the-feature-does)
-2. [Prerequisites](#2-prerequisites)
-3. [Architecture](#3-architecture)
-4. [Complete setup (step by step)](#4-complete-setup-step-by-step)
-5. [Alternative: service account (Workspace / Shared Drive)](#5-alternative-service-account-workspace--shared-drive)
-6. [Roles and permissions](#6-roles-and-permissions)
-7. [How it works at runtime](#7-how-it-works-at-runtime)
-8. [Edge function API](#8-edge-function-api)
-9. [Database schema](#9-database-schema)
-10. [Release checklist](#10-release-checklist)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Security and privacy](#12-security-and-privacy)
-13. [Maintenance](#13-maintenance)
-14. [Source files reference](#14-source-files-reference)
-
----
+Billing PDFs, letters, and staff photos/Aadhaar use the same Drive root and Google credentials through the `drive-files` edge function.
 
 ## 1. What the feature does
 
-- Staff upload **supplier invoices** (PDF, JPEG, PNG, WebP; max 15 MB) from **Finance → Invoices** (`invoices.html`).
-- Files are stored in **Google Drive** under short folders (`Billing invoices`, `Letters`, `Purchase invoices`, `Staff`, `Other documents`). Purchase invoices go to `Purchase invoices / Year`.
-- Metadata (date, vendor, amount, Drive file ID, etc.) is stored in PostgreSQL table `invoice_documents`.
-- The library lists documents by date range; users can **view** (Drive link), **download** (via edge function), or **delete** (admin only).
-- Configuration lives in **Settings → Integrations** (admin only): enable flag + root folder ID.
-- Google credentials live in **Supabase Edge Function secrets** — never in the frontend or GitHub.
-
----
+- Staff upload a document from **Finance → Invoices** (`invoices.html`). Each upload has a type from `document_categories` (default `purchase`) and must be a PDF, JPEG, PNG, or WebP of 1 byte to 15 MB.
+- The file goes to Google Drive and its metadata (date, type, vendor, amount, Drive IDs) goes to `invoice_documents`.
+- The library lists documents for the selected period, grouped by type. Each type stays collapsed until opened. Search filters the loaded list by title, party, or file name. Users can **View** (Drive link), **Download** (through the edge function), or **Delete** (admin only).
+- Settings live in **Settings → Integrations** (admin only): an enable flag and the root folder ID. Google credentials live only in **Supabase Edge Function secrets**, never in the frontend or GitHub.
 
 ## 2. Prerequisites
 
-Before you start, make sure you have:
-
-| Requirement | Details |
-|-------------|---------|
-| **Supabase project** | One for staging, one for prod (see [Development guide](DEVELOPMENT.md#2-deployment-prod-and-staging)) |
-| **Supabase CLI** | For deploying the edge function: [supabase.com/docs/guides/cli](https://supabase.com/docs/guides/cli) |
-| **Google account** | Personal Gmail (OAuth) or Google Workspace (OAuth or service account) |
-| **Google Cloud project** | Free tier is enough; billing account not required for Drive API within normal quotas |
-| **Admin login** | A user provisioned as `admin` in `public.users` |
-| **Database migration applied** | Migration `20260619120000_invoice_documents_google_drive.sql` |
-
-You do **not** need Google secrets in GitHub. Only `SUPABASE_URL` and `SUPABASE_ANON_KEY` go into GitHub environment secrets (frontend). Google OAuth secrets are set only in Supabase.
-
----
+- One Supabase project for staging and one for prod ([OPERATIONS.md](OPERATIONS.md)), plus the [Supabase CLI](https://supabase.com/docs/guides/cli) if you deploy by hand.
+- A Google account that will own the Drive folder (personal Gmail → OAuth; Shared Drive → OAuth or a service account), and a Google Cloud project. The free tier is enough and no billing account is needed.
+- An admin user in `public.users`.
+- Migrations applied: `20260619120000_invoice_documents_google_drive.sql` plus the later `document_categories` and `folder_layout` migrations. `./scripts/db.sh migrate` applies everything pending. If the category list is empty, seed it with `scripts/seed-document-categories.sql`.
 
 ## 3. Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Browser                                                                 │
-│  invoices.html + js/invoices.js                                          │
-│  settings.html + js/settings.js (Integrations panel)                     │
-└───────────────────────────────┬─────────────────────────────────────────┘
-                                │
-        ┌───────────────────────┼───────────────────────┐
-        │                       │                       │
-        ▼                       ▼                       ▼
-┌───────────────┐    ┌─────────────────────┐    ┌──────────────────────┐
-│ Supabase Auth │    │ PostgreSQL           │    │ Edge Function         │
-│ JWT session   │    │ invoice_documents    │    │ invoice-documents     │
-│               │    │ pump_settings.config │    │                       │
-└───────────────┘    └─────────────────────┘    └───────────┬──────────┘
-        │                       ▲                           │
-        │                       │ service role insert       │
-        └───────────────────────┼───────────────────────────┘
-                                │
-                                ▼
-                    ┌───────────────────────┐
-                    │ Google Drive API       │
-                    │ Root → YYYY → MM       │
-                    └───────────────────────┘
+invoices.html / settings.html ──JWT──► Edge fn invoice-documents ──► Google Drive API
+        │                                     │ service-role insert/delete
+        └── reads invoice_documents (RLS) ◄───┘ reads pump_settings.config.integrations.googleDrive
 ```
 
-**Data flow on upload**
+**Upload flow:**
 
-1. User selects file + metadata on `invoices.html`.
-2. Browser sends `multipart/form-data` to edge function `invoice-documents` with JWT.
-3. Function verifies JWT and `check_page_access('invoices')`.
-4. Function reads `pump_settings.config.integrations.googleDrive` for root folder ID.
-5. Function obtains Google access token (OAuth refresh token or service account).
-6. Function creates/finds Drive folders from the document type’s `folder_layout`, then uploads the file.
-7. Function inserts row into `invoice_documents` via service role.
-8. Function sets Drive file permission to **anyone with link can view** (so View link works).
-9. Browser refreshes the library (reads metadata directly from `invoice_documents` via Supabase client + RLS).
+1. The browser POSTs `multipart/form-data` with the user's JWT.
+2. The function checks `check_page_access('invoices')`, validates the type, size, and category, and reads the root folder ID from `pump_settings`.
+3. It gets a Google access token (OAuth refresh token or service account; see [§5](#5-alternative-service-account-workspace--shared-drive) for precedence), finds or creates the folder path, and uploads the file.
+4. It uploads the file **without** sharing it, then inserts the `invoice_documents` row using the service role. If the insert fails, it deletes the Drive file.
 
-**List/download/delete**
-
-- **List:** Client reads `invoice_documents` directly (RLS: supervisor + admin).
-- **Download / delete:** Client calls edge function with `{ action: "download" }` or `{ action: "delete" }` because file bytes live in Drive, not Postgres.
-
----
+**List** reads `invoice_documents` directly through the Supabase client and RLS. **Download** and **delete** go through the edge function because the bytes live in Drive.
 
 ## 4. Complete setup (step by step)
 
-Follow these steps **for each Supabase environment** (staging first, then prod).
+Do this **for each Supabase project** (staging first, then prod).
 
 ### Step 1 — Apply the database migration
 
-The migration creates table `invoice_documents`, RLS policies, and adds `'invoices'` to `check_page_access`.
-
-**Option A — Production release script (recommended for prod)**
-
 ```bash
-# From repo root; requires scripts/db.env (see scripts/README.md)
-./scripts/db.sh migrate          # dry-run: shows pending SQL
-./scripts/db.sh migrate --apply    # applies to prod
+./scripts/db.sh migrate            # dry-run: shows pending SQL (needs scripts/db.env)
+./scripts/db.sh migrate --apply    # applies
 ```
 
-**Option B — Supabase SQL Editor**
-
-1. Open Supabase Dashboard → **SQL Editor**.
-2. Paste contents of `supabase/migrations/20260619120000_invoice_documents_google_drive.sql`.
-3. Run.
-
-**Option C — Full schema (greenfield only)**
-
-If setting up a brand-new project, you can run all of `supabase/schema.sql` instead.
-
-**Verify**
+You can instead paste the migration into the Supabase **SQL Editor**. For a brand-new project, run all of `supabase/schema.sql`.
 
 ```sql
 select count(*) from information_schema.tables
-where table_schema = 'public' and table_name = 'invoice_documents';
--- Should return 1
-
-select public.check_page_access('invoices');
--- Run as authenticated user; supervisors/admins should get allowed: true
+where table_schema = 'public' and table_name = 'invoice_documents';  -- 1
+select public.check_page_access('invoices');  -- as supervisor/admin: allowed true
 ```
-
----
 
 ### Step 2 — Deploy the edge function
 
-**Preferred:** GitHub Actions deploys all edge functions when `supabase/functions/**` changes on `main` or `staging` (workflow: `.github/workflows/deploy-supabase-functions.yml`). You can also run **Actions → Deploy Supabase Functions → Run workflow**.
+**CI:** `.github/workflows/deploy-supabase-functions.yml` deploys every function when `supabase/functions/**` changes on `main` or `staging`. You can also start it from **Actions → Deploy Supabase Functions → Run workflow**. It needs these GitHub environment secrets (per staging/prod): `SUPABASE_ACCESS_TOKEN` ([account tokens](https://supabase.com/dashboard/account/tokens)) and `SUPABASE_PROJECT_REF` (Project Settings → General → Reference ID).
 
-Required GitHub environment secrets (per **staging** / **prod**):
+**Manual:**
 
-| Secret | Purpose |
-|--------|---------|
-| `SUPABASE_ACCESS_TOKEN` | [Supabase Account → Access Tokens](https://supabase.com/dashboard/account/tokens) |
-| `SUPABASE_PROJECT_REF` | Project Settings → General → Reference ID |
+```bash
+brew install supabase/tap/supabase      # or: npm install -g supabase
+supabase login
+supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
+supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
+```
 
-**Manual deploy** (alternative or first-time before CI is wired):
-
-1. **Install Supabase CLI** (if not already):
-
-   ```bash
-   brew install supabase/tap/supabase
-   # or: npm install -g supabase
-   ```
-
-2. **Log in and link project** (one-time per machine):
-
-   ```bash
-   supabase login
-   supabase link --project-ref YOUR_PROJECT_REF
-   ```
-
-   Find `YOUR_PROJECT_REF` in Supabase Dashboard → **Project Settings → General → Reference ID**.
-
-3. **Deploy the function**:
-
-   ```bash
-   cd /path/to/petrolPump
-   supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
-   ```
-
-4. **Repeat for staging and prod** — each environment has its own project ref.
-
-**Verify**
-
-In Supabase Dashboard → **Edge Functions**, you should see `invoice-documents` with a recent deploy time.
-
-Test status (requires a valid JWT — easiest from the app after login):
+**Verify:** call the status action. The easiest way to get a JWT is to copy it from a logged-in app session.
 
 ```bash
 curl -X POST "https://YOUR_PROJECT_REF.supabase.co/functions/v1/invoice-documents" \
-  -H "Authorization: Bearer YOUR_JWT" \
-  -H "apikey: YOUR_ANON_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"status"}'
+  -H "Authorization: Bearer YOUR_JWT" -H "apikey: YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" -d '{"action":"status"}'
 ```
 
-Expected response shape (values depend on your setup):
-
-```json
-{
-  "configured": false,
-  "authMode": null,
-  "hasOAuth": false,
-  "hasServiceAccount": false,
-  "rootFolderId": null,
-  "settingsEnabled": false,
-  "authOk": true,
-  "authError": null
-}
-```
-
----
+Before Google is set up, this returns `configured: false, authMode: null`. The full response shape is in [§8](#8-edge-function-api).
 
 ### Step 3 — Google Cloud Console setup (OAuth — recommended for personal Gmail)
 
@@ -223,84 +88,37 @@ Use the **same Google account** that will own the Drive root folder.
 
 #### 3.1 Create or select a Google Cloud project
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/).
-2. Top bar → project dropdown → **New Project** (e.g. `bishnupriya-fuels-invoices`) or select an existing one.
-3. Wait for the project to be created and select it.
+Go to [Google Cloud Console](https://console.cloud.google.com/) → project dropdown → **New Project** (e.g. `bishnupriya-fuels-invoices`), then select it.
 
 #### 3.2 Enable the Google Drive API
 
-1. **APIs & Services → Library**.
-2. Search for **Google Drive API**.
-3. Click **Enable**.
-
-Without this step, token exchange and uploads fail with API-not-enabled errors.
+Go to **APIs & Services → Library → Google Drive API → Enable**. Skip this and token exchange and uploads fail with API-not-enabled errors.
 
 #### 3.3 Configure the OAuth consent screen
 
-1. **APIs & Services → OAuth consent screen**.
-2. Choose **External** (personal Gmail) or **Internal** (Google Workspace only — skips public verification).
-3. Fill required fields:
-   - **App name:** e.g. `Bishnupriya Fuels Invoice Storage`
-   - **User support email:** your email
-   - **Developer contact:** your email
-4. **Scopes:** Add `https://www.googleapis.com/auth/drive` (full Drive access for upload/list/delete in the configured folder tree).
-5. **Test users** (if app is in **Testing** mode): Add the Gmail address you will use for OAuth. Only listed test users can authorize until the app is published.
-6. Save.
-
-> **Testing vs Production:** For a private pump app, **Testing** mode is usually enough. Refresh tokens issued to test users continue to work; you do not need to publish the app for internal use.
+1. **APIs & Services → OAuth consent screen**. Choose **External** for personal Gmail, or **Internal** for Workspace only (no verification needed).
+2. Fill in the app name, support email, and developer contact.
+3. Add the scope `https://www.googleapis.com/auth/drive`.
+4. In **Testing** mode, add the Gmail account you will authorize as a **Test user**. Testing mode is fine for this private app, and test-user refresh tokens keep working.
 
 #### 3.4 Create OAuth client credentials
 
-1. **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
-2. Application type: **Web application**.
-3. Name: e.g. `Supabase invoice-documents`.
-4. **Authorized redirect URIs** — add exactly:
-
-   ```
-   https://developers.google.com/oauthplayground
-   ```
-
-5. Click **Create**.
-6. Copy **Client ID** and **Client secret** — you need these for Supabase secrets and OAuth Playground.
+1. **APIs & Services → Credentials → Create Credentials → OAuth client ID**, type **Web application** (e.g. `Supabase invoice-documents`).
+2. Under **Authorized redirect URIs**, add exactly `https://developers.google.com/oauthplayground`.
+3. Click **Create**, then copy the **Client ID** and **Client secret**.
 
 #### 3.5 Obtain a refresh token (OAuth Playground)
 
-1. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground).
-2. Click the **gear icon** (OAuth 2.0 configuration).
-3. Check **Use your own OAuth credentials**.
-4. Paste your **Client ID** and **Client secret**.
-5. Close the configuration panel.
-6. In **Step 1 — Select & authorize APIs**, find **Drive API v3** or paste scope manually:
+1. Open the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) and click the **gear icon**.
+2. Tick **Use your own OAuth credentials** and paste the Client ID and secret. If you skip this, the token belongs to Google's Playground client and you get `unauthorized_client` later.
+3. Step 1: enter the scope `https://www.googleapis.com/auth/drive` → **Authorize APIs**. Sign in as the folder-owner Gmail. If you see "Google hasn't verified this app", choose **Advanced → Go to … (unsafe)**.
+4. Step 2: **Exchange authorization code for tokens**, then copy the **Refresh token**. It is long-lived, so store it securely.
 
-   ```
-   https://www.googleapis.com/auth/drive
-   ```
-
-7. Click **Authorize APIs**.
-8. Sign in with the **same Gmail account** that will own the Drive folder.
-9. Accept permissions (you may see “Google hasn’t verified this app” — click **Advanced → Go to … (unsafe)** for test apps).
-10. In **Step 2 — Exchange authorization code for tokens**, click **Exchange authorization code for tokens**.
-11. Copy the **Refresh token** from the response. Store it securely — it is long-lived.
-
-You only do this once per environment unless the token is revoked.
-
----
+The client ID, client secret, and refresh token form one set. If you regenerate any of them, regenerate and update all three. Rotation steps are in [SECRETS.md → Rotation recipes](SECRETS.md#rotation-recipes). The database backup workflow reuses the same three values ([RECOVERY.md](RECOVERY.md#setup)).
 
 ### Step 4 — Set Supabase Edge Function secrets
 
-In Supabase Dashboard → **Project Settings → Edge Functions → Secrets** (or use CLI):
-
-**Via Dashboard**
-
-Add these three secrets for OAuth:
-
-| Secret name | Value |
-|-------------|-------|
-| `GOOGLE_OAUTH_CLIENT_ID` | From step 3.4 |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | From step 3.4 |
-| `GOOGLE_OAUTH_REFRESH_TOKEN` | From step 3.5 |
-
-**Via CLI**
+In **Project Settings → Edge Functions → Secrets**, or with the CLI:
 
 ```bash
 supabase secrets set \
@@ -310,423 +128,144 @@ supabase secrets set \
   --project-ref YOUR_PROJECT_REF
 ```
 
-These are automatically available to all edge functions in that project. You do **not** set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `SUPABASE_SERVICE_ROLE_KEY` manually — Supabase injects them.
-
-**Staging vs prod:** Use separate Supabase projects. You may reuse the same Google OAuth client and refresh token for both, or create separate clients — either works if the same Gmail owns the folders.
-
-**Verify secrets**
-
-Redeploy is not required after secret changes, but wait a minute for propagation. Call the status action again — `hasOAuth` should be `true` and `authMode` should be `"oauth"`.
-
----
+Every function in the project can read these. Supabase injects `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` itself, so don't set them. Staging and prod can share one OAuth client and token or use separate ones, as long as the same Gmail owns the folders. No redeploy is needed, but allow about a minute for propagation. After that, status should show `authMode: "oauth"`.
 
 ### Step 5 — Create the Drive root folder and configure the app
 
-1. In [Google Drive](https://drive.google.com/), sign in as the **same account** used for the refresh token.
-2. Create a folder, e.g. `Supplier Invoices - Bishnupriya Fuels`.
-3. Open the folder. The URL looks like:
-
-   ```
-   https://drive.google.com/drive/folders/1abcXYZexampleFolderId
-   ```
-
-4. Copy the ID after `/folders/` — that is your **root folder ID**.
-
-5. In the app, log in as **admin** → **Settings → Integrations**:
-   - Check **Enable Google Drive storage for invoice documents**
-   - Paste **Root folder ID**
-   - Click **Save integration settings**
-
-Settings are stored in `pump_settings` row `id = 1`:
-
-```json
-{
-  "integrations": {
-    "googleDrive": {
-      "enabled": true,
-      "rootFolderId": "1abcXYZexampleFolderId"
-    }
-  }
-}
-```
-
----
+1. In Drive (signed in as the token's account), create a folder and copy the ID after `/folders/` in its URL (`https://drive.google.com/drive/folders/<ROOT_ID>`).
+2. Log in to the app as admin → **Settings → Integrations**, tick **Enable Google Drive storage for invoice documents**, paste the root folder ID, and click **Save integration settings**. This saves `{"integrations":{"googleDrive":{"enabled":true,"rootFolderId":"<ROOT_ID>"}}}` into `pump_settings` row `id = 1`. Edge functions cache it for about 30 s.
 
 ### Step 6 — Deploy the frontend
 
-Frontend deploy is automated via GitHub Actions (see [Development guide → Deployment](DEVELOPMENT.md#2-deployment-prod-and-staging)).
-
-1. Push to `staging` branch → test at `/staging/`.
-2. Merge to `main` → production.
-
-No Google secrets in GitHub — only `SUPABASE_URL` and `SUPABASE_ANON_KEY` per environment.
-
----
+Push to `staging` (test at `/staging/`), then merge to `main` ([OPERATIONS.md](OPERATIONS.md#3-release-to-production)). GitHub needs only `SUPABASE_URL` and `SUPABASE_ANON_KEY` for the frontend. Google secrets never go there.
 
 ### Step 7 — Verify end-to-end
 
-Use this checklist after setup:
-
-| # | Check | Expected |
-|---|-------|----------|
-| 1 | Log in as admin or supervisor | Access to **Finance → Invoices** |
-| 2 | Open Invoices page | No yellow warning banner (Drive configured) |
-| 3 | Upload a small test PDF | Success message; row appears in library |
-| 4 | Google Drive | File under `RootFolder/YYYY/MM/` |
-| 5 | SQL: `select * from invoice_documents order by created_at desc limit 1` | Row with `drive_file_id` populated |
-| 6 | Click **View** | Opens file in Drive (new tab) |
-| 7 | Click **Download** | File downloads locally |
-| 8 | Log in as supervisor | Can upload/list/download; no Delete button |
-| 9 | Log in as admin → Delete test file | Removed from Drive and database |
-
-If the banner says “Google OAuth secrets are not configured”, recheck Step 4. If it says “Root folder ID is missing”, recheck Step 5.
-
----
+1. Open **Finance → Invoices** as admin or supervisor. There should be no yellow banner.
+2. Upload a small PDF of type Purchase. It should appear in the library and in Drive under `Root/Purchase invoices/YYYY/`. A non-purchase type is filed as `Root/Other documents/YYYY/{title}`.
+3. Run `select * from invoice_documents order by created_at desc limit 1` and check that `drive_file_id` is set.
+4. **View** should open Drive in a new tab, and **Download** should save the file.
+5. As supervisor, upload/list/download should work with no Delete button. As admin, Delete removes the file from both Drive and the DB.
 
 ## 5. Alternative: service account (Workspace / Shared Drive)
 
-**Do not use a service account for personal Gmail My Drive.** Service accounts have no storage quota on personal Drive and uploads fail.
+**Do not use a service account with personal Gmail My Drive.** Service accounts have no storage quota there, so uploads fail. The page banner reports "Service accounts cannot upload to personal Gmail". A service account works only when the root folder is inside a **Shared Drive** and the service account is a member with Content manager/Editor rights. All Drive calls pass `supportsAllDrives=true`. Domain-wide delegation (impersonating a user) is **not** implemented.
 
-Use a service account only when:
+1. Google Cloud Console → **IAM & Admin → Service Accounts → Create**, then create and download a JSON key.
+2. Add the key's `client_email` to the Shared Drive (or its root folder) as an Editor.
+3. Set the secret with the **entire JSON on one line**. The function needs the `client_email` and `private_key` fields.
 
-- Files live in a **Shared Drive** (Team Drive), or
-- A Workspace admin has delegated domain-wide access, and
-- The target folder is shared with the service account email as **Editor**.
-
-### Setup outline
-
-1. Google Cloud Console → **IAM & Admin → Service Accounts → Create**.
-2. Create a JSON key; download the key file.
-3. Share the Drive root folder (or Shared Drive) with `client_email` from the JSON as **Editor**.
-4. In Supabase secrets, set:
-
-   ```
-   GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"...",...}
+   ```bash
+   supabase secrets set GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"...","private_key":"..."}' --project-ref YOUR_PROJECT_REF
    ```
 
-   Paste the **entire JSON on one line** (no line breaks).
+**Auth-mode precedence** (`resolveDriveAuthMode` in `_shared/googleDrive.ts`, shared by `invoice-documents` and `drive-files`):
 
-5. Do **not** set OAuth secrets if you want service-account mode — or set OAuth secrets **instead** (OAuth takes precedence when all three OAuth vars are present).
+1. If all three of `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REFRESH_TOKEN` are non-empty → `oauth`.
+2. Otherwise, if `GOOGLE_SERVICE_ACCOUNT_JSON` is non-empty → `service_account`.
+3. Otherwise → not configured.
 
-The edge function prefers OAuth when `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REFRESH_TOKEN` are all set.
-
----
+If only one or two OAuth vars are set, the function falls back to the service account silently, or reports not configured. To use service-account mode, unset all OAuth secrets. Access tokens are cached for about 50 minutes per mode.
 
 ## 6. Roles and permissions
 
 | Action | Admin | Supervisor |
 |--------|-------|------------|
-| Open Invoices page | Yes | Yes |
-| Upload documents | Yes | Yes |
-| List / filter library | Yes | Yes |
-| View (Drive link) | Yes | Yes |
-| Download | Yes | Yes |
+| Open page, upload, list, view, download | Yes | Yes |
 | Delete (Drive + DB) | Yes | No |
 | Settings → Integrations | Yes | No |
 
-Enforcement:
-
-- Page access: `check_page_access('invoices')` in `js/invoices.js` and edge function.
-- RLS on `invoice_documents`: SELECT/INSERT for `is_supervisor_or_admin()`; DELETE for `is_admin()` only.
-- Delete action in edge function additionally checks `auth.role === 'admin'`.
-
----
+Enforcement happens in three places. `check_page_access('invoices')` runs in both `js/invoices.js` and the edge function. RLS on `invoice_documents` allows SELECT/INSERT for `is_supervisor_or_admin()` and DELETE for `is_admin()`. The edge function's delete action also requires `role === 'admin'`.
 
 ## 7. How it works at runtime
 
-### Upload form fields
+**Upload fields:** document type (required, a `document_categories.name`), date (required, `YYYY-MM-DD`, which picks the year folder for vault files), file (required), and the optional vendor ("From / party"), title, amount, and notes. For any type other than purchase, the title is the Drive file name (the uploaded name is used when the title is blank).
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| Invoice date | Yes | `YYYY-MM-DD`; drives year folder placement |
-| File | Yes | PDF, JPEG, PNG, WebP; 1 byte – 15 MB |
-| Vendor | No | Free text |
-| Title | No | Free text |
-| Amount | No | Numeric |
-| Notes | No | Free text |
-
-### Drive folder layout
+**Drive layout.** Folders are created on first use, and their IDs are cached in `drive_folder_cache`. There are no month folders.
 
 ```
-Root folder (from Settings)
-├── Billing invoices/
-│   └── 2026/
-├── Letters/
-│   └── 2026/
-├── Purchase invoices/
-│   └── 2026/
-├── Other documents/
-│   ├── License / permit/
-│   │   └── 2026/
-│   └── Insurance/
-│       └── 2026/
-└── Staff/
-    └── Ramesh Kumar · A1B2/
-        ├── Photo.jpg
-        ├── Aadhaar.pdf
-        └── Photo (letterhead).pdf
+Root (Settings)
+├── Purchase invoices/YYYY/{file}         ← vault, type "purchase"
+├── Other documents/YYYY/{given name}     ← vault, any other type
+├── Billing invoices/YYYY/{invoice name}  ← drive-files (sales_invoice)
+├── Letters/{letter name}                 ← drive-files (letter); no year folder
+└── Staff/<Name · ID4>/                   ← drive-files (photo ≤ 2 MB, Aadhaar ≤ 10 MB)
 ```
 
-New uploads use this layout. Existing vault files stay at their previous Drive IDs (download still works). Folders are created automatically on first upload.
+Files uploaded before this layout keep their old Drive IDs, and Download still works for them. The `document_categories.folder_layout` column (`year_month` / `year`) exists in the DB, but the current edge code ignores it and always uses the layout above.
 
-### Library filtering
+**Library:** the period filter offers **This year** (default), **Last year**, and **All time**, plus a type filter. It queries Postgres and never lists Drive. Results are grouped by `document_categories` order, collapsed until opened, and a search box filters that loaded list in the browser.
 
-Default filter: **this year**. Also supports **last year** and **all time**. Metadata is queried from Postgres; files are not listed from Drive directly.
-
-### Status banner
-
-On page load, `js/invoices.js` calls `{ action: "status" }`. Upload is disabled until `configured: true`:
-
-- OAuth or service account secrets present **and**
-- Root folder ID set **and**
-- Integration enabled in Settings
-
-Supervisors see “Ask an admin to complete Google Drive setup”; admins see “See Settings → Integrations”.
-
----
+**Status banner:** on load the page calls `{action:"status"}`, and upload stays disabled until `configured: true`. That requires a resolved auth mode, a root folder ID, and the integration enabled. Supervisors see "Ask an admin to complete Google Drive setup". Admins are pointed to Settings → Integrations.
 
 ## 8. Edge function API
 
-**URL:** `{SUPABASE_URL}/functions/v1/invoice-documents`
+`POST {SUPABASE_URL}/functions/v1/invoice-documents`. CORS is enabled. Send `Authorization: Bearer {JWT}` and `apikey: {ANON_KEY}` on every call.
 
-**CORS:** Enabled for browser calls.
+**Upload** (`multipart/form-data`): `file` (required), `invoiceDate` (required, `YYYY-MM-DD`), `category` (default `purchase`; must exist in `document_categories`), and optional `vendor`, `title`, `amount`, `notes`. Returns `{ ok: true, document: {...} }`.
 
-### POST — Upload (multipart)
+**JSON actions:**
 
-**Headers:** `Authorization: Bearer {JWT}`, `apikey: {ANON_KEY}`
+| Body | Result |
+|------|--------|
+| `{"action":"status"}` | `{ configured, authMode, hasOAuth, hasServiceAccount, rootFolderId, settingsEnabled, authOk, authError }`. A failed user auth is reported in `authOk`/`authError` and does not return an error status. |
+| `{"action":"download","id":"<uuid>"}` | File bytes with `Content-Disposition: attachment` |
+| `{"action":"delete","id":"<uuid>"}` | Admin only. Deletes the Drive file, then the row → `{ ok: true }` |
 
-**Body:** `multipart/form-data`
+Errors come back as `{ error }` with status 400 (validation/unknown action), 403 (`Invalid session`/`Access denied`/`Admin only`), 404 (`Document not found`), or 500.
 
-| Field | Type | Required |
-|-------|------|----------|
-| file | File | Yes |
-| invoiceDate | string | Yes (`YYYY-MM-DD`) |
-| vendor | string | No |
-| title | string | No |
-| amount | string/number | No |
-| notes | string | No |
-
-**Success:** `{ ok: true, document: { id, invoice_date, ... } }`
-
-### POST — JSON actions
-
-**Headers:** `Authorization: Bearer {JWT}`, `Content-Type: application/json`, `apikey: {ANON_KEY}`
-
-#### `{ "action": "status" }`
-
-Returns configuration state (does not require full auth for the config part, but reports `authOk` / `authError`):
-
-```json
-{
-  "configured": true,
-  "authMode": "oauth",
-  "hasOAuth": true,
-  "hasServiceAccount": false,
-  "rootFolderId": "1abc...",
-  "settingsEnabled": true,
-  "authOk": true,
-  "authError": null
-}
-```
-
-#### `{ "action": "download", "id": "uuid" }`
-
-Returns file bytes with `Content-Disposition: attachment`.
-
-#### `{ "action": "delete", "id": "uuid" }`
-
-Admin only. Deletes Drive file then DB row. Returns `{ ok: true }`.
-
-### Error responses
-
-JSON body `{ error: "message" }` with HTTP status 400, 403, 404, or 500.
-
----
+`drive-files` (used by `js/driveFiles.js`) follows the same pattern with a `kind` of `sales_invoice`, `letter`, `staff_photo`, or `staff_aadhaar`. Its actions are `status`, `archive`, `download`, and `delete`, and page access is checked against `billing`, `letterhead`, or `staff` respectively.
 
 ## 9. Database schema
 
-Table: `public.invoice_documents`
+`public.invoice_documents` columns: `id`, `invoice_date`, `year`, `month`, `category` (default `'purchase'`), `title`, `vendor`, `amount numeric(14,2)`, `file_name` (sanitized), `mime_type`, `file_size`, `drive_file_id`, `drive_folder_id` (the leaf folder: the year folder in the layout above), `drive_web_view_link`, `notes`, `uploaded_by → auth.users`, `created_at`. `dsr_petrol.invoice_document_id` and `dsr_diesel.invoice_document_id` may link a receipt day to a purchase PDF (`on delete set null`).
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| invoice_date | date | Supplier invoice date |
-| year | smallint | Derived from date |
-| month | smallint | 1–12 |
-| title | text | Optional description |
-| vendor | text | Supplier name |
-| amount | numeric(14,2) | Optional amount |
-| file_name | text | Sanitized original filename |
-| mime_type | text | e.g. `application/pdf` |
-| file_size | bigint | Bytes |
-| drive_file_id | text | Google Drive file ID |
-| drive_folder_id | text | Target Drive folder ID (month folder for purchase; year folder for other types) |
-| drive_web_view_link | text | Optional view URL |
-| notes | text | Optional |
-| uploaded_by | uuid | FK → auth.users |
-| created_at | timestamptz | Upload time |
-
-**RLS**
-
-- SELECT, INSERT: authenticated users where `is_supervisor_or_admin()`
-- DELETE: `is_admin()` only
-- Edge function INSERT uses service role (bypasses RLS)
-
-**Indexes:** `invoice_date desc`, `(year desc, month desc)`
-
-Full reference: [Data Tables → invoice_documents](DATA_TABLES.md#invoice_documents).
-
----
+Indexes: `invoice_date desc`, `(year desc, month desc)`, `category`, and a partial `invoice_date desc where category = 'purchase'` used by reports and P&L. RLS is described in [§6](#6-roles-and-permissions). The edge function inserts with the service role. Full reference: [DATA_TABLES.md → invoice_documents](DATA_TABLES.md#invoice_documents).
 
 ## 10. Release checklist
 
-When shipping invoice-document changes to production:
+Follow [OPERATIONS.md → Release](OPERATIONS.md#3-release-to-production), plus:
 
-| Step | Action | Environment |
-|------|--------|-------------|
-| 1 | Apply DB migration if new | Staging, then prod (`./scripts/db.sh migrate --apply`) |
-| 2 | Deploy edge function if changed | Staging, then prod |
-| 3 | Confirm Supabase secrets set | Staging, then prod |
-| 4 | Enable integration + root folder in Settings | Staging, then prod |
-| 5 | Push frontend to `staging`; test upload/download/delete | Staging |
-| 6 | Merge to `main` | Prod |
-| 7 | Smoke test on prod Invoices page | Prod |
-
-GitHub Actions deploys **static frontend only**. If you forget step 2, uploads fail even after a successful site deploy.
-
----
+1. Deploy `invoice-documents` (and `drive-files` if it changed) **before or with** the frontend. CI does this when `supabase/functions/**` changes. If the site ships first, uploads fail.
+2. Confirm the Supabase secrets, and that the integration and root folder are set in Settings.
+3. On `/staging/`, test upload, download, and delete. Then smoke-test the live Invoices page.
 
 ## 11. Troubleshooting
 
-### Banner: “Google OAuth secrets are not configured on the server”
-
-- Set all three: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN` in Supabase Edge Function secrets.
-- Confirm you deployed `invoice-documents` to the **same** Supabase project the app’s `js/env.js` points to.
-
-### Banner: “Service accounts cannot upload to personal Gmail”
-
-- You have `GOOGLE_SERVICE_ACCOUNT_JSON` set but not OAuth. Add OAuth secrets (recommended) or switch to Shared Drive + service account (see [§5](#5-alternative-service-account-workspace--shared-drive)).
-
-### Banner: “Root folder ID is missing in Settings → Integrations”
-
-- Admin must enable integration and paste folder ID in Settings → Integrations.
-
-### Upload fails: “Google Drive integration is disabled in Settings”
-
-- Enable the checkbox in Settings → Integrations and save.
-
-### Upload fails: “Drive upload error” / 403 / 404
-
-- Refresh token Gmail must **own** or have **edit access** to the root folder.
-- Confirm Drive API is enabled in Google Cloud Console.
-- If OAuth app is in Testing mode, the authorizing user must be listed under **Test users**.
-
-### Upload fails: “Invalid session” / 403 Access denied
-
-- Log out and log in again.
-- User must be provisioned in `public.users` as admin or supervisor.
-- User must have access to page `invoices` via `check_page_access`.
-
-### Status works but upload fails with token error
-
-- Refresh token may be revoked. Re-run OAuth Playground (Step 3.5) and update `GOOGLE_OAUTH_REFRESH_TOKEN`.
-- Client secret rotated in Google Cloud — update `GOOGLE_OAUTH_CLIENT_SECRET`.
-
-### Edge function not found (404)
-
-- Deploy: `supabase functions deploy invoice-documents --project-ref ...`
-
-### Library empty but upload succeeded
-
-- Check date filter on Invoices page (default: this month).
-- Query: `select * from invoice_documents where invoice_date >= current_date - interval '30 days';`
-
-### View link does not open
-
-- Upload sets `anyone` reader permission; if org policy blocks public sharing, View may fail — Download still works via edge function.
-
-### Staging works, prod does not (or vice versa)
-
-- Each Supabase project needs its **own** function deploy and secrets.
-- Each environment’s Settings → Integrations may have different folder IDs.
-
----
+| Symptom | Fix |
+|---------|-----|
+| Banner "Google OAuth secrets are not configured on the server" | Set **all three** OAuth secrets (or the service account JSON) on the **same** project `js/env.js` points to. Check that the function is deployed there. |
+| Banner "Service accounts cannot upload to personal Gmail" | Only `GOOGLE_SERVICE_ACCOUNT_JSON` resolved. Add the OAuth secrets, or move the root to a Shared Drive ([§5](#5-alternative-service-account-workspace--shared-drive)). |
+| "Root folder ID is missing" / "integration is disabled in Settings" | Admin: Settings → Integrations → tick enable, paste the ID, save (allow about 30 s). |
+| `Drive upload error` / `Drive list error` / 403 / 404 from Drive | The token's Gmail must own or be able to edit the root folder. The Drive API must be enabled. In Testing mode the account must be a Test user. If someone deleted or moved a folder in Drive, clear the stale IDs with `delete from drive_folder_cache;`. |
+| `Invalid session` / `Access denied` (403) | Log out and back in. The user must be admin or supervisor in `public.users` and allowed by `check_page_access('invoices')`. |
+| Status OK but upload fails with `Google OAuth token error` / `unauthorized_client` | The refresh token was revoked, or the client and token don't match (Playground used without own credentials, or secret rotated). Regenerate all three ([§3.4](#34-create-oauth-client-credentials)–[3.5](#35-obtain-a-refresh-token-oauth-playground)). See [SECRETS.md → Rotation recipes](SECRETS.md#rotation-recipes). |
+| Edge function 404 | Deploy `invoice-documents` to that project ref. |
+| Library empty after a successful upload | Check the period filter (default This year) and the type filter. Run `select * from invoice_documents order by created_at desc limit 5;`. |
+| View won't open | View and Download both go through the function. A public Drive link is not used. |
+| Works on staging but not prod (or the reverse) | Each project needs its own function deploy and secrets. Folder IDs can differ per environment. |
 
 ## 12. Security and privacy
 
-- **Google credentials** never leave Supabase Edge Function secrets; the browser only sends the user JWT.
-- **Uploaded files** get Drive permission `type: anyone, role: reader` so the web view link works. Anyone with the link can view the file. For highly sensitive invoices, consider org policies or Shared Drive with stricter sharing.
-- **RLS** limits database metadata to provisioned staff; anonymous users cannot list `invoice_documents`.
-- **Delete** is admin-only in both RLS and edge function.
-- **File type and size** are validated server-side (not only in the browser).
-
----
+- The browser sends only the user JWT. Google credentials stay in Edge Function secrets.
+- Uploaded files are **not** shared as anyone-with-the-link. View and Download both require a signed-in supervisor or admin; the function reads the bytes with the Drive token. Staff photos are the exception and stay public so the image can load in the browser. Opening Vault or Reports removes any leftover file-level anyone permission on documents already in Drive.
+- RLS hides metadata from anonymous and unprovisioned users. Delete is admin-only in both RLS and the function. File type and size are validated server-side.
 
 ## 13. Maintenance
 
-### Refresh token rotation
-
-Google refresh tokens for OAuth Playground clients typically do not expire unless:
-
-- User revokes app access in [Google Account → Security → Third-party access](https://myaccount.google.com/permissions)
-- OAuth client secret is regenerated and old tokens invalidated
-- Too many refresh tokens issued for the same client/user (rare for a single-server app)
-
-If uploads start failing with OAuth token errors, generate a new refresh token (Step 3.5) and update the Supabase secret.
-
-### Changing the root folder
-
-1. Create new folder in Drive; copy new ID.
-2. Update Settings → Integrations.
-3. Existing files remain in the old folder tree; new uploads go to the new root. Migrate old files manually in Drive if needed.
-
-### Changing Gmail account
-
-1. Create new OAuth credentials or reuse client with new Playground authorization.
-2. Update all three OAuth secrets.
-3. Share or move root folder to the new account.
-4. Old files remain under the previous account’s Drive.
-
-### Edge function updates
-
-After editing Drive edge functions, either:
-
-- Push to `main` / `staging` (Actions deploys when `supabase/functions/**` changes), or
-- Deploy manually:
-
-```bash
-supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
-supabase functions deploy drive-files --project-ref YOUR_PROJECT_REF
-```
-
-Repeat for each Supabase project (staging and prod).
----
+- **Refresh token:** it doesn't expire unless the user revokes access ([Google Account → Third-party access](https://myaccount.google.com/permissions)), the client secret is regenerated, or too many tokens are issued for that client and user. Fix it with [§3.5](#35-obtain-a-refresh-token-oauth-playground) and update the secret.
+- **Change the root folder:** create the new folder and update Settings. Existing files stay in the old tree, so move them by hand if needed. The folder cache is keyed by root ID, so no cleanup is required.
+- **Change the Gmail account:** re-authorize in the Playground (new or same client), update all three secrets, and share or move the root folder to the new account. Old files stay in the previous account's Drive.
+- **Edge function changes:** push to `main` or `staging` (CI), or deploy by hand — [ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions).
 
 ## 14. Source files reference
 
 | File | Purpose |
 |------|---------|
-| `invoices.html` | Upload + library UI |
-| `js/invoices.js` | Client logic: status, upload, list, download, delete |
-| `settings.html` | Integrations panel (short OAuth steps in UI) |
-| `js/settings.js` | Saves `integrations.googleDrive` to pump_settings |
-| `js/appConfig.js` | Default `integrations.googleDrive` |
-| `supabase/functions/invoice-documents/index.ts` | Vault documents ↔ Google Drive |
-| `supabase/functions/drive-files/index.ts` | Sales invoices, letters, staff photos/Aadhaar ↔ Google Drive |
-| `supabase/functions/_shared/archivePdf.ts` | Print-style letterhead PDFs for billing, letters, and staff files |
-| `supabase/functions/_shared/googleDrive.ts` | Shared Drive auth, folders, upload |
-| `js/driveFiles.js` | Browser client for `drive-files` |
-| `supabase/migrations/20260619120000_invoice_documents_google_drive.sql` | Table, RLS, page access |
-| `sw.js` | Caches `invoices.html` and `js/invoices.js` |
-
----
-
-## Related documentation
-
-| Document | Description |
-|----------|-------------|
-| [Development guide](DEVELOPMENT.md) | Local setup, deployment, database scripts |
-| [Architecture](ARCHITECTURE.md) | Project structure, edge functions overview |
-| [Data Tables](DATA_TABLES.md) | `invoice_documents`, `pump_settings.integrations` |
-| [Flows](FLOWS.md) | Supplier invoice user flow |
-| [scripts/README.md](../scripts/README.md) | Database migration commands |
+| `invoices.html`, `js/invoices.js` | Upload + library UI; status, upload, list, download, delete |
+| `settings.html`, `js/settings.js`, `js/appConfig.js` | Integrations panel; saves and defaults `integrations.googleDrive` |
+| `supabase/functions/invoice-documents/index.ts` | Vault documents ↔ Drive |
+| `supabase/functions/drive-files/index.ts`, `js/driveFiles.js` | Sales invoices, letters, staff photos/Aadhaar ↔ Drive |
+| `supabase/functions/_shared/googleDrive.ts` | Auth-mode resolution, tokens, folder tree and cache, upload/download/delete |
+| `supabase/functions/_shared/archivePdf.ts` | Letterhead-style PDFs for billing, letters, staff files |
+| `supabase/migrations/20260619120000_invoice_documents_google_drive.sql` (+ `2026072*` category migrations) | Table, RLS, page access, document types |

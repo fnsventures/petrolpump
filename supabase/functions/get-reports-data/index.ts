@@ -3,6 +3,7 @@
 // This reduces latency by ~60-75% compared to multiple parallel API calls
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { fetchAll, LOOKUP_ROW_LIMIT } from "../_shared/pageQuery.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,7 +79,7 @@ async function fetchLatestReceiptsBefore(supabase: any, startDate: string, recei
   const results = await Promise.all(
     RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
       supabase
-        .from("dsr")
+        .from("dsr_cost")
         .select(DSR_SELECT_RECEIPT)
         .eq("product", product)
         .gte("date", receiptStart)
@@ -103,12 +104,15 @@ async function fetchLatestReceiptsBefore(supabase: any, startDate: string, recei
 async function fetchDsrBundle(supabase: any, startDate: string, endDate: string, receiptStart: string) {
   if (receiptStart < startDate) {
     const [rangeResult, receiptResult] = await Promise.all([
-      supabase
-        .from("dsr")
-        .select(DSR_SELECT_FULL)
-        .gte("date", startDate)
-        .lte("date", endDate)
-        .order("date", { ascending: true }),
+      fetchAll(() =>
+        supabase
+          .from("dsr_cost")
+          .select(DSR_SELECT_FULL)
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true })
+          .order("product", { ascending: true })
+      ),
       fetchLatestReceiptsBefore(supabase, startDate, receiptStart),
     ]);
 
@@ -126,12 +130,15 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
     };
   }
 
-  const { data, error } = await supabase
-    .from("dsr")
-    .select(DSR_SELECT_FULL)
-    .gte("date", receiptStart)
-    .lte("date", endDate)
-    .order("date", { ascending: true });
+  const { data, error } = await fetchAll(() =>
+    supabase
+      .from("dsr_cost")
+      .select(DSR_SELECT_FULL)
+      .gte("date", receiptStart)
+      .lte("date", endDate)
+      .order("date", { ascending: true })
+      .order("product", { ascending: true })
+  );
 
   if (error) {
     return { dsrRows: null, receiptRows: null, error: error.message as string };
@@ -188,26 +195,36 @@ Deno.serve(async (req: Request) => {
       await Promise.all([
         fetchDsrBundle(supabase, startDate, endDate, receiptStart),
         supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-        supabase
-          .from("expenses")
-          .select("date, category, amount, description")
-          .gte("date", startDate)
-          .lte("date", endDate),
-        supabase
-          .from("invoices")
-          .select(
-            "id, invoice_number, invoice_date, party_name, party_gstin, total_amount, cgst_total, sgst_total, igst_total, non_gst_total, nil_rate_total"
-          )
-          .gte("invoice_date", startDate)
-          .lte("invoice_date", endDate)
-          .order("invoice_date", { ascending: true }),
-        supabase.from("expense_categories").select("name, label").order("sort_order"),
-        supabase
-          .from("invoice_documents")
-          .select("id, invoice_date, vendor, amount, category, title, drive_web_view_link")
-          .eq("category", "purchase")
-          .gte("invoice_date", startDate)
-          .lte("invoice_date", endDate),
+        fetchAll(() =>
+          supabase
+            .from("expenses")
+            .select("date, category, amount, description")
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: true })
+        ),
+        fetchAll(() =>
+          supabase
+            .from("invoices")
+            .select(
+              "id, invoice_number, invoice_date, party_name, party_gstin, total_amount, cgst_total, sgst_total, igst_total, non_gst_total, nil_rate_total"
+            )
+            .gte("invoice_date", startDate)
+            .lte("invoice_date", endDate)
+            .order("invoice_date", { ascending: true })
+            .order("id", { ascending: true })
+        ),
+        supabase.from("expense_categories").select("name, label").order("sort_order").limit(LOOKUP_ROW_LIMIT),
+        fetchAll(() =>
+          supabase
+            .from("invoice_documents")
+            .select("id, invoice_date, vendor, amount, category, title, drive_web_view_link")
+            .eq("category", "purchase")
+            .gte("invoice_date", startDate)
+            .lte("invoice_date", endDate)
+            .order("invoice_date", { ascending: true })
+            .order("id", { ascending: true })
+        ),
       ]);
 
     let invoiceItems: unknown[] | null = [];
@@ -223,10 +240,13 @@ Deno.serve(async (req: Request) => {
       }
       const chunkResults = await Promise.all(
         chunks.map((chunk) =>
-          supabase
-            .from("invoice_items")
-            .select("invoice_id, gst_percent, amount")
-            .in("invoice_id", chunk)
+          fetchAll(() =>
+            supabase
+              .from("invoice_items")
+              .select("invoice_id, gst_percent, amount")
+              .in("invoice_id", chunk)
+              .order("invoice_id", { ascending: true })
+          )
         )
       );
       const merged: unknown[] = [];

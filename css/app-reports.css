@@ -792,7 +792,7 @@ body.reports-page main.settings-layout.page-layout-wide {
 }
 
 .report-note.warning {
-  color: var(--color-warning, #d97706);
+  color: var(--color-warning, #b45309);
 }
 
 .report-profit-guide {

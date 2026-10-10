@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -106,7 +106,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      const { error } = await window.supabaseClient.from("expenses").insert(payload);
+      // Same id while the form is unchanged; a retried insert hits the unique index instead of duplicating.
+      payload.client_request_id = formRequestId(form, payload);
+      let { error } = await window.supabaseClient.from("expenses").insert(payload);
+      if (error?.code === "23505" && /client_request_id/.test(`${error.message} ${error.details || ""}`)) {
+        error = null; // the first attempt was saved; the response was lost
+      }
+      if (!error) clearFormRequestId(form);
 
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -147,7 +153,8 @@ async function loadAndFillCategorySelect() {
     .from("expense_categories")
     .select("name, label")
     .order("sort_order", { ascending: true })
-    .order("label", { ascending: true });
+    .order("label", { ascending: true })
+    .limit(LOOKUP_ROW_LIMIT);
 
   CATEGORY_LABEL_MAP = {};
   const categories = [];
@@ -354,12 +361,16 @@ async function loadExpenses(reset = false) {
     }
 
     if (reset && totalRow && totalValue) {
-      const { data: sumData } = await applyNonSalaryExpenseFilter(
-        supabaseClient
-          .from("expenses")
-          .select("amount")
-          .gte("date", start)
-          .lte("date", end)
+      const { data: sumData } = await fetchAllRows(() =>
+        applyNonSalaryExpenseFilter(
+          supabaseClient
+            .from("expenses")
+            .select("id, amount")
+            .gte("date", start)
+            .lte("date", end)
+            .order("date", { ascending: true })
+            .order("id", { ascending: true })
+        )
       );
       const total = (sumData || []).reduce((s, r) => s + Number(r.amount ?? 0), 0);
       totalValue.textContent = formatCurrency(total);
@@ -383,7 +394,7 @@ async function loadExpenses(reset = false) {
 async function deleteExpense(btn) {
   const category = btn.dataset.category || "";
   if (category === "salary") {
-    alert("Salary expenses are linked to salary payments. Delete the payment from the Salary page instead.");
+    AppError.showToast("Salary expenses are linked to salary payments. Delete the payment from the Salary page instead.", "warning");
     return;
   }
 

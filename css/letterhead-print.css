@@ -74,16 +74,27 @@ body.letterhead-print-body {
 
 .invoice-logo-wrap {
   flex: 0 0 auto;
-  line-height: 0;
-}
-
-.invoice-bpcl-logo {
-  display: block;
   width: var(--station-logo-size-print);
   height: var(--station-logo-size-print);
+  line-height: 0;
+  position: relative;
+}
+
+/* Paint the 512px mark at full resolution, then scale it to 28mm.
+   512 × 0.206692913px = 28mm at 96 CSS px/in, so the printed size stays 28mm. */
+.invoice-bpcl-logo {
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 512px;
+  height: 512px;
   max-width: none;
   max-height: none;
   object-fit: contain;
+  transform: scale(0.206692913);
+  transform-origin: top left;
+  image-rendering: high-quality;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }

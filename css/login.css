@@ -201,11 +201,11 @@ body.login-page main.login-card {
 }
 
 .login-page .login-field input::placeholder {
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .login-page .login-field input:hover {
-  border-color: #94a3b8;
+  border-color: #64748b;
   background: #fff;
 }
 
@@ -276,7 +276,7 @@ body.login-page main.login-card {
 }
 
 .login-page .app-footer--minimal .footer-copyright {
-  color: #94a3b8;
+  color: #64748b;
   font-weight: 500;
   font-size: var(--text-xs);
 }

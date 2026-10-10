@@ -307,25 +307,41 @@ export async function ensureFolderPath(token: string, rootFolderId: string, segm
   return parentId;
 }
 
+export function fileExtension(name: string): string {
+  const base = String(name || "").split(/[/\\]/).pop() || "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return "";
+  const ext = base.slice(dot).toLowerCase();
+  return /^\.[a-z0-9]{1,8}$/.test(ext) ? ext : "";
+}
+
+/** Title the user typed, keeping the uploaded file's extension. */
+export function otherDocumentFileName(title: string, originalName: string): string {
+  const ext = fileExtension(originalName);
+  const given = String(title || "").trim();
+  if (!given) return sanitizeFileName(originalName, "document");
+  const named = ext && !given.toLowerCase().endsWith(ext) ? `${given}${ext}` : given;
+  return sanitizeFileName(named, "document");
+}
+
 export function vaultDocumentFolderSegments(
   categoryName: string,
-  categoryLabel: string,
+  _categoryLabel: string,
   year: number,
   _month: number
 ): string[] {
   if (categoryName === "purchase") {
     return [DRIVE_TREE.purchaseInvoices, String(year)];
   }
-  const label = (categoryLabel || "Other").trim() || "Other";
-  return [DRIVE_TREE.otherDocuments, label, String(year)];
+  return [DRIVE_TREE.otherDocuments, String(year)];
 }
 
 export function salesInvoiceFolderSegments(year: number, _month: number): string[] {
   return [DRIVE_TREE.billing, String(year)];
 }
 
-export function letterFolderSegments(year: number, _month: number): string[] {
-  return [DRIVE_TREE.letters, String(year)];
+export function letterFolderSegments(): string[] {
+  return [DRIVE_TREE.letters];
 }
 
 export function staffRecordFolderSegments(staffFolderName: string): string[] {
@@ -382,7 +398,9 @@ export async function uploadToDrive(
   if (!res.ok) throw new Error(`Drive upload error: ${await res.text()}`);
   const data = await res.json();
 
-  if (options.makePublic !== false) {
+  // Private unless the caller opts in. Staff photos pass makePublic: true so the
+  // image URL can load in the browser. Vault and purchase uploads do not.
+  if (options.makePublic === true) {
     driveFetch(`/files/${data.id}/permissions`, token, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -391,6 +409,41 @@ export async function uploadToDrive(
   }
 
   return { fileId: data.id, webViewLink: data.webViewLink ?? null };
+}
+
+/** Remove a file-level "anyone with the link" permission. Inherited folder shares are left in place. */
+export async function revokeAnyonePermission(
+  token: string,
+  fileId: string
+): Promise<{ removed: number; stillPublic: boolean }> {
+  if (!fileId) return { removed: 0, stillPublic: false };
+  const list = await driveFetch(
+    `/files/${encodeURIComponent(fileId)}/permissions?fields=permissions(id,type,permissionDetails)`,
+    token
+  );
+  if (list.status === 404) return { removed: 0, stillPublic: false };
+  if (!list.ok) throw new Error(`Drive permissions error: ${await list.text()}`);
+  const data = await list.json();
+  let removed = 0;
+  let stillPublic = false;
+  for (const perm of data.permissions || []) {
+    if (perm?.type !== "anyone" || !perm.id) continue;
+    const details = Array.isArray(perm.permissionDetails) ? perm.permissionDetails : [];
+    const inherited = details.length > 0 && details.every((detail: { inherited?: boolean }) => detail.inherited === true);
+    if (inherited) {
+      stillPublic = true;
+      continue;
+    }
+    const del = await driveFetch(
+      `/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(perm.id)}`,
+      token,
+      { method: "DELETE" }
+    );
+    if (del.status === 404) continue;
+    if (!del.ok) throw new Error(`Drive permission delete error: ${await del.text()}`);
+    removed += 1;
+  }
+  return { removed, stillPublic };
 }
 
 export async function downloadFromDrive(

@@ -3,7 +3,7 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global window.supabaseClient, AppError, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger */
+/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
@@ -273,27 +273,6 @@
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  async function fetchLastDsrRate(product) {
-    const table = product === "diesel" ? "dsr_diesel" : "dsr_petrol";
-    const rateField = product === "diesel" ? "diesel_rate" : "petrol_rate";
-    try {
-      const { data, error } = await window.supabaseClient
-        .from(table)
-        .select(rateField)
-        .not(rateField, "is", null)
-        .order("date", { ascending: false })
-        .limit(15);
-      if (error) throw error;
-      for (const row of data || []) {
-        const n = parseRateValue(row[rateField]);
-        if (n != null) return n;
-      }
-    } catch (err) {
-      AppError.report(err, { context: "MeterShiftReading.fetchLastDsrRate", product });
-    }
-    return null;
-  }
-
   /**
    * Resolve selling rates without touching the DOM (safe under concurrent loadShift).
    * Prefer same-day daily rates; otherwise last entered selling rate.
@@ -307,15 +286,15 @@
     const needDiesel = diesel == null;
     if (needPetrol || needDiesel) {
       const [lastPetrol, lastDiesel] = await Promise.all([
-        needPetrol ? fetchLastDsrRate("petrol") : Promise.resolve(null),
-        needDiesel ? fetchLastDsrRate("diesel") : Promise.resolve(null),
+        needPetrol ? DsrQueries.fetchLastDsrRate("petrol") : Promise.resolve(null),
+        needDiesel ? DsrQueries.fetchLastDsrRate("diesel") : Promise.resolve(null),
       ]);
-      if (needPetrol && lastPetrol != null) {
-        petrol = lastPetrol;
+      if (needPetrol && lastPetrol) {
+        petrol = lastPetrol.rate;
         fromFallback = true;
       }
-      if (needDiesel && lastDiesel != null) {
-        diesel = lastDiesel;
+      if (needDiesel && lastDiesel) {
+        diesel = lastDiesel.rate;
         fromFallback = true;
       }
     }
@@ -1165,12 +1144,20 @@
           const openingClass = !isAdmin
             ? "shift-opening meter-reading shift-opening--locked"
             : "shift-opening meter-reading";
+          const staffId = `shift-staff-${product}-p${slot.pump_no}-n${slot.nozzle_no}`;
+          const openingId = `shift-open-${product}-p${slot.pump_no}-n${slot.nozzle_no}`;
+          const closingId = `shift-close-${product}-p${slot.pump_no}-n${slot.nozzle_no}`;
+          const saleId = `shift-sale-${product}-p${slot.pump_no}-n${slot.nozzle_no}`;
+          const staffLabel = `Staff for ${PRODUCT_LABEL[product]} ${slot.label}`;
+          const openingLabel = `Opening for ${PRODUCT_LABEL[product]} ${slot.label}`;
+          const closingLabel = `Closing for ${PRODUCT_LABEL[product]} ${slot.label}`;
+          const saleLabel = `Sale litres for ${PRODUCT_LABEL[product]} ${slot.label}`;
           return `<tr data-product="${product}" data-pump="${slot.pump_no}" data-nozzle="${slot.nozzle_no}">
             <td class="shift-meter-label">${escapeHtml(slot.label)}</td>
-            <td><select class="shift-staff" aria-label="Staff for ${PRODUCT_LABEL[product]} ${slot.label}">${staffOptionsHtml(empId, saved?.employee_name)}</select></td>
-            <td><input type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" aria-label="Opening for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
-            <td><input type="text" inputmode="numeric" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" aria-label="Closing for ${PRODUCT_LABEL[product]} ${slot.label}" /></td>
-            <td><input type="text" readonly class="shift-sale calc-field" tabindex="-1" aria-label="Sale litres" /></td>
+            <td><label class="sr-only" for="${staffId}">${escapeHtml(staffLabel)}</label><select id="${staffId}" class="shift-staff">${staffOptionsHtml(empId, saved?.employee_name)}</select></td>
+            <td><label class="sr-only" for="${openingId}">${escapeHtml(openingLabel)}</label><input id="${openingId}" type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" /></td>
+            <td><label class="sr-only" for="${closingId}">${escapeHtml(closingLabel)}</label><input id="${closingId}" type="text" inputmode="numeric" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" /></td>
+            <td><label class="sr-only" for="${saleId}">${escapeHtml(saleLabel)}</label><input id="${saleId}" type="text" readonly class="shift-sale calc-field" tabindex="-1" /></td>
           </tr>`;
         })
         .join("");
@@ -1285,7 +1272,8 @@
         .from("meter_shift_readings")
         .select("product, pump_no, nozzle_no, closing_meter")
         .eq("reading_date", dateStr)
-        .eq("shift", "morning");
+        .eq("shift", "morning")
+        .limit(200);
       if (error) throw error;
       (data || []).forEach((r) => {
         offerOpening(map, nozzleKey(r.product, r.pump_no, r.nozzle_no), r.closing_meter);
@@ -1620,7 +1608,8 @@
           .from("meter_shift_readings")
           .select("product, pump_no, nozzle_no, closing_meter")
           .eq("reading_date", date)
-          .eq("shift", "afternoon");
+          .eq("shift", "afternoon")
+          .limit(200);
         if (aftErr) throw aftErr;
         const afternoonByKey = new Map();
         (afternoonRows || []).forEach((r) => {
@@ -2076,8 +2065,7 @@
     const overlay = el("shift-view-overlay");
     if (!overlay || overlay.getAttribute("aria-hidden") === "true") return;
     shiftViewGeneration += 1;
-    overlay.setAttribute("aria-hidden", "true");
-    document.body.classList.remove("modal-open");
+    AppDialog.hide(overlay);
     shiftViewCurrent = { date: "", shift: "" };
     if (shiftViewFocusReturn && typeof shiftViewFocusReturn.focus === "function") {
       try {
@@ -2107,9 +2095,7 @@
     if (subtitle) subtitle.textContent = "Read-only view of saved shift register";
     body.innerHTML = '<p class="muted">Loading…</p>';
 
-    overlay.setAttribute("aria-hidden", "false");
-    document.body.classList.add("modal-open");
-    el("shift-view-close")?.focus();
+    AppDialog.show(overlay, { focus: "#shift-view-close", onDismiss: closeShiftViewPopup });
 
     try {
       const [{ data, error }, lock] = await Promise.all([
@@ -2167,17 +2153,25 @@
 
     try {
       const [nozRes, cashRes] = await Promise.all([
-        supabaseClient
-          .from("meter_shift_readings")
-          .select("reading_date, shift, product, employee_id, opening_meter, closing_meter")
-          .gte("reading_date", start)
-          .lte("reading_date", end)
-          .order("reading_date", { ascending: false }),
-        supabaseClient
-          .from("meter_shift_cash")
-          .select("reading_date, shift, employee_id, cash_collected, phone_pay, credit_amount, expense_amount")
-          .gte("reading_date", start)
-          .lte("reading_date", end),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("meter_shift_readings")
+            .select("reading_date, shift, product, employee_id, opening_meter, closing_meter")
+            .gte("reading_date", start)
+            .lte("reading_date", end)
+            .order("reading_date", { ascending: false })
+            .order("shift", { ascending: true })
+            .order("product", { ascending: true })
+        ),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("meter_shift_cash")
+            .select("reading_date, shift, employee_id, cash_collected, phone_pay, credit_amount, expense_amount")
+            .gte("reading_date", start)
+            .lte("reading_date", end)
+            .order("reading_date", { ascending: true })
+            .order("shift", { ascending: true })
+        ),
       ]);
       if (historyGen !== loadGeneration) return;
       if (nozRes.error) throw nozRes.error;
@@ -2398,6 +2392,12 @@
     fillShiftSelect();
     applyUrlParams();
     bindEvents();
+    if (dateInput && typeof mountDateStepper === "function") {
+      mountDateStepper(dateInput, {
+        compact: true,
+        max: () => (typeof getLocalDateString === "function" ? getLocalDateString() : ""),
+      });
+    }
     if (typeof ShiftStaffLedger?.init === "function") ShiftStaffLedger.init();
     await loadStaff();
     initialized = true;

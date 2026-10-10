@@ -214,10 +214,13 @@
     if (!force && lopExclusionCacheKey === parsed.key && lopExclusionCacheValue) {
       return lopExclusionCacheValue;
     }
-    const { data, error } = await client
-      .from("salary_lop_exclusions")
-      .select("employee_id")
-      .eq("salary_month", `${parsed.key}-01`);
+    const { data, error } = await fetchAllRows(() =>
+      client
+        .from("salary_lop_exclusions")
+        .select("employee_id")
+        .eq("salary_month", `${parsed.key}-01`)
+        .order("employee_id", { ascending: true })
+    );
     if (error) {
       if (isMissingLopExclusionTable(error)) return { ids: new Set(), ready: false };
       const err = error;
@@ -330,19 +333,27 @@
     const start = `${parsed.key}-01`;
     const end = `${parsed.key}-${String(parsed.calendarDays).padStart(2, "0")}`;
     const fullSelect = "id, employee_id, date, status, shift, note, over_duty";
-    let response = await client
-      .from("employee_attendance")
-      .select(fullSelect)
-      .gte("date", start)
-      .lte("date", end);
+    let response = await fetchAllRows(() =>
+      client
+        .from("employee_attendance")
+        .select(fullSelect)
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: true })
+        .order("employee_id", { ascending: true })
+    );
     let overDutyColumnReady = true;
     if (response.error && isMissingOverDutyColumn(response.error)) {
       overDutyColumnReady = false;
-      response = await client
-        .from("employee_attendance")
-        .select("id, employee_id, date, status, shift, note")
-        .gte("date", start)
-        .lte("date", end);
+      response = await fetchAllRows(() =>
+        client
+          .from("employee_attendance")
+          .select("id, employee_id, date, status, shift, note")
+          .gte("date", start)
+          .lte("date", end)
+          .order("date", { ascending: true })
+          .order("employee_id", { ascending: true })
+      );
     }
     if (response.error) {
       const err = response.error;

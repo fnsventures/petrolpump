@@ -1,0 +1,85 @@
+name: PR checks
+
+# Fast gate on every PR into staging/main. Nothing here touches Supabase or secrets.
+
+on:
+  pull_request:
+    branches: [staging, main]
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read   # dorny/paths-filter lists PR files via the API
+
+jobs:
+  build:
+    name: Build site + JS syntax + doc links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: JS syntax
+        run: |
+          set -euo pipefail
+          git ls-files 'js/*.js' 'scripts/*.mjs' ':!js/vendor/**' | xargs -n1 node --check
+
+      - name: Build like deploy (no secrets)
+        run: |
+          set -euo pipefail
+          cp js/env.example.js js/env.js
+          npm run build:vendor
+          mkdir -p "$RUNNER_TEMP/site"
+          rsync -a --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs \
+            --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json \
+            ./ "$RUNNER_TEMP/site/"
+          npm run build:html -- "$RUNNER_TEMP/site"
+          npm run stamp -- "$RUNNER_TEMP/site"
+          npm run minify -- "$RUNNER_TEMP/site"
+
+      - name: Doc links
+        run: node scripts/check-doc-links.mjs
+
+  migrations:
+    name: Migration names + order
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check order against base branch
+        env:
+          BASE_REF: origin/${{ github.base_ref }}
+        run: bash scripts/check-migration-order.sh
+
+  schema-drift:
+    name: schema.sql matches migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            db:
+              - 'supabase/migrations/**'
+              - 'supabase/schema.sql'
+              - 'scripts/check-schema-drift.sh'
+
+      - name: Diff migrations vs schema.sql
+        if: steps.changes.outputs.db == 'true'
+        run: bash scripts/check-schema-drift.sh

@@ -1,487 +1,227 @@
-# Free-tier storage, indexing & lean schema plan
+# Storage, indexing & retention (Supabase free tier)
 
-Stay on **Supabase free** (500 MB database) for the long term without buying Pro — by combining:
+This is the plan for staying inside the Supabase free database (500 MB) for the life of the pump, and for what Google Drive keeps.
 
-1. **Retention** — hot window in Supabase; cold years on Drive  
-2. **Indexing** — only indexes that queries actually use  
-3. **Flat / lean schema** — one source of truth; avoid storing the same fact twice  
+The free limit counts the live database only: tables, indexes, and `audit_log`. It does not count Google Drive, and it does not count the separate staging project. Invoice PDFs already live on Drive. Avatars live in Supabase Storage, which has its own quota.
 
-This plan assumes **Bishnupriya Fuels** keeps using:
+Business rows (meter readings, credit, salary, expenses, invoices, day closing, customers, staff, settings) stay in Postgres. They are not deleted to save space. A restore drill on 2026-10-06 measured about 16 MB of data. The part that grows without a cap is `audit_log`, because every audited edit stores a full copy of the old row and the new row. That diary is kept for 6 months and then deleted.
 
-- Supabase Postgres for live operational data
-- Google Drive for supplier invoice PDFs ([INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md))
-- Monthly/ad-hoc DB dumps to Drive ([BACKUP.md](BACKUP.md))
+Drive is the long-term copy. The calendar year is 1 January through 31 December.
 
-> **Do first:** [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database) must already be green. Never archive, drop indexes, or strip columns without a verified Drive backup + staging dry-run.
+| When | What is saved | Where on Drive | What is deleted |
+|------|----------------|----------------|-----------------|
+| 1st of February–December, 08:30 IST | Only the month that just finished | `2026/2026-10/` on 1 November holds October | Nothing on Drive. On production, audit rows older than 6 months |
+| 1 January, 08:30 IST | December, then a full copy of the whole database | December in `2026/2026-12/`. Full copy in `Yearly/2026/` | After the full copy has uploaded, trash `2026-01` through `2026-12`. Those month files repeat what `Yearly/2026` already contains. Audit rows older than 6 months |
+| Any day, when you ask | One month, or the whole database | Month folder, or `Manual/<timestamp>/` | Nothing, unless you run the year-end script |
 
----
+> **Back up first.** [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database) must be green before you drop indexes or strip columns, and every such change needs a staging dry-run.
 
-## Goals
+## The seven rules
 
-| Goal | How |
-|------|-----|
-| Database ≤ ~500 MB | Hot window + archive + lean indexes + less audit bloat |
-| No unnecessary duplication | One SoT per fact; caches only where proven needed |
-| Indexes earn their keep | Measure with `pg_stat_user_indexes`; drop unused / redundant |
-| Reports still useful | Default UI = last 24–36 months; older years via restore/archive |
+1. **Stay inside the free database.** Sales, credit, salary, and the other books stay in Supabase. Only the change diary is thrown away, and only after 6 months. Drive holds a full copy at the end of each calendar year, so the live database does not have to be emptied to make room.
+2. **Delete audit logs after 6 months.** On the 1st, after that month’s Drive upload has succeeded, production deletes `audit_log` rows older than 6 months. The sales row itself stays.
+3. **On the 1st, back up only last month.** 1 November writes October’s activity and nothing else. Customers, staff, products, and settings are not in that file. They have no month. They remain in Supabase, and they are inside the yearly full copy.
+4. **At year end, one full backup, then remove the monthly files.** 1 January writes a full copy of production into `Yearly/2026` (the year that just ended). Only after that upload succeeds, the twelve month folders for 2026 are moved to Drive trash. Trash can be restored for about 30 days. `Yearly/2026` is kept. The next year’s month folders (`2027-01` onward) are kept until 1 January 2028.
+5. **On-demand scripts.** You can save one month, or the whole database, or close a finished year, without waiting for the 1st. Commands are below.
+6. **Staging stores no audit log.** Staging is the test copy. A switch (`runtime_flags.audit = off`) makes the audit trigger do nothing there. Every prod → staging sync also empties `audit_log` on staging, so a playground session does not fill staging’s own 500 MB.
+7. **This page is the procedure.** Recovery of a whole database is [RECOVERY.md](RECOVERY.md). Day-to-day commands are [OPERATIONS.md](OPERATIONS.md#4-backup-production-database).
 
-**Non-goals:** Replacing Supabase Auth / Edge / RLS; rewriting the whole DSR model; removing intentional accounting snapshots.
-
----
-
-## Reality for this app
-
-| Store | What grows | Counts toward 500 MB DB? |
-|-------|------------|--------------------------|
-| DSR, meters, shifts, day closing, credit, expenses, invoices | Rows over years | **Yes** |
-| Indexes on those tables | Often 30–50%+ of table size | **Yes** |
-| `audit_log` (`old_data` / `new_data` jsonb) | Full row copies on every audited write | **Yes — often the silent giant** |
-| `invoice_documents` | Metadata only (files on Drive) | Yes, but tiny |
-| `user-avatars`, `staff-photos` | Image bytes | **No** (Storage quota) |
-| Staging Supabase project | Full copy of data | Separate free project |
-| Full SQL backups on Drive | Dumps | **No** (Drive) |
-
-For one pump, transactional rows alone usually stay well under 500 MB for several years **if** blobs stay off Postgres, indexes stay lean, audit is capped, and old years are archived.
-
----
-
-## Phases overview
+## A full year, as folders
 
 ```
-Phase 0  Measure (size + indexes + duplication)   ← do now
-Phase 1  Prevention (files, staging, design rules) ← ongoing
-Phase 2  Hot-window policy                         ← decide now
-Phase 3  Index hygiene                             ← soon / with each migration
-Phase 4  Flatten / reduce duplication              ← staged; keep intentional caches
-Phase 5  Archive year N                            ← when DB ≥ ~70% or year 3+
-Phase 6  Escape hatch                              ← only if still tight
+Database Backups - Bishnupriya Fuels/
+  2026/
+    2026-01/          January only, written 1 February 2026
+    2026-02/          February only
+    …
+    2026-12/          December only, written 1 January 2027
+  2027/
+    2027-01/          January 2027 only, written 1 February 2027
+  Yearly/
+    2026/             whole database, written 1 January 2027
+    2025/             whole database, written 1 January 2026
+  Manual/
+    20261008-213045/  a full copy you asked for on 8 October 2026
 ```
 
-Phases 3–4 reduce growth **before** you need Phase 5. Do not wait for 350 MB to start index hygiene.
+On 1 January 2027 the job does three things, in this order:
 
----
+1. Write December 2026 into `2026/2026-12/`. If the full copy fails later, December is already on Drive.
+2. Write the whole database into `Yearly/2026/`.
+3. Trash `2026-01` … `2026-12`, including the December folder from step 1. `Yearly/2026` and `Manual/` stay. `2027` does not exist yet.
 
-## Source-of-truth map (know before you flatten)
+During 2027 the month folders accumulate again. They are removed on 1 January 2028, after `Yearly/2027` exists.
 
+## What a month file contains
+
+CSV files, gzipped, for rows whose business date falls in that month:
+
+| File | Which rows |
+|------|------------|
+| `dsr_petrol`, `dsr_diesel` | Meter readings (`date`) |
+| `meter_shift_readings`, `meter_shift_cash` | Shift register (`reading_date`) |
+| `day_closing` | Day closing (`date`) |
+| `expenses` | Expenses (`date`) |
+| `credit_entries` | Credit sales (`transaction_date`) |
+| `credit_payments` | Payments (`date`) |
+| `invoices`, `invoice_items` | Bills dated that month, and their lines |
+| `invoice_documents` | Supplier-invoice metadata (`invoice_date`). The PDF is already on Drive |
+| `employee_attendance` | Attendance (`date`) |
+| `salary_payments`, `salary_lop_exclusions` | Salary for that pay period (`salary_month`) |
+| `night_cash_collections` | Pickups that overlap the month |
+| `e20_testing_registers` and the water and quality lines | E20 register (`register_date`) |
+| `letterhead_letters` | Letters (`letter_date`) |
+| `audit_log` | Diary rows whose time falls in that month (IST) |
+| `month-manifest-*.txt` | Row counts |
+
+Customers, employees, products, users, and pump settings are not in the month file.
+
+## What a full file contains
+
+`Yearly/YYYY/` and `Manual/<timestamp>/` hold the same pair the restore guide describes: `prod-schema-*.sql.gz`, `prod-data-*.sql.gz`, and a manifest. One pair restores the station, including logins and customers. How to restore: [RECOVERY.md](RECOVERY.md).
+
+A month folder cannot rebuild the station by itself.
+
+## Audit log (production)
+
+Triggers write `audit_log` when someone changes an audited table. Admins can read it. The app cannot insert into it directly.
+
+Kept for **6 months**, measured from `performed_at`. On the 1st, after the Drive upload succeeds, `scripts/purge-audit-log.sh` deletes older rows in batches of 5,000. A failed upload does not delete the diary.
+
+Shift cash and phone pay are still logged. Updates that only refresh the cached credit and expense totals on `meter_shift_cash` are not, because those totals are copied from the ledger.
+
+Deleting rows makes the space reusable. The number Supabase shows for database size can stay high until a one-time `VACUUM FULL public.audit_log` in a quiet window. That lock also blocks writes to every audited table, so it is not part of the monthly job.
+
+Apply migration `20261008150000_audit_log_retention` before the purge can succeed. Until it is on production, the 1st still uploads the month file, and the purge step fails with a clear message.
+
+Preview without deleting:
+
+```bash
+./scripts/purge-audit-log.sh
 ```
-Shift meters ──apply_shift_aggregate_to_dsr──► dsr_petrol / dsr_diesel  (daily SoT)
-     ▲                                              │
-     └──────── sync_shift_meters_from_dsr ──────────┘  (prefill only)
 
-credit_entries / expenses ──triggers──► meter_shift_cash.credit/expense  (cache)
-credit_entries / credit_payments ──► credit_customers.amount_due / prepaid  (cache)
+Delete:
 
-Live ledgers + DSR ──save / sync──► day_closing snapshot columns  (accounting SoT once saved)
-meter_shift_cash cash/phone ──prefill only──► day_closing.night_cash / phone_pay
+```bash
+CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh
 ```
 
-| Layer | Source of truth | Allowed cache / copy |
-|-------|-----------------|----------------------|
-| Daily meters / rates / stock inputs | `dsr_petrol`, `dsr_diesel` | Shift rows for shift UX; `dsr` / `dsr_stock` **views** (not tables) |
-| Credit sales & payments | `credit_entries`, `credit_payments` | `credit_customers.amount_due`, `prepaid_balance`, `amount_settled` |
-| Shift short display | Ledger attributed to shift | `meter_shift_cash.credit_amount`, `expense_amount` |
-| Day closing accounting | **Saved** `day_closing` snapshot | Must stay immutable once certified/collected |
-| Stock reconciliation | Computed (`dsr_stock` / RPC) | **No** physical stock table (already correct) |
-| Invoice PDF bytes | Google Drive | DB = metadata only |
-| Station config | `pump_settings.config` (1 row) | OK |
+## Staging
 
----
+Staging is a second free project, used to try changes. It must not fill up with a diary of test edits.
 
-## Phase 0 — Measure and baseline (now)
+The audit trigger reads `public.runtime_flags`. Production has no `audit` row, so logging stays on. Staging has one row, `audit = off`. The trigger then returns without writing. Staff cannot change that table (RLS is on and there is no policy).
 
-### 0.1 Database and table size
+`./scripts/db.sh sync` copies production into staging, then runs the staging switch: it sets `audit = off` and empties `audit_log`, including the diary rows that arrived inside the copy.
+
+Run it once on the current staging database after the migration is applied there, and again any time you want to be sure:
+
+```bash
+./scripts/disable-staging-audit.sh
+CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh
+```
+
+The script reads `STAGING_DB_URL` only. It stops if that URL is the same as `PROD_DB_URL`.
+
+## Commands
+
+Google Drive variables (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_DRIVE_BACKUP_FOLDER_ID`) come from the GitHub **prod** environment for Actions, or from your shell for a laptop run. `PROD_DB_URL` can come from `scripts/db.env`. None of these commands write business rows.
+
+| I want… | Command |
+|---------|---------|
+| Last finished month, uploaded | `./scripts/backup-month-to-drive.sh` |
+| A chosen month, uploaded | `ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh` |
+| Whole database, uploaded under `Manual/` | `./scripts/backup-prod-to-drive.sh` |
+| Whole database, on this laptop only | `./scripts/db.sh backup` |
+| Close a finished year (full copy, then trash that year’s month folders) | `YEAR=2026 ./scripts/backup-year-to-drive.sh` |
+| See which month folders would be trashed | `./scripts/prune-drive-backups.sh` |
+| Trash month folders for years that already have `Yearly/YYYY` | `CONFIRM_PRUNE_DRIVE=yes ./scripts/prune-drive-backups.sh` |
+| See how many audit rows are older than 6 months | `./scripts/purge-audit-log.sh` |
+| Delete those audit rows on production | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
+| Turn staging audit off and empty its diary | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
+
+Actions → **Backup production database** → Run workflow, and choose `month`, `full`, or `year-end`. The scheduled run needs no choice: every 1st it saves the finished month and deletes old audit rows; on 1 January it also closes the year.
+
+`backup-year-to-drive.sh` refuses the current calendar year. In October 2026 you cannot close 2026, because November and December do not exist yet and the month folders are not redundant.
+
+## If the database later nears 350 MB
+
+Measure with the queries below. Then, in order: confirm the 1st-of-the-month audit purge is running, drop unused indexes, and only then consider moving a closed year out of Postgres. That last step is not part of this job. It needs its own script, a staging dry-run, and a check that credit balances and day closing still match.
+
+**Thresholds:** at **≥ 350 MB**, or if `audit_log` is in the top 3, do the purge check and the index review. At **≥ 450 MB**, do that before shipping any new heavy feature.
+
+## Measure (monthly, and after each migration)
 
 ```sql
 select pg_size_pretty(pg_database_size(current_database())) as db_size;
 
-select c.relname as table_name,
-       pg_size_pretty(pg_total_relation_size(c.oid)) as total_size,
-       pg_size_pretty(pg_relation_size(c.oid)) as table_only,
-       pg_size_pretty(pg_indexes_size(c.oid)) as indexes
-from pg_class c
-join pg_namespace n on n.oid = c.relnamespace
+-- Top tables: total / heap / indexes
+select c.relname, pg_size_pretty(pg_total_relation_size(c.oid)) total,
+       pg_size_pretty(pg_relation_size(c.oid)) table_only,
+       pg_size_pretty(pg_indexes_size(c.oid)) indexes,
+       round(100.0 * pg_indexes_size(c.oid) / nullif(pg_total_relation_size(c.oid), 0), 1) index_pct
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public' and c.relkind = 'r'
-order by pg_total_relation_size(c.oid) desc
-limit 25;
+order by pg_total_relation_size(c.oid) desc limit 25;
+
+-- Index usage (idx_scan = 0 → drop candidate after review). pg_stat_reset() wipes this history.
+select relname, indexrelname, idx_scan, pg_size_pretty(pg_relation_size(indexrelid)) size
+from pg_stat_user_indexes where schemaname = 'public'
+order by idx_scan, pg_relation_size(indexrelid) desc;
+
+-- Audit bloat
+select pg_size_pretty(pg_total_relation_size('public.audit_log')) audit_total, count(*) from public.audit_log;
+select table_name, count(*) from public.audit_log group by 1 order by 2 desc limit 15;
 ```
 
-Also note **Storage** for `user-avatars` / `staff-photos`.
-
-### 0.2 Index usage (requires `pg_stat_statements` optional; stats are enough)
+Log the date, DB size, top tables, and audit size each time. **Thresholds:** at **≥ 350 MB**, or if `audit_log` is in the top 3, confirm the monthly purge is running and start index cleanup. At **≥ 450 MB**, do that before shipping any new heavy feature.
 
-Run on prod (or staging after realistic use). Reset stats only if you know what you are doing (`pg_stat_reset()` wipes history).
+## Retention policy
 
-```sql
--- Unused or barely used indexes (idx_scan = 0 are candidates to drop after review)
-select schemaname, relname as table_name, indexrelname as index_name,
-       idx_scan, idx_tup_read, idx_tup_fetch,
-       pg_size_pretty(pg_relation_size(indexrelid)) as index_size
-from pg_stat_user_indexes
-where schemaname = 'public'
-order by idx_scan asc, pg_relation_size(indexrelid) desc;
+Business rows stay in Postgres. On the 1st, Drive receives a copy of the month that just finished (on 1 November, October’s sales, readings, credit, expenses, salary, and closing). Customers, staff, and settings stay in Supabase only. Drive then keeps **13** of those month folders. Older folders go to trash.
 
--- Index vs table ratio per table
-select c.relname,
-       pg_size_pretty(pg_relation_size(c.oid)) as table_size,
-       pg_size_pretty(pg_indexes_size(c.oid)) as indexes_size,
-       round(100.0 * pg_indexes_size(c.oid)
-         / nullif(pg_total_relation_size(c.oid), 0), 1) as index_pct_of_total
-from pg_class c
-join pg_namespace n on n.oid = c.relnamespace
-where n.nspname = 'public' and c.relkind = 'r'
-order by pg_indexes_size(c.oid) desc;
-```
+| Data | Where it lives | What happens to the old copy |
+|------|----------------|------------------------------|
+| Operational tables and masters | Postgres, kept | Still in the app. Drive also has the last 13 finished months, one folder each |
+| Drive month folders | `YYYY/YYYY-MM/` | The finished month, plus the 12 before it. Folder `2026-10` is October only |
+| `audit_log` | Postgres, **6 months** | Deleted after that month’s copy is on Drive. Cache-only refreshes of `meter_shift_cash` credit and expense totals are not written here |
 
-### 0.3 Audit bloat signal
+`scripts/purge-audit-log.sh` deletes audit rows. `scripts/prune-drive-backups.sh` applies the Drive window. Both are dry-run until `CONFIRM_PURGE_AUDIT=yes` or `CONFIRM_PRUNE_DRIVE=yes`. The monthly **Backup production database** workflow runs the backup first, then both confirms. Apply migration `20261008150000_audit_log_retention` before that purge step can succeed.
 
-```sql
-select pg_size_pretty(pg_total_relation_size('public.audit_log')) as audit_total,
-       (select count(*) from public.audit_log) as audit_rows;
+A purge makes space **reusable**. `pg_database_size` may not fall until a one-time `VACUUM FULL public.audit_log` in a quiet window, because that rewrite locks writes to every audited table.
 
-select table_name, count(*) as rows
-from public.audit_log
-group by table_name
-order by rows desc
-limit 15;
-```
+## If the database later nears 350 MB
 
-### 0.4 Log a baseline
+Measure first. Then, in order: confirm the audit purge is running, drop unused indexes (below), and only then consider moving a closed financial year out of Postgres. That last step needs its own script, a staging dry-run, and a check that credit balances and day closing still match. It is not part of the monthly job.
 
-| Date | DB size | Top tables | Index % notes | Audit size | Action |
-|------|---------|------------|---------------|------------|--------|
-| YYYY-MM-DD | e.g. 42 MB | … | … | … | Baseline |
+## Index hygiene
 
-### 0.5 Monitoring cadence
+Every new index needs to name the query, RPC, or page it serves (ideally with `EXPLAIN (ANALYZE)` on staging). Prefer a **partial** index (open rows, uncertified, active) or a **composite** that matches the filter plus sort. Don't add an index that is a prefix of an existing composite or unique index, and don't index a low-cardinality column on its own. Recheck `pg_stat_user_indexes` 2–4 weeks after shipping.
 
-| When | Check |
-|------|--------|
-| **Monthly** | DB size, top tables, audit size, unused indexes |
-| **After migrations** | New indexes justified? Size delta? |
-| **Alert** | DB **≥ 350 MB** or audit among top 3 tables → accelerate Phases 3–5 |
-| **Hard** | DB **≥ 450 MB** → archive before new heavy features |
+**Keep:** `unique(date)` on DSR and day_closing, `credit_entries_open_fifo_idx`, `credit_entries_customer_date_idx`, `dsr_*_missing_buying_idx`, `day_closing_uncertified_idx`, `meter_shift_*` date/shift indexes, `employees_active_roster_idx`, `reminders_open_*`.
 
-### 0.6 Free-tier gotchas
+**Drop candidates** (confirm with stats and `EXPLAIN` first):
 
-| Risk | Mitigation |
-|------|------------|
-| Free project **pauses** | Regular use or light health ping |
-| **Staging** second free project | Sync only when testing; trim after large syncs |
-| Egress | Prefer aggregate RPCs; avoid huge date-range downloads |
+| Index | Reason |
+|-------|--------|
+| `day_closing_date_idx` | Duplicates `unique(date)` |
+| `invoices_date_idx` | Prefix of `invoices_list_order_idx (invoice_date, created_at)` |
+| `expenses_created_at_idx` | Day ops filter on `date`; drop if `idx_scan` ≈ 0 |
+| `credit_payments_date_idx` vs `credit_payments_same_day_date_idx` | Overlap; keep whichever RPCs use |
+| `reminders_status_due_idx` vs `reminders_open_*` | Keep what the dashboard `EXPLAIN` uses |
+| `letterhead_letters_created_at_idx` | Drop if unused |
+| `credit_customers_date_idx` | Legacy path; drop once legacy `credit_customers.date` rows move to `credit_entries` |
 
----
+Procedure: staging → `DROP INDEX CONCURRENTLY` (or a migration) → smoke test → prod migration → re-measure.
 
-## Phase 1 — Prevention (ongoing rules)
+## Lean schema rules
 
-### 1.1 Files stay off Postgres
+- **No file bytes in Postgres** (no `bytea`). PDFs, staff photos, and Aadhaar scans go to Drive; avatars go to Storage, resized to a ~512–1024 px edge, one per person.
+- **One write path per fact.** Use views or RPCs for derived numbers. Before caching a computable value, answer: what invalidates it (trigger or RPC only)? Would a view do? Will `audit_log` double the write cost? If invalidation is unclear, don't cache.
+- **Intentional caches, do not remove:** `day_closing` snapshot columns (immutable once saved or certified, and the `short_today` → next `short_previous` chain), `credit_customers.amount_due`/`prepaid_balance`, `credit_entries.amount_settled`, `invoices` totals headers, `night_cash_collections.total_amount`, and `meter_shift_cash.credit_amount`/`expense_amount` (shift UX only; the ledger is the source of truth for day closing).
+- **Sync directions:** shift → DSR via `apply_shift_aggregate_to_dsr`. DSR → shift via `sync_shift_meters_from_dsr` (prefill only). Ledger → shift cash via triggers. Live ops → day closing via `save_day_closing` / `sync_saved_day_closing_for_date`. Shift cash must never feed `credit_today`, and no DSR stubs are written from shifts.
+- **Audit** only tables where "who changed this?" matters. Don't audit cache-only updates such as `meter_shift_cash` totals.
+- No leftover import or temp tables in prod. Sync prod → staging only when needed. Sync turns staging audit off and empties staging `audit_log`.
+- **Possible later cleanups** (each needs a migration and a staging dry-run): store each rate only on its own product's DSR table, derive DSR `sales_pump*`/`total_sales` and `purchase_*_total`, and remove `DISTINCT ON (date)` from the `dsr`/`dsr_stock` views now that `unique(date)` exists.
 
-| Content | Where |
-|---------|--------|
-| Supplier / purchase PDFs | Google Drive only |
-| Billing cash-memo PDFs | Google Drive only (GST totals/items stay in Postgres) |
-| Official letter PDFs | Google Drive only (`letterhead_letters` = date, subject, Drive ids) |
-| Staff photos / Aadhaar scans | Google Drive (`employees` keeps ids + public photo URL) |
-| Operator avatars | Storage buckets; compressed; overwrite, no versioning |
-| DB backups | Google Drive |
-
-**Never** add `bytea` or “store PDF in table”.
-
-### 1.2 Design rules (flat by default)
-
-When adding features:
-
-1. **One write path** for each fact (prefer RPC that owns inserts/updates).
-2. **Views / RPCs** for derived numbers — do not create a second physical table.
-3. **Caches** only if a measured query is too slow or you need an immutable snapshot (day closing).
-4. **No long-lived import/staging tables** in prod.
-5. **New indexes** require: the query pattern, and preferably `EXPLAIN (ANALYZE)` on staging.
-6. **Audit** only tables where “who changed this?” matters for ops/compliance — not every cache refresh.
-
-### 1.3 Staging hygiene
-
-| Practice | Why |
-|----------|-----|
-| Sync prod → staging only when needed | Second free quota |
-| Reset/trim staging after big sync tests | Avoid two multi-year DBs |
-| Schema experiments locally first | [DEVELOPMENT.md](DEVELOPMENT.md) |
-
-### 1.4 Photo hygiene
-
-Resize before upload (max edge ~512–1024 px). One current photo per person.
-
----
-
-## Phase 2 — Hot-window policy (decide now)
-
-### 2.1 Retention (recommended default)
-
-| Data class | Live in Supabase | Older than window |
-|------------|------------------|-------------------|
-| **Operational hot** | Last **36 months** | Archive then remove |
-| **Masters** | Keep all | — |
-| **Open credit / balances** | Keep all open state | Closed ancient history with sales |
-| **Invoice PDF metadata** | Keep all (tiny) | Files on Drive |
-| **Reminders / letterhead** | Recent + open | Optional archive |
-| **`audit_log`** | Last **6–12 months** (or less) | Delete older always |
-
-**Hot window: 36 months** for ops data. Shorter if size climbs early.
-
-### 2.2 App behaviour (when archive is live)
-
-| Screen | Default | Older history |
-|--------|---------|---------------|
-| Dashboard, DSR, day closing, P&amp;L, credit overview | 12–36 months | Restore from Drive if needed |
-| Credit master + current due | Always live | — |
-| Vault invoices | Unchanged | — |
-
-### 2.3 What “archive” means
-
-1. Verified full backup on Drive.  
-2. Optional year dump/CSV → Drive `Archive/YYYY/`.  
-3. Delete cold rows from live only after staging dry-run.  
-
-Archive ≠ delete without backup.
-
----
-
-## Phase 3 — Index hygiene (soon; every migration)
-
-Indexes speed reads but **cost storage and write amplification**. Free tier cares about both.
-
-### 3.1 Rules for every new index
-
-| Rule | Detail |
-|------|--------|
-| Justify | Name the query / RPC / page that needs it |
-| Prefer **partial** indexes | e.g. open credit only, uncertified closings only |
-| Prefer **composite** that matches filter + sort | Avoid separate single-column indexes that are prefixes of another |
-| Avoid indexing low-cardinality columns alone | e.g. boolean without a selective `WHERE` |
-| After ship | Recheck `pg_stat_user_indexes` in 2–4 weeks |
-
-### 3.2 Keep (intentional / high value)
-
-| Index pattern | Why |
-|---------------|-----|
-| `unique(date)` on DSR / day_closing | Integrity + lookup |
-| `credit_entries_open_fifo_idx` (partial) | Settlement scans |
-| `credit_entries_customer_date_idx` | Customer history |
-| `dsr_*_missing_buying_idx` / receipts partials | Purchase alerts |
-| `day_closing_uncertified_idx` (partial) | Ops queue |
-| `meter_shift_*_date_shift_idx` | Shift load/save |
-| `employees_active_roster_idx` | Roster |
-| `reminders_open_*` partials | Dashboard |
-
-### 3.3 Drop candidates (validate with stats + `EXPLAIN` first)
-
-| Index | Concern | Likely action |
-|-------|---------|---------------|
-| `day_closing_date_idx` | Overlaps **`unique (date)`** | **Drop** after confirm |
-| `invoices_date_idx` | Prefix of `invoices_list_order_idx (invoice_date, created_at)` | Drop if list index covers queries |
-| `expenses_created_at_idx` | Day ops use `date`, not `created_at` | Drop if `idx_scan` ≈ 0 |
-| `credit_payments_date_idx` vs `credit_payments_same_day_date_idx` | Overlap | Keep customer+date; revisit which date index RPCs need |
-| `reminders_status_due_idx` vs open partials | Possible overlap | Keep the ones dashboard `EXPLAIN` uses |
-| `letterhead_letters_created_at_idx` | If unused | Drop |
-| `credit_customers_date_idx` | Legacy “credit today” path | Drop after legacy customers migrated (Phase 4) |
-
-**Procedure:** staging → `DROP INDEX CONCURRENTLY` (or migration) → smoke test → prod migration → re-measure size.
-
-### 3.4 Index checklist for new migrations
-
-- [ ] Query pattern documented in migration comment  
-- [ ] Not redundant with an existing unique/composite  
-- [ ] Partial `WHERE` used when filter is stable (open rows, active, etc.)  
-- [ ] Added to mental “watch list” for next monthly Phase 0 check  
-
----
-
-## Phase 4 — Flat storage & reduce duplication
-
-Goal: **one SoT**, fewer sync chains, less audit noise — without breaking certified accounting or shift UX.
-
-### 4.1 Already flat / good — do not “fix”
-
-| Design | Status |
-|--------|--------|
-| Stock as **view/RPC**, not a table | Keep ([DSR_TABLES.md](DSR_TABLES.md)) |
-| `dsr` as **union view** | Keep (no extra storage) |
-| Invoice PDFs on Drive | Keep |
-| `pump_settings` single JSON row | Keep |
-| Invoice header totals from `save_invoice` | Keep (standard header/lines) |
-| `night_cash_collections.total_amount` at pickup | Keep (immutable receipt) |
-
-### 4.2 Keep on purpose (intentional denormalization)
-
-Do **not** remove these without a full redesign:
-
-| Cache | Why it stays |
-|-------|----------------|
-| `day_closing` snapshot columns (`total_sale`, `collection`, `credit_today`, …) | Immutable accounting once saved/certified |
-| `day_closing.short_today` → next `short_previous` | Carry chain / recascade |
-| `credit_customers.amount_due`, `prepaid_balance` | Fast lists; synced from ledger |
-| `credit_entries.amount_settled` | Settlement without replaying all payments |
-| `invoices` tax/total headers | Written with line items in one RPC |
-| `meter_shift_cash.credit_amount` / `expense_amount` *(for now)* | Shift short UX; ledger remains SoT for day closing |
-
-### 4.3 Reduce / avoid — staged work
-
-Ordered by **value vs risk**. Implement only with migration + staging dry-run.
-
-#### A. High value, lower risk (do first)
-
-| Item | Action | Why |
-|------|--------|-----|
-| **`audit_log` retention** | Delete rows older than 6–12 months on a schedule; or stop auditing pure cache tables | Biggest avoidable growth; full jsonb row copies |
-| **Audit scope** | Do not audit every `meter_shift_cash` cache-only update if ledger is already audited | Cuts write amplification |
-| **Redundant indexes** | Phase 3 drops | Storage + faster writes |
-| **Import / temp tables** | Never leave in prod | Dead weight |
-
-#### B. Medium effort (schema clarity, modest space)
-
-| Item | Action | Caution |
-|------|--------|---------|
-| **DSR `sales_pump1/2`, `total_sales`** | Prefer **generated columns** from nozzle open/close/testing, or document “always derived in RPC” | Shift rollup must stay consistent |
-| **Cross-product rates** (`petrol_rate` on diesel table and vice versa) | Store rate only on owning product table; fix day-closing readers | Touches RPCs + clients |
-| **`purchase_*_total` vs per_kl × qty** | Derive in reports if totals are never independently edited | Confirm admin edit UX first |
-| **`credit_customers.date` legacy** | Migrate stragglers to `credit_entries`; remove day-closing fallback | Then drop legacy index/column path |
-| **`DISTINCT ON (date)` in `dsr` / `dsr_stock` views** | Remove now that `unique(date)` exists | Read-path cleanup, not storage |
-
-#### C. Optional later (only if measured pain)
-
-| Item | Action | When |
-|------|--------|------|
-| **`meter_shift_cash` credit/expense cache** | Replace with view/RPC aggregate at read time; drop trigger sync | If audit/trigger churn dominates size or bugs |
-| **Salary → expense dual row** | Keep link (`salary_payment_id`) but ensure one writer owns both | Do not store salary twice without FK link |
-| **Wide DSR rows** | Avoid adding more “convenient” numeric copies | Prefer compute at read for rare fields |
-
-### 4.4 Rules for new features (anti-duplication gate)
-
-Before merging a migration that stores a number already computable elsewhere, answer:
-
-1. Is there already a SoT table/column?  
-2. If caching: what invalidates it? (trigger / RPC only — no “update in two UIs”)  
-3. Will `audit_log` double the cost of every write?  
-4. Can a **view** or existing RPC return it instead?  
-
-If (2) is unclear → **do not cache**.
-
-### 4.5 Sync directions (document; do not invent reverse paths)
-
-| Direction | Mechanism | Allowed? |
-|-----------|-----------|----------|
-| Shift meters → daily DSR | `apply_shift_aggregate_to_dsr` | Yes (updates existing daily sheet) |
-| Daily DSR → shift | `sync_shift_meters_from_dsr` | Prefill / align only |
-| Ledger → shift cash totals | Triggers | Cache only |
-| Live ops → saved day closing | `save_day_closing` / `sync_saved_day_closing_for_date` | Snapshot maintenance |
-| Shift cash → day closing credit_today | — | **No** (ledger is SoT for credit_today) |
-
-Do not reintroduce dropped paths like writing DSR **stubs** from shifts only.
-
----
-
-## Phase 5 — Archive year N (when ≥ ~70% or year 3+)
-
-### 5.1 Preconditions
-
-- [ ] Latest Drive backup OK  
-- [ ] Phase 0 baseline recorded  
-- [ ] Cutoff date chosen (e.g. `< 2023-04-01`)  
-- [ ] Quiet window  
-- [ ] Staging dry-run + smoke test  
-
-### 5.2 Archive candidates (after backup)
-
-| Priority | Objects | Typical date column |
-|----------|---------|---------------------|
-| 1 | `audit_log` (trim anytime) | `performed_at` |
-| 2 | `dsr_petrol`, `dsr_diesel` | `date` |
-| 3 | `meter_shift_readings`, `meter_shift_cash` | date / shift |
-| 4 | `day_closing`, `night_cash_collections` | date |
-| 5 | `expenses` | date |
-| 6 | `credit_entries`, `credit_payments` | transaction / payment date |
-| 7 | `invoices`, `invoice_items` | invoice date |
-| 8 | `employee_attendance`, `salary_payments` | date / month |
-| 9 | `e20_*`, `letterhead_letters`, done `reminders` | dates |
-
-**Keep live:** `credit_customers`, products, employees, users, settings, categories, `invoice_documents` metadata; open balances continuity.
-
-### 5.3 Procedure (high level)
-
-1. Backup prod → Drive.  
-2. Optional year export → Drive `Archive/YYYY/`.  
-3. Dry-run deletes on staging; test DSR, credit, day closing, reports.  
-4. Same deletes on prod in a transaction; record counts.  
-5. `VACUUM (ANALYZE);` — avoid `VACUUM FULL` unless you accept locks.  
-6. Re-measure Phase 0; log “Archived ≤ YYYY”.  
-
-Prefer a reviewed `scripts/archive-year.sh` (+ SQL) when you first hit the threshold.
-
-### 5.4 Continuity
-
-- Credit balances must still match after removing old ledger rows — dry-run required.  
-- Stock reports may only cover the hot window — document that.  
-
----
-
-## Phase 6 — Escape hatch
-
-| Option | When | Notes |
-|--------|------|-------|
-| **A. Shorter hot window** | First lever | 36 → 24 → 18 months |
-| **B. External archive Postgres** | Need in-app old years | Route old date ranges there |
-| **C. Move primary DB** | Other free limits block you | Neon / VPS / etc. |
-| **D. Supabase Pro** | Last resort | Explicitly avoided for space |
-
-Prefer **A → B → C**. Use **D** only if the business chooses paid convenience.
-
----
-
-## Ownership and calendar
-
-| Cadence | Task |
-|---------|------|
-| Monthly | Phase 0: size + audit + unused indexes |
-| Each migration | Phase 3 checklist; Phase 4 anti-duplication gate |
-| Quarterly | Review drop-candidate indexes; audit retention job |
-| Yearly (FY close) | Decide archive of closed year |
-| At ≥ 350 MB | Phase 5 dry-run on staging |
-| Continuous | Phase 1 rules on new features |
-
----
-
-## Definition of done
-
-- [ ] Phase 0 baseline (size + indexes + audit) recorded; monthly habit  
-- [ ] Phase 1 rules followed on new work  
-- [ ] Hot window chosen (default **36 months**); audit retention chosen (**6–12 months**)  
-- [ ] At least one pass of Phase 3 (drop confirmed-redundant indexes on staging→prod)  
-- [ ] No new feature merged that duplicates SoT without a documented cache + invalidation  
-- [ ] Drive backups reliable  
-- [ ] When size warrants: Phase 5 archive with staging dry-run  
-- [ ] No Pro purchase required for storage reasons  
-
----
-
-## Related docs
-
-| Doc | Role |
-|-----|------|
-| [BACKUP.md](BACKUP.md) | Dump → Drive (required before archive/drops) |
-| [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) | PDFs off-DB |
-| [OPERATIONS.md](OPERATIONS.md) | Backups / sync |
-| [DATA_TABLES.md](DATA_TABLES.md) | Tables, RLS |
-| [DSR_TABLES.md](DSR_TABLES.md) | Meters vs stock views |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Storage buckets vs Postgres |
-| [MIGRATIONS.md](MIGRATIONS.md) | How to ship schema changes safely |
-
----
-
-## Out of scope until thresholds / measured need
-
-Not required on day one:
-
-- UI “archived year” banners  
-- `scripts/archive-year.sh`  
-- Second archive database  
-- Removing `day_closing` snapshots or credit balance caches  
-- Migrating off Supabase  
-
-**Do start now:** Phase 0 measurement, Phase 3 index review, Phase 4A audit retention decision.
+**If storage is still tight after the audit purge and index cleanup:** move a closed financial year to an external archive Postgres, then move the primary DB (Neon or a VPS). Supabase Pro is the last resort.

@@ -6,6 +6,8 @@
  *   <!-- @partial app-head -->     ← assets from _partials/app-pages.json
  *   <!-- @partial app-topbar title="Dashboard" noPrint -->
  *
+ * Cache-busting ?v= hashes are added afterwards by scripts/stamp-assets.mjs.
+ *
  * Usage: node scripts/build-html.mjs <dir> [--exclude <top-level-dir>]...
  */
 
@@ -17,7 +19,6 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PARTIALS_DIR = path.join(REPO_ROOT, "_partials");
 const CATALOG_FILE = path.join(PARTIALS_DIR, "app-pages.json");
-const VERSION_FILE = path.join(REPO_ROOT, "asset-version.json");
 const PARTIAL_RE = /<!--\s*@partial\s+([\w.-]+)([\s\S]*?)-->/g;
 const BUILD_TOPBAR_RE =
   /<header\s+class="topbar(?: no-print)?"[^>]*\bdata-build-topbar\b[^>]*>[\s\S]*?<\/header>/g;
@@ -82,16 +83,7 @@ function extractTopbarCtx(headerHtml) {
   return { pageTitle, pageSubtitleId, topbarNoPrint };
 }
 
-function versionedUrl(href, sharedSet, sharedVersion, versions) {
-  const [assetPath] = String(href || "").split("?");
-  if (!assetPath) return href;
-  if (sharedSet.has(assetPath)) return `${assetPath}?v=${sharedVersion}`;
-  const pageVersion = versions[assetPath];
-  return pageVersion ? `${assetPath}?v=${pageVersion}` : assetPath;
-}
-
-function buildHeadContext(page, sharedSet, sharedVersion, versions) {
-  const v = (href) => versionedUrl(href, sharedSet, sharedVersion, versions);
+function buildHeadContext(page) {
   const scripts = [
     ...(page.sharedJs || []),
     ...(page.beforeAuth || []),
@@ -103,14 +95,14 @@ function buildHeadContext(page, sharedSet, sharedVersion, versions) {
 
   return {
     title: page.title || "Bishnupriya Fuels",
-    baseCss: v("css/base.css"),
-    layoutCss: v("css/app-layout.css"),
-    coreCss: v("css/app-core.css"),
-    roleBootstrap: v("js/roleBootstrap.js"),
-    appNav: v("js/appNav.js"),
-    earlyScripts: (page.earlyScripts || []).map(v),
-    css: (page.css || []).map(v),
-    scripts: scripts.map(v),
+    baseCss: "css/base.css",
+    layoutCss: "css/app-layout.css",
+    coreCss: "css/app-core.css",
+    roleBootstrap: "js/roleBootstrap.js",
+    appNav: "js/appNav.js",
+    earlyScripts: page.earlyScripts || [],
+    css: page.css || [],
+    scripts,
   };
 }
 
@@ -122,9 +114,8 @@ function layerForFile(fileName, catalog) {
   return "";
 }
 
-function expandPartials(source, { fileName, catalog, sharedSet, sharedVersion }) {
+function expandPartials(source, { fileName, catalog }) {
   const page = catalog.pages?.[fileName];
-  const versions = catalog.assetVersions || {};
   const pageDefaults = page
     ? {
         pageTitle: page.pageTitle || "",
@@ -140,7 +131,7 @@ function expandPartials(source, { fileName, catalog, sharedSet, sharedVersion })
       if (!page) {
         throw new Error(`${fileName}: <!-- @partial app-head --> needs an entry in _partials/app-pages.json`);
       }
-      return env.render(template, buildHeadContext(page, sharedSet, sharedVersion, versions)).trim();
+      return env.render(template, buildHeadContext(page)).trim();
     }
     return env.render(template, { ...pageDefaults, ...attrCtx }).trim();
   });
@@ -209,15 +200,6 @@ function parseArgs(argv) {
 
 async function loadBuildConfig() {
   const catalog = JSON.parse(await readFile(CATALOG_FILE, "utf8"));
-  const versionConfig = JSON.parse(await readFile(VERSION_FILE, "utf8"));
-  const sharedSet = new Set(versionConfig.shared || []);
-  for (const asset of catalog.sharedCss || []) sharedSet.add(asset);
-  for (const asset of catalog.earlyJs || []) sharedSet.add(asset);
-  for (const asset of catalog.sharedJs || []) {
-    if (!asset.includes("vendor/") && asset !== "js/env.js") sharedSet.add(asset);
-  }
-  for (const asset of catalog.sharedAfterAuth || []) sharedSet.add(asset);
-  sharedSet.add("css/app-layout.css");
   return {
     catalog: {
       ...catalog,
@@ -228,8 +210,6 @@ async function loadBuildConfig() {
         ])
       ),
     },
-    sharedSet,
-    sharedVersion: versionConfig.version,
   };
 }
 

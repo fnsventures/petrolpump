@@ -22,6 +22,20 @@ Commands:
   preflight         Prod preflight checks only
   help              Show this message
 
+Drive copies (read-only on the database, except the audit purge):
+  ./scripts/backup-month-to-drive.sh              last finished month
+  ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh
+  ./scripts/backup-prod-to-drive.sh               whole database → Manual/
+  YEAR=2026 ./scripts/backup-year-to-drive.sh     whole database → Yearly/2026, then trash 2026-01..12
+  CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh
+
+Procedure: docs/STORAGE_RETENTION.md
+
+Staging schema only (keeps staging data; does not touch prod):
+  docs/MIGRATIONS.md — "Staging schema only"
+  supabase db push --db-url "$STAGING_DB_URL" --dry-run
+  supabase db push --db-url "$STAGING_DB_URL" --yes
+
 Release order:
   1. ./scripts/db.sh sync
   2. Push to staging branch → test /staging/
@@ -29,7 +43,7 @@ Release order:
   4. ./scripts/db.sh migrate --apply  (quiet window)
   5. Merge staging → main → smoke-test live site
 
-Docs: scripts/README.md
+Docs: docs/OPERATIONS.md  scripts/README.md
 EOF
 }
 

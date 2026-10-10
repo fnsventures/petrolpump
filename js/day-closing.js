@@ -1,11 +1,31 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
+//
+// Page: day-closing.html, two sections (#close, #register).
+//   #close    — load one date's breakdown, type counted Night cash / Phone pay, save, then admin certifies.
+//   #register — saved closings for a date range, plus admin night-cash pickup (collect_night_cash).
+//
+// Server is the source of truth. All left-hand figures (total sale, collection, short previous,
+// credit today, expenses) come from compute_day_closing_components via:
+//   get_day_closing_breakdown (read), save_day_closing (insert / overwrite + recascade later days),
+//   set_day_closing_certified, delete_day_closing (admin, latest uncertified only),
+//   delete_credit_payment / delete_credit_entry (admin, from the detail panels),
+//   get_night_cash_available, preview_night_cash_collection, collect_night_cash.
+// Direct table reads (detail panels / hints / register only, never used for the saved figures):
+//   credit_entries, credit_payments, credit_customers (legacy credit), expenses, expense_categories,
+//   meter_shift_cash, day_closing, night_cash_collections.
+// See docs/DAY_CLOSING.md for the SQL formulas and which migration currently defines each RPC.
+//
+// Lock states (enforced server-side; the UI only mirrors them):
+//   certified            → frozen for everyone, including admin, until revoked.
+//   night cash collected → frozen for supervisors; admin may still overwrite.
 let dayClosingBreakdown = null;
 let isAdmin = false;
 let dcBreakdownRequestId = 0;
 let dcCertifyInFlight = false;
+let dcCertifyPromptOpen = false;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
 let dcSettleMapsCache = { date: null, data: null, promise: null };
 let dcShiftChannelCache = { date: null, data: null, promise: null };
@@ -227,8 +247,9 @@ function clearDayClosingChannelHints() {
 async function loadExpenseCategoryLabels() {
   if (expenseCategoryLabels) return expenseCategoryLabels;
   const { data, error } = await window.supabaseClient
-    .from("expense_categories")
-    .select("name, label");
+      .from("expense_categories")
+      .select("name, label")
+      .limit(LOOKUP_ROW_LIMIT);
   if (error) throw error;
   expenseCategoryLabels = Object.fromEntries((data || []).map((row) => [row.name, row.label]));
   return expenseCategoryLabels;
@@ -255,6 +276,7 @@ function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } 
     return '<p class="muted">No entries for this date.</p>';
   }
   const showActions = isAdmin && !dayClosingBreakdown?.certified && (kind === "collection" || kind === "credit");
+  // Admin delete buttons only on unlocked days; expenses are deleted from the Expenses page.
   const head = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("")
     + (showActions ? '<th class="table-actions">Actions</th>' : "");
   const body = rows.map((row) => {
@@ -296,6 +318,9 @@ function renderDayClosingDetailTable(rows, columns, kind, { sameDayRouted = 0 } 
 /**
  * Load credit/payment totals for a date (cached per date).
  * Same-day pool comes from payments flagged same_day_settlement.
+ * Client-side mirror of the per-customer split in compute_day_closing_components; only used for
+ * detail panels and as a fallback when the RPC omits settle_* totals. Saved figures never use it.
+ * Shares one in-flight promise per date so concurrent panels issue a single pair of queries.
  */
 async function loadDayCreditSettleMaps(dateStr) {
   if (dcSettleMapsCache.date === dateStr && dcSettleMapsCache.data) {
@@ -307,20 +332,26 @@ async function loadDayCreditSettleMaps(dateStr) {
 
   const promise = (async () => {
     const [entriesRes, paysRes] = await Promise.all([
-      window.supabaseClient
-        .from("credit_entries")
-        .select(
-          "id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, created_at, employees(name), credit_customers(customer_name)"
-        )
-        .eq("transaction_date", dateStr)
-        .order("created_at", { ascending: false }),
-      window.supabaseClient
-        .from("credit_payments")
-        .select(
-          "id, amount, payment_mode, date, credit_customer_id, created_at, same_day_settlement, credit_customers(customer_name)"
-        )
-        .eq("date", dateStr)
-        .order("created_at", { ascending: true }),
+      fetchAllRows(() =>
+        window.supabaseClient
+          .from("credit_entries")
+          .select(
+            "id, credit_customer_id, amount, fuel_type, quantity, transaction_date, shift, employee_id, created_at, employees(name), credit_customers(customer_name)"
+          )
+          .eq("transaction_date", dateStr)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+      ),
+      fetchAllRows(() =>
+        window.supabaseClient
+          .from("credit_payments")
+          .select(
+            "id, amount, payment_mode, date, credit_customer_id, created_at, same_day_settlement, credit_customers(customer_name)"
+          )
+          .eq("date", dateStr)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+      ),
     ]);
     if (entriesRes.error) throw entriesRes.error;
     if (paysRes.error) throw paysRes.error;
@@ -344,6 +375,7 @@ async function loadDayCreditSettleMaps(dateStr) {
       const cur = ensure(row.credit_customer_id);
       cur.payToday += amt;
       if (row.same_day_settlement) cur.sameDay += amt;
+      // Every Cash/UPI settlement today (same-day or not) is physically in the till; Bank is not.
       const mode = String(row.payment_mode || "Cash").trim().toLowerCase();
       if (mode === "upi") settleUpi += amt;
       else if (mode !== "bank") settleCash += amt;
@@ -417,11 +449,15 @@ async function fetchCollectionDetails(dateStr) {
 async function fetchCreditTodayDetails(dateStr) {
   const [{ entries, byId }, legacyRes] = await Promise.all([
     loadDayCreditSettleMaps(dateStr),
-    window.supabaseClient
-      .from("credit_customers")
-      .select("id, customer_name, amount_due")
-      .eq("date", dateStr)
-      .gt("amount_due", 0),
+    fetchAllRows(() =>
+      window.supabaseClient
+        .from("credit_customers")
+        .select("id, customer_name, amount_due")
+        .eq("date", dateStr)
+        .gt("amount_due", 0)
+        .order("customer_name", { ascending: true })
+        .order("id", { ascending: true })
+    ),
   ]);
   if (legacyRes.error) throw legacyRes.error;
 
@@ -457,16 +493,21 @@ async function fetchCreditTodayDetails(dateStr) {
 
   const legacyCandidates = legacyRes.data || [];
   let legacyRows = [];
+  // Legacy credit = credit_customers.amount_due dated today for customers with no credit_entries
+  // at all (pre-ledger data). Same-day settlement never nets legacy credit.
   if (legacyCandidates.length) {
     const ids = legacyCandidates.map((row) => row.id);
     const hasEntry = new Set(entries.map((e) => e.credit_customer_id));
     // Also exclude any legacy ids that have entries (even if not in today's entry list)
     const missing = ids.filter((id) => !hasEntry.has(id));
     if (missing.length) {
-      const { data: withEntries, error: entryCheckError } = await window.supabaseClient
-        .from("credit_entries")
-        .select("credit_customer_id")
-        .in("credit_customer_id", missing);
+      const { data: withEntries, error: entryCheckError } = await fetchAllRows(() =>
+        window.supabaseClient
+          .from("credit_entries")
+          .select("id, credit_customer_id")
+          .in("credit_customer_id", missing)
+          .order("id", { ascending: true })
+      );
       if (entryCheckError) throw entryCheckError;
       for (const row of withEntries || []) hasEntry.add(row.credit_customer_id);
     }
@@ -486,11 +527,14 @@ async function fetchCreditTodayDetails(dateStr) {
 
 async function fetchExpensesDetails(dateStr) {
   const [expensesRes, labelMap] = await Promise.all([
-    window.supabaseClient
-      .from("expenses")
-      .select("category, description, amount, shift, employee_id, employees(name)")
-      .eq("date", dateStr)
-      .order("created_at", { ascending: true }),
+    fetchAllRows(() =>
+      window.supabaseClient
+        .from("expenses")
+        .select("id, category, description, amount, shift, employee_id, employees(name)")
+        .eq("date", dateStr)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+    ),
     loadExpenseCategoryLabels(),
   ]);
   if (expensesRes.error) throw expensesRes.error;
@@ -538,15 +582,6 @@ async function loadDayClosingDetail(kind, dateStr) {
     AppError.report(err, { context: `loadDayClosingDetail:${kind}` });
     panel.innerHTML = `<p class="error">${escapeHtml(err?.message || "Failed to load details.")}</p>`;
   }
-}
-
-function computeOpenShiftCredit(shiftGross, sameDay, fallback = 0) {
-  const gross = dcMoney(shiftGross);
-  const same = dcMoney(sameDay);
-  if (gross > 0.005 || same > 0.005) {
-    return Math.max(0, gross - same);
-  }
-  return dcMoney(fallback);
 }
 
 function syncDayClosingCreditHint(breakdown) {
@@ -608,6 +643,11 @@ async function toggleDayClosingDetail(kind) {
   }
 }
 
+/**
+ * Fetch get_day_closing_breakdown for a date and render it.
+ * dcBreakdownRequestId guards against out-of-order responses: only the latest request may
+ * write state, so rapid date changes never show a stale day's figures.
+ */
 async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}) {
   if (!dateStr || !dcDom?.dateInput) return;
 
@@ -678,6 +718,7 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
   if (dcDom.creditTodayEl) dcDom.creditTodayEl.textContent = formatCurrency(creditToday);
   if (dcDom.expensesTodayEl) dcDom.expensesTodayEl.textContent = formatCurrency(expensesToday);
 
+  // can_overwrite comes from the RPC (false when certified, or when collected and not admin).
   const canOverwrite = canOverwriteDayClosing(b);
   const alreadySaved = !!b.already_saved;
   const certified = !!b.certified;
@@ -722,6 +763,7 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
   }
   if (!preserveSuccess) dcDom.successEl?.classList.add("hidden");
 
+  // Locked days show the stored short; editable days recompute live from the typed inputs.
   if (!editable && alreadySaved && b.short_today != null) {
     updateShortDisplay(Number(b.short_today));
   } else {
@@ -743,11 +785,6 @@ function dayClosingHasUnsavedEdits(breakdown) {
   const phone = parseDayClosingMoneyInput(dcDom?.phonePayInput);
   const remarks = dcDom?.remarksInput?.value?.trim() || "";
   return night !== savedNight || phone !== savedPhone || remarks !== savedRemarks;
-}
-
-function dcMoney(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function setDayClosingMoneyInput(el, value) {
@@ -807,6 +844,8 @@ async function enrichDayClosingSettleSuggestions(breakdown, dateStr) {
   settleCash = dcMoney(settleCash);
   settleUpi = dcMoney(settleUpi);
 
+  // Split settlements into prior-debt (Collection) and same-day parts for the hint display;
+  // the parts sum back to settle_*, so suggested = shift till + all Cash/UPI settlements (as server).
   const sameCash = dcMoney(b.same_day_settle_cash);
   const sameUpi = dcMoney(b.same_day_settle_upi);
   const collectionCash = dcMoney(b.collection_cash_total ?? settleCash - sameCash);
@@ -855,10 +894,13 @@ async function loadDayClosingShiftChannelTotals(dateStr) {
   }
 
   const promise = (async () => {
-    const { data, error } = await window.supabaseClient
-      .from("meter_shift_cash")
-      .select("shift, cash_collected, phone_pay")
-      .eq("reading_date", dateStr);
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("meter_shift_cash")
+        .select("shift, cash_collected, phone_pay")
+        .eq("reading_date", dateStr)
+        .order("shift", { ascending: true })
+    );
     if (error) throw error;
 
     const out = {
@@ -1218,18 +1260,6 @@ function syncDayClosingAlreadySavedNotice(breakdown) {
   el.classList.remove("hidden");
 }
 
-function computeDayClosingShort({
-  totalSale = 0,
-  collection = 0,
-  shortPrevious = 0,
-  nightCash = 0,
-  phonePay = 0,
-  creditToday = 0,
-  expensesToday = 0,
-} = {}) {
-  return totalSale + collection + shortPrevious - (nightCash + phonePay + creditToday + expensesToday);
-}
-
 function updateDayClosingShortLive() {
   if (!dayClosingBreakdown || !dcDom) return;
 
@@ -1448,7 +1478,7 @@ async function printDayClosingRegister() {
 
 async function setDayClosingCertified(certified) {
   if (dcStepPendingDate) return;
-  if (!isAdmin || dcCertifyInFlight) return;
+  if (!isAdmin || dcCertifyInFlight || dcCertifyPromptOpen) return;
   const dateStr = dcDom?.dateInput?.value?.trim();
   if (!dateStr) return;
   if (!dayClosingBreakdown?.already_saved) {
@@ -1482,13 +1512,26 @@ async function setDayClosingCertified(certified) {
   const ref = dayClosingBreakdown?.closing_reference || "";
   const dateLabel = formatDisplayDate(dateStr);
   const collected = !!dayClosingBreakdown?.night_cash_collected;
-  const confirmed = window.confirm(
-    certified
-      ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
-      : collected
-        ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
-        : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`
-  );
+  dcCertifyPromptOpen = true;
+  let confirmed = false;
+  try {
+    confirmed = await AppDialog.confirm(
+      certified
+        ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
+        : collected
+          ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
+          : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`,
+      {
+        title: certified ? "Certify day closing" : "Revoke certification",
+        confirmLabel: certified ? "Certify" : "Revoke",
+      }
+    );
+  } finally {
+    // Hold the guard past this click so a fall-through cannot open the popup again.
+    window.setTimeout(() => {
+      dcCertifyPromptOpen = false;
+    }, 350);
+  }
   if (!confirmed) return;
 
   const certifyBtn = dcDom.certifyBtn;
@@ -1581,22 +1624,33 @@ const loadSteppedDayClosingDate = debounce(async (dateStr) => {
   }
 }, 250);
 
-function stepDayClosingDate(days) {
-  const current = dcDom?.dateInput?.value?.trim() || dcTodayStr();
+async function stepDayClosingDate(days) {
+  const input = dcDom?.dateInput;
+  if (!input) return;
+  const current = input.value?.trim() || dcTodayStr();
   const today = dcTodayStr();
-  let target = addDaysToDateString(current, days);
+  // Always one calendar day. A focused weekday segment on the date input steps a week.
+  const delta = Number(days) < 0 ? -1 : 1;
+  let target = addDaysToDateString(current, delta);
   if (target > today) target = today;
   if (target === current) return;
   if (
     dayClosingHasPendingInput(dayClosingBreakdown) &&
-    !window.confirm("You have unsaved day closing entries for this date. Discard them and switch day?")
+    !(await AppDialog.confirm("You have unsaved day closing entries for this date. Discard them and switch day?", {
+      title: "Discard changes",
+      confirmLabel: "Discard",
+      danger: true,
+    }))
   ) {
     return;
   }
   // Show the new date immediately; drop any in-flight load for an intermediate day.
   dcStepPendingDate = target;
   dcBreakdownRequestId++;
-  dcDom.dateInput.value = target;
+  input.blur();
+  input.step = "1";
+  input.value = target;
+  if (input.value !== target) input.value = target;
   syncDayClosingDateStepper(target);
   setBreakdownAmounts(DC_LOADING);
   [dcDom.nightCashInput, dcDom.phonePayInput, dcDom.remarksInput].forEach((el) => {
@@ -1621,6 +1675,7 @@ async function initializeDayClosing() {
   if (!dateInput || !form) return;
 
   const todayStr = dcTodayStr();
+  dateInput.step = "1";
   const dateStr = initPersistedDateInput(dateInput, "day_closing_close", {
     urlParam: "date",
     fallback: todayStr,
@@ -1701,6 +1756,10 @@ async function initializeDayClosing() {
       return;
     }
 
+    // save_day_closing is idempotent per date (day_closing.date is unique): first save inserts with a
+    // new DC-YYYY-NNNNN reference, later saves overwrite the same row, keep the reference, and
+    // recascade short_previous/short_today for later uncertified days. Server recomputes all
+    // left-hand figures; only night cash, phone pay and remarks are taken from the form.
     try {
       const { data, error } = await window.supabaseClient.rpc("save_day_closing", {
         p_date: dateStr,
@@ -1747,6 +1806,7 @@ async function initializeDayClosing() {
       }
     } catch (err) {
       AppError.report(err, { context: "saveDayClosing" });
+      // Server lock errors (certified / collected) mean our view is stale: reload instead of showing raw error.
       const isLocked = err?.message && String(err.message).includes("locked");
       if (isLocked) {
         alreadySavedHandled = true;
@@ -1767,8 +1827,14 @@ async function initializeDayClosing() {
   document.getElementById("day-closing-print")?.addEventListener("click", () => {
     printDayClosingStatement();
   });
-  dcDom.prevDayBtn?.addEventListener("click", () => stepDayClosingDate(-1));
-  dcDom.nextDayBtn?.addEventListener("click", () => stepDayClosingDate(1));
+  dcDom.prevDayBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    void stepDayClosingDate(-1);
+  });
+  dcDom.nextDayBtn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    void stepDayClosingDate(1);
+  });
 
   dcDom.certifyBtn?.addEventListener("click", () => setDayClosingCertified(true));
   dcDom.uncertifyBtn?.addEventListener("click", () => setDayClosingCertified(false));
@@ -1791,6 +1857,7 @@ async function initializeDayClosing() {
 
   initDayClosingCreditDeleteHandlers();
 
+  // Other tabs (credit / expenses / shift pages) signal changes via localStorage keys.
   window.addEventListener("storage", (e) => {
     if (e.key !== "credit-updated" && e.key !== "expenses-updated" && e.key !== "shift-updated") return;
     const dateStr = dateInput.value?.trim();
@@ -2050,10 +2117,13 @@ async function loadNightCashCollectionRegister() {
 
   body.innerHTML = '<tr><td colspan="7" class="muted">Loading…</td></tr>';
   try {
-    const { data, error } = await window.supabaseClient
-      .from("night_cash_collections")
-      .select("collection_reference, from_date, to_date, day_count, total_amount, collected_at, remarks")
-      .order("collected_at", { ascending: false });
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("night_cash_collections")
+        .select("id, collection_reference, from_date, to_date, day_count, total_amount, collected_at, remarks")
+        .order("collected_at", { ascending: false })
+        .order("id", { ascending: true })
+    );
     if (error) throw error;
 
     if (!data?.length) {
@@ -2212,8 +2282,9 @@ async function recordNightCashCollection(e) {
 
   const total = Number(nccPreviewData.total_amount ?? 0);
   const dayCount = Number(nccPreviewData.day_count ?? 0);
-  const confirmed = window.confirm(
-    `Record collection of ${formatCurrency(total)} for ${dayCount} day(s) (${formatDisplayDate(from)} to ${formatDisplayDate(to)})?\n\nSupervisors will no longer be able to edit those day closings. Admins can still modify them.`
+  const confirmed = await AppDialog.confirm(
+    `Record collection of ${formatCurrency(total)} for ${dayCount} day(s) (${formatDisplayDate(from)} to ${formatDisplayDate(to)})?\n\nSupervisors will no longer be able to edit those day closings. Admins can still modify them.`,
+    { title: "Record collection", confirmLabel: "Record" }
   );
   if (!confirmed) return;
 
@@ -2324,16 +2395,18 @@ async function loadDayClosingRegister() {
 
   try {
     const status = statusFilter?.value || "all";
-    let closingsQuery = window.supabaseClient
-      .from("day_closing")
-      .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks, certified, certified_at, night_cash_collection_id, night_cash_collections(collection_reference)")
-      .gte("date", start)
-      .lte("date", end);
-    if (status === "pending") {
-      closingsQuery = closingsQuery.is("night_cash_collection_id", null);
-    } else if (status === "collected") {
-      closingsQuery = closingsQuery.not("night_cash_collection_id", "is", null);
-    }
+    const closingsQuery = fetchAllRows(() => {
+      let query = window.supabaseClient
+        .from("day_closing")
+        .select("id, date, closing_reference, total_sale, collection, short_previous, credit_today, expenses_today, night_cash, phone_pay, short_today, remarks, certified, certified_at, night_cash_collection_id, night_cash_collections(collection_reference)")
+        .gte("date", start)
+        .lte("date", end)
+        .order("date", { ascending: false })
+        .order("id", { ascending: true });
+      if (status === "pending") query = query.is("night_cash_collection_id", null);
+      else if (status === "collected") query = query.not("night_cash_collection_id", "is", null);
+      return query;
+    });
 
     const latestQuery = isAdmin
       ? window.supabaseClient
@@ -2345,7 +2418,7 @@ async function loadDayClosingRegister() {
       : Promise.resolve({ data: null });
 
     const [{ data, error }, { data: latestRow }] = await Promise.all([
-      closingsQuery.order("date", { ascending: false }),
+      closingsQuery,
       latestQuery,
     ]);
     if (error) throw error;
@@ -2400,6 +2473,8 @@ async function loadDayClosingRegister() {
         totals.pendingCount += 1;
       }
 
+      // Mirrors delete_day_closing: only the latest closing, and never collected or certified ones,
+      // so the short chain (short_previous) of later days is never orphaned.
       const canDelete = isAdmin && row.id && row.date === latestDate && !isCollected && !row.certified;
       const deleteBtn = canDelete
         ? AdminDelete.buttonHtml({

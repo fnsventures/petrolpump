@@ -13,6 +13,8 @@ import {
   jsonResponse,
   parseIsoDate,
   readPumpSettings,
+  revokeAnyonePermission,
+  otherDocumentFileName,
   sanitizeFileName,
   supabaseAdmin,
   uploadToDrive,
@@ -75,7 +77,10 @@ Deno.serve(async (req: Request) => {
       const { year, month } = parsed;
       const amountRaw = String(form.get("amount") || "").trim();
       const amount = amountRaw ? Number(amountRaw) : null;
-      const safeName = sanitizeFileName(file.name, "document");
+      const title = String(form.get("title") || "").trim();
+      const safeName = category === "purchase"
+        ? sanitizeFileName(file.name, "document")
+        : otherDocumentFileName(title, file.name);
       const categoryLabel = String(categoryRow.label || category);
 
       const bytesPromise = file.arrayBuffer();
@@ -93,8 +98,16 @@ Deno.serve(async (req: Request) => {
         folderId,
         safeName,
         file.type,
-        new Uint8Array(await bytesPromise)
+        new Uint8Array(await bytesPromise),
+        { makePublic: false }
       );
+      let publicLinkRevokedAt: string | null = null;
+      try {
+        const privacy = await revokeAnyonePermission(token, fileId);
+        if (!privacy.stillPublic) publicLinkRevokedAt = new Date().toISOString();
+      } catch (err) {
+        console.error("could not confirm vault file is private", err);
+      }
 
       const { data: row, error: insertError } = await supabaseAdmin
         .from("invoice_documents")
@@ -103,7 +116,7 @@ Deno.serve(async (req: Request) => {
           year,
           month,
           category,
-          title: String(form.get("title") || "").trim() || null,
+          title: title || null,
           vendor: String(form.get("vendor") || "").trim() || null,
           amount: Number.isFinite(amount) ? amount : null,
           file_name: safeName,
@@ -112,6 +125,7 @@ Deno.serve(async (req: Request) => {
           drive_file_id: fileId,
           drive_folder_id: folderId,
           drive_web_view_link: webViewLink,
+          public_link_revoked_at: publicLinkRevokedAt,
           notes: String(form.get("notes") || "").trim() || null,
           uploaded_by: auth.userId,
         })
@@ -142,6 +156,64 @@ Deno.serve(async (req: Request) => {
     }
 
     const auth = await verifyPageAccess(req, "invoices");
+
+    if (action === "revoke-public-links") {
+      const after = typeof body.after === "string" && /^[0-9a-f-]{36}$/i.test(body.after) ? body.after : "";
+      let query = supabaseAdmin
+        .from("invoice_documents")
+        .select("id, drive_file_id")
+        .is("public_link_revoked_at", null)
+        .order("id", { ascending: true })
+        .limit(40);
+      if (after) query = query.gt("id", after);
+      const { data: rows, error: listError } = await query;
+      if (listError) throw new Error(listError.message);
+      const batch = rows || [];
+      if (!batch.length) return jsonResponse({ ok: true, done: true, checked: 0, revoked: 0, failed: 0, after });
+
+      const token = await getDriveAccessToken();
+      const cleared: string[] = [];
+      let revoked = 0;
+      let failed = 0;
+      let cursor = 0;
+      async function next() {
+        while (cursor < batch.length) {
+          const row = batch[cursor];
+          cursor += 1;
+          if (!row?.id) continue;
+          try {
+            if (row.drive_file_id) {
+              const privacy = await revokeAnyonePermission(token, row.drive_file_id);
+              revoked += privacy.removed;
+              if (privacy.stillPublic) {
+                console.error("vault file is still shared by a parent folder", row.id);
+              }
+            }
+            cleared.push(row.id);
+          } catch (err) {
+            failed += 1;
+            console.error("revoke public link failed", row.id, err);
+          }
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(5, batch.length) }, () => next()));
+      if (cleared.length) {
+        const { error: markError } = await supabaseAdmin
+          .from("invoice_documents")
+          .update({ public_link_revoked_at: new Date().toISOString() })
+          .in("id", cleared);
+        if (markError) throw new Error(markError.message);
+      }
+      const lastId = batch[batch.length - 1].id;
+      return jsonResponse({
+        ok: true,
+        done: batch.length < 40,
+        checked: cleared.length,
+        revoked,
+        failed,
+        after: lastId,
+      });
+    }
 
     if (action === "download") {
       const id = body.id as string;

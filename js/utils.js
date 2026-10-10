@@ -140,6 +140,204 @@ function addDaysToDateString(yyyyMmDd, days) {
 }
 
 /**
+ * Shift a YYYY-MM value by whole months in local calendar time.
+ * @param {string} yyyyMm
+ * @param {number} months
+ * @returns {string}
+ */
+function addMonthsToMonthValue(yyyyMm, months) {
+  const [y, m] = String(yyyyMm || "").split("-").map(Number);
+  if (!y || !m) return String(yyyyMm || "");
+  const dt = new Date(y, m - 1 + (Number(months) || 0), 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function dateStepBound(value) {
+  if (typeof value === "function") value = value();
+  const s = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "";
+}
+
+function monthStepBound(value) {
+  if (typeof value === "function") value = value();
+  const s = String(value || "").slice(0, 7);
+  return /^\d{4}-\d{2}$/.test(s) ? s : "";
+}
+
+function createDateStepButton(label, glyph, text, iconFirst) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "button-secondary date-step";
+  btn.setAttribute("aria-label", label);
+  btn.title = label;
+  const icon = document.createElement("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = glyph;
+  const words = document.createElement("span");
+  words.className = "date-step-text";
+  words.textContent = text;
+  if (iconFirst) btn.append(icon, words);
+  else btn.append(words, icon);
+  return btn;
+}
+
+/**
+ * Previous / next day around a date input.
+ * Steps exactly one local calendar day. The browser's own date spinner is not used:
+ * on some desktop browsers that control moves a week when the weekday segment is active.
+ *
+ * @param {HTMLInputElement} input
+ * @param {{ compact?: boolean, min?: string|(() => string), max?: string|(() => string), dispatch?: boolean, beforeStep?: (target: string, current: string) => boolean|Promise<boolean>, onStep?: (target: string, current: string) => void }} [opts]
+ * @returns {{ sync: () => void } | null}
+ */
+function mountDateStepper(input, opts = {}) {
+  if (!input || input.dataset.dateStepper === "1") return input?._dateStepper || null;
+  if (!input.parentNode) return null;
+  input.dataset.dateStepper = "1";
+  input.step = "1";
+
+  const wrap = document.createElement("div");
+  wrap.className = "date-stepper" + (opts.compact ? " date-stepper--compact" : "");
+  const prev = createDateStepButton("Previous day", "‹", "Prev", true);
+  const next = createDateStepButton("Next day", "›", "Next", false);
+  input.parentNode.insertBefore(wrap, input);
+  wrap.append(prev, input, next);
+
+  function sync() {
+    const value = input.value || "";
+    const min = dateStepBound(opts.min);
+    const max = dateStepBound(opts.max);
+    prev.disabled = !!(value && min && value <= min);
+    next.disabled = !!(value && max && value >= max);
+    prev.title = prev.disabled ? "Already at the earliest day" : "Previous day";
+    next.title = next.disabled ? "Already at the latest day" : "Next day";
+  }
+
+  async function step(days, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const delta = Number(days) < 0 ? -1 : 1;
+    const current = input.value?.trim() || "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(current)) return;
+    let target = addDaysToDateString(current, delta);
+    const min = dateStepBound(opts.min);
+    const max = dateStepBound(opts.max);
+    if (min && target < min) target = min;
+    if (max && target > max) target = max;
+    if (!target || target === current) {
+      sync();
+      return;
+    }
+    if (typeof opts.beforeStep === "function") {
+      const ok = await opts.beforeStep(target, current);
+      if (!ok) return;
+    }
+    // Blur before writing. A focused weekday segment treats a value change as a one-week step.
+    input.blur();
+    input.step = "1";
+    input.value = target;
+    if (input.value !== target) input.value = target;
+    sync();
+    if (opts.dispatch !== false) {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (typeof opts.onStep === "function") opts.onStep(target, current);
+  }
+
+  prev.addEventListener("click", (event) => {
+    void step(-1, event);
+  });
+  next.addEventListener("click", (event) => {
+    void step(1, event);
+  });
+  input.addEventListener("change", sync);
+
+  const api = { sync };
+  input._dateStepper = api;
+  sync();
+  return api;
+}
+
+/**
+ * Previous / next month for a month + year select pair.
+ * Pass wrapSelector to put the buttons around an existing control (attendance).
+ * Otherwise the two selects are grouped between the buttons.
+ *
+ * @param {HTMLSelectElement} monthSelect
+ * @param {HTMLSelectElement} yearSelect
+ * @param {{ wrapSelector?: string, min?: string|(() => string), max?: string|(() => string) }} [opts]
+ * @returns {{ sync: () => void } | null}
+ */
+function mountMonthStepper(monthSelect, yearSelect, opts = {}) {
+  if (!monthSelect || !yearSelect || monthSelect.dataset.monthStepper === "1") {
+    return monthSelect?._monthStepper || null;
+  }
+  if (!monthSelect.parentNode) return null;
+  monthSelect.dataset.monthStepper = "1";
+
+  const prev = createDateStepButton("Previous month", "‹", "Prev", true);
+  const next = createDateStepButton("Next month", "›", "Next", false);
+  const host = opts.wrapSelector ? monthSelect.closest(opts.wrapSelector) : null;
+  if (host?.parentNode) {
+    const outer = document.createElement("div");
+    outer.className = "date-stepper date-stepper--month";
+    host.parentNode.insertBefore(outer, host);
+    outer.append(prev, host, next);
+  } else {
+    const group = document.createElement("div");
+    group.className = "date-stepper date-stepper--month";
+    monthSelect.before(group);
+    group.append(prev, monthSelect, yearSelect, next);
+  }
+
+  function earliestMonth() {
+    const years = [...yearSelect.options].map((opt) => opt.value).filter((value) => /^\d{4}$/.test(value));
+    if (!years.length) return "";
+    years.sort();
+    return `${years[0]}-01`;
+  }
+
+  function sync() {
+    const value = readMonthYearValue(monthSelect, yearSelect);
+    const min = monthStepBound(opts.min) || earliestMonth();
+    const max = monthStepBound(opts.max);
+    prev.disabled = !!(value && min && value <= min);
+    next.disabled = !!(value && max && value >= max);
+    prev.title = prev.disabled ? "Already at the earliest month" : "Previous month";
+    next.title = next.disabled ? "Already at the latest month" : "Next month";
+  }
+
+  function step(delta, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const value = readMonthYearValue(monthSelect, yearSelect);
+    if (!/^\d{4}-\d{2}$/.test(value)) return;
+    let target = addMonthsToMonthValue(value, delta < 0 ? -1 : 1);
+    const min = monthStepBound(opts.min) || earliestMonth();
+    const max = monthStepBound(opts.max);
+    if (min && target < min) target = min;
+    if (max && target > max) target = max;
+    if (target === value) {
+      sync();
+      return;
+    }
+    writeMonthYearValue(monthSelect, yearSelect, target);
+    sync();
+    monthSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  prev.addEventListener("click", (event) => step(-1, event));
+  next.addEventListener("click", (event) => step(1, event));
+  monthSelect.addEventListener("change", sync);
+  yearSelect.addEventListener("change", sync);
+
+  const api = { sync };
+  monthSelect._monthStepper = api;
+  sync();
+  return api;
+}
+
+/**
  * Append a dated follow-up line to notes (max 2000 chars).
  * Returns null when noteText is empty.
  * @param {string|null|undefined} existingNotes
@@ -616,6 +814,34 @@ function resetFormKeepingFields(form, fieldValues) {
 }
 
 /**
+ * Request id for a money-writing form submit (p_request_id on RPCs, client_request_id on
+ * expenses). The same id is reused while the submitted values are unchanged, so a retry after
+ * a timeout or a lost response is recognised by the server instead of writing twice.
+ * Call clearFormRequestId(form) after a successful save.
+ * @param {HTMLFormElement|Element} form
+ * @param {unknown} values - submitted values; a change starts a new request
+ * @returns {string}
+ */
+function formRequestId(form, values) {
+  const fingerprint = JSON.stringify(values ?? null);
+  const pending = form?._pendingRequest;
+  if (pending && pending.fingerprint === fingerprint) return pending.id;
+  const id =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+          (Number(c) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))).toString(16)
+        );
+  if (form) form._pendingRequest = { id, fingerprint };
+  return id;
+}
+
+/** Forget the pending request id after a successful save (next submit is a new request). */
+function clearFormRequestId(form) {
+  if (form) delete form._pendingRequest;
+}
+
+/**
  * After a successful record save: reset the form, restore fields, and sync date keys.
  * @param {HTMLFormElement} form
  * @param {Record<string, string>} fieldValues
@@ -657,6 +883,21 @@ function formatCurrency(value) {
   return "₹" + Number(value).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Calendar month label from `YYYY-MM` (for example "October 2026").
+ * @param {string|null|undefined} monthValue
+ * @returns {string}
+ */
+function formatMonthLabel(monthValue) {
+  if (!monthValue) return "—";
+  const [year, month] = String(monthValue).split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) return String(monthValue);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
   });
 }
 
@@ -790,9 +1031,14 @@ const AppLoader = (function () {
 
 const ActionProgress = (function () {
   const WATCHDOG_MS = 60000;
+  const HOLD_MS = 420;
   let active = false;
-  let stepCount = 1;
   let watchdog = null;
+  let creepTimer = null;
+  let creepStarted = 0;
+  let displayed = 0;
+  let lead = 0;
+  let finishing = null;
 
   function ensure() {
     let root = document.getElementById("action-progress");
@@ -820,51 +1066,90 @@ const ActionProgress = (function () {
   function setFill(pct) {
     const fill = document.getElementById("action-progress-fill");
     const pctEl = document.getElementById("action-progress-pct");
-    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
     if (fill) fill.style.width = `${clamped}%`;
-    if (pctEl) pctEl.textContent = `${clamped}%`;
+    if (pctEl) pctEl.textContent = `${Math.round(clamped)}%`;
+  }
+
+  function setStatus(status) {
+    if (!status) return;
+    const el = document.getElementById("action-progress-status");
+    if (el) el.textContent = status;
+  }
+
+  function stopCreep() {
+    clearInterval(creepTimer);
+    creepTimer = null;
+  }
+
+  function tickCreep() {
+    if (!active || finishing) return;
+    const elapsed = performance.now() - creepStarted;
+    const eased = 92 * (1 - Math.exp(-elapsed / 3200));
+    const next = Math.min(96, Math.max(displayed, eased, lead));
+    displayed = next;
+    setFill(displayed);
   }
 
   function start(options) {
     const opts = options || {};
     const root = ensure();
     active = true;
-    stepCount = Math.max(1, Number(opts.steps) || 1);
+    finishing = null;
+    displayed = 0;
+    lead = 0;
     document.getElementById("action-progress-title").textContent = opts.title || "Working";
-    document.getElementById("action-progress-status").textContent = opts.status || "Please wait…";
-    setFill(10);
+    setStatus(opts.status || "Please wait…");
+    setFill(0);
     root.hidden = false;
     document.body.classList.add("action-progress-open");
+    stopCreep();
+    creepStarted = performance.now();
+    creepTimer = setInterval(tickCreep, 80);
     clearTimeout(watchdog);
     watchdog = setTimeout(() => {
       if (active) {
         console.warn("[ActionProgress] Watchdog closed a stuck overlay.");
         close();
       }
-    }, WATCHDOG_MS);
+    }, opts.timeoutMs || WATCHDOG_MS);
   }
 
-  function setStep(index, status) {
+  function setStep(_index, status) {
     if (!active) return;
-    const step = Math.max(0, Number(index) || 0);
-    if (status) {
-      const el = document.getElementById("action-progress-status");
-      if (el) el.textContent = status;
+    setStatus(status);
+  }
+
+  function setPercent(pct, status) {
+    if (!active || finishing) return;
+    setStatus(status);
+    if (pct == null || pct === "") return;
+    const clamped = Math.max(0, Math.min(96, Number(pct) || 0));
+    if (clamped > lead) lead = clamped;
+    if (lead > displayed) {
+      displayed = lead;
+      setFill(displayed);
     }
-    setFill(((step + 0.5) / stepCount) * 100);
   }
 
   function succeed(status) {
-    if (!active) return;
-    if (status) {
-      const el = document.getElementById("action-progress-status");
-      if (el) el.textContent = status;
-    }
+    if (!active) return Promise.resolve();
+    if (finishing) return finishing;
+    stopCreep();
+    setStatus(status);
+    displayed = 100;
+    lead = 100;
     setFill(100);
+    finishing = new Promise((resolve) => setTimeout(resolve, HOLD_MS));
+    return finishing;
   }
 
   function close() {
     active = false;
+    finishing = null;
+    displayed = 0;
+    lead = 0;
+    stopCreep();
     clearTimeout(watchdog);
     watchdog = null;
     const root = document.getElementById("action-progress");
@@ -873,19 +1158,22 @@ const ActionProgress = (function () {
     setFill(0);
   }
 
-  async function run(options, fn) {
+  async function track(options, fn) {
     start(options);
     try {
-      const result = await fn({ setStep, succeed });
-      succeed((options && options.doneStatus) || "Done");
-      await new Promise((resolve) => setTimeout(resolve, 280));
+      const result = await fn({ setStep, setPercent, succeed });
+      await succeed((options && options.doneStatus) || "Done");
       return result;
     } finally {
       close();
     }
   }
 
-  return { start, setStep, succeed, close, run };
+  function run(options, fn) {
+    return track(options, fn);
+  }
+
+  return { start, setStep, setPercent, succeed, close, run, track };
 })();
 
 /** Recover from stuck UI after background/freeze (PWA resume hook). */
@@ -951,6 +1239,9 @@ window.localDateToUtcEnd = localDateToUtcEnd;
 window.getUtcRangeForLocalDate = getUtcRangeForLocalDate;
 window.parseDateAsUtc = parseDateAsUtc;
 window.addDaysToDateString = addDaysToDateString;
+window.addMonthsToMonthValue = addMonthsToMonthValue;
+window.mountDateStepper = mountDateStepper;
+window.mountMonthStepper = mountMonthStepper;
 window.appendDatedNote = appendDatedNote;
 window.formatDateInput = formatDateInput;
 window.formatDisplayDate = formatDisplayDate;
@@ -987,6 +1278,7 @@ window.getRangeForSelection = getRangeForSelection;
 window.setCustomRangeVisibility = setCustomRangeVisibility;
 window.getLocalDateString = getLocalDateString;
 window.formatCurrency = formatCurrency;
+window.formatMonthLabel = formatMonthLabel;
 window.getFilterState = getFilterState;
 window.getValidFilterState = getValidFilterState;
 window.setFilterState = setFilterState;

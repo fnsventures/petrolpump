@@ -17,7 +17,7 @@ Use **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for sync, staging deploy, relea
 
 Never commit secrets, dumps, `js/env.js`, or `scripts/db.env`.
 
-**Maintain without Cursor:** [docs/ONBOARDING.md](docs/ONBOARDING.md)
+A new laptop: [docs/START.md](docs/START.md).
 
 ---
 
@@ -32,18 +32,30 @@ cp js/env.example.js js/env.js
 npm run dev
 ```
 
-Full setup: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)  
+Full setup: [docs/START.md](docs/START.md)  
 Secrets: [docs/SECRETS.md](docs/SECRETS.md)
 
 ---
 
 ## Database changes
 
-1. Add a new file under `supabase/migrations/` (never rewrite an applied migration)
+1. `supabase migration new <name>` (never rewrite an applied migration; new files must sort last)
 2. Test via staging (`./scripts/db.sh sync` or release Step C)
-3. Update `supabase/schema.sql` and [docs/DATA_TABLES.md](docs/DATA_TABLES.md) when the public model changes
+3. Update `supabase/schema.sql` (`./scripts/check-schema-drift.sh` must pass) and [docs/DATA_TABLES.md](docs/DATA_TABLES.md) when the public model changes
 
-Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
+Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md) · Recipes: [docs/CHECKLISTS.md](docs/CHECKLISTS.md)
+
+---
+
+## PR checks
+
+`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`: deploy-style build, `node --check` on all JS, Markdown link check, migration name/order check, and (when `supabase/` changes) the schema-drift check. Run the same locally:
+
+```bash
+node scripts/check-doc-links.mjs
+./scripts/check-migration-order.sh
+./scripts/check-schema-drift.sh   # Docker
+```
 
 ---
 
@@ -51,9 +63,8 @@ Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md)
 
 | You changed… | Also update |
 |--------------|-------------|
-| Tables / RLS / RPCs | `supabase/schema.sql`, [DATA_TABLES.md](docs/DATA_TABLES.md) |
-| DSR / meter model | [DSR_TABLES.md](docs/DSR_TABLES.md) |
-| Secrets / CI env vars | [SECRETS.md](docs/SECRETS.md), [DEVELOPMENT.md](docs/DEVELOPMENT.md) |
-| Release / sync / backup steps | [OPERATIONS.md](docs/OPERATIONS.md) |
+| Tables / RLS / RPCs / meter model | `supabase/schema.sql`, [DATA_TABLES.md](docs/DATA_TABLES.md) |
+| Secrets / CI env vars | [SECRETS.md](docs/SECRETS.md) |
+| Release / sync / backup | [OPERATIONS.md](docs/OPERATIONS.md), [RECOVERY.md](docs/RECOVERY.md) |
 | Page → data behaviour | [FLOWS.md](docs/FLOWS.md) |
 | Invoice Drive / OAuth | [INVOICE_DOCUMENTS.md](docs/INVOICE_DOCUMENTS.md) |

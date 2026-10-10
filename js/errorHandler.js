@@ -102,6 +102,10 @@
     if (lower.includes("duplicate") || lower.includes("unique") || code === "23505") {
       return "This record already exists. Please use a different value.";
     }
+    // check_violation from server-side validation (e.g. meter closing < opening) carries a readable message
+    if (code === "23514" && message && !/violates check constraint/i.test(message)) {
+      return message;
+    }
     if (lower.includes("foreign key") || code === "23503") {
       return "This action cannot be completed because it references missing data.";
     }
@@ -396,14 +400,6 @@
  * Shared admin delete UX: role guard, confirm, disable button, cache invalidation.
  */
 const AdminDelete = (function () {
-  function escapeAttr(value) {
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/"/g, "&quot;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  }
-
   function dataAttrName(key) {
     return key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
   }
@@ -428,16 +424,16 @@ const AdminDelete = (function () {
 
     const classes = ["button-delete", small && "button-small", selector].filter(Boolean).join(" ");
     const dataAttrs = Object.entries(data)
-      .map(([key, val]) => `data-${dataAttrName(key)}="${escapeAttr(val)}"`)
+      .map(([key, val]) => `data-${dataAttrName(key)}="${escapeHtml(val)}"`)
       .join(" ");
-    const attrs = [dataAttrs, `title="${escapeAttr(title)}"`].filter(Boolean).join(" ");
+    const attrs = [dataAttrs, `title="${escapeHtml(title)}"`].filter(Boolean).join(" ");
 
-    return `<button type="button" class="${classes}" ${attrs}>${escapeAttr(label)}</button>`;
+    return `<button type="button" class="${classes}" ${attrs}>${escapeHtml(label)}</button>`;
   }
 
   function requireAdmin(auth, actionLabel) {
     if (auth?.role === "admin") return true;
-    alert(`Only an admin can ${actionLabel}.`);
+    AppDialog.toast(`Only an admin can ${actionLabel}.`, "warning");
     return false;
   }
 
@@ -466,38 +462,41 @@ const AdminDelete = (function () {
     } = options;
 
     if (!requireAdmin(auth, actionLabel)) return;
-    if (!confirm(confirmMessage)) return;
+    if (!(await AppDialog.confirm(confirmMessage, { title: "Delete record", confirmLabel: "Delete", danger: true }))) return;
 
     if (btn) btn.disabled = true;
     const progress = window.ActionProgress;
-    progress?.start({
-      title: "Deleting",
-      status: "Removing this record…",
-      steps: 1,
-    });
     try {
-      progress?.setStep(0, "Removing from the app and Google Drive…");
-      const result = await deleteFn();
-      const error = result?.error ?? null;
-      if (error) {
-        if (btn) btn.disabled = false;
-        progress?.close();
-        alert(window.AppError.getUserMessage(error));
-        window.AppError.report(error, errorContext || {});
-        return;
-      }
-      if (typeof window.CacheInvalidation !== "undefined") {
-        window.CacheInvalidation.invalidate(cacheScope);
-      }
-      progress?.succeed("Deleted");
-      if (onSuccess) await onSuccess();
-      await new Promise((resolve) => setTimeout(resolve, 220));
+      await progress.track(
+        {
+          title: "Deleting",
+          status: "Removing this record…",
+          doneStatus: "Deleted",
+        },
+        async (p) => {
+          p.setStep(0, "Removing from the app and Google Drive…");
+          const result = await deleteFn();
+          const error = result?.error ?? null;
+          if (error) {
+            const wrapped = new Error(window.AppError.getUserMessage(error));
+            wrapped.original = error;
+            wrapped.handled = true;
+            AppDialog.toast(wrapped.message, "error");
+            window.AppError.report(error, errorContext || {});
+            throw wrapped;
+          }
+          if (typeof window.CacheInvalidation !== "undefined") {
+            window.CacheInvalidation.invalidate(cacheScope);
+          }
+          if (onSuccess) await onSuccess();
+        }
+      );
     } catch (err) {
       if (btn) btn.disabled = false;
-      alert(window.AppError.getUserMessage(err));
-      window.AppError.report(err, errorContext || {});
-    } finally {
-      progress?.close();
+      if (!err?.handled) {
+        AppDialog.toast(window.AppError.getUserMessage(err), "error");
+        window.AppError.report(err, errorContext || {});
+      }
     }
   }
 

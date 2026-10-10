@@ -1,4 +1,4 @@
-/* global window.supabaseClient, PumpSettings, getLocalDateString, AppCache */
+/* global window.supabaseClient, PumpSettings, getLocalDateString, AppCache, AppError, fetchAllRows */
 
 /**
  * Shared DSR and expense query helpers for dashboard, reports, and analysis.
@@ -38,7 +38,7 @@
     const results = await Promise.all(
       RECEIPT_LOOKBACK_PRODUCTS.map((product) =>
         supabaseClient
-          .from("dsr")
+          .from("dsr_cost")
           .select(DSR_SELECT_RECEIPT)
           .eq("product", product)
           .gte("date", receiptStart)
@@ -68,12 +68,15 @@
 
     if (useReceiptHistory && receiptStart < startDate) {
       const [rangeResult, receiptResult] = await Promise.all([
-        supabaseClient
-          .from("dsr")
-          .select(select)
-          .gte("date", startDate)
-          .lte("date", endDate)
-          .order("date", { ascending: true }),
+        fetchAllRows(() =>
+          supabaseClient
+            .from("dsr_cost")
+            .select(select)
+            .gte("date", startDate)
+            .lte("date", endDate)
+            .order("date", { ascending: true })
+            .order("product", { ascending: true })
+        ),
         fetchReceiptHistoryBefore(startDate, receiptStart),
       ]);
 
@@ -91,12 +94,15 @@
     }
 
     const queryStart = useReceiptHistory ? receiptStart : startDate;
-    const { data, error } = await window.supabaseClient
-      .from("dsr")
-      .select(select)
-      .gte("date", queryStart)
-      .lte("date", endDate)
-      .order("date", { ascending: true });
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("dsr_cost")
+        .select(select)
+        .gte("date", queryStart)
+        .lte("date", endDate)
+        .order("date", { ascending: true })
+        .order("product", { ascending: true })
+    );
 
     if (error) return { data: null, allDsr: [], receiptRows: [], error };
 
@@ -110,11 +116,14 @@
   }
 
   async function fetchExpenses(startDate, endDate, select) {
-    const { data, error } = await window.supabaseClient
-      .from("expenses")
-      .select(select || "date, category, amount")
-      .gte("date", startDate)
-      .lte("date", endDate);
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("expenses")
+        .select(select || "date, category, amount")
+        .gte("date", startDate)
+        .lte("date", endDate)
+        .order("date", { ascending: true })
+    );
     return { data: data ?? [], error };
   }
 
@@ -151,16 +160,19 @@
     const startStr = PumpSettings.getReceiptHistoryStart();
 
     const req = (async () => {
-      const { data, error } = await window.supabaseClient
-        .from("dsr")
-        .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
-        .gte("date", startStr)
-        .lte("date", endStr)
-        .gt("receipts", 0)
-        .or(
-          "buying_price_per_litre.is.null,buying_price_per_litre.lte.0,purchase_delivery_per_kl.is.null,purchase_lfr_per_kl.is.null"
-        )
-        .order("date", { ascending: false });
+      const { data, error } = await fetchAllRows(() =>
+        window.supabaseClient
+          .from("dsr_cost")
+          .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
+          .gte("date", startStr)
+          .lte("date", endStr)
+          .gt("receipts", 0)
+          .or(
+            "buying_price_per_litre.is.null,buying_price_per_litre.lte.0,purchase_delivery_per_kl.is.null,purchase_lfr_per_kl.is.null"
+          )
+          .order("date", { ascending: false })
+          .order("product", { ascending: true })
+      );
 
       const rows = data ?? [];
       if (!error && typeof AppCache !== "undefined" && AppCache) {
@@ -177,11 +189,15 @@
 
   /** Lube/billing invoice totals for P&L (matches Reports trading account). */
   async function fetchLubeSales(startDate, endDate) {
-    const { data, error } = await window.supabaseClient
-      .from("invoices")
-      .select("invoice_date, total_amount")
-      .gte("invoice_date", startDate)
-      .lte("invoice_date", endDate);
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("invoices")
+        .select("id, invoice_date, total_amount")
+        .gte("invoice_date", startDate)
+        .lte("invoice_date", endDate)
+        .order("invoice_date", { ascending: true })
+        .order("id", { ascending: true })
+    );
     if (error) return { total: 0, byDate: new Map(), error };
 
     const byDate = new Map();
@@ -193,6 +209,37 @@
       byDate.set(key, (byDate.get(key) ?? 0) + amount);
     });
     return { total, byDate, error: null };
+  }
+
+  const SELLING_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
+
+  /**
+   * Latest positive selling rate for a product. The only last-rate read: the de-duplicated
+   * `dsr` view (one row per date), so every page resolves the same rate.
+   * @param {"petrol"|"diesel"} product
+   * @returns {Promise<{ rate: number, date: string | null } | null>}
+   */
+  async function fetchLastDsrRate(product) {
+    const rateField = SELLING_RATE_FIELD[product];
+    if (!rateField) return null;
+    const { data, error } = await supabaseClient
+      .from("dsr")
+      .select(`date, ${rateField}`)
+      .eq("product", product)
+      .not(rateField, "is", null)
+      .order("date", { ascending: false })
+      .limit(30);
+    if (error) {
+      if (typeof AppError !== "undefined") {
+        AppError.report(error, { context: "DsrQueries.fetchLastDsrRate", product });
+      }
+      return null;
+    }
+    for (const row of data ?? []) {
+      const num = Number(row[rateField]);
+      if (Number.isFinite(num) && num > 0) return { rate: num, date: row.date ?? null };
+    }
+    return null;
   }
 
   /** Merge DSR meter rows with dsr_stock dip/opening fields (date + product key). */
@@ -219,6 +266,7 @@
     fetchMissingBuyingPriceRows,
     fetchExpenses,
     fetchLubeSales,
+    fetchLastDsrRate,
     mergeDsrStock,
   };
 })(typeof window !== "undefined" ? window : globalThis);

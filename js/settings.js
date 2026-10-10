@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules */
+/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, AppDialog, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules */
 
 let currentAuth = null;
 
@@ -252,7 +252,8 @@ async function loadProducts() {
     .from("products")
     .select("id, name, hsn_code, unit, default_rate, gst_percent")
     .eq("is_active", true)
-    .order("name");
+    .order("name")
+    .limit(LOOKUP_ROW_LIMIT);
 
   if (error) {
     tbody.innerHTML = `<tr><td colspan="6" class="error">${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
@@ -318,13 +319,19 @@ async function saveProduct(form) {
 }
 
 async function deleteProduct(id) {
-  if (!id || !confirm("Remove this product from the billing list?")) return;
-  const { error } = await window.supabaseClient.from("products").update({ is_active: false }).eq("id", id);
-  if (error) {
-    alert(AppError.getUserMessage(error));
-    return;
+  if (!id || !(await AppDialog.confirm("Remove this product from the billing list?", { title: "Remove product", confirmLabel: "Remove", danger: true }))) return;
+  try {
+    await ActionProgress.track(
+      { title: "Removing", status: "Removing this product…", doneStatus: "Removed" },
+      async () => {
+        const { error } = await window.supabaseClient.from("products").update({ is_active: false }).eq("id", id);
+        if (error) throw error;
+        await loadProducts();
+      }
+    );
+  } catch (error) {
+    AppError.showToast(AppError.getUserMessage(error), "error");
   }
-  await loadProducts();
 }
 
 // ─── Pumps ───────────────────────────────────────────────────────────────────
@@ -720,32 +727,25 @@ function initUsersForm() {
       return;
     }
 
-    if (!existingUser && !password) {
+    let passwordNote = "";
+    if (!existingUser && password) {
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-      if (errorEl) { errorEl.textContent = "Password is required to create a new login."; errorEl.classList.remove("hidden"); }
+      if (errorEl) {
+        errorEl.textContent = "Create this login in Supabase → Authentication → Users, then save the role with the password field empty. Public sign-up is turned off in the dashboard, so this page cannot create the account.";
+        errorEl.classList.remove("hidden");
+      }
       return;
     }
-
-    let passwordNote = "";
-    if (password) {
-      if (!existingUser) {
-        const { error: signupError } = await window.supabaseClient.auth.signUp({ email, password });
-        if (signupError && !isExistingUserError(signupError)) {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-          AppError.handle(signupError, { target: errorEl });
-          return;
-        }
-      } else {
-        const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin + "/login.html",
-        });
-        if (resetError) {
-          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
-          AppError.handle(resetError, { target: errorEl });
-          return;
-        }
-        passwordNote = " Password reset email sent.";
+    if (password && existingUser) {
+      const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + "/login.html",
+      });
+      if (resetError) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
+        AppError.handle(resetError, { target: errorEl });
+        return;
       }
+      passwordNote = " Password reset email sent.";
     }
 
     const displayName = formData.get("display_name")?.trim() || null;
@@ -941,7 +941,7 @@ function createSortableCategoryManager(opts) {
     const results = await Promise.all(updates);
     const failed = results.find((r) => r.error);
     if (failed?.error) {
-      alert(AppError.getUserMessage(failed.error));
+      AppError.showToast(AppError.getUserMessage(failed.error), "error");
       load();
     }
   }
@@ -967,7 +967,7 @@ function createSortableCategoryManager(opts) {
     const label = String(input?.value || "").trim();
     if (!id) return;
     if (!label) {
-      alert(`${opts.noun[0].toUpperCase()}${opts.noun.slice(1)} name cannot be empty.`);
+      AppError.showToast(`${opts.noun[0].toUpperCase()}${opts.noun.slice(1)} name cannot be empty.`, "warning");
       input?.focus();
       return;
     }
@@ -981,7 +981,7 @@ function createSortableCategoryManager(opts) {
     btn.textContent = "Saving…";
     const { error } = await window.supabaseClient.from(opts.table).update({ label: trimmed }).eq("id", id);
     if (error) {
-      alert(AppError.getUserMessage(error));
+      AppError.showToast(AppError.getUserMessage(error), "error");
       btn.disabled = false;
       btn.textContent = "Save";
       return;
@@ -994,22 +994,28 @@ function createSortableCategoryManager(opts) {
     const id = btn.dataset.id;
     const name = btn.dataset.name;
     const label = btn.dataset.label || name;
-    if (!id || !confirm(`Delete ${opts.noun} "${label}"?`)) return;
+    if (!id || !(await AppDialog.confirm(`Delete ${opts.noun} "${label}"?`, { title: `Delete ${opts.noun}`, confirmLabel: "Delete", danger: true }))) return;
     const { count } = await window.supabaseClient
       .from(opts.usageTable)
       .select("id", { count: "exact", head: true })
       .eq(opts.usageColumn, name);
     if (count > 0) {
-      alert(`Cannot delete: ${count} ${opts.usageNoun} use this ${opts.noun}.`);
+      AppError.showToast(`Cannot delete: ${count} ${opts.usageNoun} use this ${opts.noun}.`, "warning");
       return;
     }
-    const { error } = await window.supabaseClient.from(opts.table).delete().eq("id", id);
-    if (error) {
-      alert(AppError.getUserMessage(error));
-      return;
+    try {
+      await ActionProgress.track(
+        { title: "Deleting", status: `Removing this ${opts.noun}…`, doneStatus: "Deleted" },
+        async () => {
+          const { error } = await window.supabaseClient.from(opts.table).delete().eq("id", id);
+          if (error) throw error;
+          cache = cache.filter((r) => r.id !== id);
+          render(cache);
+        }
+      );
+    } catch (error) {
+      AppError.showToast(AppError.getUserMessage(error), "error");
     }
-    cache = cache.filter((r) => r.id !== id);
-    render(cache);
   }
 
   function init() {
@@ -1289,7 +1295,8 @@ async function loadStaffList() {
   const { data, error } = await window.supabaseClient
     .from("users")
     .select("email, display_name, role, created_at")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(LOOKUP_ROW_LIMIT);
   if (error) {
     tbody.innerHTML = `<tr><td colspan='5' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
     return;
@@ -1328,9 +1335,4 @@ function formatSettingsDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function isExistingUserError(error) {
-  const message = String(error?.message || "").toLowerCase();
-  return message.includes("already registered") || message.includes("already exists");
 }

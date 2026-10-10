@@ -267,8 +267,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   }
 
   /** Normalize logo markup before iframe print (high-res src, no picture/srcset). */
-  function applyPrintLogos(html) {
-    const logoUrl = getStationLogoPrintUrl();
+  function applyPrintLogos(html, logoUrl = getStationLogoPrintUrl()) {
     return String(html || "")
       .replace(
         new RegExp(
@@ -334,7 +333,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   }
 
   function escPrint(text) {
-    return typeof escapeHtml === "function" ? escapeHtml(text) : String(text ?? "");
+    return escapeHtml(text);
   }
 
   /**
@@ -402,11 +401,10 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     </div>`;
   }
 
-  /** Bump when reports-print.css / report-watermark.css changes (also bump CACHE_VERSION in sw.js). */
-  const REPORT_PRINT_CSS_HREF = "css/reports-print.css?v=16";
+  /** ?v= hash is stamped at build (scripts/stamp-assets.mjs). */
+  const REPORT_PRINT_CSS_HREF = "css/reports-print.css";
 
-  /** Bump when credit-summary-print.css changes (also bump CACHE_VERSION in sw.js). */
-  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css?v=10";
+  const CREDIT_SUMMARY_PRINT_CSS_HREF = "css/credit-summary-print.css";
 
   const CSS_IMPORT_RE =
     /@import\s+(?:url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)|['"]([^'"]+)['"])\s*[^;]*;/gi;
@@ -664,7 +662,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
       containerClass = "",
     } = options;
 
-    const titleSafe = typeof escapeHtml === "function" ? escapeHtml(title) : title;
+    const titleSafe = escapeHtml(title);
     const cssBlock = cssText
       ? `<style>${escapeInlineCss(cssText)}</style>`
       : cssHref

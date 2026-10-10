@@ -190,7 +190,7 @@
 }
 
 .notif-item--warning {
-  border-left-color: #f59e0b;
+  border-left-color: var(--color-warning);
   background: linear-gradient(90deg, #fffbeb 0%, var(--surface) 48%);
   border-color: #fde68a;
 }
@@ -202,7 +202,7 @@
 }
 
 .notif-item--success {
-  border-left-color: #10b981;
+  border-left-color: var(--color-success);
   background: linear-gradient(90deg, #ecfdf5 0%, var(--surface) 48%);
   border-color: #a7f3d0;
 }

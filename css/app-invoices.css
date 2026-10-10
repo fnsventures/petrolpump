@@ -1,0 +1,263 @@
+/* Vault document library: one collapsed group per document type. */
+
+.vault-library-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.vault-search {
+  flex: 1 1 16rem;
+  min-width: min(100%, 12rem);
+  margin: 0;
+}
+
+.vault-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.vault-library-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.vault-library-summary:empty {
+  display: none;
+}
+
+.vault-library-summary.error {
+  color: #dc2626;
+}
+
+.vault-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.vault-group {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  background: #fff;
+  overflow: clip;
+}
+
+.vault-group[open] {
+  border-color: rgba(0, 112, 192, 0.35);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.vault-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  min-height: 3.25rem;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.vault-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vault-group > summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: -0.15rem;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease, margin 0.2s ease;
+}
+
+.vault-group[open] > summary {
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  background: rgba(0, 112, 192, 0.04);
+}
+
+.vault-group[open] > summary::after {
+  transform: rotate(-135deg);
+  margin-top: 0.15rem;
+}
+
+.vault-group > summary:hover {
+  background: rgba(0, 112, 192, 0.06);
+}
+
+.vault-group > summary:focus-visible {
+  outline: 2px solid var(--color-primary, #0070c0);
+  outline-offset: -2px;
+}
+
+.vault-group-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.vault-group-title {
+  font-weight: 600;
+  font-size: 0.98rem;
+  color: #0f172a;
+  line-height: 1.3;
+}
+
+.vault-group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.vault-group > summary > .vault-count {
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.vault-count {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--color-primary-soft, rgba(0, 112, 192, 0.12));
+  color: var(--color-primary, #0070c0);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.vault-group .table-wrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
+}
+
+.vault-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 10rem;
+  max-width: 28rem;
+}
+
+.vault-doc-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vault-doc-file {
+  color: var(--text-muted, #64748b);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.vault-group th.vault-amount,
+.vault-group td.vault-amount {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.vault-group td.table-actions {
+  white-space: normal;
+}
+
+.vault-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+@media (max-width: 768px) {
+  .vault-library-actions {
+    margin-left: 0;
+  }
+
+  .vault-group > summary {
+    align-items: flex-start;
+  }
+
+  .vault-group > summary::after {
+    margin-top: 0.35rem;
+  }
+
+  .vault-group .table-wrap {
+    overflow: visible;
+  }
+
+  .vault-group table,
+  .vault-group tbody,
+  .vault-group tr,
+  .vault-group td {
+    display: block;
+    width: auto;
+  }
+
+  .vault-group thead {
+    display: none;
+  }
+
+  .vault-group tbody tr {
+    padding: 0.8rem 1rem 0.9rem;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+  }
+
+  .vault-group tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .vault-group td {
+    border: 0;
+    padding: 0.2rem 0;
+  }
+
+  .vault-group td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.1rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted, #64748b);
+  }
+
+  .vault-group td.vault-amount {
+    text-align: left;
+    white-space: normal;
+  }
+
+  .vault-group td.table-actions {
+    padding-top: 0.45rem;
+  }
+
+  .vault-row-actions {
+    justify-content: flex-start;
+  }
+
+  .vault-doc {
+    max-width: none;
+  }
+}
