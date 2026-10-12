@@ -1183,9 +1183,9 @@ tr.is-editing .expense-cat-drag-handle {
   }
 }
 
-/* Shared confirm / prompt / form dialog (js/appDialog.js) */
+/* Shared confirm / prompt / form dialog (js/appDialog.js).
+   display is set only while open so the closed dialog stays hidden. */
 .app-dialog {
-  display: flex;
   flex-direction: column;
   border: none;
   border-radius: var(--radius-lg);
@@ -1196,6 +1196,10 @@ tr.is-editing .expense-cat-drag-handle {
   width: min(28rem, calc(100vw - 2rem));
   max-height: min(85vh, 40rem);
   overflow: hidden;
+}
+
+.app-dialog[open] {
+  display: flex;
 }
 
 .app-dialog::backdrop {
