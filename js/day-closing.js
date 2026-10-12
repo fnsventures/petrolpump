@@ -31,6 +31,9 @@ let dcSettleMapsCache = { date: null, data: null, promise: null };
 let dcShiftChannelCache = { date: null, data: null, promise: null };
 let dcCloseLoadedDate = null;
 let dcStepPendingDate = null;
+/** Date a Prev/Next click is moving to. Ignores a date-input revert while this is set. */
+let dcStepTarget = null;
+let dcCommittingDate = false;
 let expenseCategoryLabels = null;
 let dcDom = null;
 let dcRegisterPrintRows = [];
@@ -644,14 +647,35 @@ async function toggleDayClosingDetail(kind) {
 }
 
 /**
+ * Write a calendar day onto the date input.
+ * Switching through text clears the browser's weekday segment, which otherwise
+ * rejects the write or steps a week while a certified day has that field focused.
+ */
+function commitDayClosingDateInput(yyyyMmDd) {
+  const input = dcDom?.dateInput;
+  if (!input || !yyyyMmDd || dcCommittingDate) return;
+  dcCommittingDate = true;
+  try {
+    input.blur();
+    input.type = "text";
+    input.value = yyyyMmDd;
+    input.type = "date";
+    input.step = "1";
+    if (input.value !== yyyyMmDd) input.value = yyyyMmDd;
+  } finally {
+    dcCommittingDate = false;
+  }
+}
+
+/**
  * Fetch get_day_closing_breakdown for a date and render it.
  * dcBreakdownRequestId guards against out-of-order responses: only the latest request may
  * write state, so rapid date changes never show a stale day's figures.
  */
-async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}) {
+async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false, quiet = false } = {}) {
   if (!dateStr || !dcDom?.dateInput) return;
 
-  if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
+  if (dcDom.dateInput.value !== dateStr) commitDayClosingDateInput(dateStr);
   syncDayClosingDateStepper(dateStr);
   if (dcCloseLoadedDate && dcCloseLoadedDate !== dateStr) {
     collapseDayClosingDetails();
@@ -662,10 +686,14 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false } = {}
 
   const requestId = ++dcBreakdownRequestId;
 
-  if (!preserveSuccess) dcDom.successEl?.classList.add("hidden");
-  dcDom.errorEl?.classList.add("hidden");
-  setBreakdownAmounts(DC_LOADING);
-  clearDayClosingChannelHints();
+  if (!quiet) {
+    if (!preserveSuccess) dcDom.successEl?.classList.add("hidden");
+    dcDom.errorEl?.classList.add("hidden");
+    setBreakdownAmounts(DC_LOADING);
+    clearDayClosingChannelHints();
+  } else {
+    dcDom.errorEl?.classList.add("hidden");
+  }
 
   try {
     const { data, error } = await window.supabaseClient.rpc("get_day_closing_breakdown", { p_date: dateStr });
@@ -1147,6 +1175,9 @@ function renderCertifyFigures(breakdown) {
           creditToday: dcMoney(breakdown.credit_today),
           expensesToday: dcMoney(breakdown.expenses_today),
         });
+  const signature = `${night}|${phone}|${shortToday}`;
+  if (el.dataset.signature === signature && !el.classList.contains("hidden")) return;
+  el.dataset.signature = signature;
   el.innerHTML = `
     <dt>Night cash</dt><dd>${escapeHtml(formatCurrency(night))}</dd>
     <dt>PhonePe / UPI</dt><dd>${escapeHtml(formatCurrency(phone))}</dd>
@@ -1171,44 +1202,54 @@ function syncDayClosingCertifyPanel(breakdown, { clearError = true } = {}) {
     (breakdown?.can_certify != null ? !!breakdown.can_certify : true);
   const errorEl = dcDom.certifyError;
 
-  if (clearError) {
-    errorEl?.classList.add("hidden");
-    if (errorEl) errorEl.textContent = "";
+  if (clearError && errorEl && !errorEl.classList.contains("hidden")) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
   }
 
   if (!alreadySaved) {
+    if (panel.hidden && panel.classList.contains("hidden")) return;
     panel.classList.add("hidden");
     panel.hidden = true;
     if (dcDom.certifyAck) dcDom.certifyAck.checked = false;
-    dcDom.certifyFigures?.classList.add("hidden");
+    if (dcDom.certifyFigures) {
+      dcDom.certifyFigures.classList.add("hidden");
+      delete dcDom.certifyFigures.dataset.signature;
+    }
     dcDom.certifyAckWrap?.classList.add("hidden");
     return;
   }
 
   panel.hidden = false;
-  panel.classList.remove("hidden", "dc-certify--pending", "dc-certify--done");
-  panel.classList.add(certified ? "dc-certify--done" : "dc-certify--pending");
+  panel.classList.remove("hidden");
+  const mode = certified ? "dc-certify--done" : "dc-certify--pending";
+  if (!panel.classList.contains(mode)) {
+    panel.classList.remove("dc-certify--pending", "dc-certify--done");
+    panel.classList.add(mode);
+  }
 
-  if (dcDom.certifyTitle) {
-    dcDom.certifyTitle.textContent = certified ? "Certified & locked" : "Awaiting acknowledgment";
+  const title = certified ? "Certified & locked" : "Awaiting acknowledgment";
+  if (dcDom.certifyTitle && dcDom.certifyTitle.textContent !== title) {
+    dcDom.certifyTitle.textContent = title;
   }
   if (dcDom.certifyDetail) {
+    let detail = "";
     if (certified) {
-      dcDom.certifyDetail.textContent =
+      detail =
         certifiedLabel(breakdown) +
         (isAdmin
           ? " This statement is locked. Revoke certification to make corrections, then acknowledge again."
           : " This statement is locked.");
     } else if (isAdmin && unsavedEdits) {
-      dcDom.certifyDetail.textContent =
+      detail =
         "Save your changes before acknowledging. Certification locks night cash, PhonePe/UPI, and today's short for everyone, including admin.";
     } else if (isAdmin) {
-      dcDom.certifyDetail.textContent =
+      detail =
         "Review the figures below, then acknowledge to certify. After that, nobody can edit this statement until certification is revoked.";
     } else {
-      dcDom.certifyDetail.textContent =
-        "Saved. Waiting for an admin to acknowledge and certify this statement.";
+      detail = "Saved. Waiting for an admin to acknowledge and certify this statement.";
     }
+    if (dcDom.certifyDetail.textContent !== detail) dcDom.certifyDetail.textContent = detail;
   }
 
   renderCertifyFigures(breakdown);
@@ -1620,9 +1661,19 @@ const loadSteppedDayClosingDate = debounce(async (dateStr) => {
   } catch (err) {
     AppError.report(err, { context: "stepDayClosingDate", dateStr });
   } finally {
+    const finished = dateStr;
+    // Keep ignoring date-input reverts until after this load, including the event
+    // Chrome fires on the next frame.
+    setTimeout(() => {
+      if (dcStepTarget === finished) dcStepTarget = null;
+    }, 400);
     syncDayClosingSaveButton(dcDom?.saveBtn);
   }
 }, 250);
+
+function dayClosingDateChangeIsStepping() {
+  return dcCommittingDate || !!dcStepTarget;
+}
 
 async function stepDayClosingDate(days) {
   const input = dcDom?.dateInput;
@@ -1645,12 +1696,12 @@ async function stepDayClosingDate(days) {
     return;
   }
   // Show the new date immediately; drop any in-flight load for an intermediate day.
+  // Hold the target so a certified day's focused weekday segment cannot revert the input
+  // and cancel this navigation.
+  dcStepTarget = target;
   dcStepPendingDate = target;
   dcBreakdownRequestId++;
-  input.blur();
-  input.step = "1";
-  input.value = target;
-  if (input.value !== target) input.value = target;
+  commitDayClosingDateInput(target);
   syncDayClosingDateStepper(target);
   setBreakdownAmounts(DC_LOADING);
   [dcDom.nightCashInput, dcDom.phonePayInput, dcDom.remarksInput].forEach((el) => {
@@ -1665,7 +1716,7 @@ function openCloseDayForDate(dateStr) {
   if (!dateStr || !dcDom?.dateInput) return;
   savePersistedDate("day_closing_close", dateStr);
   if (location.hash !== "#close") location.hash = "close";
-  if (dcDom.dateInput.value !== dateStr) dcDom.dateInput.value = dateStr;
+  if (dcDom.dateInput.value !== dateStr) commitDayClosingDateInput(dateStr);
   return loadDayClosingBreakdown(dateStr);
 }
 
@@ -1680,6 +1731,12 @@ async function initializeDayClosing() {
     urlParam: "date",
     fallback: todayStr,
     onChange: (value) => {
+      if (dayClosingDateChangeIsStepping()) {
+        if (dcStepTarget && dateInput.value !== dcStepTarget) commitDayClosingDateInput(dcStepTarget);
+        if (dcStepTarget) savePersistedDate("day_closing_close", dcStepTarget);
+        return;
+      }
+      dcStepTarget = null;
       loadSteppedDayClosingDate.cancel();
       dcStepPendingDate = null;
       loadDayClosingBreakdown(value);
@@ -1797,9 +1854,9 @@ async function initializeDayClosing() {
         dcDom.referenceLine.classList.remove("hidden");
       }
       dcDom.errorEl?.classList.add("hidden");
-      dateInput.value = dateStr;
+      if (dateInput.value !== dateStr) commitDayClosingDateInput(dateStr);
       savePersistedDate("day_closing_close", dateStr);
-      await loadDayClosingBreakdown(dateStr, { preserveSuccess: true });
+      await loadDayClosingBreakdown(dateStr, { preserveSuccess: true, quiet: true });
       // Invalidate cache so dashboard day-closing banners and data reflect immediately
       if (typeof CacheInvalidation !== "undefined") {
         CacheInvalidation.invalidate("operational");
@@ -2634,14 +2691,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 bindLiveRefresh(
-  () => {
+  (event) => {
+    // A save in this tab already reloaded the statement. Re-running init here
+    // bound Prev/Next again and flashed Awaiting acknowledgment.
+    if (event?.detail?.local) return;
     if (isSettingsPanelActive("register")) {
       void onRegisterSectionShown();
       return;
     }
-    if (document.getElementById("day-closing-date")) {
-      void initializeDayClosing();
-    }
+    const dateStr = document.getElementById("day-closing-date")?.value?.trim();
+    if (dateStr) void loadDayClosingBreakdown(dateStr, { quiet: true, preserveSuccess: true });
   },
   { match: () => Boolean(document.getElementById("day-closing-date") || document.getElementById("dc-register-body")) }
 );
