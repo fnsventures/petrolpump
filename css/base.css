@@ -3054,7 +3054,6 @@ dialog.app-modal::backdrop {
 
 /* App shell: config, update, install, network status (js/pwa.js + js/supabase.js) */
 .app-config-banner,
-.app-update-banner,
 .app-install-banner {
   padding-left: max(clamp(1rem, 4vw, 2rem), var(--safe-left));
   padding-right: max(clamp(1rem, 4vw, 2rem), var(--safe-right));
@@ -3080,49 +3079,138 @@ dialog.app-modal::backdrop {
   border-radius: 3px;
 }
 
-.app-update-banner {
+.app-update-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 8800;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  padding-top: max(0.65rem, var(--safe-top));
-  padding-bottom: 0.65rem;
-  background: #eff6ff;
-  color: #1e40af;
-  border-bottom: 1px solid #bfdbfe;
-  font-size: var(--text-sm);
-  box-shadow: var(--shadow-xs);
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.app-update-banner-action {
-  padding: 0.35rem 0.85rem;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  background: var(--bpcl-blue);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
+.app-update-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(0, 40, 72, 0.48);
+  box-shadow: none;
   cursor: pointer;
 }
 
-.app-update-banner-action:hover {
+.app-update-sheet-panel {
+  position: relative;
+  width: min(24rem, 100%);
+  padding: 1.35rem 1.25rem max(1.25rem, var(--safe-bottom));
+  border-radius: 1.15rem 1.15rem 0 0;
+  background: #fff;
+  text-align: center;
+  box-shadow: 0 -16px 40px rgba(0, 64, 112, 0.24);
+}
+
+.app-update-sheet-panel::before {
+  content: "";
+  display: block;
+  height: 4px;
+  margin: -1.35rem -1.25rem 1rem;
+  border-radius: 1.15rem 1.15rem 0 0;
+  background: linear-gradient(90deg, var(--bpcl-blue) 0 62%, var(--bpcl-yellow) 62% 100%);
+}
+
+.app-update-sheet-close {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.7rem;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5b6b7c;
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.app-update-sheet-logo {
+  display: block;
+  width: 5.5rem;
+  height: 5.5rem;
+  margin: 0.15rem auto 0.35rem;
+  object-fit: contain;
+}
+
+.app-update-sheet-title {
+  margin: 0.35rem 1.75rem 0.4rem;
+  color: var(--bpcl-blue-dark);
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.app-update-sheet-message {
+  margin: 0;
+  color: #334155;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.app-update-sheet-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1.1rem;
+}
+
+.app-update-sheet-action,
+.app-update-sheet-dismiss {
+  min-height: 2.75rem;
+  margin: 0;
+  border: 0;
+  border-radius: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.app-update-sheet-action {
+  flex: 1 1 auto;
+  background: var(--bpcl-blue);
+  color: #fff;
+}
+
+.app-update-sheet-action:hover {
   background: var(--bpcl-blue-dark);
 }
 
-.app-update-banner-close {
-  margin-left: auto;
-  padding: 0.2rem 0.5rem;
+.app-update-sheet-dismiss {
+  flex: 0 0 auto;
+  padding: 0 0.95rem;
   background: transparent;
-  border: none;
-  color: inherit;
-  font-size: 1.2rem;
-  line-height: 1;
-  cursor: pointer;
-  border-radius: 4px;
+  color: var(--bpcl-blue-dark);
 }
 
-.app-update-banner-close:hover {
-  background: rgba(0, 0, 0, 0.06);
+body.has-update-sheet {
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .app-update-sheet {
+    align-items: center;
+    padding: 1.5rem;
+  }
+
+  .app-update-sheet-panel {
+    border-radius: 1.15rem;
+    box-shadow: 0 18px 48px rgba(0, 64, 112, 0.28);
+  }
+
+  .app-update-sheet-panel::before {
+    border-radius: 1.15rem 1.15rem 0 0;
+  }
 }
 
 .app-install-banner {
@@ -3229,18 +3317,18 @@ dialog.app-modal::backdrop {
 
 .app-install-sheet-icon {
   display: block;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: 0.9rem;
-  object-fit: cover;
-  box-shadow: 0 6px 16px rgba(0, 90, 156, 0.18);
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto;
+  object-fit: contain;
 }
 
 .app-install-sheet-title {
-  margin: 0.8rem 2rem 0.35rem 0;
+  margin: 0.65rem 2rem 0.35rem;
   color: var(--bpcl-blue-dark);
   font-size: 1.2rem;
   line-height: 1.2;
+  text-align: center;
 }
 
 .app-install-sheet-body p {
@@ -3301,7 +3389,8 @@ body.has-install-sheet {
 }
 
 @media print {
-  .app-install-sheet {
+  .app-install-sheet,
+  .app-update-sheet {
     display: none !important;
   }
 }
@@ -3333,7 +3422,6 @@ body:has(.app-network-status:not(.hidden)) {
 }
 
 body:has(.app-config-banner) .topbar,
-body:has(.app-update-banner) .topbar,
 body:has(.app-install-banner) .topbar,
 body:has(.app-error-banner) .topbar {
   scroll-margin-top: 2.5rem;

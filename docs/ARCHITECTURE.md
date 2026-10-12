@@ -130,7 +130,7 @@ js/
 ├── dsrFuelNav.js       # Fuel sidebar labels (MS/HSD + tank capacity)
 ├── errorHandler.js     # Centralized error reporting
 ├── appDialog.js        # Shared confirm, prompt, and form <dialog>
-├── pwa.js              # Service worker registration, install / update / offline banners
+├── pwa.js              # Service worker registration, install / update popup, offline bar
 ├── cache.js            # AppCache (role, reports, settings, …)
 ├── dateRangeFilter.js  # Shared date-range UI for reports/dashboard
 ├── pageSections.js     # Settings-style section tabs
@@ -314,9 +314,9 @@ supabase/
   - HTML navigations: **network-first** while online; cached page or `offline.html` only when offline
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
-  - Updates: banner + safe auto-apply after 5s hidden; `controllerchange` reloads the tab
+  - Updates: branded reload popup as soon as a new build is waiting, including on a tab left open. Reload applies it. Only the tab that asked is reloaded; other open tabs get the same popup so an in-progress entry is not wiped
   - Navigation Preload enabled when the browser supports it
-- **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update banner, offline bar, throttled `bpf:app-resume` (cache invalidation on reconnect/resume is centralized in `js/utils.js` → `onAppResumeEvent`)
+- **`js/pwa.js`:** Registers the SW (`updateViaCache: "none"`), install prompt, update popup, offline bar, throttled `bpf:app-resume` (cache invalidation on reconnect/resume is centralized in `js/utils.js` → `onAppResumeEvent`)
 - **`js/cache.js` (`AppCache`):** Short-lived API snapshots in `localStorage` with stale-while-revalidate, in-flight dedup, cross-tab invalidation (`BroadcastChannel` + `storage`), local `bpf:cache-invalidate` events, and `invalidateOperational()` for live data
 - **`js/utils.js`:** `bindLiveRefresh()` wires a page handler to both `bpf:app-resume` and `bpf:cache-invalidate` (same-tab mutations and cross-tab edits)
 - **`js/supabase.js`:** Exposes `clearAllCaches` / `clearApiCaches`. Logout calls `clearAllCaches`, which drops every `bpf_cache_` entry (including employee Aadhaar, PAN, phone, and address) and asks the service worker to clear its caches. `clearApiCaches` only drops live operational snapshots.

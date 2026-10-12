@@ -37,6 +37,17 @@
     form.className = "app-dialog-form";
     form.noValidate = true;
 
+    const logo = document.createElement("img");
+    logo.className = "app-dialog-logo";
+    logo.alt = "";
+    logo.width = 104;
+    logo.height = 104;
+    logo.decoding = "async";
+    logo.src = new URL("assets/logo-104.webp", window.location.href).href;
+    logo.addEventListener("error", () => {
+      logo.src = new URL("assets/logo-104.png", window.location.href).href;
+    });
+
     titleEl = document.createElement("h2");
     titleEl.id = "app-dialog-title";
     titleEl.className = "app-dialog-title";
@@ -63,7 +74,7 @@
     cancelBtn.value = "cancel";
 
     actions.append(okBtn, cancelBtn);
-    form.append(titleEl, messageEl, fieldsEl, actions);
+    form.append(logo, titleEl, messageEl, fieldsEl, actions);
     dialog.append(form);
     document.body.append(dialog);
 
