@@ -1,7 +1,7 @@
 /**
  * Standard PWA client lifecycle for BPFuels.
  * - Install prompt (Android beforeinstallprompt, iOS Add to Home Screen)
- * - Controlled SW updates (banner → safe apply → reload)
+ * - Controlled SW updates (logo popup → user reloads)
  * - Offline / online status with cache invalidation on reconnect
  * - Throttled app-resume for ops pages (desktop focus thrash safe)
  */
@@ -12,18 +12,24 @@
   const THEME_COLOR = "#0070c0";
   const APP_NAME = "Bishnupriya Fuels";
   const SHORT_NAME = "BPFuels";
-  const UPDATE_CHECK_MIN_MS = 15 * 60 * 1000;
-  const SAFE_UPDATE_HIDDEN_MS = 5000;
+  const UPDATE_CHECK_MIN_MS = 60 * 1000;
+  const UPDATE_POLL_MS = 30 * 1000;
+  const UPDATE_SNOOZE_MS = 5 * 60 * 1000;
   const MIN_RESUME_GAP_MS = 5000;
   const MIN_HIDDEN_FOR_RESUME_MS = 2000;
 
   let deferredInstallPrompt = null;
   let registrationRef = null;
   let waitingWorkerRef = null;
+  let waitingVersion = "";
+  let snoozedWorker = null;
+  let snoozedVersion = "";
+  let updateSnoozeUntil = 0;
+  let updatePollStarted = false;
   let refreshing = false;
+  let reloadOnControllerChange = false;
+  let updateReloadAction = null;
   let lastUpdateCheckAt = 0;
-  let hiddenSince = 0;
-  let safeUpdateTimer = null;
 
   function readStorage(key) {
     try {
@@ -105,6 +111,13 @@
     return el.isContentEditable === true;
   }
 
+  function focusedFieldHasEntry() {
+    const el = document.activeElement;
+    if (!el || !isUserActivelyEditing()) return false;
+    if (el.isContentEditable) return (el.textContent || "").trim().length > 0;
+    return String(el.value || "").trim().length > 0;
+  }
+
   function ensureViewportMeta() {
     const desired = "width=device-width, initial-scale=1, viewport-fit=cover";
     let viewport = document.querySelector('meta[name="viewport"]');
@@ -183,63 +196,144 @@
     }
   }
 
+  function logoUrl(file) {
+    return new URL(`assets/${file}`, window.location.href).href;
+  }
+
+  function dismissUpdateSheet(snooze) {
+    document.getElementById("app-update-sheet")?.remove();
+    document.body.classList.remove("has-update-sheet");
+    if (!snooze) return;
+    snoozedWorker = waitingWorkerRef;
+    snoozedVersion = waitingVersion;
+    updateSnoozeUntil = Date.now() + UPDATE_SNOOZE_MS;
+  }
+
+  function updateIsSnoozed(worker, version) {
+    if (Date.now() >= updateSnoozeUntil) return false;
+    if (worker && snoozedWorker && worker !== snoozedWorker) return false;
+    if (version && snoozedVersion && version !== snoozedVersion) return false;
+    return Boolean(snoozedWorker || snoozedVersion);
+  }
+
   function showAppUpdateBanner(onReload) {
     if (typeof document === "undefined" || !document.body) return;
+    updateReloadAction = onReload;
+    if (document.getElementById("app-update-sheet")) return;
 
-    let banner = document.getElementById("app-update-banner");
-    if (banner) return;
+    const root = document.createElement("div");
+    root.id = "app-update-sheet";
+    root.className = "app-update-sheet";
+    root.setAttribute("role", "dialog");
+    root.setAttribute("aria-modal", "true");
+    root.setAttribute("aria-labelledby", "app-update-sheet-title");
+    root.setAttribute("aria-describedby", "app-update-sheet-message");
 
-    banner = document.createElement("div");
-    banner.id = "app-update-banner";
-    banner.className = "app-update-banner";
-    banner.setAttribute("role", "status");
+    const backdrop = document.createElement("button");
+    backdrop.type = "button";
+    backdrop.className = "app-update-sheet-backdrop";
+    backdrop.setAttribute("aria-label", "Remind me later");
+    backdrop.addEventListener("click", () => dismissUpdateSheet(true));
 
-    const text = document.createElement("span");
-    text.textContent = "A new version is available.";
+    const panel = document.createElement("div");
+    panel.className = "app-update-sheet-panel";
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "app-update-sheet-close";
+    close.setAttribute("aria-label", "Remind me later");
+    close.textContent = "×";
+    close.addEventListener("click", () => dismissUpdateSheet(true));
+
+    const logo = document.createElement("img");
+    logo.className = "app-update-sheet-logo";
+    logo.alt = "";
+    logo.width = 104;
+    logo.height = 104;
+    logo.decoding = "async";
+    logo.src = logoUrl("logo-104.webp");
+    logo.addEventListener("error", () => {
+      logo.src = logoUrl("logo-104.png");
+    });
+
+    const title = document.createElement("h2");
+    title.id = "app-update-sheet-title";
+    title.className = "app-update-sheet-title";
+    title.textContent = "Update available";
+
+    const message = document.createElement("p");
+    message.id = "app-update-sheet-message";
+    message.className = "app-update-sheet-message";
+    message.textContent = focusedFieldHasEntry()
+      ? "A new version of Bishnupriya Fuels is ready. Reload to use the latest changes. Unsaved entries on this page will be lost."
+      : "A new version of Bishnupriya Fuels is ready. Reload to use the latest changes.";
+
+    const actions = document.createElement("div");
+    actions.className = "app-update-sheet-actions";
 
     const reloadBtn = document.createElement("button");
     reloadBtn.type = "button";
-    reloadBtn.className = "app-update-banner-action";
+    reloadBtn.className = "app-update-sheet-action";
     reloadBtn.textContent = "Reload";
     reloadBtn.addEventListener("click", () => {
-      if (typeof onReload === "function") onReload();
+      const action = updateReloadAction;
+      dismissUpdateSheet(false);
+      if (typeof action === "function") action();
     });
 
-    const dismissBtn = document.createElement("button");
-    dismissBtn.type = "button";
-    dismissBtn.className = "app-update-banner-close";
-    dismissBtn.setAttribute("aria-label", "Dismiss");
-    dismissBtn.textContent = "×";
-    dismissBtn.addEventListener("click", () => banner.remove());
+    const later = document.createElement("button");
+    later.type = "button";
+    later.className = "app-update-sheet-dismiss";
+    later.textContent = "Later";
+    later.addEventListener("click", () => dismissUpdateSheet(true));
 
-    banner.append(text, reloadBtn, dismissBtn);
-    document.body.insertBefore(banner, document.body.firstChild);
+    actions.append(reloadBtn, later);
+    panel.append(close, logo, title, message, actions);
+    root.append(backdrop, panel);
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Tab") return;
+      const items = [close, reloadBtn, later];
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !root.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !root.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
+    document.body.appendChild(root);
+    document.body.classList.add("has-update-sheet");
+    const dialogOpen = document.querySelector("dialog[open]");
+    if (document.visibilityState === "visible" && !isUserActivelyEditing() && !dialogOpen) reloadBtn.focus();
+  }
+
+  function reloadThisPage() {
+    if (refreshing) return;
+    refreshing = true;
+    reloadOnControllerChange = false;
+    waitingWorkerRef = null;
+    dismissUpdateSheet(false);
+    window.location.reload();
   }
 
   function applyWaitingWorker(worker) {
-    if (!worker) return;
+    if (!worker || worker.state === "activated" || worker.state === "redundant") {
+      reloadThisPage();
+      return;
+    }
+    reloadOnControllerChange = true;
     worker.postMessage({ type: "SKIP_WAITING" });
   }
 
-  function trySafeAutoUpdate() {
-    if (!waitingWorkerRef) return;
-    if (document.visibilityState !== "hidden") return;
-    if (!hiddenSince) return;
-    if (Date.now() - hiddenSince < SAFE_UPDATE_HIDDEN_MS) return;
-    if (isUserActivelyEditing()) return;
-    applyWaitingWorker(waitingWorkerRef);
-  }
-
-  function scheduleSafeAutoUpdate() {
-    clearTimeout(safeUpdateTimer);
-    safeUpdateTimer = setTimeout(trySafeAutoUpdate, SAFE_UPDATE_HIDDEN_MS + 100);
-  }
-
-  function promptWaitingWorker(worker) {
+  function promptWaitingWorker(worker, version) {
     if (!worker) return;
     waitingWorkerRef = worker;
-    showAppUpdateBanner(() => applyWaitingWorker(worker));
-    scheduleSafeAutoUpdate();
+    if (version) waitingVersion = version;
+    if (updateIsSnoozed(worker, version || waitingVersion)) return;
+    showAppUpdateBanner(() => applyWaitingWorker(waitingWorkerRef));
   }
 
   function handleInstalledWorker(worker) {
@@ -252,11 +346,15 @@
     promptWaitingWorker(worker);
   }
 
+  const trackedWorkers = new WeakSet();
+
   function trackInstallingWorker(worker) {
-    if (!worker) return;
+    if (!worker || trackedWorkers.has(worker)) return;
+    trackedWorkers.add(worker);
     worker.addEventListener("statechange", () => {
       handleInstalledWorker(worker);
     });
+    handleInstalledWorker(worker);
   }
 
   function dismissInstallSheet(persist) {
@@ -345,9 +443,12 @@
     const icon = document.createElement("img");
     icon.className = "app-install-sheet-icon";
     icon.alt = "";
-    icon.width = 56;
-    icon.height = 56;
-    icon.src = new URL("assets/apple-touch-icon.png", window.location.href).href;
+    icon.width = 72;
+    icon.height = 72;
+    icon.src = logoUrl("logo-104.webp");
+    icon.addEventListener("error", () => {
+      icon.src = logoUrl("logo-104.png");
+    });
 
     const title = document.createElement("h2");
     title.id = "app-install-sheet-title";
@@ -432,9 +533,12 @@
     });
 
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && document.getElementById("app-install-sheet")) {
+      if (event.key !== "Escape") return;
+      if (document.getElementById("app-install-sheet")) {
         dismissInstallSheet(true);
+        return;
       }
+      if (document.getElementById("app-update-sheet")) dismissUpdateSheet(true);
     });
 
     if (!shouldOfferInstall()) return;
@@ -485,13 +589,40 @@
   async function checkForUpdates(force = false) {
     if (!registrationRef) return;
     const now = Date.now();
-    if (!force && now - lastUpdateCheckAt < UPDATE_CHECK_MIN_MS) return;
-    lastUpdateCheckAt = now;
-    try {
-      await registrationRef.update();
-    } catch {
-      /* offline or blocked */
+    const due = force || now - lastUpdateCheckAt >= UPDATE_CHECK_MIN_MS;
+    if (due) {
+      lastUpdateCheckAt = now;
+      try {
+        await registrationRef.update();
+      } catch {
+        /* offline or blocked */
+      }
     }
+    if (registrationRef.waiting && navigator.serviceWorker.controller) {
+      promptWaitingWorker(registrationRef.waiting);
+    }
+  }
+
+  function startUpdatePolling() {
+    if (updatePollStarted) return;
+    updatePollStarted = true;
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") void checkForUpdates(true);
+    });
+
+    window.addEventListener("focus", () => {
+      void checkForUpdates(false);
+    });
+
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) void checkForUpdates(true);
+    });
+
+    setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void checkForUpdates(false);
+    }, UPDATE_POLL_MS);
   }
 
   function registerServiceWorker() {
@@ -504,14 +635,27 @@
           updateViaCache: "none",
         });
         registrationRef = registration;
+        startUpdatePolling();
 
-        if (registration.waiting) {
-          handleInstalledWorker(registration.waiting);
-        }
+        navigator.serviceWorker.addEventListener("message", (event) => {
+          if (event.data?.type !== "UPDATE_AVAILABLE") return;
+          if (!navigator.serviceWorker.controller) return;
+          const announced = event.source;
+          const announcedOk =
+            announced &&
+            typeof announced.postMessage === "function" &&
+            announced.state !== "redundant";
+          const worker = announcedOk ? announced : registration.waiting || registration.installing;
+          if (!worker || typeof worker.postMessage !== "function") return;
+          promptWaitingWorker(worker, event.data.version);
+        });
 
         registration.addEventListener("updatefound", () => {
           trackInstallingWorker(registration.installing);
         });
+
+        if (registration.installing) trackInstallingWorker(registration.installing);
+        if (registration.waiting) handleInstalledWorker(registration.waiting);
 
         void checkForUpdates(true);
       } catch (error) {
@@ -535,10 +679,13 @@
 
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (refreshing) return;
-      refreshing = true;
-      waitingWorkerRef = null;
-      document.getElementById("app-update-banner")?.remove();
-      window.location.reload();
+      if (reloadOnControllerChange) {
+        reloadThisPage();
+        return;
+      }
+      // Another tab applied the update. Ask here so an open form is not wiped.
+      updateReloadAction = reloadThisPage;
+      showAppUpdateBanner(reloadThisPage);
     });
   }
 
@@ -569,15 +716,9 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
-        hiddenSince = hiddenAt;
-        scheduleSafeAutoUpdate();
         return;
       }
-      hiddenSince = 0;
-      clearTimeout(safeUpdateTimer);
       if (document.visibilityState !== "visible") return;
-
-      void checkForUpdates(false);
 
       const now = Date.now();
       const hiddenFor = hiddenAt ? now - hiddenAt : 0;

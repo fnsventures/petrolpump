@@ -17,7 +17,7 @@
         <nav id="credit-customer-nav" class="settings-nav card hidden" aria-label="Customer sections" hidden>
           <p class="settings-nav-title">Customer</p>
           <a class="settings-nav-back" href="credit.html#outstanding">← Back to list</a>
-          <button type="button" class="settings-nav-item is-active" data-section="summary">Summary</button>
+          <button type="button" class="settings-nav-item is-active" data-section="summary">Activity</button>
           <button type="button" class="settings-nav-item" data-section="settle">Record payment</button>
           <button type="button" class="settings-nav-item" data-section="credit">Credit taken</button>
           <button type="button" class="settings-nav-item" data-section="payments">Settlements</button>
@@ -431,16 +431,59 @@
 
         <section
           id="customer-period-toolbar"
-          class="card hidden"
-          aria-label="Activity period and print"
+          class="card customer-activity is-unpaid-view hidden"
+          aria-label="Activity for the selected period"
           hidden
         >
-          <div class="card-head snapshot-head">
-            <div>
-              <h2 class="filter-card-title">Activity period</h2>
-              <p id="customer-filter-summary" class="muted text-sm" aria-live="polite"></p>
+          <div class="customer-activity-top">
+            <div class="customer-activity-intro">
+              <h2 class="customer-activity-title">Activity</h2>
+              <p id="customer-filter-summary" class="customer-activity-summary" aria-live="polite"></p>
             </div>
-            <div class="snapshot-controls">
+            <button
+              type="button"
+              id="customer-summary-print-btn"
+              class="button-secondary customer-summary-print-btn"
+              title="Print this view"
+              aria-describedby="customer-filter-summary"
+              disabled
+            >
+              Print
+            </button>
+          </div>
+
+          <div class="customer-activity-bar">
+            <div class="customer-activity-views" role="radiogroup" aria-label="Activity view">
+              <button
+                type="button"
+                class="customer-activity-view is-active"
+                role="radio"
+                data-activity-view="outstanding"
+                aria-checked="true"
+              >
+                Unpaid
+                <span id="customer-activity-unpaid-count" class="customer-activity-count" hidden></span>
+              </button>
+              <button
+                type="button"
+                class="customer-activity-view"
+                role="radio"
+                data-activity-view="activity"
+                aria-checked="false"
+              >
+                Activity
+              </button>
+              <button
+                type="button"
+                class="customer-activity-view"
+                role="radio"
+                data-activity-view="activity-days"
+                aria-checked="false"
+              >
+                By day
+              </button>
+            </div>
+            <div class="customer-activity-period snapshot-controls">
               <div class="form-field form-field-inline">
                 <label for="filter-range">Period</label>
                 <select id="filter-range" aria-describedby="customer-filter-summary">
@@ -461,82 +504,42 @@
                   <input id="filter-to" type="date" />
                 </div>
               </div>
-              <div class="form-field form-field-inline">
-                <label class="sr-only" for="customer-summary-print-mode">What to print</label>
-                <select id="customer-summary-print-mode">
-                  <option value="outstanding">Unpaid bills</option>
-                  <option value="activity">Activity</option>
-                  <option value="activity-days">Activity by day</option>
-                </select>
-              </div>
               <div class="filter-actions">
                 <button type="button" id="customer-apply-filter">Apply</button>
-                <button
-                  type="button"
-                  id="customer-summary-print-btn"
-                  class="button-secondary customer-summary-print-btn"
-                  title="Print the statement selected above"
-                  disabled
-                >
-                  Print
-                </button>
-                <button type="button" id="reset-period-filter" class="button-secondary">
-                  Reset to today
-                </button>
               </div>
             </div>
           </div>
 
-          <div class="stat-grid stat-grid-inline customer-toolbar-stats">
-            <div class="stat-card stat-card-compact">
-              <span class="stat-label">Credit in range</span>
-              <strong id="stat-period-credit" class="stat-value">—</strong>
+          <div class="customer-activity-kpis" aria-live="polite">
+            <div class="customer-activity-kpi">
+              <span class="customer-activity-kpi-label">Credit taken</span>
+              <strong id="stat-period-credit" class="customer-activity-kpi-value">—</strong>
             </div>
-            <div class="stat-card stat-card-compact">
-              <span class="stat-label">Settled in range</span>
-              <strong id="stat-period-settled" class="stat-value">—</strong>
+            <div class="customer-activity-kpi">
+              <span class="customer-activity-kpi-label">Settled</span>
+              <strong id="stat-period-settled" class="customer-activity-kpi-value">—</strong>
+            </div>
+            <div class="customer-activity-kpi customer-activity-kpi--outstanding" id="stat-period-outstanding-card">
+              <span class="customer-activity-kpi-label" id="stat-period-outstanding-label">Outstanding</span>
+              <strong id="stat-period-outstanding" class="customer-activity-kpi-value">—</strong>
             </div>
           </div>
+          <p id="customer-activity-equation" class="customer-activity-equation">
+            Outstanding is credit taken minus settlements in this period.
+          </p>
         </section>
 
-        <section id="customer-panel-summary" class="settings-panel card" data-panel="summary" hidden>
-          <h2 class="settings-subheading customer-summary-heading">Account summary</h2>
-
-          <h3 class="settings-subheading">Credit</h3>
-          <div class="table-wrap">
-            <table class="overdue-detail-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Amount (₹)</th>
-                </tr>
-              </thead>
-              <tbody id="lifetime-credit-body"></tbody>
-            </table>
+        <section
+          id="customer-panel-summary"
+          class="settings-panel card customer-activity-statement"
+          data-panel="summary"
+          hidden
+        >
+          <div class="customer-activity-statement-head">
+            <h2 id="customer-activity-heading" class="customer-activity-heading">Unpaid bills</h2>
+            <p id="customer-activity-lead" class="customer-activity-lead"></p>
           </div>
-          <p id="lifetime-credit-empty" class="muted text-sm hidden">No credit entries.</p>
-          <div id="lifetime-credit-pagination" class="pagination-controls hidden">
-            <span id="lifetime-credit-info" class="muted pagination-info"></span>
-            <button type="button" id="lifetime-credit-more" class="button-secondary">Load more</button>
-          </div>
-
-          <h3 class="settings-subheading">Settlements</h3>
-          <div class="table-wrap">
-            <table class="overdue-detail-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Amount (₹)</th>
-                </tr>
-              </thead>
-              <tbody id="lifetime-payment-body"></tbody>
-            </table>
-          </div>
-          <p id="lifetime-payment-empty" class="muted text-sm hidden">No settlements.</p>
-          <div id="lifetime-payment-pagination" class="pagination-controls hidden">
-            <span id="lifetime-payment-info" class="muted pagination-info"></span>
-            <button type="button" id="lifetime-payment-more" class="button-secondary">Load more</button>
-          </div>
+          <div id="customer-activity-body"></div>
         </section>
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>

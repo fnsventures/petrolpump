@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId */
+/* global window.supabaseClient, formatCurrency, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId */
 
 (function () {
   const page = () => window.CreditPage;
@@ -6,19 +6,19 @@
     filterEntriesByRange,
     sumAmount,
     createBreakdownPager,
-    sortEntriesByDateDesc,
     buildMonthActivityRows,
     buildDayActivityRows,
     openCreditLines,
   } = CreditCustomerDetail;
-  const SUMMARY_LIST_PAGE = 10;
-  const summaryListState = {
-    credit: { entries: [], shown: SUMMARY_LIST_PAGE },
-    payment: { entries: [], shown: SUMMARY_LIST_PAGE },
-  };
+  const ACTIVITY_VIEWS = new Set(["outstanding", "activity", "activity-days"]);
+  const ACTIVITY_VIEW_STORAGE_KEY = "credit_customer_statement_view";
   let creditPager = null;
   let paymentPager = null;
   let customerPeriodFilterApi = null;
+  let customerDetailReady = false;
+  let detailLoadSeq = 0;
+  let settleInFlight = false;
+  const deleteInFlight = new Set();
 
 function applyCustomerPeriodFromUrl(params) {
   const period = (params.get("period") || "").trim();
@@ -91,6 +91,7 @@ async function initCustomerView() {
   if (settleDate) initPersistedDateInput(settleDate, RECORD_DATE_KEYS.creditSettle);
 
   applyCustomerPeriodFromUrl(new URLSearchParams(window.location.search));
+  restoreCustomerActivityView();
   initCustomerViewFilter();
   initCustomerSettlePanel();
   document.getElementById("settle-form")?.addEventListener("submit", (event) => {
@@ -139,13 +140,10 @@ async function initCustomerView() {
     });
   }
 
-  document.getElementById("lifetime-credit-more")?.addEventListener("click", () => {
-    summaryListState.credit.shown += SUMMARY_LIST_PAGE;
-    renderSummaryList("credit");
-  });
-  document.getElementById("lifetime-payment-more")?.addEventListener("click", () => {
-    summaryListState.payment.shown += SUMMARY_LIST_PAGE;
-    renderSummaryList("payment");
+  document.querySelectorAll(".customer-activity-view").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      applyCustomerActivityView(btn.dataset.activityView, { render: true, navigate: true });
+    });
   });
   document.getElementById("customer-summary-print-btn")?.addEventListener("click", () => {
     void handleCreditSummaryPrintClick();
@@ -161,6 +159,7 @@ async function initCustomerView() {
     );
   });
 
+  customerDetailReady = true;
   await loadCustomerDetail();
 }
 
@@ -184,8 +183,27 @@ function getCustomerViewFilter() {
   };
 }
 
+function activityViewMeta(mode) {
+  if (mode === "activity-days") return { mode: "activity-days", short: "By day", heading: "Activity by day" };
+  if (mode === "outstanding") return { mode: "outstanding", short: "Unpaid", heading: "Unpaid bills" };
+  return { mode: "activity", short: "Activity", heading: "Activity" };
+}
+
+function creditPrintMode() {
+  const active = document.querySelector(".customer-activity-view.is-active")?.dataset.activityView;
+  return ACTIVITY_VIEWS.has(active) ? active : "outstanding";
+}
+
+function customerActivitySummaryText(range) {
+  const view = activityViewMeta(creditPrintMode()).short;
+  if (!range) return view;
+  const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
+  return `${activity} · ${view}`;
+}
+
 function updateCustomerFilterSummary() {
   const el = document.getElementById("customer-filter-summary");
+  if (!el) return;
   const range =
     customerPeriodFilterApi?.getRange?.() ||
     readDateRangeFromControls(
@@ -193,24 +211,42 @@ function updateCustomerFilterSummary() {
       document.getElementById("filter-from"),
       document.getElementById("filter-to")
     );
-  if (!el || !range) return;
-  const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
-  el.textContent = `Showing ${activity} on Summary, Credit taken, and Settlements.`;
+  el.textContent = customerActivitySummaryText(range);
 }
 
-function resetCustomerPeriodFilter() {
-  const rangeSelect = document.getElementById("filter-range");
-  const fromInput = document.getElementById("filter-from");
-  const toInput = document.getElementById("filter-to");
-  if (rangeSelect) rangeSelect.value = "today";
-  if (fromInput) fromInput.value = "";
-  if (toInput) toInput.value = "";
-  if (typeof setFilterState === "function") {
-    setFilterState("credit_customer_period", { range: "today" });
+function applyCustomerActivityView(mode, options = {}) {
+  const next = ACTIVITY_VIEWS.has(mode) ? mode : "outstanding";
+  document.querySelectorAll(".customer-activity-view").forEach((btn) => {
+    const on = btn.dataset.activityView === next;
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  try {
+    sessionStorage.setItem(ACTIVITY_VIEW_STORAGE_KEY, next);
+  } catch (_) {
+    /* private browsing */
   }
-  // Force change sync so popover/edit UI resets even if value was already "today".
-  rangeSelect?.dispatchEvent(new Event("change", { bubbles: true }));
-  customerPeriodFilterApi?.refresh?.();
+  const printBtn = document.getElementById("customer-summary-print-btn");
+  if (printBtn && !page().state.creditSummaryPrintBusy) {
+    printBtn.title = `Print ${activityViewMeta(next).heading.toLowerCase()}`;
+  }
+  updateCustomerFilterSummary();
+  syncUnpaidFigureVisibility(next);
+  if (options.render) renderCustomerActivity();
+  if (options.navigate) {
+    const hash = (location.hash || "").replace(/^#/, "");
+    if (hash && hash !== "summary") location.hash = "summary";
+  }
+}
+
+function restoreCustomerActivityView() {
+  let stored = "";
+  try {
+    stored = sessionStorage.getItem(ACTIVITY_VIEW_STORAGE_KEY) || "";
+  } catch (_) {
+    stored = "";
+  }
+  applyCustomerActivityView(stored, { render: false, navigate: false });
 }
 
 function initCustomerViewFilter() {
@@ -224,21 +260,19 @@ function initCustomerViewFilter() {
     customRange: "customer-custom-range",
     applyBtn: "customer-apply-filter",
     labelEl: "customer-filter-summary",
-    trigger: "apply",
+    trigger: "auto",
     persist: true,
     runOnInit: true,
     customDefaults: "month-start",
     labelStyle: "dashboard",
-    formatLabel: (range) => {
-      const activity = formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" });
-      return `Showing ${activity} on Summary, Credit taken, and Settlements.`;
-    },
+    formatLabel: (range) => customerActivitySummaryText(range),
     onApply: () => {
+      // Init calls load once the pagers exist. An earlier fetch would finish
+      // with nowhere to render, then race the real load.
+      if (!customerDetailReady) return;
       void loadCustomerDetail();
     },
   });
-
-  document.getElementById("reset-period-filter")?.addEventListener("click", resetCustomerPeriodFilter);
 }
 
 function updateSettleBalanceBanner() {
@@ -502,7 +536,7 @@ async function saveCustomerContact() {
   closeCustomerEditModal();
 }
 
-async function resolveCustomerIds() {
+async function resolveCustomerIds(isCurrent) {
   const needle = (page().state.customerName || "").trim();
   if (!needle) {
     page().state.customerIds = [];
@@ -519,6 +553,7 @@ async function resolveCustomerIds() {
       .order("id", { ascending: true })
   );
 
+  if (typeof isCurrent === "function" && !isCurrent()) return;
   if (error) {
     AppError.report(error, { context: "resolveCustomerIds" });
     return;
@@ -554,13 +589,7 @@ function formatSummaryQty(value) {
   return qty.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }
 
-function creditPrintMode() {
-  const value = document.getElementById("customer-summary-print-mode")?.value;
-  if (value === "activity" || value === "activity-days") return value;
-  return "outstanding";
-}
-
-/** Derive outstanding vs advance from credit − settled (single source of truth for print). */
+/** Derive outstanding vs advance from credit − settled (single source of truth for the period). */
 function resolveCreditPrintBalance(creditTaken, settlementDone) {
   const credit = Number(creditTaken) || 0;
   const settled = Number(settlementDone) || 0;
@@ -596,9 +625,12 @@ function entryDateBounds(entries) {
 function updateCreditSummaryPrintButton() {
   const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
   const printBtn = document.getElementById("customer-summary-print-btn");
-  const printMode = document.getElementById("customer-summary-print-mode");
-  if (printBtn) printBtn.disabled = !canShare;
-  if (printMode) printMode.disabled = !canShare;
+  if (printBtn) {
+    printBtn.disabled = !canShare;
+    if (!page().state.creditSummaryPrintBusy) {
+      printBtn.title = `Print ${activityViewMeta(creditPrintMode()).heading.toLowerCase()}`;
+    }
+  }
   syncCustomerContactActions();
 }
 
@@ -723,39 +755,31 @@ function creditPrintParty(context) {
   };
 }
 
-function activityFocusMonth(context) {
-  return String(context?.asOfDate || getLocalDateString()).slice(0, 7);
-}
-
 function activityAmountCell(amount) {
   return amount > 0.009 ? formatCurrency(amount) : "";
 }
 
-function buildDayTableHtml(rows, emptyLabel, options) {
-  let creditTotal = 0;
-  let settledTotal = 0;
-  if (!rows.length) {
-    return {
-      body: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
-      creditTotal: 0,
-      settledTotal: 0,
-    };
-  }
-
+/** Same day rows for the screen and the printout. */
+function collectDayActivityDisplay(rows, options) {
   const groupMonths =
     Boolean(options?.groupMonths) &&
     rows.length > 1 &&
     rows[0].date.slice(0, 7) !== rows[rows.length - 1].date.slice(0, 7);
-  const parts = [];
+  const lines = [];
+  let creditTotal = 0;
+  let settledTotal = 0;
   let month = "";
   let monthCredit = 0;
   let monthSettled = 0;
 
   const flushMonth = () => {
     if (!groupMonths || !month) return;
-    parts.push(
-      `<tr class="credit-summary-month-total"><td>${escapeHtml(formatMonthLabel(month))}</td><td class="num">${formatCurrency(monthCredit)}</td><td class="num">${formatCurrency(monthSettled)}</td></tr>`
-    );
+    lines.push({
+      kind: "month-total",
+      label: formatMonthLabel(month),
+      credit: monthCredit,
+      settled: monthSettled,
+    });
   };
 
   for (const row of rows) {
@@ -767,18 +791,38 @@ function buildDayTableHtml(rows, emptyLabel, options) {
       month = key;
       monthCredit = 0;
       monthSettled = 0;
-      parts.push(
-        `<tr class="credit-summary-month-row"><td colspan="3">${escapeHtml(formatMonthLabel(key))}</td></tr>`
-      );
+      lines.push({ kind: "month", label: formatMonthLabel(key) });
     }
     monthCredit += row.credit;
     monthSettled += row.settled;
-    parts.push(
-      `<tr><td>${escapeHtml(formatDisplayDate(row.date))}</td><td class="num">${activityAmountCell(row.credit)}</td><td class="num">${activityAmountCell(row.settled)}</td></tr>`
-    );
+    lines.push({ kind: "day", date: row.date, credit: row.credit, settled: row.settled });
   }
   flushMonth();
-  return { body: parts.join(""), creditTotal, settledTotal };
+  return { lines, creditTotal, settledTotal };
+}
+
+function buildDayTableHtml(rows, emptyLabel, options) {
+  if (!rows.length) {
+    return {
+      body: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
+      creditTotal: 0,
+      settledTotal: 0,
+    };
+  }
+
+  const display = collectDayActivityDisplay(rows, options);
+  const body = display.lines
+    .map((line) => {
+      if (line.kind === "month-total") {
+        return `<tr class="credit-summary-month-total"><td>${escapeHtml(line.label)}</td><td class="num">${formatCurrency(line.credit)}</td><td class="num">${formatCurrency(line.settled)}</td></tr>`;
+      }
+      if (line.kind === "month") {
+        return `<tr class="credit-summary-month-row"><td colspan="3">${escapeHtml(line.label)}</td></tr>`;
+      }
+      return `<tr><td>${escapeHtml(formatDisplayDate(line.date))}</td><td class="num">${activityAmountCell(line.credit)}</td><td class="num">${activityAmountCell(line.settled)}</td></tr>`;
+    })
+    .join("");
+  return { body, creditTotal: display.creditTotal, settledTotal: display.settledTotal };
 }
 
 function dayActivityTableHtml(body, totals) {
@@ -811,70 +855,62 @@ function buildActivitySectionsHtml(summary, context) {
     </section>`;
   }
 
-  const focusMonth = activityFocusMonth(context);
-  const monthRows = buildMonthActivityRows(credits, payments, focusMonth);
-  const dayRows = buildDayActivityRows(credits, payments, monthRows.length ? focusMonth : "");
-  const focusLabel = formatMonthLabel(focusMonth);
-  const periodActivity = context?.periodActivity || "";
+  const monthRows = buildMonthActivityRows(credits, payments, "");
+  if (!monthRows.length) {
+    return `
+    <section class="credit-summary-block credit-summary-block--flow">
+      <table class="report-table credit-summary-table--months">
+        <tbody><tr><td class="muted" style="text-align:center">No credit or settlement in this period.</td></tr></tbody>
+      </table>
+    </section>`;
+  }
 
-  let monthSection = "";
-  if (monthRows.length) {
-    let creditTotal = 0;
-    let settledTotal = 0;
-    const body = monthRows
-      .map((row) => {
-        creditTotal += row.credit;
-        settledTotal += row.settled;
-        return `
+  let creditTotal = 0;
+  let settledTotal = 0;
+  const body = monthRows
+    .map((row) => {
+      creditTotal += row.credit;
+      settledTotal += row.settled;
+      return `
           <tr>
             <td>${escapeHtml(formatMonthLabel(row.month))}</td>
             <td class="num">${formatCurrency(row.credit)}</td>
             <td class="num">${formatCurrency(row.settled)}</td>
           </tr>`;
-      })
-      .join("");
-    monthSection = `
-      <section class="credit-summary-block credit-summary-block--flow">
-        <h3 class="credit-summary-block-title">Earlier months</h3>
-        <table class="report-table credit-summary-table--months">
-          <thead>
-            <tr>
-              <th>Month</th>
-              <th class="num">Credit (₹)</th>
-              <th class="num">Settled (₹)</th>
-            </tr>
-          </thead>
-          <tbody>${body}</tbody>
-          <tfoot>
-            <tr class="report-total-row">
-              <td>Total</td>
-              <td class="num">${formatCurrency(creditTotal)}</td>
-              <td class="num">${formatCurrency(settledTotal)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </section>`;
-  }
-
-  const dayTable = buildDayTableHtml(
-    dayRows,
-    monthRows.length ? `No credit or settlement in ${focusLabel}.` : "No credit or settlement in this period."
-  );
-  const dayTitle = monthRows.length ? focusLabel : periodActivity || "By day";
+    })
+    .join("");
 
   return `
-    ${monthSection}
     <section class="credit-summary-block credit-summary-block--flow">
-      <h3 class="credit-summary-block-title">${escapeHtml(dayTitle)}</h3>
-      ${dayActivityTableHtml(
-        dayTable.body,
-        monthRows.length ? { credit: dayTable.creditTotal, settled: dayTable.settledTotal } : null
-      )}
+      <h3 class="credit-summary-block-title">By month</h3>
+      <table class="report-table credit-summary-table--months">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="num">Credit (₹)</th>
+            <th class="num">Settled (₹)</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+        <tfoot>
+          <tr class="report-total-row">
+            <td>Total</td>
+            <td class="num">${formatCurrency(creditTotal)}</td>
+            <td class="num">${formatCurrency(settledTotal)}</td>
+          </tr>
+        </tfoot>
+      </table>
     </section>`;
 }
 
-function buildOutstandingLinesHtml(summary) {
-  const lines = openCreditLines(summary?.credit_entries);
+/** Credit sales dated inside the selected period. Unpaid uses the same window as Activity. */
+function periodCreditEntries() {
+  const entries = page().state.lastCustomerSummary?.credit_entries;
+  return Array.isArray(entries) ? entries : [];
+}
+
+function buildOutstandingLinesHtml() {
+  const lines = openCreditLines(periodCreditEntries());
   if (!lines.length) {
     return {
       rows: `<tr><td colspan="4" class="muted" style="text-align:center">No unpaid bills.</td></tr>`,
@@ -927,25 +963,78 @@ function buildCreditSummaryPrintHtml(summary, context) {
   return buildOutstandingStatementHtml(summary, context);
 }
 
+function creditStatementPeriodLabel(context) {
+  if (context?.periodActivity) return escapeHtml(context.periodActivity);
+  const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : formatDisplayDate(getLocalDateString());
+  return `As on ${escapeHtml(asOfLabel)}`;
+}
+
+function creditStatementFiguresHtml(balance, options = {}) {
+  const dueClass = `credit-summary-due${balance.cleared ? " is-cleared" : ""}${balance.hasAdvance ? " is-advance" : ""}`;
+  const due = `
+    <div class="${dueClass}">
+      <span class="credit-summary-due-label">${escapeHtml(balance.balanceLabel)}</span>
+      <span class="credit-summary-due-value">${formatCurrency(balance.balanceValue)}</span>
+    </div>`;
+  if (options.outstandingOnly) return due;
+  return `
+    <div class="credit-summary-kpis credit-summary-kpis--two">
+      <div class="credit-summary-kpi">
+        <span class="credit-summary-kpi-label">Credit taken</span>
+        <span class="credit-summary-kpi-value">${formatCurrency(balance.credit)}</span>
+      </div>
+      <div class="credit-summary-kpi">
+        <span class="credit-summary-kpi-label">Settled</span>
+        <span class="credit-summary-kpi-value">${formatCurrency(balance.settled)}</span>
+      </div>
+    </div>
+    ${due}`;
+}
+
+function unpaidActivityNote(openTotal, context) {
+  const notes = [];
+  if ((Number(openTotal) || 0) > 0.009) {
+    notes.push("Settled bills are not listed.");
+  }
+  const asOf = String(context?.asOfDate || "");
+  if (asOf && asOf < getLocalDateString()) {
+    notes.push("A payment made after this period is already deducted from these open amounts.");
+  }
+  return notes.join(" ");
+}
+
+/** Unpaid outstanding is the open total of the bills on the statement, so the figure matches the list. */
+function balanceFromOpenTotal(openTotal) {
+  const open = Math.max(0, Number(openTotal) || 0);
+  return {
+    credit: 0,
+    settled: 0,
+    outstanding: open,
+    advancePayment: 0,
+    hasAdvance: false,
+    cleared: open <= 0.009,
+    balanceLabel: "Outstanding",
+    balanceValue: open,
+  };
+}
+
 function buildOutstandingStatementHtml(summary, context) {
-  const balance = resolveCreditPrintBalance(summary?.credit_taken, summary?.settlement_done);
-  const { outstanding, hasAdvance, cleared, balanceLabel, balanceValue } = balance;
   const party = creditPrintParty(context);
   const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : formatDisplayDate(getLocalDateString());
-  const openLines = buildOutstandingLinesHtml(summary);
-  const openGap = Math.abs(openLines.openTotal - (hasAdvance ? 0 : outstanding));
-  const gapNote = !hasAdvance && !cleared && openGap > 0.05 ? ` Account balance is ${formatCurrency(outstanding)}.` : "";
+  const openLines = buildOutstandingLinesHtml();
+  const balance = balanceFromOpenTotal(openLines.openTotal);
+  const note = unpaidActivityNote(openLines.openTotal, context);
+  const foot = openLines.count
+    ? `<tfoot><tr class="report-total-row"><td colspan="3">Open total</td><td class="num">${formatCurrency(openLines.openTotal)}</td></tr></tfoot>`
+    : "";
 
   return `
     <article class="credit-summary-sheet report-print-sheet">
-      ${creditSummaryReportHeader("Unpaid credit", [`As on ${escapeHtml(asOfLabel)}`])}
+      ${creditSummaryReportHeader("Unpaid credit", [creditStatementPeriodLabel(context)])}
 
       ${creditSummaryPartyHtml(party.name, party.mobile, party.vehicleLine, party.address)}
 
-      <div class="credit-summary-due${cleared ? " is-cleared" : ""}${hasAdvance ? " is-advance" : ""}">
-        <span class="credit-summary-due-label">${balanceLabel}</span>
-        <span class="credit-summary-due-value">${formatCurrency(balanceValue)}</span>
-      </div>
+      ${creditStatementFiguresHtml(balance, { outstandingOnly: true })}
 
       <section class="credit-summary-block credit-summary-block--flow">
         <table class="report-table credit-summary-table--open">
@@ -958,67 +1047,40 @@ function buildOutstandingStatementHtml(summary, context) {
             </tr>
           </thead>
           <tbody>${openLines.rows}</tbody>
+          ${foot}
         </table>
       </section>
 
-      <p class="credit-summary-note">Settled bills are not listed.${gapNote}</p>
+      ${note ? `<p class="credit-summary-note">${escapeHtml(note)}</p>` : ""}
 
       <footer class="report-print-foot">
         <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
-        <span>Outstanding · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
+        <span>Unpaid bills · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
       </footer>
     </article>`;
 }
 
 function buildActivityStatementHtml(summary, context) {
-  const creditTaken = Number(summary?.credit_taken) || 0;
-  const settlementDone = Number(summary?.settlement_done) || 0;
+  const balance = resolveCreditPrintBalance(summary?.credit_taken, summary?.settlement_done);
   const party = creditPrintParty(context);
   const asOfLabel = context?.asOfDate ? formatDisplayDate(context.asOfDate) : "—";
-  const periodActivity = context?.periodActivity || "";
+  const viewLabel = context?.printMode === "activity-days" ? "Activity by day" : "Activity";
 
   return `
     <article class="credit-summary-sheet report-print-sheet">
-      ${creditSummaryReportHeader("Credit activity", [
-        periodActivity ? escapeHtml(periodActivity) : `Through ${escapeHtml(asOfLabel)}`,
-      ])}
+      ${creditSummaryReportHeader(viewLabel, [creditStatementPeriodLabel(context)])}
 
       ${creditSummaryPartyHtml(party.name, party.mobile, party.vehicleLine, party.address)}
 
-      <div class="credit-summary-kpis credit-summary-kpis--two">
-        <div class="credit-summary-kpi">
-          <span class="credit-summary-kpi-label">Credit taken</span>
-          <span class="credit-summary-kpi-value">${formatCurrency(creditTaken)}</span>
-        </div>
-        <div class="credit-summary-kpi">
-          <span class="credit-summary-kpi-label">Settled</span>
-          <span class="credit-summary-kpi-value">${formatCurrency(settlementDone)}</span>
-        </div>
-      </div>
+      ${creditStatementFiguresHtml(balance)}
 
       ${buildActivitySectionsHtml(summary, context)}
 
       <footer class="report-print-foot">
         <span>${escapeHtml(PumpSettings.getStationLegalName())}</span>
-        <span>Activity · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
+        <span>${escapeHtml(viewLabel)} · ${escapeHtml(party.name)} · ${escapeHtml(asOfLabel)}</span>
       </footer>
     </article>`;
-}
-
-async function summaryForOutstandingPrint() {
-  const today = getLocalDateString();
-  const loadedAsOf = page().state.lastCustomerSummaryContext?.asOfDate || "";
-  const loaded = page().state.lastCustomerSummaryFull;
-  if (loaded && loadedAsOf >= today) return loaded;
-
-  const { data, error } = await window.supabaseClient.rpc("get_customer_credit_detail_as_of", {
-    p_customer_name: page().state.customerName,
-    p_date: today,
-  });
-  if (error) throw error;
-  const summary = Array.isArray(data) && data.length > 0 ? data[0] : loaded;
-  if (summary) page().state.lastCustomerSummaryFull = summary;
-  return summary;
 }
 
 async function runCreditSummaryPrint() {
@@ -1034,12 +1096,9 @@ async function runCreditSummaryPrint() {
 
   const mode = creditPrintMode();
   const ctx = page().state.lastCustomerSummaryContext;
-  const summary =
-    mode === "outstanding" ? await summaryForOutstandingPrint() : page().state.lastCustomerSummary;
-  const printContext =
-    mode === "outstanding"
-      ? { ...ctx, asOfDate: getLocalDateString(), printMode: "outstanding" }
-      : { ...ctx, printMode: mode };
+  // Period-scoped summary already on screen, so the sheet matches the selected view.
+  const summary = page().state.lastCustomerSummary;
+  const printContext = { ...ctx, printMode: mode };
   const sheetHtml = buildCreditSummaryPrintHtml(summary, printContext);
   const title = PrintUtils.buildPrintFilename(
     mode === "outstanding" ? "credit-outstanding" : mode === "activity-days" ? "credit-activity-days" : "credit-activity",
@@ -1114,49 +1173,211 @@ function buildPeriodScopedSummary(summary, from, to) {
   };
 }
 
-function renderSummaryList(kind) {
-  const isCredit = kind === "credit";
-  const state = summaryListState[kind];
-  const body = document.getElementById(isCredit ? "lifetime-credit-body" : "lifetime-payment-body");
-  const empty = document.getElementById(isCredit ? "lifetime-credit-empty" : "lifetime-payment-empty");
-  const pager = document.getElementById(isCredit ? "lifetime-credit-pagination" : "lifetime-payment-pagination");
-  const info = document.getElementById(isCredit ? "lifetime-credit-info" : "lifetime-payment-info");
-  const more = document.getElementById(isCredit ? "lifetime-credit-more" : "lifetime-payment-more");
-  const entries = state?.entries || [];
-  if (!body) return;
-
-  if (!entries.length) {
-    body.innerHTML = "";
-    empty?.classList.remove("hidden");
-    pager?.classList.add("hidden");
-    return;
-  }
-
-  const shown = Math.min(state.shown, entries.length);
-  body.innerHTML = entries
-    .slice(0, shown)
-    .map(
-      (entry) =>
-        `<tr><td>${escapeHtml(formatDisplayDate(entry.entry_date))}</td><td>${formatCurrency(entry.amount)}</td></tr>`
-    )
+function activityScreenTableHtml(headers, body, footRow) {
+  const head = headers
+    .map((header) => `<th${header.num ? ' class="num"' : ""}>${escapeHtml(header.label)}</th>`)
     .join("");
-  empty?.classList.add("hidden");
-
-  if (!pager || !info || !more) return;
-  const hasMore = shown < entries.length;
-  pager.classList.toggle("hidden", entries.length <= SUMMARY_LIST_PAGE && !hasMore);
-  info.textContent = `${shown} of ${entries.length}`;
-  more.hidden = !hasMore;
-  more.disabled = !hasMore;
+  const foot = footRow ? `<tfoot><tr>${footRow}</tr></tfoot>` : "";
+  return `<div class="table-wrap"><table class="customer-activity-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody>${foot}</table></div>`;
 }
 
-function renderLifetimeBreakdowns(summary) {
-  summaryListState.credit.entries = sortEntriesByDateDesc(summary?.credit_entries);
-  summaryListState.credit.shown = SUMMARY_LIST_PAGE;
-  summaryListState.payment.entries = sortEntriesByDateDesc(summary?.payment_entries);
-  summaryListState.payment.shown = SUMMARY_LIST_PAGE;
-  renderSummaryList("credit");
-  renderSummaryList("payment");
+function activityEmptyHtml(message) {
+  return `<p class="customer-activity-empty">${escapeHtml(message)}</p>`;
+}
+
+function dayActivityScreenHtml(rows, emptyLabel, options) {
+  const title = options?.title
+    ? `<h3 class="customer-activity-block-title">${escapeHtml(options.title)}</h3>`
+    : "";
+  if (!rows.length) {
+    return `<section class="customer-activity-block">${title}${activityEmptyHtml(emptyLabel)}</section>`;
+  }
+  const display = collectDayActivityDisplay(rows, options);
+  const body = display.lines
+    .map((line) => {
+      if (line.kind === "month") {
+        return `<tr class="is-month"><td colspan="3">${escapeHtml(line.label)}</td></tr>`;
+      }
+      if (line.kind === "month-total") {
+        return `<tr class="is-month-total"><td>${escapeHtml(line.label)}</td><td class="num">${formatCurrency(line.credit)}</td><td class="num">${formatCurrency(line.settled)}</td></tr>`;
+      }
+      return `<tr><td>${escapeHtml(formatDisplayDate(line.date))}</td><td class="num">${activityAmountCell(line.credit)}</td><td class="num">${activityAmountCell(line.settled)}</td></tr>`;
+    })
+    .join("");
+  const foot = options?.showTotal
+    ? `<td>Total</td><td class="num">${formatCurrency(display.creditTotal)}</td><td class="num">${formatCurrency(display.settledTotal)}</td>`
+    : "";
+  return `<section class="customer-activity-block">${title}${activityScreenTableHtml(
+    [
+      { label: "Date" },
+      { label: "Credit (₹)", num: true },
+      { label: "Settled (₹)", num: true },
+    ],
+    body,
+    foot
+  )}</section>`;
+}
+
+function monthActivityScreenHtml(monthRows) {
+  let creditTotal = 0;
+  let settledTotal = 0;
+  const body = monthRows
+    .map((row) => {
+      creditTotal += row.credit;
+      settledTotal += row.settled;
+      return `<tr><td>${escapeHtml(formatMonthLabel(row.month))}</td><td class="num">${formatCurrency(row.credit)}</td><td class="num">${formatCurrency(row.settled)}</td></tr>`;
+    })
+    .join("");
+  return `<section class="customer-activity-block"><h3 class="customer-activity-block-title">By month</h3>${activityScreenTableHtml(
+    [
+      { label: "Month" },
+      { label: "Credit (₹)", num: true },
+      { label: "Settled (₹)", num: true },
+    ],
+    body,
+    `<td>Total</td><td class="num">${formatCurrency(creditTotal)}</td><td class="num">${formatCurrency(settledTotal)}</td>`
+  )}</section>`;
+}
+
+function unpaidActivityScreenHtml(summary, context) {
+  const lines = openCreditLines(periodCreditEntries());
+  const noteFor = (openTotal) => {
+    const note = unpaidActivityNote(openTotal, context);
+    return note ? `<p class="customer-activity-note">${escapeHtml(note)}</p>` : "";
+  };
+  if (!lines.length) return `${activityEmptyHtml("No unpaid bills.")}${noteFor(0)}`;
+
+  let openTotal = 0;
+  const body = lines
+    .map((line) => {
+      openTotal += line.open;
+      const fuel = String(line.fuel_type || "").trim();
+      const fuelCell =
+        fuel && typeof formatFuelBadge === "function" ? formatFuelBadge(line.fuel_type) : escapeHtml(fuel || "—");
+      return `<tr><td>${escapeHtml(formatDisplayDate(line.entry_date))}</td><td>${fuelCell}</td><td class="num">${escapeHtml(formatSummaryQty(line.quantity))}</td><td class="num is-open">${formatCurrency(line.open)}</td></tr>`;
+    })
+    .join("");
+  return `<section class="customer-activity-block">${activityScreenTableHtml(
+    [
+      { label: "Date" },
+      { label: "Fuel" },
+      { label: "Qty (L)", num: true },
+      { label: "Open (₹)", num: true },
+    ],
+    body,
+    `<td colspan="3">Open total</td><td class="num">${formatCurrency(openTotal)}</td>`
+  )}${noteFor(openTotal)}</section>`;
+}
+
+function activitySectionsScreenHtml(summary, context, mode) {
+  const credits = summary?.credit_entries || [];
+  const payments = summary?.payment_entries || [];
+  if (mode === "outstanding") return unpaidActivityScreenHtml(summary, context);
+  if (mode === "activity-days") {
+    return dayActivityScreenHtml(buildDayActivityRows(credits, payments, ""), "No credit or settlement in this period.", {
+      groupMonths: true,
+      showTotal: true,
+    });
+  }
+  const monthRows = buildMonthActivityRows(credits, payments, "");
+  if (!monthRows.length) return activityEmptyHtml("No credit or settlement in this period.");
+  return monthActivityScreenHtml(monthRows);
+}
+
+function activityLeadText(mode, summary, context) {
+  const credits = summary?.credit_entries || [];
+  const payments = summary?.payment_entries || [];
+  if (mode === "outstanding") {
+    const count = openCreditLines(periodCreditEntries()).length;
+    const scope = context?.selection === "all-time" ? "" : " in this period";
+    if (!count) return `No unpaid bills${scope}.`;
+    return `${count} unpaid ${count === 1 ? "bill" : "bills"}${scope}.`;
+  }
+  if (mode === "activity-days") {
+    const days = buildDayActivityRows(credits, payments, "").length;
+    if (!days) return "No credit or settlement in this period.";
+    return `${days} ${days === 1 ? "day" : "days"} with credit or a settlement.`;
+  }
+  const months = buildMonthActivityRows(credits, payments, "").length;
+  if (!months) return "No credit or settlement in this period.";
+  return months === 1 ? "1 month with credit or a settlement." : `${months} months with credit or a settlement.`;
+}
+
+function syncUnpaidCount(summary) {
+  const el = document.getElementById("customer-activity-unpaid-count");
+  if (!el) return;
+  const count = summary ? openCreditLines(periodCreditEntries()).length : 0;
+  el.textContent = count ? String(count) : "";
+  el.hidden = !count;
+}
+
+function syncUnpaidFigureVisibility(mode) {
+  const unpaid = (mode || creditPrintMode()) === "outstanding";
+  document.getElementById("customer-period-toolbar")?.classList.toggle("is-unpaid-view", unpaid);
+}
+
+function renderCustomerActivity() {
+  const summary = page().state.lastCustomerSummary;
+  const context = page().state.lastCustomerSummaryContext;
+  const mode = creditPrintMode();
+  const meta = activityViewMeta(mode);
+  const heading = document.getElementById("customer-activity-heading");
+  const lead = document.getElementById("customer-activity-lead");
+  const root = document.getElementById("customer-activity-body");
+  if (heading) heading.textContent = meta.heading;
+  if (lead) lead.textContent = summary ? activityLeadText(mode, summary, context) : "";
+  syncUnpaidCount(summary);
+  syncUnpaidFigureVisibility(mode);
+  if (summary) applyPeriodBalanceKpis(summary.credit_taken, summary.settlement_done);
+  if (root) root.innerHTML = summary ? activitySectionsScreenHtml(summary, context, mode) : "";
+}
+
+function applyPeriodBalanceKpis(credit, settled) {
+  const period = resolveCreditPrintBalance(credit, settled);
+  const openTotal = openCreditLines(periodCreditEntries()).reduce((sum, line) => sum + line.open, 0);
+  const balance = creditPrintMode() === "outstanding" ? balanceFromOpenTotal(openTotal) : period;
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  set("stat-period-credit", formatCurrency(period.credit));
+  set("stat-period-settled", formatCurrency(period.settled));
+  set("stat-period-outstanding", formatCurrency(balance.balanceValue));
+  set("stat-period-outstanding-label", balance.balanceLabel);
+  const card = document.getElementById("stat-period-outstanding-card");
+  if (card) {
+    card.classList.toggle("is-advance", balance.hasAdvance);
+    card.classList.toggle("is-cleared", balance.cleared);
+    card.classList.toggle("is-due", !balance.hasAdvance && !balance.cleared);
+  }
+  const equation = document.getElementById("customer-activity-equation");
+  if (equation) {
+    equation.textContent = period.hasAdvance
+      ? "Settlements in this period are higher than credit taken, so this is an advance."
+      : "Outstanding is credit taken minus settlements in this period.";
+  }
+}
+
+function clearPeriodActivityUi() {
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  set("stat-period-credit", "—");
+  set("stat-period-settled", "—");
+  set("stat-period-outstanding", "—");
+  set("stat-period-outstanding-label", "Outstanding");
+  document.getElementById("stat-period-outstanding-card")?.classList.remove("is-advance", "is-cleared", "is-due");
+  const equation = document.getElementById("customer-activity-equation");
+  if (equation) equation.textContent = "Outstanding is credit taken minus settlements in this period.";
+  const root = document.getElementById("customer-activity-body");
+  if (root) root.innerHTML = "";
+  const lead = document.getElementById("customer-activity-lead");
+  if (lead) lead.textContent = "";
+  const heading = document.getElementById("customer-activity-heading");
+  if (heading) heading.textContent = activityViewMeta(creditPrintMode()).heading;
+  syncUnpaidCount(null);
+  syncUnpaidFigureVisibility();
 }
 
 function applyLifetimeSummary(_row, options = {}) {
@@ -1168,6 +1389,7 @@ function applyLifetimeSummary(_row, options = {}) {
 }
 
 async function loadCustomerDetail() {
+  const seq = ++detailLoadSeq;
   const errorEl = document.getElementById("detail-error");
   if (errorEl) {
     errorEl.classList.add("hidden");
@@ -1175,18 +1397,30 @@ async function loadCustomerDetail() {
   }
 
   const { asOfDate, from, to, selection } = getCustomerViewFilter();
+  const range =
+    customerPeriodFilterApi?.getRange?.() ||
+    readDateRangeFromControls(
+      document.getElementById("filter-range"),
+      document.getElementById("filter-from"),
+      document.getElementById("filter-to")
+    );
+  const periodActivity = range ? formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" }) : "";
   updateCustomerFilterSummary();
-  await resolveCustomerIds();
+
+  const stillCurrent = () => seq === detailLoadSeq;
 
   try {
+    await resolveCustomerIds(stillCurrent);
+    if (!stillCurrent()) return;
+
     const { data: summaryData, error: summaryErr } = await window.supabaseClient.rpc(
       "get_customer_credit_detail_as_of",
       { p_customer_name: page().state.customerName, p_date: asOfDate }
     );
+    if (!stillCurrent()) return;
     if (summaryErr) throw summaryErr;
 
     const summary = Array.isArray(summaryData) && summaryData.length > 0 ? summaryData[0] : null;
-    page().state.lastCustomerSummaryFull = summary;
     const resolvedName = summary?.customer_name != null ? String(summary.customer_name).trim() : "";
     if (!resolvedName) {
       page().state.lastCustomerSummary = null;
@@ -1194,13 +1428,7 @@ async function loadCustomerDetail() {
       page().state.lastCustomerSummaryContext = null;
       updateCreditSummaryPrintButton();
       applyLifetimeSummary(null);
-      renderLifetimeBreakdowns(null);
-      const clearStat = (id) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = "—";
-      };
-      clearStat("stat-period-credit");
-      clearStat("stat-period-settled");
+      clearPeriodActivityUi();
       const filterSummary = document.getElementById("customer-filter-summary");
       if (filterSummary) filterSummary.textContent = "";
       creditPager?.setEntries([]);
@@ -1213,23 +1441,12 @@ async function loadCustomerDetail() {
       return;
     }
 
-    const range =
-      customerPeriodFilterApi?.getRange?.() ||
-      readDateRangeFromControls(
-        document.getElementById("filter-range"),
-        document.getElementById("filter-from"),
-        document.getElementById("filter-to")
-      );
-    const periodActivity = range
-      ? formatDateRangeLabel(range, range.modeInfo, { style: "dashboard" })
-      : "";
-
+    page().state.lastCustomerSummaryFull = summary;
     const periodSummary = buildPeriodScopedSummary(summary, from, to);
     applyLifetimeSummary(periodSummary, {
       heroAmountDue: page().state.customerOutstandingDue,
       heroPrepaidBalance: page().state.customerPrepaidBalance,
     });
-    renderLifetimeBreakdowns(periodSummary);
 
     const creditEntries = (periodSummary.credit_entries || []).map((e) => ({
       id: e.id ?? null,
@@ -1250,13 +1467,7 @@ async function loadCustomerDetail() {
 
     const periodCredit = Number(periodSummary.credit_taken) || 0;
     const periodSettled = Number(periodSummary.settlement_done) || 0;
-
-    const set = (id, text) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = text;
-    };
-    set("stat-period-credit", formatCurrency(periodCredit));
-    set("stat-period-settled", formatCurrency(periodSettled));
+    applyPeriodBalanceKpis(periodCredit, periodSettled);
 
     page().state.lastCustomerSummary = periodSummary;
     page().state.lastCustomerSummaryContext = {
@@ -1270,14 +1481,17 @@ async function loadCustomerDetail() {
       address: page().state.customerContact.address,
       vehicles: [...page().state.customerVehicleNos],
     };
+    renderCustomerActivity();
 
     creditPager?.setEntries(creditEntries);
     paymentPager?.setEntries(paymentEntries);
     updateCreditSummaryPrintButton();
   } catch (err) {
+    if (!stillCurrent()) return;
     page().state.lastCustomerSummary = null;
     page().state.lastCustomerSummaryFull = null;
     page().state.lastCustomerSummaryContext = null;
+    clearPeriodActivityUi();
     updateCreditSummaryPrintButton();
     if (errorEl) {
       errorEl.textContent = AppError.getUserMessage(err);
@@ -1289,6 +1503,8 @@ async function loadCustomerDetail() {
 }
 
 async function handleSettle() {
+  if (settleInFlight) return;
+
   const msg = document.getElementById("settle-msg");
   if (msg) {
     msg.textContent = "";
@@ -1317,95 +1533,101 @@ async function handleSettle() {
     return;
   }
 
+  settleInFlight = true;
+
   const btn = document.getElementById("settle-btn");
   if (btn) {
     btn.disabled = true;
     btn.textContent = "Saving…";
   }
   const finishSettleSubmit = () => {
+    settleInFlight = false;
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Record payment";
     }
   };
 
-  // Same id while the form is unchanged, so a retry cannot record the payment twice.
-  const settleForm = document.getElementById("settle-form");
-  const requestId = formRequestId(settleForm, [
-    settleIds,
-    settlementDate,
-    amount,
-    paymentMode,
-    sameDaySettlement,
-  ]);
+  try {
+    // Same id while the form is unchanged, so a retry cannot record the payment twice.
+    const settleForm = document.getElementById("settle-form");
+    const requestId = formRequestId(settleForm, [
+      settleIds,
+      settlementDate,
+      amount,
+      paymentMode,
+      sameDaySettlement,
+    ]);
 
-  if (settleIds.length === 1) {
-    const { error } = await window.supabaseClient.rpc("record_credit_payment", {
-      p_credit_customer_id: settleIds[0],
-      p_date: settlementDate,
-      p_amount: amount,
-      p_note: null,
-      p_payment_mode: paymentMode,
-      p_same_day_settlement: sameDaySettlement,
-      p_request_id: requestId,
-    });
+    if (settleIds.length === 1) {
+      const { error } = await window.supabaseClient.rpc("record_credit_payment", {
+        p_credit_customer_id: settleIds[0],
+        p_date: settlementDate,
+        p_amount: amount,
+        p_note: null,
+        p_payment_mode: paymentMode,
+        p_same_day_settlement: sameDaySettlement,
+        p_request_id: requestId,
+      });
 
-    if (btn) finishSettleSubmit();
-
-    if (error) {
-      if (msg) msg.textContent = AppError.getUserMessage(error);
-      AppError.report(error, { context: "creditCustomerSettle", customerId: settleIds[0] });
-      page().invalidateCreditCaches();
-      await resolveCustomerIds();
-      await loadCustomerDetail();
-      return;
-    }
-  } else {
-    const primaryId = page().state.customerId || settleIds[0];
-    const { error } = await window.supabaseClient.rpc("batch_record_credit_settlements", {
-      p_customer_ids: settleIds,
-      p_primary_customer_id: primaryId,
-      p_date: settlementDate,
-      p_total_amount: amount,
-      p_note: null,
-      p_payment_mode: paymentMode,
-      p_same_day_settlement: sameDaySettlement,
-      p_request_id: requestId,
-    });
-
-    finishSettleSubmit();
-
-    if (error) {
-      if (msg) msg.textContent = AppError.getUserMessage(error);
-      AppError.report(error, { context: "creditCustomerSettleBatch", customerIds: settleIds });
-      page().invalidateCreditCaches();
-      await resolveCustomerIds();
-      await loadCustomerDetail();
-      return;
-    }
-  }
-
-  clearFormRequestId(settleForm);
-
-  const settleAmountInput = document.getElementById("settle-amount");
-  if (settleAmountInput) settleAmountInput.value = "";
-  const sameDayInput = document.getElementById("settle-same-day");
-  if (sameDayInput) sameDayInput.checked = false;
-  savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
-  page().invalidateCreditCaches();
-  await resolveCustomerIds();
-  await loadCustomerDetail();
-  document.getElementById("settle-amount")?.focus();
-
-  if (msg) {
-    msg.classList.add("success");
-    if (page().state.customerPrepaidBalance > 0 && page().state.customerNetBalance <= 0) {
-      msg.textContent = `Payment recorded · credit balance +${formatCurrency(page().state.customerPrepaidBalance)}`;
-    } else if (page().state.customerNetBalance === 0) {
-      msg.textContent = "Fully settled.";
+      if (error) {
+        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.report(error, { context: "creditCustomerSettle", customerId: settleIds[0] });
+        page().invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        return;
+      }
     } else {
-      msg.textContent = `Settled · remaining ${formatCurrency(page().state.customerNetBalance)}`;
+      const primaryId = page().state.customerId || settleIds[0];
+      const { error } = await window.supabaseClient.rpc("batch_record_credit_settlements", {
+        p_customer_ids: settleIds,
+        p_primary_customer_id: primaryId,
+        p_date: settlementDate,
+        p_total_amount: amount,
+        p_note: null,
+        p_payment_mode: paymentMode,
+        p_same_day_settlement: sameDaySettlement,
+        p_request_id: requestId,
+      });
+
+      if (error) {
+        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.report(error, { context: "creditCustomerSettleBatch", customerIds: settleIds });
+        page().invalidateCreditCaches();
+        await resolveCustomerIds();
+        await loadCustomerDetail();
+        return;
+      }
     }
+
+    clearFormRequestId(settleForm);
+
+    const settleAmountInput = document.getElementById("settle-amount");
+    if (settleAmountInput) settleAmountInput.value = "";
+    const sameDayInput = document.getElementById("settle-same-day");
+    if (sameDayInput) sameDayInput.checked = false;
+    savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
+    page().invalidateCreditCaches();
+    await resolveCustomerIds();
+    await loadCustomerDetail();
+    document.getElementById("settle-amount")?.focus();
+
+    if (msg) {
+      msg.classList.add("success");
+      if (page().state.customerPrepaidBalance > 0 && page().state.customerNetBalance <= 0) {
+        msg.textContent = `Payment recorded · credit balance +${formatCurrency(page().state.customerPrepaidBalance)}`;
+      } else if (page().state.customerNetBalance === 0) {
+        msg.textContent = "Fully settled.";
+      } else {
+        msg.textContent = `Settled · remaining ${formatCurrency(page().state.customerNetBalance)}`;
+      }
+    }
+  } catch (err) {
+    if (msg) msg.textContent = AppError.getUserMessage(err);
+    AppError.report(err, { context: "creditCustomerSettle" });
+  } finally {
+    finishSettleSubmit();
   }
 }
 
@@ -1447,18 +1669,20 @@ function showCustomerDetailMessage(msg, isError = false) {
 }
 
 async function deleteCreditEntry(entryId, btn) {
+  if (deleteInFlight.has(entryId)) return;
+  deleteInFlight.add(entryId);
   const amount = Number(btn?.dataset?.amount || 0);
   const dateStr = btn?.dataset?.date || "";
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
-  const confirmed = await AppDialog.confirm(
-    `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
-    { title: "Delete credit entry", confirmLabel: "Delete", danger: true }
-  );
-  if (!confirmed) return;
-
-  if (btn) btn.disabled = true;
-  showCustomerDetailMessage("");
   try {
+    const confirmed = await AppDialog.confirm(
+      `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
+      { title: "Delete credit entry", confirmLabel: "Delete", danger: true }
+    );
+    if (!confirmed) return;
+
+    if (btn) btn.disabled = true;
+    showCustomerDetailMessage("");
     await ActionProgress.track(
       { title: "Deleting", status: "Removing this credit entry…", doneStatus: "Deleted" },
       async () => {
@@ -1475,22 +1699,26 @@ async function deleteCreditEntry(entryId, btn) {
     if (btn) btn.disabled = false;
     showCustomerDetailMessage(AppError.getUserMessage(error), true);
     AppError.report(error, { context: "deleteCreditEntry", entryId });
+  } finally {
+    deleteInFlight.delete(entryId);
   }
 }
 
 async function deleteCreditPayment(paymentId, btn) {
+  if (deleteInFlight.has(paymentId)) return;
+  deleteInFlight.add(paymentId);
   const amount = Number(btn?.dataset?.amount || 0);
   const dateStr = btn?.dataset?.date || "";
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
-  const confirmed = await AppDialog.confirm(
-    `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
-    { title: "Delete settlement", confirmLabel: "Delete", danger: true }
-  );
-  if (!confirmed) return;
-
-  if (btn) btn.disabled = true;
-  showCustomerDetailMessage("");
   try {
+    const confirmed = await AppDialog.confirm(
+      `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
+      { title: "Delete settlement", confirmLabel: "Delete", danger: true }
+    );
+    if (!confirmed) return;
+
+    if (btn) btn.disabled = true;
+    showCustomerDetailMessage("");
     await ActionProgress.track(
       { title: "Deleting", status: "Removing this settlement…", doneStatus: "Deleted" },
       async () => {
@@ -1507,6 +1735,8 @@ async function deleteCreditPayment(paymentId, btn) {
     if (btn) btn.disabled = false;
     showCustomerDetailMessage(AppError.getUserMessage(error), true);
     AppError.report(error, { context: "deleteCreditPayment", paymentId });
+  } finally {
+    deleteInFlight.delete(paymentId);
   }
 }
 
