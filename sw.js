@@ -83,6 +83,11 @@ self.addEventListener("install", (event) => {
           )
         );
       }
+      // Any new build (CACHE_VERSION changes with the precache) asks open tabs to reload.
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        client.postMessage({ type: "UPDATE_AVAILABLE", version: CACHE_VERSION });
+      }
       // Wait for client SKIP_WAITING so active tabs are not force-reloaded mid-session.
     })()
   );
