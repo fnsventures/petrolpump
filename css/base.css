@@ -3307,7 +3307,7 @@ html.app-booting::after {
   }
 }
 
-/* Dark theme. js/theme.js sets data-theme from the device, or from the account menu. */
+/* Dark theme. js/theme.js stays on light unless the account menu pins dark. */
 html[data-theme="dark"] {
   color-scheme: dark;
   --surface: #111827;
