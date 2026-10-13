@@ -1,6 +1,6 @@
 /**
  * Set light or dark before the first paint.
- * With no saved choice, follow the device. The account menu can pin light or dark.
+ * With no saved choice, stay on the light theme. The account menu can pin light or dark.
  */
 (function () {
   var KEY = "bpf.theme";
@@ -14,13 +14,8 @@
     }
   }
 
-  function systemDark() {
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  }
-
   function resolve(preference) {
-    if (preference === "light" || preference === "dark") return preference;
-    return systemDark() ? "dark" : "light";
+    return preference === "dark" ? "dark" : "light";
   }
 
   function apply(theme) {
@@ -34,30 +29,20 @@
 
   window.bpfTheme = {
     preference: function preference() {
-      return stored() || "system";
+      return stored() || "light";
     },
     resolved: function resolved() {
       return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
     },
     set: function set(next) {
-      if (next !== "light" && next !== "dark" && next !== "system") return;
+      if (next !== "light" && next !== "dark") return;
       try {
-        if (next === "system") localStorage.removeItem(KEY);
-        else localStorage.setItem(KEY, next);
+        localStorage.setItem(KEY, next);
       } catch (err) {
         /* private mode */
       }
-      apply(resolve(next === "system" ? "" : next));
+      apply(resolve(next));
       document.dispatchEvent(new CustomEvent("bpf:theme-change"));
     },
   };
-
-  if (window.matchMedia) {
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () {
-      if (!stored()) {
-        apply(resolve(""));
-        document.dispatchEvent(new CustomEvent("bpf:theme-change"));
-      }
-    });
-  }
 })();
