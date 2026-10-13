@@ -1558,8 +1558,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       // Browser check is for a friendly prompt; record_salary_payment re-checks under a lock.
+      // The server honors p_allow_overpay for admins only.
       let allowOverpay = false;
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
+        if (!isAdmin) {
+          resetSubmitBtn();
+          paymentError?.classList.remove("hidden");
+          if (paymentError) {
+            paymentError.textContent =
+              balance.pending <= 0.009
+                ? `Net salary for ${formatMonthLabel(salaryMonthVal)} is already settled. Only an admin can record more than the remaining salary.`
+                : `Amount exceeds the remaining salary (${formatCurrency(balance.pending)}). Only an admin can record more than that.`;
+          }
+          return;
+        }
         const overBy = roundMoney(amount - balance.pending);
         const msg =
           balance.pending <= 0.009
@@ -1593,6 +1605,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           pending = Number(JSON.parse(saveError.details || "{}").pending);
         } catch (_) {
           pending = null;
+        }
+        if (!isAdmin) {
+          resetSubmitBtn();
+          paymentError?.classList.remove("hidden");
+          if (paymentError) {
+            paymentError.textContent = Number.isFinite(pending)
+              ? `Remaining salary for ${formatMonthLabel(salaryMonthVal)} is now ${formatCurrency(pending)} (another payment was recorded). Only an admin can record more than that.`
+              : `This amount exceeds the remaining salary for ${formatMonthLabel(salaryMonthVal)}. Only an admin can record more than that.`;
+          }
+          await refreshAll();
+          return;
         }
         const msg = Number.isFinite(pending)
           ? `Remaining salary for ${formatMonthLabel(salaryMonthVal)} is now ${formatCurrency(pending)} (another payment was recorded). Record ${formatCurrency(amount)} anyway?`
@@ -1745,12 +1768,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (detailStaffId) {
       closeDetailModal();
       prefillPayment(detailStaffId);
-    }
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && detailOverlay?.getAttribute("aria-hidden") === "false") {
-      closeDetailModal();
     }
   });
 

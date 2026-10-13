@@ -28,8 +28,8 @@ body.meter-reading-page main.settings-layout.page-layout-wide {
 }
 
 .dsr-table thead th {
-  background: #f8fafc;
-  color: #1e293b;
+  background: var(--surface-muted);
+  color: var(--text-body);
   font-weight: 600;
   font-size: var(--text-sm);
   text-transform: uppercase;
@@ -127,7 +127,7 @@ body.dsr-page [data-dsr-stat][hidden] {
 }
 
 .dsr-card--petrol {
-  border-color: rgba(0, 112, 192, 0.22);
+  border-color: var(--fuel-petrol-border);
 }
 
 .dsr-card--diesel {
@@ -172,12 +172,12 @@ body.dsr-page .dc-stat-card {
 
 body.dsr-page .dc-stat-card--highlight {
   border-color: rgba(0, 112, 192, 0.3);
-  background: linear-gradient(135deg, #e8f0fa 0%, #f8fafc 100%);
+  background: linear-gradient(135deg, #e8f0fa 0%, var(--surface-muted) 100%);
 }
 
 body.dsr-page .dc-stat-card--petrol {
   border-color: var(--fuel-petrol-border);
-  background: linear-gradient(135deg, var(--fuel-petrol-bg) 0%, #fff 72%);
+  background: linear-gradient(135deg, var(--fuel-petrol-bg) 0%, var(--surface) 72%);
 }
 
 body.dsr-page .dc-stat-card--petrol .dc-stat-value {
@@ -186,7 +186,7 @@ body.dsr-page .dc-stat-card--petrol .dc-stat-value {
 
 body.dsr-page .dc-stat-card--diesel {
   border-color: var(--fuel-diesel-border);
-  background: linear-gradient(135deg, var(--fuel-diesel-bg) 0%, #fff 72%);
+  background: linear-gradient(135deg, var(--fuel-diesel-bg) 0%, var(--surface) 72%);
 }
 
 body.dsr-page .dc-stat-card--diesel .dc-stat-value {
@@ -199,7 +199,7 @@ body.dsr-page .dc-stat-label {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #64748b;
+  color: var(--text-muted);
   margin-bottom: 0.35rem;
 }
 
@@ -231,12 +231,12 @@ body.dsr-page .dc-stat-meta {
   margin-top: 1.25rem;
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 0.65rem;
-  background: #fff;
+  background: var(--surface);
   overflow: hidden;
 }
 
 .dsr-daily-block.dsr-card--petrol {
-  border-color: rgba(0, 112, 192, 0.22);
+  border-color: var(--fuel-petrol-border);
 }
 
 .dsr-daily-block.dsr-card--diesel {
@@ -261,11 +261,6 @@ body.dsr-page .dc-stat-meta {
   margin: 0;
 }
 
-/* Sidebar group label under Daily register */
-body.dsr-page .dsr-nav-group {
-  margin-top: 1.15rem;
-}
-
 body.dsr-page .dsr-panel-links {
   display: flex;
   flex-wrap: wrap;
@@ -287,7 +282,7 @@ body.dsr-page .dsr-sd-toolbar {
   padding: 0.85rem 1rem;
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  background: linear-gradient(180deg, var(--surface-muted) 0%, var(--surface) 100%);
 }
 
 body.dsr-page .dsr-sd-toolbar > .form-field:has(> select) {
@@ -313,7 +308,7 @@ body.dsr-page .dsr-sd-toolbar .form-field label {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.dsr-page .dsr-sd-toolbar select {
@@ -358,7 +353,7 @@ body.dsr-page .dsr-sd-pill {
   padding: 0.4rem 0.7rem;
   border-radius: var(--radius-sm, 8px);
   border: 1px solid var(--border, #e2e8f0);
-  background: #fff;
+  background: var(--surface);
   font-variant-numeric: tabular-nums;
 }
 
@@ -367,7 +362,7 @@ body.dsr-page .dsr-sd-pill-label {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.dsr-page .dsr-sd-pill strong {
@@ -378,7 +373,7 @@ body.dsr-page .dsr-sd-pill strong {
 
 body.dsr-page .dsr-sd-pill--petrol {
   border-color: var(--fuel-petrol-border);
-  background: linear-gradient(165deg, var(--fuel-petrol-bg) 0%, #fff 80%);
+  background: linear-gradient(165deg, var(--fuel-petrol-bg) 0%, var(--surface) 80%);
 }
 
 body.dsr-page .dsr-sd-pill--petrol strong {
@@ -387,7 +382,7 @@ body.dsr-page .dsr-sd-pill--petrol strong {
 
 body.dsr-page .dsr-sd-pill--diesel {
   border-color: var(--fuel-diesel-border);
-  background: linear-gradient(165deg, var(--fuel-diesel-bg) 0%, #fff 80%);
+  background: linear-gradient(165deg, var(--fuel-diesel-bg) 0%, var(--surface) 80%);
 }
 
 body.dsr-page .dsr-sd-pill--diesel strong {
@@ -395,8 +390,8 @@ body.dsr-page .dsr-sd-pill--diesel strong {
 }
 
 body.dsr-page .dsr-sd-pill--accent {
-  border-color: rgba(0, 112, 192, 0.22);
-  background: linear-gradient(165deg, rgba(0, 112, 192, 0.08) 0%, #fff 80%);
+  border-color: var(--fuel-petrol-border);
+  background: linear-gradient(165deg, rgba(0, 112, 192, 0.08) 0%, var(--surface) 80%);
 }
 
 body.dsr-page .dsr-sd-pill--accent strong {
@@ -404,12 +399,12 @@ body.dsr-page .dsr-sd-pill--accent strong {
 }
 
 body.dsr-page .dsr-sd-pill--danger {
-  border-color: #fecaca;
-  background: linear-gradient(165deg, #fef2f2 0%, #fff 80%);
+  border-color: var(--danger-border);
+  background: linear-gradient(165deg, var(--danger-soft) 0%, var(--surface) 80%);
 }
 
 body.dsr-page .dsr-sd-pill--danger strong {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
 }
 
 body.dsr-page .dsr-breakdown-body {
@@ -423,7 +418,7 @@ body.dsr-page .dsr-breakdown-empty {
   text-align: center;
   border: 1px dashed var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 body.dsr-page .dsr-breakdown-empty-title {
@@ -436,7 +431,7 @@ body.dsr-page .dsr-breakdown-empty-title {
 body.dsr-page .dsr-sd-table-wrap {
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: #fff;
+  background: var(--surface);
   overflow: auto;
 }
 
@@ -467,8 +462,8 @@ body.dsr-page .dsr-sd-table thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--surface-muted);
+  color: var(--text-muted);
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -478,7 +473,7 @@ body.dsr-page .dsr-sd-table thead th {
 }
 
 body.dsr-page .dsr-sd-table tbody tr:hover td {
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 body.dsr-page .dsr-sd-table tbody tr:last-child td {
@@ -497,7 +492,7 @@ body.dsr-page .dsr-sd-table .dsr-staff-name {
 }
 
 body.dsr-page .dsr-sd-table tfoot td {
-  background: #f1f5f9;
+  background: var(--surface-sunken);
   border-top: 1px solid var(--border-strong, #cbd5e1);
   border-bottom: 0;
   font-weight: 700;
@@ -514,12 +509,12 @@ body.dsr-page .dsr-row--shortage:hover td {
 }
 
 body.dsr-page .dsr-short--shortage {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
   font-weight: 700;
 }
 
 body.dsr-page .dsr-short--surplus {
-  color: #047857;
+  color: var(--color-success);
   font-weight: 700;
 }
 

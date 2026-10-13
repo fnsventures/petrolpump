@@ -1,5 +1,5 @@
 /**
- * One modal <dialog> for confirm, prompt, and short forms.
+ * One modal <dialog> for confirm and alert.
  * Page overlays call show/hide so focus, Escape, and the inert background stay consistent.
  */
 /* global AppError */
@@ -18,7 +18,6 @@
   let form = null;
   let titleEl = null;
   let messageEl = null;
-  let fieldsEl = null;
   let okBtn = null;
   let cancelBtn = null;
   let lastFocus = null;
@@ -56,9 +55,6 @@
     messageEl.id = "app-dialog-message";
     messageEl.className = "app-dialog-message";
 
-    fieldsEl = document.createElement("div");
-    fieldsEl.className = "app-dialog-fields";
-
     const actions = document.createElement("div");
     actions.className = "app-dialog-actions";
 
@@ -74,7 +70,7 @@
     cancelBtn.value = "cancel";
 
     actions.append(okBtn, cancelBtn);
-    form.append(logo, titleEl, messageEl, fieldsEl, actions);
+    form.append(logo, titleEl, messageEl, actions);
     dialog.append(form);
     document.body.append(dialog);
 
@@ -119,111 +115,35 @@
     });
   }
 
-  function fieldControl(field, id) {
-    const type = field.type || "text";
-    let input;
-    if (type === "textarea") {
-      input = document.createElement("textarea");
-      input.rows = field.rows || 3;
-    } else if (type === "select") {
-      input = document.createElement("select");
-      (field.options || []).forEach((opt) => {
-        const option = document.createElement("option");
-        if (opt && typeof opt === "object") {
-          option.value = opt.value == null ? "" : String(opt.value);
-          option.textContent = opt.label == null ? option.value : String(opt.label);
-        } else {
-          option.value = String(opt);
-          option.textContent = String(opt);
-        }
-        input.append(option);
-      });
-    } else {
-      input = document.createElement("input");
-      input.type = type;
-      if (field.inputmode) input.inputMode = field.inputmode;
-      if (field.min != null) input.min = String(field.min);
-      if (field.max != null) input.max = String(field.max);
-      if (field.step != null) input.step = String(field.step);
-    }
-    input.id = id;
-    input.name = field.name;
-    input.className = "app-dialog-input";
-    if (field.required) input.required = true;
-    if (field.maxlength) input.maxLength = Number(field.maxlength);
-    if (field.placeholder) input.placeholder = field.placeholder;
-    if (field.autocomplete) input.autocomplete = field.autocomplete;
-    else input.autocomplete = "off";
-    const value = field.value == null ? "" : String(field.value);
-    if (type !== "select") input.value = value;
-    else if (value) input.value = value;
-    return input;
-  }
-
-  function renderFields(fields) {
-    fieldsEl.replaceChildren();
-    (fields || []).forEach((field) => {
-      if (!field || !field.name) return;
-      const id = `app-dialog-field-${field.name}`;
-      const wrap = document.createElement("div");
-      wrap.className = "form-field";
-      const label = document.createElement("label");
-      label.htmlFor = id;
-      label.textContent = field.label || field.name;
-      wrap.append(label, fieldControl(field, id));
-      fieldsEl.append(wrap);
-    });
-  }
-
-  function readFields() {
-    const data = {};
-    fieldsEl.querySelectorAll("input, select, textarea").forEach((input) => {
-      if (input.name) data[input.name] = input.value;
-    });
-    return data;
-  }
-
-  function focusTarget(prefer) {
-    if (prefer && typeof prefer.focus === "function") {
-      prefer.focus();
-      return;
-    }
-    const first = fieldsEl.querySelector("input, select, textarea");
-    (first || okBtn).focus();
-  }
-
   function present(config) {
     ensure();
     const kind = config.kind;
     const message = config.message == null ? "" : String(config.message);
-    titleEl.textContent = config.title || (kind === "confirm" ? "Please confirm" : kind === "alert" ? "Notice" : "Enter details");
+    titleEl.textContent = config.title || (kind === "confirm" ? "Please confirm" : "Notice");
     messageEl.textContent = message;
     messageEl.hidden = !message;
     if (message) dialog.setAttribute("aria-describedby", "app-dialog-message");
     else dialog.removeAttribute("aria-describedby");
 
-    renderFields(config.fields);
-
     const danger = config.danger === true;
     okBtn.className = danger ? "button-delete" : "button-primary";
-    okBtn.textContent = config.confirmLabel || (kind === "alert" ? "OK" : kind === "confirm" ? "Confirm" : "Save");
+    okBtn.textContent = config.confirmLabel || (kind === "alert" ? "OK" : "Confirm");
     cancelBtn.textContent = config.cancelLabel || "Cancel";
     const showCancel = kind !== "alert";
     cancelBtn.hidden = !showCancel;
     cancelBtn.disabled = !showCancel;
 
     lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // Esc closes a <dialog> without touching returnValue. Clear it so a
+    // dismissed confirm never reads the previous popup's "ok".
+    dialog.returnValue = "";
 
     return new Promise((resolve) => {
       const finish = () => {
         dialog.removeEventListener("close", onClose);
         const accepted = dialog.returnValue === "ok";
         let result = null;
-        if (kind === "alert") result = undefined;
-        else if (kind === "confirm") result = accepted;
-        else if (kind === "prompt") result = accepted ? (readFields().value ?? "") : null;
-        else result = accepted ? readFields() : null;
-        resolve(result);
+        resolve(kind === "confirm" ? accepted : undefined);
         unlockPage();
         if (lastFocus && document.contains(lastFocus)) {
           try {
@@ -242,8 +162,7 @@
       }
       document.body.classList.add("modal-open");
       requestAnimationFrame(() => {
-        if (kind === "prompt" || kind === "form") focusTarget();
-        else if (danger && showCancel) cancelBtn.focus();
+        if (danger && showCancel) cancelBtn.focus();
         else okBtn.focus();
       });
     });
@@ -255,7 +174,18 @@
     }
   }
 
+  let current = null;
+
+  function sameConfirm(a, b) {
+    return a && b && a.kind === "confirm" && b.kind === "confirm" && a.title === b.title && a.message === b.message;
+  }
+
   function enqueue(config) {
+    // A double tap on Delete would queue the same confirm twice and then run
+    // the action twice. The extra copy resolves as Cancel.
+    if (sameConfirm(current, config) || queue.some((job) => sameConfirm(job.config, config))) {
+      return Promise.resolve(false);
+    }
     return new Promise((resolve, reject) => {
       queue.push({ config, resolve, reject });
       drain();
@@ -266,8 +196,10 @@
     if (busy || !queue.length) return;
     const job = queue.shift();
     busy = true;
+    current = job.config;
     present(job.config).then(job.resolve, job.reject).finally(() => {
       busy = false;
+      current = null;
       drain();
     });
   }
@@ -294,41 +226,6 @@
     });
   }
 
-  function promptDialog(message, options) {
-    const opts = options || {};
-    return enqueue({
-      kind: "prompt",
-      message,
-      title: opts.title || "Enter a value",
-      confirmLabel: opts.confirmLabel || "OK",
-      cancelLabel: opts.cancelLabel || "Cancel",
-      fields: [
-        {
-          name: "value",
-          label: opts.label || "Value",
-          type: opts.type || "text",
-          value: opts.value == null ? "" : opts.value,
-          required: opts.required === true,
-          placeholder: opts.placeholder || "",
-          maxlength: opts.maxlength,
-        },
-      ],
-    });
-  }
-
-  function formDialog(options) {
-    const opts = options || {};
-    return enqueue({
-      kind: "form",
-      message: opts.message || "",
-      title: opts.title || "Enter details",
-      confirmLabel: opts.confirmLabel || opts.submitLabel || "Save",
-      cancelLabel: opts.cancelLabel || "Cancel",
-      danger: opts.danger === true,
-      fields: opts.fields || [],
-    });
-  }
-
   function resolveFocus(el, focus) {
     if (focus === false) return null;
     if (typeof focus === "string") return el.querySelector(focus);
@@ -351,6 +248,9 @@
     if (!el) return;
     const opts = options || {};
     if (typeof opts.onDismiss === "function") el._appDialogOnDismiss = opts.onDismiss;
+    if (el.getAttribute("aria-hidden") !== "false" && document.activeElement instanceof HTMLElement && !el.contains(document.activeElement)) {
+      el._appDialogReturnFocus = document.activeElement;
+    }
     el.hidden = false;
     el.classList.remove("hidden");
     el.setAttribute("aria-hidden", "false");
@@ -378,6 +278,15 @@
     el.classList.add("hidden");
     el.hidden = true;
     unlockPage();
+    const back = el._appDialogReturnFocus;
+    el._appDialogReturnFocus = null;
+    if (back && document.contains(back) && !document.querySelector("dialog[open]")) {
+      try {
+        back.focus();
+      } catch (_) {
+        /* the opener may already be gone */
+      }
+    }
   }
 
   function toast(message, type) {
@@ -393,8 +302,6 @@
   window.AppDialog = {
     alert: alertDialog,
     confirm: confirmDialog,
-    prompt: promptDialog,
-    form: formDialog,
     show,
     hide,
     toast,

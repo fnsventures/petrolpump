@@ -38,47 +38,27 @@ function formatPercent(value) {
 
 
 async function fetchAnalysisData(startDate, endDate) {
-  const [dsrBundle, expenseResult, lubeResult, vaultResult, categoryResult] = await Promise.all([
+  const [dsrBundle, expenseResult, billingResult, purchaseResult, categoryResult] = await Promise.all([
     DsrQueries.fetchDsrRows(startDate, endDate),
-    DsrQueries.fetchExpenses(startDate, endDate),
-    DsrQueries.fetchLubeSales(startDate, endDate),
-    fetchAllRows(() =>
-      window.supabaseClient
-        .from("invoice_documents")
-        .select("id, invoice_date, amount")
-        .eq("category", "purchase")
-        .gte("invoice_date", startDate)
-        .lte("invoice_date", endDate)
-        .gt("amount", 0)
-        .order("invoice_date", { ascending: true })
-        .order("id", { ascending: true })
-    ),
+    DsrQueries.fetchExpenseDailyTotals(startDate, endDate),
+    DsrQueries.fetchBillingTotalsByDate(startDate, endDate),
+    DsrQueries.fetchPurchaseTotalsByDate(startDate, endDate),
     window.supabaseClient.from("expense_categories").select("name, label").limit(LOOKUP_ROW_LIMIT),
   ]);
 
   if (dsrBundle.error) throw dsrBundle.error;
   if (expenseResult.error) throw expenseResult.error;
-  if (lubeResult.error) throw lubeResult.error;
-
-  const vaultByDate = new Map();
-  let lubeCogs = 0;
-  (vaultResult.data ?? []).forEach((row) => {
-    const amt = Number(row.amount ?? 0);
-    if (!Number.isFinite(amt) || amt <= 0) return;
-    lubeCogs += amt;
-    const key = row.invoice_date;
-    if (!key) return;
-    vaultByDate.set(key, (vaultByDate.get(key) ?? 0) + amt);
-  });
+  if (billingResult.error) throw billingResult.error;
+  if (purchaseResult.error) throw purchaseResult.error;
 
   return {
     dsrData: dsrBundle.data ?? [],
     expenseData: expenseResult.data ?? [],
     receiptRows: dsrBundle.receiptRows ?? [],
-    lubeSales: lubeResult.total,
-    lubeCogs,
-    lubeByDate: lubeResult.byDate,
-    vaultByDate,
+    lubeSales: billingResult.total,
+    lubeCogs: purchaseResult.total,
+    lubeByDate: billingResult.byDate,
+    vaultByDate: purchaseResult.byDate,
     categoryMap: buildExpenseCategoryMap(categoryResult.data),
   };
 }

@@ -365,7 +365,7 @@ function bindUploadForm() {
   });
 }
 
-function getInvoiceDateRange() {
+function getVaultDateRange() {
   const range = readDateRangeFromControls(
     document.getElementById("invoice-range"),
     document.getElementById("invoice-start"),
@@ -647,7 +647,7 @@ async function loadVaultDocuments() {
   vaultListController = controller;
   setLibraryLoading();
 
-  const { start, end } = getInvoiceDateRange();
+  const { start, end } = getVaultDateRange();
   const categoryFilter = document.getElementById("invoice-category-filter")?.value || "all";
   const { data, error } = await fetchAllRows(() => {
     let query = window.supabaseClient

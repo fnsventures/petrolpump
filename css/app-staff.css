@@ -174,7 +174,7 @@
 
 .staff-id-badge--ready {
   background: #d1fae5;
-  color: #047857;
+  color: var(--color-success);
 }
 
 .staff-id-badge--draft {
@@ -197,7 +197,7 @@
 }
 
 .staff-profile-status.is-inactive {
-  color: #b45309;
+  color: var(--color-warning);
 }
 
 .staff-main {
@@ -381,7 +381,7 @@ body.staff-page button.link:disabled {
   height: 100%;
   border: 0;
   object-fit: contain;
-  background: #fff;
+  background: var(--surface);
 }
 
 .staff-id-status-banner {
@@ -396,8 +396,8 @@ body.staff-page button.link:disabled {
   padding: 0.45rem 0.65rem;
   border-radius: var(--radius-md, 10px);
   border: 1px solid #a7f3d0;
-  background: #ecfdf5;
-  color: #047857;
+  background: var(--success-soft);
+  color: var(--color-success);
   font-size: var(--text-xs, 0.75rem);
 }
 
@@ -408,9 +408,9 @@ body.staff-page button.link:disabled {
   margin: 0 0 0.75rem;
   padding: 0.45rem 0.65rem;
   border-radius: var(--radius-md, 10px);
-  border: 1px solid #cbd5e1;
-  background: #f8fafc;
-  color: #475569;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
   font-size: var(--text-xs, 0.75rem);
 }
 
@@ -503,7 +503,7 @@ body.staff-page button.link:disabled {
 .staff-id-modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(var(--shadow-rgb), 0.55);
 }
 
 .staff-id-modal-panel {
@@ -700,7 +700,7 @@ body.staff-page button.link:disabled {
   background:
     radial-gradient(ellipse 120% 80% at 100% 0%, rgba(0, 136, 224, 0.12) 0%, transparent 50%),
     radial-gradient(ellipse 90% 60% at 0% 100%, rgba(247, 181, 0, 0.08) 0%, transparent 45%),
-    linear-gradient(180deg, #ffffff 0%, var(--id-surface) 48%, #e8f0f8 100%);
+    linear-gradient(180deg, var(--surface) 0%, var(--id-surface) 48%, #e8f0f8 100%);
   border-radius: 3.2mm;
   border: 0.3mm solid rgba(0, 91, 170, 0.28);
   box-shadow:
@@ -779,7 +779,7 @@ body.staff-page button.link:disabled {
   font-size: 2.5mm;
   font-weight: 700;
   text-transform: uppercase;
-  color: #fff;
+  color: var(--text-on-accent);
   line-height: 1.08;
   letter-spacing: 0.04em;
   text-shadow: 0 0.3mm 0.8mm rgba(0, 29, 60, 0.25);
@@ -888,7 +888,7 @@ body.staff-page button.link:disabled {
 
 .staff-id-highlight--role {
   text-transform: capitalize;
-  color: #fff;
+  color: var(--text-on-accent);
   background: linear-gradient(135deg, var(--id-navy) 0%, var(--id-blue) 50%, var(--id-blue-bright) 100%);
   border: 0.2mm solid rgba(247, 181, 0, 0.65);
   box-shadow: 0 1px 5px rgba(0, 45, 92, 0.22);
@@ -955,7 +955,7 @@ body.staff-page button.link:disabled {
   z-index: 2;
   margin: 0;
   padding: 0.45mm 2.4mm 0.55mm;
-  background: #ffffff;
+  background: var(--surface);
   border-radius: 1mm;
   color: var(--bpcl-blue, #0070c0);
   font-family: "Segoe Script", "Bradley Hand ITC", "Brush Script MT", "Caveat", cursive;
@@ -1140,7 +1140,7 @@ body.staff-page button.link:disabled {
   width: 100%;
   min-height: 100%;
   z-index: 100000;
-  background: #fff;
+  background: var(--surface);
   overflow: auto;
   padding: 1rem;
   box-sizing: border-box;
@@ -1224,54 +1224,12 @@ body.staff-page button.link:disabled {
   display: block;
 }
 
-@media print {
-  body.staff-id-printing header.topbar,
-  body.staff-id-printing main,
-  body.staff-id-printing footer.app-footer {
-    display: none !important;
-  }
-
-  body.staff-id-printing #staff-id-print-root,
-  body.staff-id-printing #staff-id-print-root[hidden] {
-    display: block !important;
-    visibility: visible !important;
-    position: static !important;
-    left: auto !important;
-    top: auto !important;
-    width: auto !important;
-    min-height: 0 !important;
-    z-index: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: #fff !important;
-  }
-
-  body.staff-id-printing .staff-id-sheet {
-    display: block !important;
-  }
-
-  body.staff-id-printing .staff-id-card {
-    box-shadow: none !important;
-    margin: 0 auto !important;
-    page-break-after: always;
-    break-after: page;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  body.staff-id-printing .staff-id-card--back {
-    page-break-after: auto;
-    break-after: auto;
-  }
-}
-
 /* Staff ID page size — after generic @page rules so this wins when printing badges */
 @media print {
   body.staff-id-printing {
     margin: 0 !important;
     padding: 0 !important;
-    background: #fff !important;
+    background: var(--surface) !important;
   }
 
   @page {

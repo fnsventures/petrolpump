@@ -128,7 +128,7 @@
 .overdue-detail-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(var(--shadow-rgb), 0.55);
 }
 
 .overdue-detail-card {
@@ -169,10 +169,6 @@
 .overdue-detail-close:hover {
   background: var(--border);
   color: var(--color-primary);
-}
-
-body.modal-open {
-  overflow: hidden;
 }
 
 .salary-detail-card {
@@ -221,11 +217,11 @@ body.modal-open {
 }
 
 .salary-detail-meta dd.salary-detail-balance {
-  color: #b45309;
+  color: var(--color-warning);
 }
 
 .salary-detail-meta dd.salary-detail-balance.is-clear {
-  color: #047857;
+  color: var(--color-success);
 }
 
 .salary-detail-section-title {
@@ -382,25 +378,5 @@ body.modal-open {
     min-height: 2.25rem;
     margin: 0.1rem 0;
   }
-}
-
-.salary-slip-preview-wrap {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-md);
-  background: #fff;
-  max-height: 14rem;
-  overflow: auto;
-}
-
-.salary-slip-preview-wrap[hidden] {
-  display: none !important;
-}
-
-.salary-slip-preview-wrap .salary-slip-preview-note {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 

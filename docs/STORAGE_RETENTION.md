@@ -125,24 +125,9 @@ The script reads `STAGING_DB_URL` only. It stops if that URL is the same as `PRO
 
 ## Commands
 
-Google Drive variables (`GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_DRIVE_BACKUP_FOLDER_ID`) come from the GitHub **prod** environment for Actions, or from your shell for a laptop run. `PROD_DB_URL` can come from `scripts/db.env`. None of these commands write business rows.
-
-| I want… | Command |
-|---------|---------|
-| Last finished month, uploaded | `./scripts/backup-month-to-drive.sh` |
-| A chosen month, uploaded | `ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh` |
-| Whole database, uploaded under `Manual/` | `./scripts/backup-prod-to-drive.sh` |
-| Whole database, on this laptop only | `./scripts/db.sh backup` |
-| Close a finished year (full copy, then trash that year’s month folders) | `YEAR=2026 ./scripts/backup-year-to-drive.sh` |
-| See which month folders would be trashed | `./scripts/prune-drive-backups.sh` |
-| Trash month folders for years that already have `Yearly/YYYY` | `CONFIRM_PRUNE_DRIVE=yes ./scripts/prune-drive-backups.sh` |
-| See how many audit rows are older than 6 months | `./scripts/purge-audit-log.sh` |
-| Delete those audit rows on production | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
-| Turn staging audit off and empty its diary | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
+[Operations → Which command](OPERATIONS.md#which-command). Google Drive variables come from the GitHub **prod** environment for Actions, or from your shell for a laptop run. `PROD_DB_URL` can come from `scripts/db.env`. None of these commands write business rows.
 
 Actions → **Backup production database** → Run workflow, and choose `month`, `full`, or `year-end`. The scheduled run needs no choice: every 1st it saves the finished month and deletes old audit rows; on 1 January it also closes the year.
-
-`backup-year-to-drive.sh` refuses the current calendar year. In October 2026 you cannot close 2026, because November and December do not exist yet and the month folders are not redundant.
 
 ## If the database later nears 350 MB
 
@@ -174,25 +159,7 @@ select pg_size_pretty(pg_total_relation_size('public.audit_log')) audit_total, c
 select table_name, count(*) from public.audit_log group by 1 order by 2 desc limit 15;
 ```
 
-Log the date, DB size, top tables, and audit size each time. **Thresholds:** at **≥ 350 MB**, or if `audit_log` is in the top 3, confirm the monthly purge is running and start index cleanup. At **≥ 450 MB**, do that before shipping any new heavy feature.
-
-## Retention policy
-
-Business rows stay in Postgres. On the 1st, Drive receives a copy of the month that just finished (on 1 November, October’s sales, readings, credit, expenses, salary, and closing). Customers, staff, and settings stay in Supabase only. Drive then keeps **13** of those month folders. Older folders go to trash.
-
-| Data | Where it lives | What happens to the old copy |
-|------|----------------|------------------------------|
-| Operational tables and masters | Postgres, kept | Still in the app. Drive also has the last 13 finished months, one folder each |
-| Drive month folders | `YYYY/YYYY-MM/` | The finished month, plus the 12 before it. Folder `2026-10` is October only |
-| `audit_log` | Postgres, **6 months** | Deleted after that month’s copy is on Drive. Cache-only refreshes of `meter_shift_cash` credit and expense totals are not written here |
-
-`scripts/purge-audit-log.sh` deletes audit rows. `scripts/prune-drive-backups.sh` applies the Drive window. Both are dry-run until `CONFIRM_PURGE_AUDIT=yes` or `CONFIRM_PRUNE_DRIVE=yes`. The monthly **Backup production database** workflow runs the backup first, then both confirms. Apply migration `20261008150000_audit_log_retention` before that purge step can succeed.
-
-A purge makes space **reusable**. `pg_database_size` may not fall until a one-time `VACUUM FULL public.audit_log` in a quiet window, because that rewrite locks writes to every audited table.
-
-## If the database later nears 350 MB
-
-Measure first. Then, in order: confirm the audit purge is running, drop unused indexes (below), and only then consider moving a closed financial year out of Postgres. That last step needs its own script, a staging dry-run, and a check that credit balances and day closing still match. It is not part of the monthly job.
+Log the date, DB size, top tables, and audit size each time. The thresholds are in the section above.
 
 ## Index hygiene
 

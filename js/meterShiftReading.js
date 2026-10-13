@@ -2353,14 +2353,6 @@
       if (!shiftViewCurrent.date || !shiftViewCurrent.shift) return;
       openShiftInEditor(shiftViewCurrent.date, shiftViewCurrent.shift);
     });
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      const overlay = el("shift-view-overlay");
-      if (overlay?.getAttribute("aria-hidden") === "false") {
-        e.preventDefault();
-        closeShiftViewPopup();
-      }
-    });
   }
 
   function fillShiftSelect() {

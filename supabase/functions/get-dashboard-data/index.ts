@@ -33,23 +33,13 @@ interface StockRow {
   dip_stock: number | null;
 }
 
-interface ExpenseRow {
-  date: string;
-  category: string;
-  description: string | null;
-  amount: number | null;
-}
-
-interface CreditRow {
-  amount: number | null;
-  amount_settled: number | null;
-}
-
 interface DashboardResponse {
   dsrData: DsrRow[] | null;
   stockData: StockRow[] | null;
-  expenseData: ExpenseRow[] | null;
-  creditData: CreditRow[] | null;
+  expenseData: null;
+  creditData: null;
+  expenseTotal: number | null;
+  creditGiven: number | null;
   errors: {
     dsr: string | null;
     stock: string | null;
@@ -95,7 +85,7 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
+    const [dsrResult, stockResult, expenseSum, creditSum] = await Promise.all([
       fetchAll(() =>
         supabase
           .from("dsr")
@@ -106,35 +96,26 @@ Deno.serve(async (req: Request) => {
           .order("product", { ascending: true })
       ),
       supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-      fetchAll(() =>
-        supabase
-          .from("expenses")
-          .select("date, amount, category, description")
-          .gte("date", startDate)
-          .lte("date", endDate)
-          .order("date", { ascending: true })
-      ),
-      fetchAll(() =>
-        supabase
-          .from("credit_entries")
-          .select("amount, amount_settled")
-          .gte("transaction_date", startDate)
-          .lte("transaction_date", endDate)
-          .order("transaction_date", { ascending: true })
-          .order("id", { ascending: true })
-      ),
+      supabase.rpc("sum_expenses", {
+        p_start: startDate,
+        p_end: endDate,
+        p_exclude_salary: false,
+      }),
+      supabase.rpc("sum_credit_given", { p_start: startDate, p_end: endDate }),
     ]);
 
     const response: DashboardResponse = {
       dsrData: dsrResult.data,
       stockData: stockResult.data,
-      expenseData: expenseResult.data,
-      creditData: creditResult.data,
+      expenseData: null,
+      creditData: null,
+      expenseTotal: expenseSum.error ? null : Number(expenseSum.data ?? 0),
+      creditGiven: creditSum.error ? null : Number(creditSum.data ?? 0),
       errors: {
         dsr: dsrResult.error?.message ?? null,
         stock: stockResult.error?.message ?? null,
-        expense: expenseResult.error?.message ?? null,
-        credit: creditResult.error?.message ?? null,
+        expense: expenseSum.error?.message ?? null,
+        credit: creditSum.error?.message ?? null,
       },
     };
 

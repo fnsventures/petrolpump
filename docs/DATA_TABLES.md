@@ -32,6 +32,9 @@ Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md
 | [credit_entries](#credit_entries) | One row per credit sale (transaction date = DSR date) |
 | [credit_payments](#credit_payments) | Payments received from credit customers |
 | [reminders](#reminders) | Station tasks: dated reminders + undated todos |
+| [e20_testing_registers](#e20_testing_registers) | Daily E-20 testing sheet (outlet, dealer certification) |
+| [e20_water_checks](#e20_water_checks) | Part A — morning water dip, one row per tank |
+| [e20_quality_checks](#e20_quality_checks) | Part B — petrol appearance every 2 hours, 12 slots |
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 | [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
 | [write_requests](#write_requests) | Results of money RPCs keyed by client request id (retry safety) |
@@ -55,6 +58,8 @@ All application tables have RLS enabled. Unless noted otherwise:
 
 **Security-definer RPCs** (credit, day closing, billing, DSR stock range, employee roster, etc.) call `require_staff_access()` at entry — same gate as RLS.
 
+**Function EXECUTE:** `anon` and `PUBLIC` cannot execute any function in `public` (`20261013092142_revoke_anon_function_execute`). With no login the role helpers return null and `require_staff_access()` returns early, so this revoke is what keeps the anon key out. A new function needs an explicit `grant execute on function … to authenticated`; default privileges no longer grant PUBLIC.
+
 **Exceptions:**
 
 - **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`. Avatar URL updated via `update_my_avatar`.
@@ -64,7 +69,7 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **credit_entries:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `add_credit_entry`. DELETE admin only.
 - **credit_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_credit_payment` / `batch_record_credit_settlements`. DELETE admin only.
 - **day_closing:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — use `save_day_closing`, `set_day_closing_certified`, `collect_night_cash`, and `delete_day_closing`.
-- **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`); admins cannot delete a salary-linked expense directly.
+- **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`); `amount` must be greater than 0. Admins cannot delete a salary-linked expense directly. A shift-attributed write is rejected for a supervisor once day closing is saved (`expenses_guard_shift_write`).
 - **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
@@ -183,7 +188,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Unique:** `(reading_date, product, shift, pump_no, nozzle_no)`.
 
-**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`.
+**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`. Shift credit and expenses on the same screen: `get_shift_staff_ledger`, `delete_shift_credit_entry`, `delete_shift_expense`. Lock checks used by those RPCs and by the daily-sheet policies: `meter_day_is_locked`, `meter_day_has_closing`, `meter_day_has_daily_entry`, `meter_shift_has_readings`, `require_meter_day_writable`, `dsr_meter_row_is_complete`.
 
 **Ownership:** Shift save writes `meter_shift_*` (via RPC; clients have SELECT only) and refreshes meter columns on existing `dsr_*` rows via `apply_shift_aggregate_to_dsr` (never inserts stubs). Daily MS/HSD save writes dip/stock/rate on `dsr_*`. Shift meters also prefill the meter sheet via `get_shift_aggregated_daily_meters`. Daily layout is fixed **2 pumps × 2 nozzles** (matches `dsr_*` columns).
 
@@ -442,7 +447,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | date | date | Expense date |
 | category | text | References expense_categories (logical) |
 | description | text | Optional |
-| amount | numeric | Amount (₹) |
+| amount | numeric | Amount (₹). Must be greater than 0 (`expenses_amount_positive`) |
 | salary_payment_id | uuid | Optional FK → salary_payments.id (set by `record_salary_payment`; unique when set; ON DELETE CASCADE) |
 | employee_id | uuid | Optional staff whose till paid this expense during a shift |
 | shift | text | `morning` \| `afternoon` when entered from the shift register; otherwise null |
@@ -454,7 +459,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Indexes:** `(date desc)`, `(created_at desc)`, `(category)`, partial `(date, shift, employee_id)`, partial unique on `salary_payment_id` and on `client_request_id`.
 
-**RLS:** SELECT as the default pattern. INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). Admins cannot delete a salary-linked expense; a supervisor can delete their own shift expense. `ledger_guard_certified_day` rejects a write whose date is certified, then refreshes an uncertified saved closing. See [RLS exceptions](#rls-conventions).
+**RLS:** SELECT as the default pattern. INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). Admins cannot delete a salary-linked expense; a supervisor can delete their own shift expense. `expenses_guard_shift_write` applies the shift-register lock to any shift-attributed insert, update, or delete: a supervisor is blocked once day closing is saved, or the day is certified or night cash is collected. Book expenses (no shift) are not covered by that lock. `ledger_guard_certified_day` rejects a write whose date is certified, then refreshes an uncertified saved closing. See [RLS exceptions](#rls-conventions).
 
 ---
 
@@ -503,7 +508,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT/INSERT/UPDATE for supervisor or admin; DELETE admin only.
+**RLS:** SELECT/INSERT/UPDATE for supervisor or admin; DELETE admin only. `employees_guard_salary_columns` rejects a supervisor insert or update that sets `monthly_salary` or `pf_contribution`. Those two columns are changed from Settings → Staff salaries (admin).
 
 **RPCs:**
 - `list_employees_roster()` / `list_employees_salary()` — active staff only
@@ -534,7 +539,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **RLS:** SELECT provisioned staff; INSERT/UPDATE denied on client; DELETE admin only.
 
-**Writes:** `record_salary_payment(employee_id, date, salary_month, amount, note?, allow_overpay?, request_id?)` — locks the employee + month, recomputes take-home on the server (`salary_month_payable`: salary + over duty − loss of pay − PF, same rules as `js/payrollRules.js`) and raises hint `salary_overpay` when the amount exceeds what remains, unless `allow_overpay`. `delete_salary_payment(id)` (admin) removes the payment and its expense.
+**Writes:** `record_salary_payment(employee_id, date, salary_month, amount, note?, allow_overpay?, request_id?)` — locks the employee + month, recomputes take-home on the server (`salary_month_payable`: salary + over duty − loss of pay − PF, same rules as `js/payrollRules.js`) and raises hint `salary_overpay` when the amount exceeds what remains. `allow_overpay` is honored for an admin only; a supervisor cannot turn the cap off. `delete_salary_payment(id)` (admin) removes the payment and its expense.
 
 **Client:** `salary.html` groups payments by `salary_month`, shows monthly summary vs `employees.monthly_salary`, and prints salary slips (`css/salary-slip-print.css`).
 
@@ -683,6 +688,73 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 
 ---
 
+## e20_testing_registers
+
+**Purpose:** One E-20 testing sheet per day (`e20-register.html`, `js/e20Register.js`). This certification is the dealer’s sign-off on the fuel tests. It is not `day_closing.certified`, and it does not lock meters or money.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| register_date | date | Unique business date |
+| retail_outlet_name | text | Outlet name on the sheet |
+| cc_code | text | Customer / outlet code |
+| certified | boolean | Dealer has signed the sheet |
+| certified_at | timestamptz | When it was signed. Null while `certified` is false |
+| dealer_sign_name | text | Name on the dealer line |
+| remarks | text | Optional |
+| created_by | uuid | auth.users.id |
+| created_at, updated_at | timestamptz | Timestamps |
+
+**RLS:** SELECT and UPDATE for provisioned staff. INSERT only with `created_by = auth.uid()`. DELETE admin only. The page does not write the header directly.
+
+**RPC:** `save_e20_testing_register(date, outlet, cc_code, water_checks, quality_checks, certified, certified_at, dealer_sign_name, remarks)` upserts this row and replaces both child tables. `e20_parse_yes_no` turns the yes/no text in that JSON into booleans. Staff only.
+
+---
+
+## e20_water_checks
+
+**Purpose:** Part A of that sheet. One row per tank: morning dip and whether water was found.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| register_id | uuid | → e20_testing_registers, cascade delete |
+| check_time | time | Time of the dip |
+| tank_no | text | Tank label |
+| opening_dip_mm | numeric | Opening dip (mm) |
+| water_finding_mm | numeric | Water found (mm) |
+| water_present | boolean | Yes/no |
+| corrective_action | text | What was done |
+| tested_by | text | Name |
+| manager_signed | boolean | Manager line ticked |
+| sort_order | smallint | Row order on the sheet |
+| created_at | timestamptz | Created at |
+
+**RLS:** SELECT for provisioned staff. No client insert or update. DELETE admin only, so an admin delete of the header can cascade. Writes go through `save_e20_testing_register`, which deletes and reinserts the lines.
+
+---
+
+## e20_quality_checks
+
+**Purpose:** Part B. Up to 12 slots, one every two hours, for how the petrol looked.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| register_id | uuid | → e20_testing_registers, cascade delete |
+| slot_no | smallint | 1–12, unique per register |
+| check_time | time | Slot time |
+| visual_appearance | text | `clear_bright` or `hazy` |
+| water_separation | boolean | Water separated |
+| action_taken | text | What was done |
+| tested_by | text | Name |
+| tester_signed | boolean | Tester line ticked |
+| created_at | timestamptz | Created at |
+
+**RLS:** Same as `e20_water_checks`.
+
+---
+
 ## day_closing
 
 **Purpose:** Daily closing statement: one row per date. Stores night_cash, phone_pay, computed short_today, and full snapshot (total_sale, collection, short_previous, credit_today, expenses_today) for accounting. `short_previous` comes from previous day’s `short_today`.
@@ -801,6 +873,10 @@ credit_customers
   ├── credit_entries → sync balances
   └── credit_payments
 
+e20_testing_registers (one per register_date)
+  ├── e20_water_checks
+  └── e20_quality_checks
+
 day_closing
   ├── short_previous = prev day’s short_today
   └── night_cash_collection_id → night_cash_collections
@@ -825,6 +901,12 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_staff(email)` | Remove app user | admin |
 | `update_my_avatar(url)` | Set operator profile photo URL | own row |
 | `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
+| `sum_expenses(start, end, exclude_salary?)` | Sum of expense amounts. `exclude_salary` matches the expenses page | — |
+| `expense_totals_by_category(start, end)` | Expense totals grouped by category (jsonb) | — |
+| `expense_totals_by_day(start, end)` | Expense totals grouped by day and category (jsonb) | — |
+| `sum_credit_given(start, end)` | Sum of credit sale amounts in the range | — |
+| `billing_totals_by_date(start, end)` | Billing invoice totals grouped by date (jsonb) | — |
+| `purchase_totals_by_date(start, end)` | Purchase-document totals grouped by date (jsonb) | — |
 | `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
@@ -845,7 +927,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `record_credit_payment(..., request_id?)` | Payment + LIFO; locks the customer row; prepaid on overpay; rejects a certified day | — |
 | `batch_record_credit_settlements(..., request_id?)` | Multi-customer payment in one transaction; locks those rows; rejects a certified day | — |
 | `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
-| `record_salary_payment(...)` | Salary payment + linked expense; server overpay check; rejects a certified payment date | — |
+| `record_salary_payment(...)` | Salary payment + linked expense; server overpay check (admin-only override); rejects a certified payment date | — |
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Remove unsettled sale | admin |
 | `delete_credit_payment(id)` | Remove payment + reallocate | admin |
@@ -855,8 +937,31 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_customer_credit_detail_as_of(name, date)` | Customer breakdown as of date | — |
 | `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
 | `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
+| `get_credit_overview_period(from, to)` | Credit overview totals and per-customer rows for a range (`from` null = all time) | — |
+| `save_e20_testing_register(...)` | Upsert the E-20 sheet and replace its water and quality lines | — |
+| `get_shift_staff_ledger(date, shift)` | Shift-register credit sales and expenses | — |
+| `delete_shift_credit_entry(id)` | Remove an unsettled shift-register credit sale. Creator or admin, and the shift must still be writable | — |
+| `delete_shift_expense(id)` | Remove a shift-register expense. Same lock | — |
+| `enqueue_drive_pdf_archive(kind, id)` | Ask `drive-files` to archive a sales invoice or letter. Returns immediately; a failure is a warning | invoice and letter triggers |
 
-Internal (not granted to `authenticated`): `recascade_day_closing_short_from`, `reallocate_credit_settlements`, balance sync helpers, audit trigger functions, `purge_audit_log_batch` (deletes `audit_log` rows older than 6 months; one batch per call), `salary_month_payable`, `write_request_replay` / `write_request_store`.
+Triggers and helpers (not a page call). `recascade_day_closing_short_from`, `reallocate_credit_settlements`, `sync_credit_customer_balances`, `credit_entries_sync_amount_due`, `purge_audit_log_batch` (one batch of `audit_log` rows older than 6 months), `salary_month_payable`, and `write_request_replay` / `write_request_store` are not granted to `authenticated`.
+
+| Function | What calls it |
+|----------|----------------|
+| `dsr_meter_row_is_complete(rate, dip, stock, receipts)` | Daily-sheet policies. True when the selling rate is set and dip or stock is entered. Receipts alone do not count |
+| `meter_day_is_locked(date)` | True when that day’s closing is certified or night cash was collected |
+| `meter_day_has_closing(date)` | True when a `day_closing` row exists. Supervisors cannot re-save shifts after that |
+| `meter_day_has_daily_entry(date)` | True when a finished MS or HSD sheet exists |
+| `meter_shift_has_readings(date, shift)` | True when that shift already has nozzle rows |
+| `require_meter_day_writable(date)` | Raises for a non-admin on a locked day. `require_meter_shift_writable` calls it, then also blocks a supervisor once day closing is saved |
+| `dsr_refresh_open_day_closing()` | After a meter-row change, refreshes an open day closing. A certified day is already rejected by `dsr_validate_meter_row` |
+| `e20_parse_yes_no(text)` | Yes/no text inside `save_e20_testing_register` |
+| `enqueue_drive_pdf_from_invoice()`, `enqueue_drive_pdf_from_letter()` | After an invoice or letter insert, call `enqueue_drive_pdf_archive` |
+| `set_app_user_auth_id()` | On `users` email insert or update, copy `auth.users.id` when the emails match |
+| `link_app_user_auth_id()` | On a new Auth user, fill `users.auth_user_id` on the matching email if it is still empty |
+| `audit_trigger_fn()` | Writes `audit_log` unless `runtime_flags.audit` is `off` |
+| `sync_meter_shift_cash_ledger_totals(date, shift, employee)` | Rewrites the cached credit and expense totals on `meter_shift_cash` |
+| `trg_sync_shift_cash_from_credit_entries()`, `trg_sync_shift_cash_from_expenses()` | After a shift-attributed credit or expense change, call that refresh |
 
 **Retry safety:** money RPCs marked `request_id?` take an optional `p_request_id uuid`. The client sends the same id while a form's values are unchanged (`formRequestId` in `js/utils.js`); a repeat call with that id returns the stored result from `write_requests` instead of writing again. Ids are kept 14 days.
 

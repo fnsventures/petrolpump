@@ -21,7 +21,7 @@ One place for each fact. Start with the row that matches the job.
 | [Architecture](ARCHITECTURE.md) | Folders, runtime, security, edge functions |
 | [Flows](FLOWS.md) | How a page writes data |
 | [Data tables](DATA_TABLES.md) | Tables, views, RLS, RPCs. Includes the meter and stock model |
-| [Day closing](DAY_CLOSING.md) | The short formula and which migration defines each function |
+| [Day closing](DAY_CLOSING.md) | The short formula, which migration defines each function, and how to repair a day that will not close |
 | [Invoices](INVOICE_DOCUMENTS.md) | Supplier PDFs in Google Drive |
 | [Storage](STORAGE_RETENTION.md) | Stay inside the 500 MB free database |
 
@@ -44,12 +44,4 @@ The [root README](../README.md) is the short tour. GitHub renders the PNGs.
 
 ## Commands
 
-| I want to… | Do this |
-|------------|---------|
-| Test with live data on staging | `./scripts/db.sh sync` |
-| Apply SQL on staging and keep its rows | [Operations → Staging schema](OPERATIONS.md#apply-migrations-to-staging-only) |
-| Publish the test site | Push or merge to `staging` |
-| See what would change on prod | `./scripts/db.sh migrate` |
-| Upgrade the live schema | `./scripts/db.sh migrate --apply` |
-| Publish the live site | Merge `staging` → `main` |
-| Save the database | [Recovery](RECOVERY.md) |
+One list: [Operations → Which command](OPERATIONS.md#which-command).

@@ -1630,7 +1630,7 @@ async function setDayClosingCertified(certified) {
 }
 
 function dcTodayStr() {
-  return typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
+  return getLocalDateString();
 }
 
 /** Typed night cash / phone pay / remarks not yet saved for the loaded date. */

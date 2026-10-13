@@ -119,7 +119,7 @@ The order for a release is [OPERATIONS.md](OPERATIONS.md).
 ## Weekly
 
 - Actions: last **Deploy** on `main` and `staging` is green.
-- Once a month: Drive has a new `YYYY/YYYY-MM/` dump, or you run the backup workflow.
+- Once a month: Drive has a new `YYYY/YYYY-MM/` folder of that month’s CSVs, or you run the backup workflow.
 - Once a quarter: restore drill in [RECOVERY.md](RECOVERY.md#restore-drill), then update its “last tested” line.
 - Before a release: smoke-test `/staging/` after a sync.
 - Never commit `js/env.js`, `scripts/db.env`, dumps, or OAuth tokens.

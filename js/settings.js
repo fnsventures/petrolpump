@@ -767,7 +767,7 @@ function initUsersForm() {
       successEl.classList.remove("hidden");
     }
     if (typeof invalidateUserRoleCache === "function") invalidateUserRoleCache(email);
-    invalidateEmployeeListCache();
+    StaffEmployees.invalidateActiveEmployeesCache();
     loadStaffList();
   });
 }
@@ -1148,14 +1148,6 @@ function initDocumentTypeCategories() {
 
 // ─── Staff salaries ──────────────────────────────────────────────────────────
 
-function invalidateEmployeeListCache() {
-  if (typeof StaffEmployees !== "undefined" && StaffEmployees?.invalidateActiveEmployeesCache) {
-    StaffEmployees.invalidateActiveEmployeesCache();
-  } else if (typeof AppCache !== "undefined" && AppCache) {
-    AppCache.invalidateByType("staff_list");
-  }
-}
-
 function initStaffSalaries() {
   const tbody = document.getElementById("emp-salaries-body");
   const successEl = document.getElementById("emp-salaries-success");
@@ -1195,10 +1187,10 @@ function initStaffSalaries() {
         <td>${escapeHtml(s.name)}</td>
         <td>${escapeHtml(s.role_display ?? "—")}</td>
         <td>
-          <input type="number" class="emp-salary-input" min="0" step="0.01" value="${escapeHtml(String(s.monthly_salary ?? 0))}" aria-label="Monthly salary for ${escapeHtml(s.name)}" />
+          <input inputmode="decimal" type="number" class="emp-salary-input" min="0" step="0.01" value="${escapeHtml(String(s.monthly_salary ?? 0))}" aria-label="Monthly salary for ${escapeHtml(s.name)}" />
         </td>
         <td>
-          <input type="number" class="emp-pf-input" min="0" step="1" placeholder="e.g. 200 or 150" value="${escapeHtml(formatPfContributionValue(s.pf_contribution))}" aria-label="PF contribution for ${escapeHtml(s.name)}" />
+          <input inputmode="numeric" type="number" class="emp-pf-input" min="0" step="1" placeholder="e.g. 200 or 150" value="${escapeHtml(formatPfContributionValue(s.pf_contribution))}" aria-label="PF contribution for ${escapeHtml(s.name)}" />
         </td>
         <td>
           <button type="button" class="save-emp-salary-btn button-secondary" data-id="${escapeHtml(s.id)}">Save</button>
@@ -1251,7 +1243,7 @@ function initStaffSalaries() {
       AppError.handle(error, { target: errorEl });
       return;
     }
-    invalidateEmployeeListCache();
+    StaffEmployees.invalidateActiveEmployeesCache();
     const item = staffList.find((s) => s.id === id);
     if (item) {
       item.monthly_salary = monthlySalary;

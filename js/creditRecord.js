@@ -417,9 +417,7 @@ async function handleCreditSubmit(event) {
   errorEl?.classList.add("hidden");
 
   const formData = new FormData(form);
-  const transactionDate =
-    formData.get("credit_date")?.trim() ||
-    (typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10));
+  const transactionDate = formData.get("credit_date")?.trim() || getLocalDateString();
   const customerNameInput = (formData.get("customer_name") || "").trim();
   const fuelType = (formData.get("fuel_type") || "").trim() || null;
   const quantityRaw = Number(formData.get("quantity") || 0);
@@ -439,7 +437,7 @@ async function handleCreditSubmit(event) {
     return;
   }
 
-  const todayStr = typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10);
+  const todayStr = getLocalDateString();
   if (transactionDate > todayStr) {
     if (submitBtn) {
       submitBtn.disabled = false;
