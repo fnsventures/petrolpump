@@ -74,23 +74,38 @@ Do this once. If invoice upload already works, reuse that OAuth client and refre
 
 `SUPABASE_URL` and `SUPABASE_ANON_KEY` deploy the website. They do not back up the database.
 
-5. With `.github/workflows/backup-prod-db.yml` on the default branch: **Actions → Backup production database → Run workflow**. The first success creates `YYYY/YYYY-MM/` with three files.
+5. With `.github/workflows/backup-prod-db.yml` on the default branch: **Actions → Backup production database → Run workflow**, mode **month**. The first success creates `YYYY/YYYY-MM/` with one gzipped CSV per table in [What a month file contains](STORAGE_RETENTION.md#what-a-month-file-contains), plus `month-manifest-*.txt`.
 
 From a laptop, export the four Google variables ( `PROD_DB_URL` comes from `scripts/db.env` ) and run `./scripts/backup-prod-to-drive.sh`. Needs the Supabase CLI, `jq`, `curl`, `gzip`, and a PostgreSQL client or Docker.
 
 ### A good backup
 
+A month folder and a whole-database copy are different files. The scheduled run writes the month folder.
+
+**Month folder** (`YYYY/YYYY-MM/`, from mode **month** or `backup-month-to-drive.sh`):
+
 | Check | Expected |
 |-------|----------|
-| Actions | **Success**, log says `Done. 3 file(s) uploaded` |
-| Drive | Files under `YYYY/YYYY-MM/` |
-| Manifest | DSR counts look right; timestamp matches the run |
-| Sizes | Schema and data `.sql.gz` are not 0 bytes |
+| Actions | **Success**. The last line is `Done. YYYY-MM: N file(s) uploaded.` N is one gzip per table in [What a month file contains](STORAGE_RETENTION.md#what-a-month-file-contains), plus the manifest |
+| Drive | `*.csv.gz` files and `month-manifest-*.txt` |
+| Manifest | One count line per table. A line of `0` is an empty table, which is a valid file |
+| Sizes | No file is 0 bytes |
+
+**Whole database** (`Manual/`, `Yearly/`, `./scripts/db.sh backup`, or the pair written just before `migrate --apply`):
+
+| Check | Expected |
+|-------|----------|
+| Drive upload | **Success**, and the log says `Done. 3 file(s) uploaded to Google Drive` |
+| Files | `prod-schema-*.sql.gz` and `prod-data-*.sql.gz` with the **same timestamp**, plus a manifest. Local `db.sh backup` writes the same pair as `.sql` and a `dsr-counts-snapshot-*.txt` |
+| Manifest | DSR counts look right |
+| Sizes | Schema and data files are not 0 bytes |
 
 ```sql
 select count(*) from public.dsr_petrol;
 select count(*) from public.dsr_diesel;
 ```
+
+Those two counts are the whole-database check. A month manifest's `dsr_petrol` line is only that month. An older month folder that still holds a `prod-schema` / `prod-data` pair is a whole-database copy; use the checks above it.
 
 Symptoms (`unauthorized_client`, empty Drive folder, cron that never fired): [TROUBLESHOOTING.md → Backup](TROUBLESHOOTING.md#backup--google-drive).
 
@@ -101,6 +116,7 @@ The dump does not write to production. `PROD_DB_URL` and Google tokens stay in t
 | Situation | First move | Then |
 |-----------|------------|------|
 | Bad migration | Stop releasing. Prefer a forward fix | [Schema rollback](#schema-rollback) |
+| Bad frontend release | Redeploy the last good commit. The database stays | [Frontend rollback](#frontend-rollback) |
 | Accidental delete or bad UPDATE | Stop writes on that screen. Do not improvise on prod | [Lost rows](#lost-rows) |
 | Supabase project gone | New project, latest dump | [Restore](#restore-a-dump), then [After a new project](#after-a-new-project) |
 | Secrets leaked | Rotate first, then audit | [Leaked secrets](#leaked-secrets) |
@@ -263,7 +279,7 @@ docker exec restore-pg pg_dump -U postgres -h localhost --data-only \
 | Leaked | Rotate | Then |
 |--------|--------|------|
 | Database password / `PROD_DB_URL` | Supabase → Database → reset password | `scripts/db.env` and GitHub `PROD_DB_URL` ([SECRETS.md](SECRETS.md#database-password-changed)) |
-| Service-role key or JWT secret | Supabase → Settings → API | `SUPABASE_ANON_KEY` everywhere, redeploy ([SECRETS.md](SECRETS.md#supabase-anon-key-or-url-changed)). Everyone signs in again |
+| Service-role key or JWT secret | [SECRETS.md → JWT secret](SECRETS.md#jwt-secret) | The anon key is signed by that secret. Revoking it without a replacement key takes the site down |
 | Google OAuth trio | All three together | [SECRETS.md](SECRETS.md#google-oauth-unauthorized_client) |
 | `SUPABASE_ACCESS_TOKEN` | Revoke at Account → Access Tokens | [SECRETS.md](SECRETS.md#supabase-access-token-expired) |
 | `GODADDY_*` | Revoke at developer.godaddy.com/keys | Update repo secrets |
@@ -279,6 +295,19 @@ Then look for unexpected `auth.users` rows, changed `public.users.role` values, 
 2. If DNS is fine, check [githubstatus.com](https://www.githubstatus.com/) and re-run Actions → **Deploy** → `prod`.
 3. The database is not on GitHub. A Pages outage does not touch it.
 4. A long outage: serve the `gh-pages` branch from any static host, point the CNAME there, and add the origin to Supabase Auth redirect URLs.
+
+<a id="frontend-rollback"></a>
+
+## Frontend rollback
+
+The live site is whatever Actions → **Deploy** last wrote to `gh-pages`. This puts an older commit back on the site. It does not change the database. A bad migration is [Schema rollback](#schema-rollback).
+
+1. Find the last good commit. Open a green **Deploy** run for prod and copy its SHA, or use `git log origin/main`.
+2. Actions → **Deploy** → **Run workflow**. Set **target** to `prod`. Set **ref** to that SHA (a branch, tag, or full SHA also works).
+3. If **ref** is left empty, the branch selected next to **Run workflow** is what deploys. That is usually the current `main`, which is the commit you are trying to leave.
+4. Wait until **Deploy** is green. Hard-refresh. The service worker can keep the previous page.
+5. Target `staging` rewrites `/staging/` only. A prod rollback leaves `/staging/` as it was.
+6. `main` still contains the bad commit. The next push to `main` deploys `main` again. Revert that commit on `main` if the rolled-back site should stay.
 
 <a id="schema-rollback"></a>
 

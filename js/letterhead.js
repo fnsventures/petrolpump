@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress */
+/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css";
@@ -244,8 +244,7 @@
   async function saveLetterHistoryToDatabase(values, exportType) {
     const payload = {
       letter_date:
-        values.date ||
-        (typeof getLocalDateString === "function" ? getLocalDateString() : new Date().toISOString().slice(0, 10)),
+        values.date || getLocalDateString(),
       subject: (values.subject || "").trim() || previewSnippet(values.body, 80).replace(/^—$/, "") || "Letter",
       body: values.body || "",
       export_type: exportType === "word" ? "word" : exportType === "save" ? "save" : "print",
@@ -674,26 +673,14 @@
   }
 
   function updateHistoryPaginationUI() {
-    const loadMoreBtn = document.getElementById("letterhead-load-more");
-    const paginationInfo = document.getElementById("letterhead-pagination-info");
-
-    if (paginationInfo) {
-      if (historyPagination.totalCount > 0) {
-        const showing = Math.min(historyPagination.offset, historyPagination.totalCount);
-        paginationInfo.textContent = `Showing ${showing} of ${historyPagination.totalCount} letters`;
-      } else {
-        paginationInfo.textContent = "";
-      }
-    }
-
-    if (loadMoreBtn) {
-      loadMoreBtn.disabled = false;
-      loadMoreBtn.textContent = "Load more";
-      loadMoreBtn.classList.toggle(
-        "hidden",
-        !historyPagination.hasMore || historyPagination.offset === 0
-      );
-    }
+    syncLoadMorePager({
+      info: document.getElementById("letterhead-pagination-info"),
+      button: document.getElementById("letterhead-load-more"),
+      shown: Math.min(historyPagination.offset, historyPagination.totalCount || historyPagination.offset),
+      total: historyPagination.totalCount,
+      hasMore: historyPagination.hasMore,
+      noun: "letters",
+    });
   }
 
   function setHistoryReportError(msg) {

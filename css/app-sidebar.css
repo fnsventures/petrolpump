@@ -136,13 +136,13 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
   gap: 0.7rem;
   min-height: var(--topbar-height);
   padding: 0.65rem 1rem;
-  color: #fff;
+  color: var(--text-on-accent);
   text-decoration: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .app-sidebar-brand:hover {
-  color: #fff;
+  color: var(--text-on-accent);
   text-decoration: none;
 }
 
@@ -155,9 +155,9 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
   height: 2.5rem;
   overflow: hidden;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface);
   box-shadow:
-    0 0 0 2px #fff,
+    0 0 0 2px var(--surface),
     0 0 0 3px var(--app-sidebar-active);
 }
 
@@ -166,7 +166,7 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
   height: 2.15rem;
   object-fit: contain;
   padding: 0.08rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 .app-sidebar-brand-text {
@@ -235,7 +235,7 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
 .app-sidebar-link:hover,
 .app-sidebar-pin:hover {
   background: var(--app-sidebar-hover);
-  color: #fff;
+  color: var(--text-on-accent);
   text-decoration: none;
   box-shadow: none;
   transform: none;
@@ -466,7 +466,7 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
   flex: 1 1 auto;
   margin: 0;
   overflow: hidden;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -574,7 +574,7 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
 }
 
 .app-sections-drawer .settings-nav-item.is-active {
-  background: #fff;
+  background: var(--surface);
   color: var(--bpcl-blue-dark);
   box-shadow: inset 3px 0 0 var(--bpcl-yellow);
 }
@@ -737,12 +737,12 @@ html.app-chrome-ready body.has-app-sidebar {
     border-right: none;
     border-bottom: 1px solid rgba(0, 112, 192, 0.16);
     box-shadow: none;
-    background: #fff;
+    background: var(--surface);
   }
 
   .app-sections-drawer.is-collapsed {
     width: auto;
-    background: #fff;
+    background: var(--surface);
     cursor: default;
   }
 

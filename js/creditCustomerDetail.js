@@ -1,4 +1,4 @@
-/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml, AdminDelete, formatFuelBadge */
+/* global formatCurrency, formatDisplayDate, getLocalDateString, AppError, escapeHtml, AdminDelete, formatFuelBadge, syncWindowPager */
 
 /**
  * Shared credit customer detail helpers (detail page + overdue modal).
@@ -140,11 +140,14 @@
 
       if (paginationEl && infoEl && backBtn && moreBtn) {
         paginationEl.classList.remove("hidden");
-        infoEl.textContent = `Showing ${start + 1}–${end} of ${total}`;
-        backBtn.disabled = page <= 0;
-        backBtn.classList.toggle("hidden", totalPages <= 1);
-        moreBtn.disabled = page >= totalPages - 1;
-        moreBtn.classList.toggle("hidden", totalPages <= 1);
+        syncWindowPager({
+          info: infoEl,
+          back: backBtn,
+          more: moreBtn,
+          page,
+          pageSize: BREAKDOWN_PAGE_SIZE,
+          total,
+        });
       }
     }
 

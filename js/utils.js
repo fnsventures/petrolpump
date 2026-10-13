@@ -1102,6 +1102,8 @@ const ActionProgress = (function () {
     setStatus(opts.status || "Please wait…");
     setFill(0);
     root.hidden = false;
+    // Stay above an open modal (e.g. delete from the shift ledger popup).
+    window.AppError?.raiseToTopLayer?.(root);
     document.body.classList.add("action-progress-open");
     stopCreep();
     creepStarted = performance.now();
@@ -1153,7 +1155,10 @@ const ActionProgress = (function () {
     clearTimeout(watchdog);
     watchdog = null;
     const root = document.getElementById("action-progress");
-    if (root) root.hidden = true;
+    if (root) {
+      if (typeof root.hidePopover === "function" && root.matches(":popover-open")) root.hidePopover();
+      root.hidden = true;
+    }
     document.body.classList.remove("action-progress-open");
     setFill(0);
   }
@@ -1958,6 +1963,99 @@ async function runAppRequest(label, fn, options = {}) {
   return result;
 }
 
+/**
+ * Append a "Showing N of M" line and a Load more button. No-op when already mounted.
+ * @returns {{ info: HTMLElement|null, button: HTMLElement|null }}
+ */
+function mountLoadMorePager(container, { infoId, buttonId, onMore }) {
+  if (!container) return { info: null, button: null };
+  if (!container.querySelector(".pagination-controls")) {
+    const wrap = document.createElement("div");
+    wrap.className = "pagination-controls";
+    wrap.innerHTML = `
+      <div class="pagination-info">
+        <span id="${infoId}" class="muted"></span>
+      </div>
+      <button type="button" id="${buttonId}" class="button-secondary hidden">Load more</button>
+    `;
+    container.appendChild(wrap);
+    if (onMore) wrap.querySelector("button")?.addEventListener("click", onMore);
+  }
+  return {
+    info: document.getElementById(infoId),
+    button: document.getElementById(buttonId),
+  };
+}
+
+/**
+ * @param {{ info?: HTMLElement|null, button?: HTMLElement|null, extraInfo?: HTMLElement|null, shown: number, total: number, hasMore: boolean, noun?: string }} state
+ */
+function syncLoadMorePager({ info, button, extraInfo, shown, total, hasMore, noun = "entries" }) {
+  const text = total > 0 ? `Showing ${Math.min(shown, total)} of ${total} ${noun}` : "";
+  if (info) info.textContent = text;
+  if (extraInfo) extraInfo.textContent = text;
+  if (button) {
+    button.disabled = false;
+    button.textContent = "Load more";
+    button.classList.toggle("hidden", !(hasMore && shown > 0));
+  }
+}
+
+/**
+ * Append Back and Load more for a windowed page (meter history).
+ * @returns {{ info: HTMLElement|null, back: HTMLElement|null, more: HTMLElement|null }}
+ */
+function mountWindowPager(container, { infoId, backId, moreId, onBack, onMore }) {
+  if (!container) return { info: null, back: null, more: null };
+  if (!container.querySelector(".pagination-controls")) {
+    const wrap = document.createElement("div");
+    wrap.className = "pagination-controls";
+    wrap.innerHTML = `
+      <div class="pagination-info">
+        <span id="${infoId}" class="muted"></span>
+      </div>
+      <div class="pagination-buttons">
+        <button type="button" id="${backId}" class="button-secondary hidden">Back</button>
+        <button type="button" id="${moreId}" class="button-secondary hidden">Load more</button>
+      </div>
+    `;
+    container.appendChild(wrap);
+    if (onBack) document.getElementById(backId)?.addEventListener("click", onBack);
+    if (onMore) document.getElementById(moreId)?.addEventListener("click", onMore);
+  }
+  return {
+    info: document.getElementById(infoId),
+    back: document.getElementById(backId),
+    more: document.getElementById(moreId),
+  };
+}
+
+/**
+ * @param {{ info?: HTMLElement|null, back?: HTMLElement|null, more?: HTMLElement|null, page: number, pageSize: number, total: number, singlePageText?: string, moreLabel?: string }} state
+ */
+function syncWindowPager({ info, back, more, page, pageSize, total, singlePageText, moreLabel }) {
+  const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
+  if (info) {
+    if (!total) info.textContent = "";
+    else if (totalPages <= 1 && singlePageText) info.textContent = singlePageText;
+    else {
+      const from = page * pageSize + 1;
+      const to = Math.min((page + 1) * pageSize, total);
+      info.textContent = `Showing ${from}–${to} of ${total}`;
+    }
+  }
+  const multi = totalPages > 1;
+  if (back) {
+    back.disabled = page <= 0;
+    back.classList.toggle("hidden", !multi);
+  }
+  if (more) {
+    more.disabled = page >= totalPages - 1;
+    if (moreLabel) more.textContent = moreLabel;
+    more.classList.toggle("hidden", !multi);
+  }
+}
+
 function resetPaginationLoading(pagination, loadMoreBtn, loadMoreLabel = "Load more") {
   if (pagination) pagination.isLoading = false;
   if (loadMoreBtn) {
@@ -2115,10 +2213,158 @@ function installNumericInputScrollGuard() {
 
 window.installNumericInputScrollGuard = installNumericInputScrollGuard;
 
+const FIELD_CONTROL = "input, select, textarea";
+
+function fieldErrorId(el) {
+  if (el.id) return `${el.id}-error`;
+  if (!el.dataset.fieldErrorId) {
+    el.dataset.fieldErrorId = `field-error-${Math.random().toString(36).slice(2, 9)}`;
+  }
+  return el.dataset.fieldErrorId;
+}
+
+/** Mark a control invalid and show one message directly under it. */
+function setFieldInvalid(el, message) {
+  if (!el?.matches?.(FIELD_CONTROL)) return;
+  const text = String(message || el.validationMessage || "Check this field.");
+  el.classList.add("is-invalid");
+  el.setAttribute("aria-invalid", "true");
+  const id = fieldErrorId(el);
+  let msg = document.getElementById(id);
+  if (!msg) {
+    msg = document.createElement("p");
+    msg.id = id;
+    msg.className = "field-error";
+    el.insertAdjacentElement("afterend", msg);
+  }
+  msg.textContent = text;
+  const described = new Set(
+    (el.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean)
+  );
+  described.add(id);
+  el.setAttribute("aria-describedby", [...described].join(" "));
+}
+
+/** Clear the invalid mark once the control passes its checks. */
+function clearFieldInvalid(el) {
+  if (!el?.matches?.(FIELD_CONTROL)) return;
+  if (el.validity && !el.validity.valid) return;
+  el.classList.remove("is-invalid");
+  el.removeAttribute("aria-invalid");
+  const id = el.id ? `${el.id}-error` : el.dataset.fieldErrorId;
+  if (!id) return;
+  document.getElementById(id)?.remove();
+  const described = (el.getAttribute("aria-describedby") || "")
+    .split(/\s+/)
+    .filter((token) => token && token !== id);
+  if (described.length) el.setAttribute("aria-describedby", described.join(" "));
+  else el.removeAttribute("aria-describedby");
+}
+
+function installFieldValidation() {
+  if (document.documentElement.dataset.bpfFieldValidation === "1") return;
+  document.documentElement.dataset.bpfFieldValidation = "1";
+  let focusQueued = false;
+
+  document.addEventListener(
+    "invalid",
+    (event) => {
+      const el = event.target;
+      if (!el?.matches?.(FIELD_CONTROL)) return;
+      event.preventDefault();
+      setFieldInvalid(el, el.validationMessage);
+      if (focusQueued) return;
+      focusQueued = true;
+      queueMicrotask(() => {
+        focusQueued = false;
+        document.querySelector(`${FIELD_CONTROL}.is-invalid`)?.focus();
+      });
+    },
+    true
+  );
+
+  const clearIfValid = (event) => clearFieldInvalid(event.target);
+  document.addEventListener("input", clearIfValid, true);
+  document.addEventListener("change", clearIfValid, true);
+}
+
+function tableHeaderLabels(table) {
+  const row = table.querySelector("thead tr:last-child");
+  if (!row) return null;
+  const labels = [];
+  let index = 0;
+  for (const cell of row.children) {
+    const span = Number(cell.getAttribute("colspan") || 1);
+    const count = Number.isFinite(span) && span > 0 ? span : 1;
+    const label = (cell.innerText || cell.textContent || "").replace(/\s+/g, " ").trim();
+    for (let i = 0; i < count; i += 1) {
+      labels[index] = label;
+      index += 1;
+    }
+  }
+  return labels;
+}
+
+function annotateWideTable(table) {
+  if (!(table instanceof HTMLTableElement)) return;
+  if (table.classList.contains("attendance-matrix")) return;
+  if (!table.closest(".table-wrap, .table-scroll")) return;
+  const labels = tableHeaderLabels(table);
+  if (!labels || labels.filter(Boolean).length < 2) {
+    table.classList.remove("table-cards");
+    return;
+  }
+  table.classList.add("table-cards");
+  for (const body of table.tBodies) {
+    for (const tr of body.rows) {
+      let col = 0;
+      for (const cell of tr.cells) {
+        const span = Number(cell.getAttribute("colspan") || 1);
+        const label = span === 1 ? labels[col] : "";
+        if (label) cell.setAttribute("data-label", label);
+        else cell.removeAttribute("data-label");
+        col += Number.isFinite(span) && span > 0 ? span : 1;
+      }
+    }
+  }
+}
+
+function annotateWideTables(root) {
+  const scope = root instanceof Element ? root : document;
+  if (scope instanceof HTMLTableElement) annotateWideTable(scope);
+  scope.querySelectorAll?.(".table-wrap table, .table-scroll table").forEach(annotateWideTable);
+}
+
+function installResponsiveTables() {
+  if (document.documentElement.dataset.bpfResponsiveTables === "1") return;
+  document.documentElement.dataset.bpfResponsiveTables = "1";
+  let timer = 0;
+  const run = () => {
+    timer = 0;
+    annotateWideTables(document);
+  };
+  const schedule = () => {
+    if (timer) return;
+    timer = window.setTimeout(run, 40);
+  };
+  run();
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+window.setFieldInvalid = setFieldInvalid;
+window.clearFieldInvalid = clearFieldInvalid;
+window.annotateWideTables = annotateWideTables;
+
 if (typeof document !== "undefined") {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", installNumericInputScrollGuard, { once: true });
-  } else {
+  const startUiHelpers = () => {
     installNumericInputScrollGuard();
+    installFieldValidation();
+    installResponsiveTables();
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startUiHelpers, { once: true });
+  } else {
+    startUiHelpers();
   }
 }

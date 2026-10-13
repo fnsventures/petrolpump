@@ -2108,7 +2108,8 @@ create index if not exists employees_active_roster_idx
   on public.employees (display_order, name)
   where is_active = true;
 
-comment on table public.employees is 'Pump employees who receive salary. Mutations: admin or supervisor (delete: admin only). Used for salary and attendance.';
+comment on table public.employees is
+  'Pump employees who receive salary. Profile mutations: admin or supervisor. monthly_salary and pf_contribution: admin only. Delete: admin only.';
 comment on column public.employees.is_active is
   'Employment status. false = inactive everywhere (salary, attendance, E-20, settings).';
 comment on column public.employees.photo_url is 'Display URL for staff ID photo (Google Drive public image link).';
@@ -2375,6 +2376,44 @@ drop policy if exists "employees_delete_admin" on public.employees;
 create policy "employees_delete_admin" on public.employees
   for delete to authenticated using (public.is_admin());
 
+create or replace function public.employees_guard_salary_columns()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.is_admin() then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if coalesce(new.monthly_salary, 0) <> 0 or new.pf_contribution is not null then
+      raise exception 'Only an admin can set salary or PF contribution.';
+    end if;
+    return new;
+  end if;
+
+  if new.monthly_salary is distinct from old.monthly_salary
+     or new.pf_contribution is distinct from old.pf_contribution then
+    raise exception 'Only an admin can change salary or PF contribution.';
+  end if;
+
+  return new;
+end;
+$$;
+
+comment on function public.employees_guard_salary_columns() is
+  'Trigger: supervisors may edit an employee profile, but monthly_salary and pf_contribution stay admin-only.';
+
+revoke all on function public.employees_guard_salary_columns() from public, anon;
+grant execute on function public.employees_guard_salary_columns() to authenticated;
+
+drop trigger if exists employees_guard_salary_columns on public.employees;
+create trigger employees_guard_salary_columns
+  before insert or update on public.employees
+  for each row execute function public.employees_guard_salary_columns();
+
 -- Salary payments (installments: employees receive salary in parts on different days)
 create table if not exists public.salary_payments (
   id uuid primary key default uuid_generate_v4(),
@@ -2419,7 +2458,7 @@ create table if not exists public.expenses (
   date date not null,
   category text,
   description text,
-  amount numeric(14,2) not null default 0,
+  amount numeric(14,2) not null constraint expenses_amount_positive check (amount > 0),
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
   salary_payment_id uuid references public.salary_payments (id) on delete cascade,
@@ -2445,6 +2484,8 @@ create index if not exists expenses_shift_staff_idx
   where employee_id is not null;
 
 comment on table public.expenses is 'Daily operating expenses for profit/loss.';
+comment on column public.expenses.amount is
+  'Amount in ₹. Must be greater than 0; a negative expense would hide a day''s shortage.';
 comment on column public.expenses.employee_id is
   'Optional: staff whose till paid this expense during a shift.';
 comment on column public.expenses.salary_payment_id is
@@ -2503,6 +2544,240 @@ create policy "expenses_delete_admin" on public.expenses
       and shift is not null
     )
   );
+
+create or replace function public.expenses_guard_shift_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    if old.shift is not null then
+      perform public.require_meter_shift_writable(old.date, old.shift);
+    end if;
+    return old;
+  end if;
+
+  if new.shift is not null then
+    perform public.require_meter_shift_writable(new.date, new.shift);
+  end if;
+
+  if tg_op = 'UPDATE'
+     and old.shift is not null
+     and (old.date is distinct from new.date or old.shift is distinct from new.shift) then
+    perform public.require_meter_shift_writable(old.date, old.shift);
+  end if;
+
+  return new;
+end;
+$$;
+
+comment on function public.expenses_guard_shift_write() is
+  'Trigger: a shift-attributed expense insert, update, or delete uses the same lock as the shift register. Supervisors are blocked once day closing is saved, or the day is certified or night cash is collected. Book expenses (no shift) are unchanged.';
+
+revoke all on function public.expenses_guard_shift_write() from public, anon;
+grant execute on function public.expenses_guard_shift_write() to authenticated;
+
+drop trigger if exists expenses_guard_shift_write on public.expenses;
+create trigger expenses_guard_shift_write
+  before insert or update or delete on public.expenses
+  for each row execute function public.expenses_guard_shift_write();
+
+-- Range totals. Callers must not download every expense, credit, or invoice row just to add them up.
+create or replace function public.sum_expenses(
+  p_start date,
+  p_end date,
+  p_exclude_salary boolean default false
+)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  total numeric;
+begin
+  perform public.require_staff_access();
+  select coalesce(sum(e.amount), 0)
+    into total
+  from public.expenses e
+  where e.date >= p_start
+    and e.date <= p_end
+    and (
+      not coalesce(p_exclude_salary, false)
+      -- category <> 'salary' also drops null categories, matching the expenses page .neq filter.
+      or e.category <> 'salary'
+    );
+  return total;
+end;
+$$;
+
+comment on function public.sum_expenses(date, date, boolean) is
+  'Sum of expense amounts in a date range. p_exclude_salary matches the expenses page (drops salary and null categories).';
+
+create or replace function public.expense_totals_by_category(p_start date, p_end date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  perform public.require_staff_access();
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('category', s.category, 'amount', s.amount)
+      order by s.category
+    ),
+    '[]'::jsonb
+  )
+    into result
+  from (
+    select coalesce(nullif(btrim(e.category), ''), 'misc') as category,
+           coalesce(sum(e.amount), 0) as amount
+    from public.expenses e
+    where e.date >= p_start
+      and e.date <= p_end
+    group by 1
+  ) s;
+  return result;
+end;
+$$;
+
+comment on function public.expense_totals_by_category(date, date) is
+  'Expense amounts grouped by category for a date range. One object per category, not one per row.';
+
+create or replace function public.expense_totals_by_day(p_start date, p_end date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  perform public.require_staff_access();
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('date', s.expense_date, 'category', s.category, 'amount', s.amount)
+      order by s.expense_date, s.category
+    ),
+    '[]'::jsonb
+  )
+    into result
+  from (
+    select e.date as expense_date,
+           coalesce(nullif(btrim(e.category), ''), 'misc') as category,
+           coalesce(sum(e.amount), 0) as amount
+    from public.expenses e
+    where e.date >= p_start
+      and e.date <= p_end
+    group by 1, 2
+  ) s;
+  return result;
+end;
+$$;
+
+comment on function public.expense_totals_by_day(date, date) is
+  'Expense amounts grouped by day and category. Used by the analysis chart.';
+
+create or replace function public.sum_credit_given(p_start date, p_end date)
+returns numeric
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  total numeric;
+begin
+  perform public.require_staff_access();
+  select coalesce(sum(c.amount), 0)
+    into total
+  from public.credit_entries c
+  where c.transaction_date >= p_start
+    and c.transaction_date <= p_end;
+  return total;
+end;
+$$;
+
+comment on function public.sum_credit_given(date, date) is
+  'Sum of credit sale amounts (credit_entries.amount) in a date range. Dashboard in-hand uses this.';
+
+create or replace function public.billing_totals_by_date(p_start date, p_end date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  perform public.require_staff_access();
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('date', s.day, 'amount', s.amount)
+      order by s.day
+    ),
+    '[]'::jsonb
+  )
+    into result
+  from (
+    select i.invoice_date as day,
+           coalesce(sum(i.total_amount), 0) as amount
+    from public.invoices i
+    where i.invoice_date >= p_start
+      and i.invoice_date <= p_end
+    group by 1
+  ) s;
+  return result;
+end;
+$$;
+
+comment on function public.billing_totals_by_date(date, date) is
+  'Billing invoice totals grouped by invoice date. Profit and loss lube sales.';
+
+create or replace function public.purchase_totals_by_date(p_start date, p_end date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  perform public.require_staff_access();
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object('date', s.day, 'amount', s.amount)
+      order by s.day
+    ),
+    '[]'::jsonb
+  )
+    into result
+  from (
+    select d.invoice_date as day,
+           coalesce(sum(d.amount), 0) as amount
+    from public.invoice_documents d
+    where d.category = 'purchase'
+      and d.invoice_date >= p_start
+      and d.invoice_date <= p_end
+      and d.amount > 0
+    group by 1
+  ) s;
+  return result;
+end;
+$$;
+
+comment on function public.purchase_totals_by_date(date, date) is
+  'Purchase-document amounts grouped by invoice date. Profit and loss lube cost.';
 
 -- Admin waiver of calculated loss of pay for one employee and salary month.
 -- No row means the calculated deduction applies.
@@ -2712,7 +2987,9 @@ begin
   v_pending := greatest(0, v_payable - v_paid);
 
   -- 0.05 absorbs paisa rounding differences against the browser's floating-point figures.
-  if v_payable > 0 and p_amount > v_pending + 0.05 and not coalesce(p_allow_overpay, false) then
+  -- p_allow_overpay is ignored unless the caller is an admin.
+  if v_payable > 0 and p_amount > v_pending + 0.05
+     and not (public.is_admin() and coalesce(p_allow_overpay, false)) then
     raise exception using
       message = 'Amount exceeds the remaining salary for this month.',
       detail = jsonb_build_object('payable', v_payable, 'paid', v_paid, 'pending', v_pending)::text,
@@ -2751,7 +3028,7 @@ end;
 $$;
 
 comment on function public.record_salary_payment(uuid, date, date, numeric, text, boolean, uuid) is
-  'Record a salary payment and its linked salary expense in one transaction. Rejects a certified payment date. Raises hint salary_overpay when the amount exceeds the month''s remaining take-home unless p_allow_overpay. Retry-safe with p_request_id.';
+  'Record a salary payment and its linked salary expense in one transaction. Rejects a certified payment date. Raises hint salary_overpay when the amount exceeds the month''s remaining take-home. p_allow_overpay is honored for admins only. Retry-safe with p_request_id.';
 
 grant execute on function public.record_salary_payment(uuid, date, date, numeric, text, boolean, uuid) to authenticated;
 
@@ -6158,6 +6435,12 @@ grant execute on function public.upsert_staff(text, text, text) to authenticated
 grant execute on function public.delete_staff(text) to authenticated;
 grant execute on function public.save_invoice(date, text, text, text, text, text, text, text, numeric, text, jsonb, uuid) to authenticated;
 grant execute on function public.get_dsr_stock_range(date, date) to authenticated;
+grant execute on function public.sum_expenses(date, date, boolean) to authenticated;
+grant execute on function public.expense_totals_by_category(date, date) to authenticated;
+grant execute on function public.expense_totals_by_day(date, date) to authenticated;
+grant execute on function public.sum_credit_given(date, date) to authenticated;
+grant execute on function public.billing_totals_by_date(date, date) to authenticated;
+grant execute on function public.purchase_totals_by_date(date, date) to authenticated;
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 grant execute on function public.compute_day_closing_components(date) to authenticated;
 -- Shift-wise meter readings with staff attribution and cash short.
@@ -8294,3 +8577,36 @@ drop policy if exists "staff_photos_delete_staff" on storage.objects;
 create policy "staff_photos_delete_staff" on storage.objects
   for delete to authenticated
   using (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
+
+-- Anon / PUBLIC may not execute app functions (20261013092142_revoke_anon_function_execute).
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig,
+           has_function_privilege('authenticated', p.oid, 'execute') as auth_ok,
+           has_function_privilege('service_role', p.oid, 'execute') as svc_ok
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    left join pg_depend d on d.objid = p.oid and d.deptype = 'e'
+    where n.nspname = 'public'
+      and p.prokind in ('f', 'p')
+      and d.objid is null                       -- not owned by an extension
+      and p.prorettype <> 'trigger'::regtype
+  loop
+    if f.auth_ok then
+      execute format('grant execute on function %s to authenticated', f.sig);
+    end if;
+    if f.svc_ok then
+      execute format('grant execute on function %s to service_role', f.sig);
+    end if;
+    execute format('revoke execute on function %s from public, anon', f.sig);
+  end loop;
+end;
+$$;
+
+alter default privileges in schema public revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
+alter default privileges for role postgres in schema public revoke execute on functions from public;
+alter default privileges for role postgres in schema public revoke execute on functions from anon;

@@ -690,7 +690,6 @@ const TASKS_PREVIEW_COUNT = 3;
 
 let dueRemindersCache = [];
 let remindersLandingBound = false;
-let remindersLandingEscapeHandler = null;
 
 function wasRemindersLandingDismissed() {
   try {
@@ -885,10 +884,6 @@ function closeRemindersLanding({ dismissSession = true } = {}) {
   if (!overlay || overlay.hidden) return;
   AppDialog.hide(overlay);
   if (dismissSession) markRemindersLandingDismissed();
-  if (remindersLandingEscapeHandler) {
-    document.removeEventListener("keydown", remindersLandingEscapeHandler);
-    remindersLandingEscapeHandler = null;
-  }
 }
 
 function renderRemindersLandingList(rows, todayStr = getLocalDateString()) {
@@ -912,36 +907,18 @@ function renderRemindersLandingList(rows, todayStr = getLocalDateString()) {
 }
 
 function bindRemindersLandingOnce() {
-  if (remindersLandingBound) {
-    if (!remindersLandingEscapeHandler) {
-      remindersLandingEscapeHandler = (e) => {
-        if (e.key === "Escape") closeRemindersLanding({ dismissSession: true });
-      };
-      document.addEventListener("keydown", remindersLandingEscapeHandler);
-    }
-    return;
-  }
+  if (remindersLandingBound) return;
   remindersLandingBound = true;
 
   const close = () => closeRemindersLanding({ dismissSession: true });
   document.getElementById("reminders-landing-close")?.addEventListener("click", close);
   document.getElementById("reminders-landing-dismiss")?.addEventListener("click", close);
   document.querySelector("[data-reminders-landing-close]")?.addEventListener("click", close);
-
-  remindersLandingEscapeHandler = (e) => {
-    if (e.key === "Escape") close();
-  };
-  document.addEventListener("keydown", remindersLandingEscapeHandler);
+  // Escape goes through AppDialog.show's onDismiss.
 }
 
 function taskAddDays(yyyyMmDd, days) {
-  if (typeof addDaysToDateString === "function") return addDaysToDateString(yyyyMmDd, days);
-  if (typeof TaskUtils?.addDaysYmd === "function") return TaskUtils.addDaysYmd(yyyyMmDd, days);
-  const [y, m, d] = String(yyyyMmDd || "").slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return String(yyyyMmDd || "").slice(0, 10);
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() + (Number(days) || 0));
-  return typeof toLocalDateString === "function" ? toLocalDateString(dt) : dt.toISOString().slice(0, 10);
+  return addDaysToDateString(yyyyMmDd, days);
 }
 
 function setLaterControlsDisabled(panel, disabled) {
@@ -1260,42 +1237,27 @@ async function fetchProfitLossData(range, onUpdate = null) {
         lubeError: data?.errors?.lube ? new Error(data.errors.lube) : null,
       };
     } catch {
-      const [dsrResult, expenseResult, lubeResult, vaultResult, categoryResult] = await Promise.all([
+      const [dsrResult, expenseResult, billingResult, purchaseResult, categoryResult] = await Promise.all([
         DsrQueries.fetchDsrRows(range.start, range.end, {
           select:
             "id, date, product, total_sales, testing, petrol_rate, diesel_rate, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl",
         }),
-        DsrQueries.fetchExpenses(range.start, range.end),
-        DsrQueries.fetchLubeSales(range.start, range.end),
-        fetchAllRows(() =>
-          supabaseClient
-            .from("invoice_documents")
-            .select("id, amount")
-            .eq("category", "purchase")
-            .gte("invoice_date", range.start)
-            .lte("invoice_date", range.end)
-            .gt("amount", 0)
-            .order("invoice_date", { ascending: true })
-            .order("id", { ascending: true })
-        ),
+        DsrQueries.fetchExpenseCategoryTotals(range.start, range.end),
+        DsrQueries.fetchBillingTotalsByDate(range.start, range.end),
+        DsrQueries.fetchPurchaseTotalsByDate(range.start, range.end),
         window.supabaseClient.from("expense_categories").select("name, label").limit(LOOKUP_ROW_LIMIT),
       ]);
-
-      const lubeCogs = (vaultResult.data ?? []).reduce(
-        (s, row) => s + Number(row.amount ?? 0),
-        0
-      );
 
       return {
         dsrRows: dsrResult.data ?? [],
         receiptRows: dsrResult.receiptRows ?? [],
         expenseRows: expenseResult.data ?? [],
-        lubeSales: lubeResult.total ?? 0,
-        lubeCogs,
+        lubeSales: billingResult.total ?? 0,
+        lubeCogs: purchaseResult.total ?? 0,
         categoryMap: buildExpenseCategoryMap(categoryResult.data),
         dsrError: dsrResult.error,
         expenseError: expenseResult.error,
-        lubeError: lubeResult.error || vaultResult.error,
+        lubeError: billingResult.error || purchaseResult.error,
       };
     }
   };
@@ -1598,16 +1560,18 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
       return {
         dsrData: data.dsrData,
         stockData: data.stockData,
-        expenseData: data.expenseData,
-        creditData: data.creditData ?? [],
+        expenseData: data.expenseData ?? null,
+        creditData: data.creditData ?? null,
+        expenseTotal: data.expenseTotal ?? null,
+        creditGiven: data.creditGiven ?? null,
         dsrError: data.errors?.dsr ? new Error(data.errors.dsr) : null,
         stockError: data.errors?.stock ? new Error(data.errors.stock) : null,
         expenseError: data.errors?.expense ? new Error(data.errors.expense) : null,
         creditError: data.errors?.credit ? new Error(data.errors.credit) : null,
       };
     } catch {
-      // Fallback: use parallel client-side queries
-      const [dsrResult, stockResult, expenseResult, creditResult] = await Promise.all([
+      // Fallback: meter rows stay paged; money totals come from SQL.
+      const [dsrResult, stockResult, expenseSum, creditSum] = await Promise.all([
         fetchAllRows(() =>
           supabaseClient
             .from("dsr")
@@ -1618,34 +1582,25 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
             .order("product", { ascending: true })
         ),
         window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-        fetchAllRows(() =>
-          supabaseClient
-            .from("expenses")
-            .select("date, amount, category, description")
-            .gte("date", startDate)
-            .lte("date", endDate)
-            .order("date", { ascending: true })
-        ),
-        fetchAllRows(() =>
-          supabaseClient
-            .from("credit_entries")
-            .select("amount, amount_settled")
-            .gte("transaction_date", startDate)
-            .lte("transaction_date", endDate)
-            .order("transaction_date", { ascending: true })
-            .order("id", { ascending: true })
-        ),
+        window.supabaseClient.rpc("sum_expenses", {
+          p_start: startDate,
+          p_end: endDate,
+          p_exclude_salary: false,
+        }),
+        window.supabaseClient.rpc("sum_credit_given", { p_start: startDate, p_end: endDate }),
       ]);
 
       return {
         dsrData: dsrResult.data,
         stockData: stockResult.data,
-        expenseData: expenseResult.data,
-        creditData: creditResult.data ?? [],
+        expenseData: null,
+        creditData: null,
+        expenseTotal: expenseSum.error ? null : Number(expenseSum.data ?? 0),
+        creditGiven: creditSum.error ? null : Number(creditSum.data ?? 0),
         dsrError: dsrResult.error,
         stockError: stockResult.error,
-        expenseError: expenseResult.error,
-        creditError: creditResult.error,
+        expenseError: expenseSum.error,
+        creditError: creditSum.error,
       };
     }
   };
@@ -1692,17 +1647,13 @@ async function loadDsrSummary(range) {
   if (!dsrSummaryGuard.isCurrent(loadId)) return;
 
   if (dashboardData.creditError) {
-    const { data: creditRows, error: creditErr } = await fetchAllRows(() =>
-      window.supabaseClient
-        .from("credit_entries")
-        .select("amount, amount_settled")
-        .gte("transaction_date", range.start)
-        .lte("transaction_date", range.end)
-        .order("transaction_date", { ascending: true })
-        .order("id", { ascending: true })
-    );
+    const { data: creditTotal, error: creditErr } = await window.supabaseClient.rpc("sum_credit_given", {
+      p_start: range.start,
+      p_end: range.end,
+    });
     if (!creditErr) {
-      dashboardData.creditData = creditRows ?? [];
+      dashboardData.creditGiven = Number(creditTotal ?? 0);
+      dashboardData.creditData = null;
       dashboardData.creditError = null;
     } else {
       dashboardData.creditError = creditErr;
@@ -1730,6 +1681,18 @@ async function loadDsrSummary(range) {
     updateLowStockAlert(null, null);
     updateSmartAlerts();
   }
+}
+
+/** Prefer a SQL total. Fall back to adding the raw rows an older payload still carries. */
+function rangeMoneyTotal(explicit, rows, field) {
+  if (explicit != null && explicit !== "") {
+    const n = Number(explicit);
+    if (Number.isFinite(n)) return n;
+  }
+  return (rows ?? []).reduce((sum, row) => {
+    const amount = Number(row?.[field] ?? 0);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
 }
 
 /**
@@ -1784,10 +1747,7 @@ function renderDsrSummary(data, elements, range) {
     dieselVariation = dieselLast - dieselFirst;
     hasVariation = firstDayDsr.length > 0 && lastDayDsrForVar.length > 0;
   }
-  const expenseTotal = (expenseData ?? []).reduce((sum, row) => {
-    const amount = Number(row.amount ?? 0);
-    return sum + (Number.isFinite(amount) ? amount : 0);
-  }, 0);
+  const expenseTotal = hasExpense ? rangeMoneyTotal(data?.expenseTotal, expenseData, "amount") : 0;
 
   // Get rates from DSR data (use the latest non-zero rate)
   const petrolRates = (dsrData ?? [])
@@ -1830,10 +1790,7 @@ function renderDsrSummary(data, elements, range) {
   // Day summary: total sale (₹, incl. testing), expenses, net cash (single-day only; matches day closing)
   const totalSaleRupees = hasDsr ? calculateDsrSaleRupees(dsrData, { includeTesting: true }) : 0;
   const isSingleDay = range && range.start === range.end;
-  const creditGivenInRange = (creditData ?? []).reduce((sum, row) => {
-    const amt = Number(row.amount ?? 0);
-    return sum + (Number.isFinite(amt) ? amt : 0);
-  }, 0);
+  const creditGivenInRange = rangeMoneyTotal(data?.creditGiven, creditData, "amount");
   const inHand =
     isSingleDay && (hasDsr || hasExpense)
       ? totalSaleRupees - expenseTotal - creditGivenInRange

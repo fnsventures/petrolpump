@@ -944,6 +944,36 @@ function ensureTopbarActions(topbar) {
   if (actions.parentElement !== topbar) topbar.appendChild(actions);
 }
 
+function syncThemeMenuItem(btn) {
+  if (!btn || !window.bpfTheme) return;
+  const dark = window.bpfTheme.resolved() === "dark";
+  btn.hidden = false;
+  btn.setAttribute("aria-pressed", dark ? "true" : "false");
+  btn.textContent = dark ? "Use light mode" : "Use dark mode";
+}
+
+function ensureThemeMenuItem(menu) {
+  const dropdown = menu?.querySelector(".topbar-user-dropdown");
+  if (!dropdown || !window.bpfTheme) return;
+  let btn = dropdown.querySelector("#topbar-theme-toggle");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "topbar-user-menu-item";
+    btn.id = "topbar-theme-toggle";
+    btn.setAttribute("role", "menuitemcheckbox");
+    btn.addEventListener("click", () => {
+      const next = window.bpfTheme.resolved() === "dark" ? "light" : "dark";
+      window.bpfTheme.set(next);
+      syncThemeMenuItem(btn);
+    });
+    const logout = dropdown.querySelector("#logout-button");
+    dropdown.insertBefore(btn, logout || null);
+    document.addEventListener("bpf:theme-change", () => syncThemeMenuItem(btn));
+  }
+  syncThemeMenuItem(btn);
+}
+
 function ensureTopbarUserMenu() {
   const topbar = document.querySelector("header.topbar");
   if (!topbar) return null;
@@ -956,6 +986,7 @@ function ensureTopbarUserMenu() {
     if (toggle) ensureTopbarUserIdentity(toggle);
     ensureTopbarActions(topbar);
     placeTopbarUserMenu(topbar, menu);
+    ensureThemeMenuItem(menu);
     initTopbarUserMenuHandlers();
     return menu;
   }
@@ -1036,6 +1067,7 @@ function ensureTopbarUserMenu() {
   menu.append(toggle, dropdown);
   ensureTopbarActions(topbar);
   placeTopbarUserMenu(topbar, menu);
+  ensureThemeMenuItem(menu);
 
   initTopbarUserMenuHandlers();
   return menu;

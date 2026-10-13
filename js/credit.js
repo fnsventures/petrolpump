@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, mountLoadMorePager, syncLoadMorePager */
 
 const PAGE_SIZE = 25;
 
@@ -262,25 +262,14 @@ function invalidateCreditCaches() {
 }
 
 function initPaginationControls() {
-  const tableSection = document.querySelector("#credit-panel-outstanding");
-  if (!tableSection || tableSection.querySelector(".pagination-controls")) return;
-
-  const paginationDiv = document.createElement("div");
-  paginationDiv.className = "pagination-controls";
-  paginationDiv.innerHTML = `
-    <div class="pagination-info">
-      <span id="credit-pagination-info" class="muted"></span>
-    </div>
-    <button id="credit-load-more" class="button-secondary hidden">Load more</button>
-  `;
-  tableSection.appendChild(paginationDiv);
-  document.getElementById("credit-load-more")?.addEventListener("click", () => {
-    const filtered = getFilteredLedger();
-    creditPagination.offset = Math.min(
-      creditPagination.offset + PAGE_SIZE,
-      filtered.length
-    );
-    renderLedgerPage(false);
+  mountLoadMorePager(document.querySelector("#credit-panel-outstanding"), {
+    infoId: "credit-pagination-info",
+    buttonId: "credit-load-more",
+    onMore: () => {
+      const filtered = getFilteredLedger();
+      creditPagination.offset = Math.min(creditPagination.offset + PAGE_SIZE, filtered.length);
+      renderLedgerPage(false);
+    },
   });
 }
 
@@ -594,25 +583,16 @@ async function loadCreditLedger(reset = false) {
 }
 
 function updatePaginationUI(filtered = getFilteredLedger()) {
-  const loadMoreBtn = document.getElementById("credit-load-more");
-  const paginationInfo = document.getElementById("credit-pagination-info");
-  const summaryEl = document.getElementById("credit-ledger-summary");
-
-  const showing = Math.min(creditPagination.offset + PAGE_SIZE, filtered.length);
-
-  const infoText =
-    filtered.length > 0 ? `Showing ${Math.min(showing, filtered.length)} of ${filtered.length} customers` : "";
-
-  if (paginationInfo) paginationInfo.textContent = infoText;
-  if (summaryEl) summaryEl.textContent = infoText;
-
-  if (loadMoreBtn) {
-    if (creditPagination.hasMore && creditPagination.offset + PAGE_SIZE < filtered.length) {
-      loadMoreBtn.classList.remove("hidden");
-    } else {
-      loadMoreBtn.classList.add("hidden");
-    }
-  }
+  const shown = Math.min(creditPagination.offset + PAGE_SIZE, filtered.length);
+  syncLoadMorePager({
+    info: document.getElementById("credit-pagination-info"),
+    extraInfo: document.getElementById("credit-ledger-summary"),
+    button: document.getElementById("credit-load-more"),
+    shown,
+    total: filtered.length,
+    hasMore: creditPagination.hasMore && shown < filtered.length,
+    noun: "customers",
+  });
 }
 
 const listTabReady = { overview: false, record: false, outstanding: false };

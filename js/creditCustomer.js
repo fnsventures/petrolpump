@@ -436,13 +436,6 @@ function initCustomerInfoEdit() {
     e.preventDefault();
     void saveCustomerContact();
   });
-
-  document.addEventListener("keydown", (e) => {
-    const overlay = document.getElementById("customer-edit-overlay");
-    if (e.key === "Escape" && overlay?.getAttribute("aria-hidden") === "false") {
-      closeCustomerEditModal();
-    }
-  });
 }
 
 async function isCustomerNameTakenByOther(newName, ids) {
@@ -1738,16 +1731,6 @@ async function deleteCreditPayment(paymentId, btn) {
   } finally {
     deleteInFlight.delete(paymentId);
   }
-}
-
-function pickContactFromRows(rows) {
-  const primary = rows.find((r) => Number(r.amount_due) > 0) || rows[0];
-  if (!primary) return { mobile: "", address: "", vehicleNo: "" };
-  return {
-    mobile: String(primary.mobile ?? "").trim(),
-    address: String(primary.address ?? "").trim(),
-    vehicleNo: String(primary.vehicle_no ?? "").trim(),
-  };
 }
 
   async function init() {

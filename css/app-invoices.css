@@ -32,7 +32,7 @@
 }
 
 .vault-library-summary.error {
-  color: #dc2626;
+  color: var(--color-danger);
 }
 
 .vault-groups {
@@ -44,13 +44,13 @@
 .vault-group {
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: #fff;
+  background: var(--surface);
   overflow: clip;
 }
 
 .vault-group[open] {
   border-color: rgba(0, 112, 192, 0.35);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 2px 8px rgba(var(--shadow-rgb), 0.05);
 }
 
 .vault-group > summary {
@@ -75,8 +75,8 @@
   width: 0.45rem;
   height: 0.45rem;
   margin-top: -0.15rem;
-  border-right: 2px solid #64748b;
-  border-bottom: 2px solid #64748b;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
   transform: rotate(45deg);
   transition: transform 0.2s ease, margin 0.2s ease;
 }
@@ -111,7 +111,7 @@
 .vault-group-title {
   font-weight: 600;
   font-size: 0.98rem;
-  color: #0f172a;
+  color: var(--text);
   line-height: 1.3;
 }
 

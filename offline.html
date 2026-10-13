@@ -8,6 +8,7 @@
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <meta name="theme-color" content="#0070c0" />
     <meta name="robots" content="noindex" />
+    <script src="js/theme.js"></script>
     <style>
       :root {
         --bpcl-blue: #0070c0;
@@ -17,6 +18,16 @@
         --surface: #ffffff;
         --bg: #f8fafc;
         --border: #e2e8f0;
+      }
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --surface: #111827;
+        --bg: #0b1220;
+        --border: #334155;
+        --bpcl-blue: #38bdf8;
+        --bpcl-blue-dark: #7dd3fc;
       }
       * {
         box-sizing: border-box;

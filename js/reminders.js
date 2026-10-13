@@ -314,14 +314,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function addDaysLocal(yyyyMmDd, days) {
-    if (typeof addDaysToDateString === "function") return addDaysToDateString(yyyyMmDd, days);
-    if (typeof TaskUtils?.addDaysYmd === "function") return TaskUtils.addDaysYmd(yyyyMmDd, days);
-    const base = String(yyyyMmDd || "").slice(0, 10);
-    const [y, m, d] = base.split("-").map(Number);
-    if (!y || !m || !d) return base;
-    const dt = new Date(y, m - 1, d);
-    dt.setDate(dt.getDate() + (Number(days) || 0));
-    return typeof toLocalDateString === "function" ? toLocalDateString(dt) : dt.toISOString().slice(0, 10);
+    return addDaysToDateString(yyyyMmDd, days);
   }
 
   function syncDueShortcutActive() {
