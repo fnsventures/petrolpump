@@ -10,6 +10,11 @@
 -- is saved, or delete the supervisor's own shift expense after that save.
 -- The RPCs already call require_meter_shift_writable; this trigger covers the
 -- table itself.
+--
+-- Existing expenses include non-positive amounts. Those rows are left as
+-- recorded: rewriting them would change a day's books. New inserts must be
+-- positive, and an update may not set a non-positive amount. A CHECK cannot
+-- be added while those rows remain.
 
 create or replace function public.employees_guard_salary_columns()
 returns trigger
@@ -168,23 +173,41 @@ $$;
 comment on function public.record_salary_payment(uuid, date, date, numeric, text, boolean, uuid) is
   'Record a salary payment and its linked salary expense in one transaction. Rejects a certified payment date. Raises hint salary_overpay when the amount exceeds the month''s remaining take-home. p_allow_overpay is honored for admins only. Retry-safe with p_request_id.';
 
--- A default of 0 would itself violate the new check.
+-- A default of 0 would insert a non-positive amount when the column is omitted.
 alter table public.expenses alter column amount drop default;
 
-do $$
+comment on column public.expenses.amount is
+  'Amount in ₹. New rows must be greater than 0 (expenses_guard_amount). Older non-positive rows are left as recorded.';
+
+create or replace function public.expenses_guard_amount()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
 begin
-  if exists (select 1 from public.expenses where amount <= 0) then
-    raise exception 'expenses.amount has non-positive rows. Correct them before adding expenses_amount_positive.';
+  -- Leave a historical non-positive amount untouched when the update changes other columns.
+  if tg_op = 'UPDATE' and new.amount is not distinct from old.amount then
+    return new;
   end if;
+  if new.amount is null or new.amount <= 0 then
+    raise exception using errcode = 'check_violation',
+      message = 'Amount must be greater than 0.';
+  end if;
+  return new;
 end;
 $$;
 
-alter table public.expenses drop constraint if exists expenses_amount_positive;
-alter table public.expenses
-  add constraint expenses_amount_positive check (amount > 0);
+comment on function public.expenses_guard_amount() is
+  'Trigger: reject a new expense amount that is not greater than 0. An update that leaves a historical non-positive amount unchanged is allowed.';
 
-comment on column public.expenses.amount is
-  'Amount in ₹. Must be greater than 0; a negative expense would hide a day''s shortage.';
+revoke all on function public.expenses_guard_amount() from public, anon;
+grant execute on function public.expenses_guard_amount() to authenticated;
+
+drop trigger if exists expenses_guard_amount on public.expenses;
+create trigger expenses_guard_amount
+  before insert or update on public.expenses
+  for each row execute function public.expenses_guard_amount();
 
 create or replace function public.expenses_guard_shift_write()
 returns trigger

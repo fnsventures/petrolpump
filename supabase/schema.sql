@@ -2458,7 +2458,7 @@ create table if not exists public.expenses (
   date date not null,
   category text,
   description text,
-  amount numeric(14,2) not null constraint expenses_amount_positive check (amount > 0),
+  amount numeric(14,2) not null,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
   salary_payment_id uuid references public.salary_payments (id) on delete cascade,
@@ -2485,7 +2485,7 @@ create index if not exists expenses_shift_staff_idx
 
 comment on table public.expenses is 'Daily operating expenses for profit/loss.';
 comment on column public.expenses.amount is
-  'Amount in ₹. Must be greater than 0; a negative expense would hide a day''s shortage.';
+  'Amount in ₹. New rows must be greater than 0 (expenses_guard_amount). Older non-positive rows are left as recorded.';
 comment on column public.expenses.employee_id is
   'Optional: staff whose till paid this expense during a shift.';
 comment on column public.expenses.salary_payment_id is
@@ -2544,6 +2544,36 @@ create policy "expenses_delete_admin" on public.expenses
       and shift is not null
     )
   );
+
+create or replace function public.expenses_guard_amount()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Leave a historical non-positive amount untouched when the update changes other columns.
+  if tg_op = 'UPDATE' and new.amount is not distinct from old.amount then
+    return new;
+  end if;
+  if new.amount is null or new.amount <= 0 then
+    raise exception using errcode = 'check_violation',
+      message = 'Amount must be greater than 0.';
+  end if;
+  return new;
+end;
+$$;
+
+comment on function public.expenses_guard_amount() is
+  'Trigger: reject a new expense amount that is not greater than 0. An update that leaves a historical non-positive amount unchanged is allowed.';
+
+revoke all on function public.expenses_guard_amount() from public, anon;
+grant execute on function public.expenses_guard_amount() to authenticated;
+
+drop trigger if exists expenses_guard_amount on public.expenses;
+create trigger expenses_guard_amount
+  before insert or update on public.expenses
+  for each row execute function public.expenses_guard_amount();
 
 create or replace function public.expenses_guard_shift_write()
 returns trigger
