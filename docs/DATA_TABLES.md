@@ -69,7 +69,7 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **credit_entries:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `add_credit_entry`. DELETE admin only.
 - **credit_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_credit_payment` / `batch_record_credit_settlements`. DELETE admin only.
 - **day_closing:** SELECT provisioned staff; INSERT/UPDATE/DELETE denied on client — use `save_day_closing`, `set_day_closing_certified`, `collect_night_cash`, and `delete_day_closing`.
-- **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`); `amount` must be greater than 0. Admins cannot delete a salary-linked expense directly. A shift-attributed write is rejected for a supervisor once day closing is saved (`expenses_guard_shift_write`).
+- **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). A new amount must be greater than 0 (`expenses_guard_amount`); a historical non-positive amount can stay when the update does not change it. Admins cannot delete a salary-linked expense directly. A shift-attributed write is rejected for a supervisor once day closing is saved (`expenses_guard_shift_write`).
 - **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
@@ -447,7 +447,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | date | date | Expense date |
 | category | text | References expense_categories (logical) |
 | description | text | Optional |
-| amount | numeric | Amount (₹). Must be greater than 0 (`expenses_amount_positive`) |
+| amount | numeric | Amount (₹). New rows must be greater than 0 (`expenses_guard_amount`). Older non-positive rows are left as recorded |
 | salary_payment_id | uuid | Optional FK → salary_payments.id (set by `record_salary_payment`; unique when set; ON DELETE CASCADE) |
 | employee_id | uuid | Optional staff whose till paid this expense during a shift |
 | shift | text | `morning` \| `afternoon` when entered from the shift register; otherwise null |
@@ -459,7 +459,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Indexes:** `(date desc)`, `(created_at desc)`, `(category)`, partial `(date, shift, employee_id)`, partial unique on `salary_payment_id` and on `client_request_id`.
 
-**RLS:** SELECT as the default pattern. INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). Admins cannot delete a salary-linked expense; a supervisor can delete their own shift expense. `expenses_guard_shift_write` applies the shift-register lock to any shift-attributed insert, update, or delete: a supervisor is blocked once day closing is saved, or the day is certified or night cash is collected. Book expenses (no shift) are not covered by that lock. `ledger_guard_certified_day` rejects a write whose date is certified, then refreshes an uncertified saved closing. See [RLS exceptions](#rls-conventions).
+**RLS:** SELECT as the default pattern. INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). Admins cannot delete a salary-linked expense; a supervisor can delete their own shift expense. `expenses_guard_amount` rejects a new amount that is not greater than 0, and leaves a historical non-positive amount in place when an update does not change it. `expenses_guard_shift_write` applies the shift-register lock to any shift-attributed insert, update, or delete: a supervisor is blocked once day closing is saved, or the day is certified or night cash is collected. Book expenses (no shift) are not covered by that lock. `ledger_guard_certified_day` rejects a write whose date is certified, then refreshes an uncertified saved closing. See [RLS exceptions](#rls-conventions).
 
 ---
 
