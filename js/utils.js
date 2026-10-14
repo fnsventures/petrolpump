@@ -18,6 +18,11 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+/** Literal text for a Postgres ILIKE pattern. % and _ stay characters, not wildcards. */
+function escapeIlikePattern(s) {
+  return String(s ?? "").replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
 /** Normalize a credit customer name for case-insensitive comparison. */
 function normCustomerName(s) {
   return String(s ?? "")
@@ -2355,6 +2360,39 @@ function installResponsiveTables() {
 window.setFieldInvalid = setFieldInvalid;
 window.clearFieldInvalid = clearFieldInvalid;
 window.annotateWideTables = annotateWideTables;
+
+let pdfPreviewLoader = null;
+
+function loadPdfPreview() {
+  if (window.PdfPreview?.render) return Promise.resolve(window.PdfPreview);
+  if (!pdfPreviewLoader) {
+    pdfPreviewLoader = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "js/pdf/pdf-preview.min.js";
+      script.onload = () => {
+        if (window.PdfPreview?.render) resolve(window.PdfPreview);
+        else reject(new Error("PDF viewer failed to start."));
+      };
+      script.onerror = () => {
+        pdfPreviewLoader = null;
+        reject(new Error("Could not load the PDF viewer."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return pdfPreviewLoader;
+}
+
+function preloadPdfPreview() {
+  loadPdfPreview().catch(() => {
+    /* mountPdfPreview reports the failure when a page is actually drawn. */
+  });
+}
+
+async function mountPdfPreview(container, blob) {
+  const viewer = await loadPdfPreview();
+  await viewer.render(container, blob);
+}
 
 if (typeof document !== "undefined") {
   const startUiHelpers = () => {

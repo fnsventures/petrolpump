@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, AppDialog, escapeHtml, formatCurrency, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, AppDialog, escapeHtml, formatCurrency, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress, mountPdfPreview, preloadPdfPreview */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -1064,20 +1064,29 @@ function initStaffPage(auth) {
     revokeAadhaarPreview();
   }
 
-  function paintAadhaarPreview(blob, fileName) {
+  async function paintAadhaarPreview(blob, fileName) {
     const body = document.getElementById("staff-aadhaar-modal-body");
     if (!body) return;
     revokeAadhaarPreview();
-    const url = URL.createObjectURL(blob);
-    aadhaarPreviewUrl = url;
     const type = String(blob.type || "").toLowerCase();
     const isPdf = type === "application/pdf" || /\.pdf$/i.test(fileName || "");
     if (type.startsWith("image/")) {
+      const url = URL.createObjectURL(blob);
+      aadhaarPreviewUrl = url;
       body.innerHTML = `<div class="staff-aadhaar-frame"><img alt="Aadhaar card" src="${url}" /></div>`;
       return;
     }
     if (isPdf) {
-      body.innerHTML = `<div class="staff-aadhaar-frame"><iframe title="Aadhaar card" src="${url}"></iframe></div>`;
+      body.innerHTML = `<div class="staff-aadhaar-frame staff-aadhaar-pdf"></div>`;
+      const frame = body.querySelector(".staff-aadhaar-pdf");
+      try {
+        await mountPdfPreview(frame, blob);
+      } catch (err) {
+        AppError.report(err, { context: "staffAadhaarPreview" });
+        if (body.querySelector(".staff-aadhaar-pdf") === frame) {
+          body.innerHTML = `<p class="muted">This PDF can’t be previewed here. Use Download to save it.</p>`;
+        }
+      }
       return;
     }
     body.innerHTML = `<p class="muted">This file can’t be previewed here. Use Download to save it.</p>`;
@@ -1095,6 +1104,7 @@ function initStaffPage(auth) {
     }
     const emp = staffList.find((s) => s.id === employeeId);
     const fileName = emp?.aadhaar_file_name || "Aadhaar.pdf";
+    if (/\.pdf$/i.test(fileName) && typeof preloadPdfPreview === "function") preloadPdfPreview();
     if (title) title.textContent = emp?.name ? `${emp.name} · Aadhaar` : "Aadhaar card";
     if (subtitle) subtitle.textContent = fileName;
     body.innerHTML = `<p class="staff-id-modal-loading">Opening…</p>`;
@@ -1103,7 +1113,7 @@ function initStaffPage(auth) {
     try {
       const result = await DriveFiles.download({ kind: "staff_aadhaar", employeeId, fileName });
       if (!aadhaarModalOpen) return;
-      paintAadhaarPreview(result.blob, result.fileName || fileName);
+      await paintAadhaarPreview(result.blob, result.fileName || fileName);
       if (subtitle && result.fileName) subtitle.textContent = result.fileName;
     } catch (err) {
       AppError.report(err, { context: "staffAadhaarView" });

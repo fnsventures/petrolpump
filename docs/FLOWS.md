@@ -234,10 +234,11 @@ Upload (invoices.html → Upload tab)
    → file → Google Drive (purchase: Root/Purchase invoices/Year; other: Root/Other documents/Year/given name); metadata → invoice_documents
 
 Library (invoices.html → Library tab)
-   → SELECT invoice_documents (this year / last year / all time, optional type)
-   → grouped by document type; each type stays collapsed until opened
-   → search filters the loaded list by title, party, or file name
-   → View and Download: edge function (the Drive file is not shared with anyone) | Delete: edge function, admin only
+   → period (this year by default) and type apply as soon as they change
+   → counts per type load first; a group's rows load when that group is opened
+   → the first group starts open; the summary names the period
+   → search asks Postgres for title, party, or file name
+   → View opens the file in a popup on this page; Download and Delete (admin) use the edge function
 ```
 
 **Roles:** Admin and supervisor can upload, list, view, download. **Delete** (Drive file + DB row) is **admin only**.
@@ -259,9 +260,10 @@ Compose (letterhead.html)
    → letterhead_letters stores date, subject, Drive file ID (not the letter text)
 
 History
-   → View / Print opens the Drive PDF
-   → Drive link opens the archived file
-   → Admin delete removes Drive file + history row
+   → listed by letter date, then created time, 20 at a time, with subject search
+   → the period applies as soon as it changes
+   → View opens the PDF in a popup (the list stays put); Download saves it; Print is in the popup
+   → Admin delete removes the Drive PDF and the history row, and keeps the row if the Drive delete fails
 ```
 
 Blank stationery is not stored.

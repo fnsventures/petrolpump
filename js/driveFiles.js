@@ -134,11 +134,24 @@
     return fallback || "download";
   }
 
-  function withUsefulType(blob, fileName) {
-    const type = String(blob?.type || "").toLowerCase();
-    if (type && type !== "application/octet-stream") return blob;
-    const guessed = mimeFromFileName(fileName);
-    return guessed ? new Blob([blob], { type: guessed }) : blob;
+  function headerMime(contentType) {
+    return String(contentType || "").split(";")[0].trim().toLowerCase();
+  }
+
+  function resolveFileMime(contentType, fileName, hintedType) {
+    const header = headerMime(contentType);
+    const hinted = headerMime(hintedType);
+    const fromName = mimeFromFileName(fileName);
+    if (header && header !== "application/octet-stream" && header !== "text/plain") return header;
+    if (hinted && hinted !== "application/octet-stream") return hinted;
+    if (fromName) return fromName;
+    return header || "application/octet-stream";
+  }
+
+  function withUsefulType(blob, fileName, hintedType) {
+    const type = resolveFileMime(blob?.type, fileName, hintedType);
+    if (!type || type === headerMime(blob?.type)) return blob;
+    return new Blob([blob], { type });
   }
 
   async function download(params) {
@@ -347,7 +360,7 @@
       if (done) break;
       chunks.push(value);
       received += value.byteLength;
-      if (total) onRatio(received / total);
+      if (total) onRatio?.(received / total);
     }
     const bytes = new Uint8Array(received);
     let offset = 0;
@@ -358,43 +371,181 @@
     return bytes;
   }
 
+  function escapePreview(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  async function fetchVaultFile(id, options = {}) {
+    const res = await fetch(invoiceDocumentsUrl(), {
+      method: "POST",
+      headers: await functionHeaders(true),
+      body: JSON.stringify({ action: "download", id }),
+    });
+    if (!res.ok) throw new Error(await parseErrorResponse(res));
+    const fileName = fileNameFromDisposition(
+      res.headers.get("Content-Disposition"),
+      options.fileName || "document"
+    );
+    const mime = resolveFileMime(res.headers.get("content-type"), fileName, options.mimeType);
+    options.onType?.(mime, fileName);
+    const bytes = await readDownloadBody(res, options.onRatio);
+    return { blob: new Blob([bytes], { type: mime }), fileName };
+  }
+
+  function previewViewerCss(background) {
+    return `
+    html, body { margin: 0; background: ${background}; }
+    body { min-height: 100vh; }
+    .pdf-pages { box-sizing: border-box; width: min(920px, 100%); margin: 0 auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 12px; }
+    .pdf-preview-slot { width: 100%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28); }
+    .pdf-preview-page { display: block; width: 100%; height: auto; background: #fff; }
+    .viewer-note { margin: 0; color: #e2e8f0; font-family: system-ui, sans-serif; text-align: center; }
+    img { display: block; max-width: 100%; max-height: 100vh; margin: auto; object-fit: contain; }
+    .fallback { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      color: #f8fafc; font-family: system-ui, sans-serif; }
+    .fallback a { color: #93c5fd; }
+  `;
+  }
+
+  function looksLikePdf(mime, fileName) {
+    return headerMime(mime) === "application/pdf" || /\.pdf$/i.test(fileName || "");
+  }
+
+  const previewViewerLoads = new WeakMap();
+
+  function loadPreviewPdfViewer(preview) {
+    if (preview.PdfPreview?.render) return Promise.resolve(preview.PdfPreview);
+    const pending = previewViewerLoads.get(preview);
+    if (pending) return pending;
+    const load = new Promise((resolve, reject) => {
+      const script = preview.document.createElement("script");
+      script.src = new URL("js/pdf/pdf-preview.min.js", global.document.baseURI).href;
+      script.onload = () => {
+        if (preview.PdfPreview?.render) resolve(preview.PdfPreview);
+        else reject(new Error("PDF viewer failed to start."));
+      };
+      script.onerror = () => {
+        previewViewerLoads.delete(preview);
+        reject(new Error("Could not load the PDF viewer."));
+      };
+      (preview.document.head || preview.document.documentElement).appendChild(script);
+    });
+    previewViewerLoads.set(preview, load);
+    return load;
+  }
+
+  function startPreviewPdfViewer(preview) {
+    const load = loadPreviewPdfViewer(preview);
+    load.catch(() => {});
+    return load;
+  }
+
+  function applyPreviewDocument(preview, { title, background, body }) {
+    const doc = preview.document;
+    doc.title = title;
+    const style = doc.querySelector("style");
+    const css = previewViewerCss(background);
+    if (style) style.textContent = css;
+    else {
+      const el = doc.createElement("style");
+      el.textContent = css;
+      doc.head.appendChild(el);
+    }
+    doc.body.innerHTML = body;
+  }
+
+  /**
+   * Draw the file in the preview tab.
+   * Sending the tab to the PDF makes Chrome download it, and framing Chrome's
+   * viewer is blocked by Content-Security-Policy. PDFs are drawn with the
+   * same in-page viewer used for Aadhaar cards.
+   */
+  async function showPreviewFile(preview, blob, fileName) {
+    if (!preview || preview.closed) throw new Error("Preview was closed.");
+    const type = String(blob.type || "").toLowerCase();
+    const isImage = type.startsWith("image/");
+    const isPdf = looksLikePdf(type, fileName);
+    const safeTitle = escapePreview(fileName || "Document");
+    const body = isPdf
+      ? `<div id="file-view" class="pdf-pages"><p class="viewer-note">Opening…</p></div>`
+      : isImage
+        ? `<img id="file-view" alt="${safeTitle}">`
+        : `<p class="fallback" id="file-view">This file can’t be previewed here. <a id="file-download">Download ${safeTitle}</a></p>`;
+    applyPreviewDocument(preview, {
+      title: String(fileName || "Document").replace(/[\r\n]+/g, " ").trim() || "Document",
+      background: isImage ? "#111" : "#525659",
+      body,
+    });
+    if (isPdf) {
+      const pages = preview.document.getElementById("file-view");
+      try {
+        const viewer = await loadPreviewPdfViewer(preview);
+        if (preview.closed) throw new Error("Preview was closed.");
+        await viewer.render(pages, blob);
+      } catch (err) {
+        if (pages?.isConnected) {
+          pages.textContent = err instanceof Error ? err.message : "Could not open the document.";
+        }
+        throw err;
+      }
+      return;
+    }
+    const fileUrl = URL.createObjectURL(blob);
+    preview.addEventListener("pagehide", () => URL.revokeObjectURL(fileUrl), { once: true });
+    const view = preview.document.getElementById("file-view");
+    if (isImage && view) view.src = fileUrl;
+    else {
+      const link = preview.document.getElementById("file-download");
+      if (link) {
+        link.href = fileUrl;
+        link.download = fileName || "document";
+      }
+    }
+  }
+
   async function openVaultDocument(id, options = {}) {
     const preview = options.previewWindow && !options.previewWindow.closed ? options.previewWindow : null;
     const painted = paintPreviewShell(preview);
     const creep = painted ? startPreviewCreep(preview) : null;
     try {
-      const res = await fetch(invoiceDocumentsUrl(), {
-        method: "POST",
-        headers: await functionHeaders(true),
-        body: JSON.stringify({ action: "download", id }),
+      if (painted && looksLikePdf(options.mimeType, options.fileName)) startPreviewPdfViewer(preview);
+      const { blob, fileName } = await fetchVaultFile(id, {
+        fileName: options.fileName,
+        mimeType: options.mimeType,
+        onType(mime, name) {
+          if (painted && looksLikePdf(mime, name)) startPreviewPdfViewer(preview);
+        },
+        onRatio(ratio) {
+          creep?.ratio(ratio);
+        },
       });
-      if (!res.ok) throw new Error(await parseErrorResponse(res));
-      const fileName = fileNameFromDisposition(res.headers.get("Content-Disposition"), "document");
-      const bytes = await readDownloadBody(res, (ratio) => creep?.ratio(ratio));
-      const blob = withUsefulType(new Blob([bytes]), fileName);
       creep?.stop();
       setPreviewProgress(preview, 100, "Opening…");
       await new Promise((resolve) => setTimeout(resolve, 220));
-      const url = URL.createObjectURL(blob);
       if (preview && !preview.closed) {
-        try {
-          preview.document.body.style.transition = "opacity 0.2s ease";
-          preview.document.body.style.opacity = "0";
-        } catch {
-          /* Preview may already be closing. */
-        }
-        await new Promise((resolve) => setTimeout(resolve, 180));
-        preview.location.replace(url);
-      } else {
-        const opened = window.open(url, "_blank");
-        if (!opened) saveBlob(blob, fileName);
+        await showPreviewFile(preview, blob, fileName);
+        return;
       }
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank");
+      if (!opened) saveBlob(blob, fileName);
       setTimeout(() => URL.revokeObjectURL(url), 120_000);
     } catch (err) {
       creep?.stop();
       showPreviewError(preview, err instanceof Error ? err.message : "Could not open the document.");
       throw err;
     }
+  }
+
+  async function saveVaultDocument(id, options = {}) {
+    const { blob, fileName } = await fetchVaultFile(id, options);
+    saveBlob(blob, fileName);
+    return { blob, fileName };
   }
 
   async function revokeVaultPublicLinks() {
@@ -432,6 +583,8 @@
 
   global.VaultDocuments = {
     open: openVaultDocument,
+    save: saveVaultDocument,
+    file: fetchVaultFile,
     revokePublicLinks: revokeVaultPublicLinks,
   };
 })(typeof window !== "undefined" ? window : globalThis);

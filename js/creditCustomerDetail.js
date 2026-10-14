@@ -198,7 +198,7 @@
     };
     for (const entry of creditEntries || []) add(entry, "credit");
     for (const entry of paymentEntries || []) add(entry, "settled");
-    return [...months.values()].sort((a, b) => a.month.localeCompare(b.month));
+    return [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
   }
 
   /** One row per day. Pass monthKey (YYYY-MM) to keep a single month. */
@@ -214,10 +214,10 @@
     };
     for (const entry of creditEntries || []) add(entry, "credit");
     for (const entry of paymentEntries || []) add(entry, "settled");
-    return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+    return [...days.values()].sort((a, b) => b.date.localeCompare(a.date));
   }
 
-  /** Bills that still have an unpaid balance, oldest first (FIFO settlement order). */
+  /** Bills that still have an unpaid balance, newest first. Same-day bills follow id, latest first. */
   function openCreditLines(entries) {
     return (entries || [])
       .map((entry) => {
@@ -226,7 +226,11 @@
         return { ...entry, amount, settled, open: amount - settled };
       })
       .filter((entry) => entry.open > 0.009)
-      .sort((a, b) => entryActivityDate(a).localeCompare(entryActivityDate(b)));
+      .sort((a, b) => {
+        const byDate = entryActivityDate(b).localeCompare(entryActivityDate(a));
+        if (byDate) return byDate;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+      });
   }
 
   global.CreditCustomerDetail = {

@@ -126,36 +126,28 @@
                   <option value="all-time">All time</option>
                 </select>
               </div>
-              <div id="letterhead-custom-range" class="custom-range hidden" aria-hidden="true">
-                <div class="form-field form-field-inline">
-                  <label for="letterhead-start">From</label>
-                  <input type="date" id="letterhead-start" />
-                </div>
-                <div class="form-field form-field-inline">
-                  <label for="letterhead-end">To</label>
-                  <input type="date" id="letterhead-end" />
-                </div>
-              </div>
-              <div class="filter-actions">
-                <button type="button" id="letterhead-apply-filter">Apply</button>
-              </div>
             </div>
           </header>
 
+          <div class="drive-list-bar">
+            <div class="form-field drive-list-search">
+              <label for="letterhead-search">Search</label>
+              <input id="letterhead-search" type="search" placeholder="Subject" autocomplete="off" spellcheck="false" />
+            </div>
+          </div>
+
           <div id="letterhead-history-list">
             <div class="table-wrap">
-              <table>
+              <table class="table-cards">
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th>Subject</th>
-                    <th>Preview</th>
-                    <th>Via</th>
                     <th id="letterhead-actions-head">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="letterhead-history-body">
-                  <tr><td colspan="5" class="muted">Loading…</td></tr>
+                  <tr><td colspan="3" class="muted">Loading…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -163,22 +155,6 @@
               <span id="letterhead-pagination-info" class="muted"></span>
               <button type="button" id="letterhead-load-more" class="button-secondary hidden">Load more</button>
             </div>
-          </div>
-
-          <div id="letterhead-report-view" class="letterhead-report-view hidden" aria-label="Letter report" aria-hidden="true">
-            <div class="letterhead-report-output-head">
-              <div>
-                <h2 class="letterhead-report-title">Letter</h2>
-                <p id="letterhead-report-subtitle" class="muted letterhead-report-subtitle"></p>
-              </div>
-              <div class="letterhead-report-actions">
-                <button type="button" id="letterhead-report-print-btn" class="button-secondary">Print this letter</button>
-                <button type="button" id="letterhead-report-edit-btn" class="button-secondary">Edit in Compose</button>
-                <button type="button" id="letterhead-report-history-btn" class="button-secondary">Back to list</button>
-              </div>
-            </div>
-            <p id="letterhead-report-error" class="error hidden" role="alert"></p>
-            <div id="letterhead-sheet-preview" class="letterhead-sheet-preview" aria-live="polite"></div>
           </div>
         </section>
 
@@ -204,11 +180,11 @@
             </article>
             <article class="letterhead-guide-item">
               <h3>Letter history</h3>
-              <p class="muted"><strong>View</strong> opens the Drive PDF on this page. Print opens that PDF. Letter text is not kept in the database after archive. Only admins can delete history rows (and the Drive file).</p>
+              <p class="muted"><strong>View</strong> opens the Drive PDF in a popup, so the list stays where it was. <strong>Download</strong> saves that PDF. <strong>Print</strong> is in the popup. Letter text is not kept in the database after archive. Only admins can delete a letter, and that also deletes the Drive PDF.</p>
             </article>
             <article class="letterhead-guide-item">
               <h3>PDF files</h3>
-              <p class="muted">There is no separate PDF download. Use Print → <strong>Save as PDF</strong> in the browser print dialog (same pattern as invoices and reports).</p>
+              <p class="muted">Saved letters have <strong>Download</strong> for the Drive PDF, and <strong>View</strong> opens that PDF on this page. While composing, Print → <strong>Save as PDF</strong> still works, and the Word buttons download a <code>.doc</code> file.</p>
             </article>
             <article class="letterhead-guide-item">
               <h3>Update branding</h3>

@@ -1,11 +1,11 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager */
+/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css";
   /** Full 512px station mark. Printed at 28mm; the larger bitmap is what keeps A4 sharp. */
   const LETTER_LOGO_SRC = "assets/bishnupriya-fuels-logo.png";
   const PAGE_SIZE = 20;
-  const HISTORY_COLSPAN = 5;
+  const HISTORY_COLSPAN = 3;
   const LETTER_LIST_SELECT =
     "id, letter_date, subject, export_type, include_sign, created_at, drive_file_id, drive_web_view_link, drive_file_name";
   const LETTER_DETAIL_SELECT = `${LETTER_LIST_SELECT}, body`;
@@ -14,8 +14,8 @@
   let letterheadPrintBusy = false;
   let letterheadPrintCssCache = null;
   let historyReportLetter = null;
-  let historyPdfObjectUrl = null;
-  let reportSeq = 0;
+  let historyLoadSeq = 0;
+  const historyRows = new Map();
   let historyPagination = {
     offset: 0,
     hasMore: true,
@@ -39,7 +39,7 @@
   }
 
   function setPrintButtonsBusy(busy) {
-    ["letterhead-print-blank", "letterhead-print-content", "letterhead-report-print-btn"].forEach((id) => {
+    ["letterhead-print-blank", "letterhead-print-content"].forEach((id) => {
       const btn = document.getElementById(id);
       if (!btn) return;
       btn.disabled = busy;
@@ -233,12 +233,6 @@
     if (!oneLine) return "—";
     if (oneLine.length <= maxLen) return oneLine;
     return `${oneLine.slice(0, maxLen - 1)}…`;
-  }
-
-  function exportTypeLabel(type) {
-    if (type === "word") return "Word";
-    if (type === "save") return "Saved";
-    return "Print";
   }
 
   async function saveLetterHistoryToDatabase(values, exportType) {
@@ -640,13 +634,13 @@
   }
 
   function getHistoryDateRange() {
-    const range = readDateRangeFromControls(
-      document.getElementById("letterhead-range"),
-      document.getElementById("letterhead-start"),
-      document.getElementById("letterhead-end")
-    );
+    const range = readDateRangeFromControls(document.getElementById("letterhead-range"), null, null);
     if (range) return { start: range.start, end: range.end };
     return getYearRange(new Date().getFullYear());
+  }
+
+  function historySearchQuery() {
+    return (document.getElementById("letterhead-search")?.value || "").trim();
   }
 
   function initHistoryFilters() {
@@ -655,11 +649,7 @@
       ranges: ["this-year", "last-year", "all-time"],
       defaultRange: "this-year",
       rangeSelect: "letterhead-range",
-      startInput: "letterhead-start",
-      endInput: "letterhead-end",
-      customRange: "letterhead-custom-range",
-      applyBtn: "letterhead-apply-filter",
-      trigger: "apply",
+      trigger: "auto",
       runOnInit: false,
       onApply: () => {
         closeHistoryReport();
@@ -670,6 +660,12 @@
     document
       .getElementById("letterhead-load-more")
       ?.addEventListener("click", () => loadHistory(false));
+    document.getElementById("letterhead-search")?.addEventListener(
+      "input",
+      debounce(() => {
+        loadHistory(true);
+      }, 300)
+    );
   }
 
   function updateHistoryPaginationUI() {
@@ -683,123 +679,31 @@
     });
   }
 
-  function setHistoryReportError(msg) {
-    const el = document.getElementById("letterhead-report-error");
-    if (!el) return;
-    if (!msg) {
-      el.textContent = "";
-      el.classList.add("hidden");
-      return;
-    }
-    el.textContent = msg;
-    el.classList.remove("hidden");
-  }
-
   function closeHistoryReport() {
-    reportSeq += 1;
     historyReportLetter = null;
-    if (historyPdfObjectUrl) {
-      URL.revokeObjectURL(historyPdfObjectUrl);
-      historyPdfObjectUrl = null;
-    }
-    setHistoryReportError("");
-    const reportView = document.getElementById("letterhead-report-view");
-    const sheetPreview = document.getElementById("letterhead-sheet-preview");
-    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
-    const historyList = document.getElementById("letterhead-history-list");
-    const historyHead = document.getElementById("letterhead-history-head");
-
-    if (reportView) {
-      reportView.classList.add("hidden");
-      reportView.setAttribute("aria-hidden", "true");
-    }
-    if (sheetPreview) sheetPreview.innerHTML = "";
-    if (reportSubtitle) reportSubtitle.textContent = "";
-    if (historyList) historyList.classList.remove("hidden");
-    if (historyHead) historyHead.classList.remove("hidden");
+    if (typeof DrivePreview !== "undefined") DrivePreview.close();
   }
 
   function letterHasBody(row) {
     return Boolean(String(row?.body || "").trim());
   }
 
-  async function renderLetterPreview(row, sheetPreview) {
-    if (historyPdfObjectUrl) {
-      URL.revokeObjectURL(historyPdfObjectUrl);
-      historyPdfObjectUrl = null;
-    }
-    if (!sheetPreview) return;
-    if (row.drive_file_id && typeof DriveFiles !== "undefined") {
-      try {
-        const { blob } = await DriveFiles.download({ kind: "letter", id: row.id });
-        historyPdfObjectUrl = URL.createObjectURL(blob);
-        const driveHref = row.drive_web_view_link
-          ? `<p class="muted"><a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Open in Google Drive</a></p>`
-          : "";
-        sheetPreview.innerHTML = `${driveHref}<iframe class="letterhead-pdf-frame" title="Letter PDF" src="${historyPdfObjectUrl}"></iframe>`;
-        return;
-      } catch (err) {
-        AppError?.report?.(err, { context: "letterheadPreviewPdf" });
-      }
-    }
+  function letterSheetHtml(row) {
     const values = valuesFromLetterRow(row);
-    if (letterHasBody(row)) {
-      sheetPreview.innerHTML = `<div class="letterhead-preview-sheet">${buildSheetHtml({
-        ...values,
-        includeSign: hasLetterContent(values) && values.includeSign,
-      })}</div>`;
-      return;
-    }
-    sheetPreview.innerHTML =
-      `<p class="muted">The letter file is stored in Google Drive, not the database.${
-        row.drive_web_view_link
-          ? ` <a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Open PDF</a>`
-          : ""
-      }</p>`;
-  }
-
-  async function showHistoryReport(row) {
-    historyReportLetter = row;
-    setHistoryReportError("");
-    const reportView = document.getElementById("letterhead-report-view");
-    const sheetPreview = document.getElementById("letterhead-sheet-preview");
-    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
-    const historyList = document.getElementById("letterhead-history-list");
-    const historyHead = document.getElementById("letterhead-history-head");
-    const editBtn = document.getElementById("letterhead-report-edit-btn");
-
-    if (historyList) historyList.classList.add("hidden");
-    if (historyHead) historyHead.classList.add("hidden");
-    if (reportView) {
-      reportView.classList.remove("hidden");
-      reportView.setAttribute("aria-hidden", "false");
-    }
-    if (editBtn) {
-      editBtn.hidden = Boolean(row.drive_file_id) && !letterHasBody(row);
-    }
-
-    const values = valuesFromLetterRow(row);
-    if (reportSubtitle) {
-      reportSubtitle.textContent = [
-        formatNumericDate(row.letter_date) || row.letter_date,
-        row.subject?.trim() || "(No subject)",
-        exportTypeLabel(row.export_type),
-        row.drive_file_id ? "Drive PDF" : values.includeSign ? "With signature" : "No signature",
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    }
-    await renderLetterPreview(row, sheetPreview);
+    return `<div class="letterhead-preview-sheet">${buildSheetHtml({
+      ...values,
+      includeSign: hasLetterContent(values) && values.includeSign,
+    })}</div>`;
   }
 
   async function printArchivedLetter(row) {
     if (row.drive_file_id && typeof DriveFiles !== "undefined") {
       await DriveFiles.openBlob({ kind: "letter", id: row.id });
-      showSuccess("Opened the Drive PDF. Use the browser print dialog for a paper copy.");
+      AppError.showToast("Opened the Drive PDF. Use the browser print dialog for a paper copy.");
       return;
     }
     if (!letterHasBody(row)) {
-      showError("This letter is stored in Google Drive. Open the Drive link to print it.");
+      AppError.showToast("This letter is stored in Google Drive. Download it to print.", "error");
       return;
     }
     await printLetterhead({
@@ -809,68 +713,97 @@
     });
   }
 
-  async function openHistoryReport(id) {
-    if (!id) return;
-    const seq = ++reportSeq;
-    setHistoryReportError("");
-    clearMessages();
-
-    const reportView = document.getElementById("letterhead-report-view");
-    const sheetPreview = document.getElementById("letterhead-sheet-preview");
-    const reportSubtitle = document.getElementById("letterhead-report-subtitle");
-    const historyList = document.getElementById("letterhead-history-list");
-    const historyHead = document.getElementById("letterhead-history-head");
-
-    if (sheetPreview) sheetPreview.innerHTML = `<p class="muted">Loading letter…</p>`;
-    if (historyList) historyList.classList.add("hidden");
-    if (historyHead) historyHead.classList.add("hidden");
-    if (reportView) {
-      reportView.classList.remove("hidden");
-      reportView.setAttribute("aria-hidden", "false");
-    }
-    if (reportSubtitle) reportSubtitle.textContent = "";
-
+  async function downloadLetterFile(id, btn) {
+    if (!id || typeof DriveFiles === "undefined") return;
+    if (btn) btn.disabled = true;
     try {
-      const row = await fetchLetterById(id);
-      if (seq !== reportSeq) return;
-      if (!row) {
-        setHistoryReportError("Could not load that letter.");
-        if (sheetPreview) sheetPreview.innerHTML = "";
-        return;
-      }
-      await showHistoryReport(row);
+      await ActionProgress.track(
+        {
+          title: "Downloading letter",
+          status: "Fetching the PDF…",
+          doneStatus: "Downloaded",
+          timeoutMs: 180000,
+        },
+        async () => {
+          await DriveFiles.downloadAndSave({ kind: "letter", id });
+        }
+      );
     } catch (err) {
-      if (seq !== reportSeq) return;
-      AppError.report(err, { context: "letterheadHistoryReport" });
-      setHistoryReportError("Could not load this letter.");
-      if (sheetPreview) sheetPreview.innerHTML = "";
+      AppError.report(err, { context: "letterheadDownload" });
+      AppError.showToast(AppError.getUserMessage(err) || "Could not download the letter.", "error");
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
   async function printHistoryReport() {
-    if (!historyReportLetter) return;
-    await printArchivedLetter(historyReportLetter);
+    const row = historyReportLetter;
+    if (!row) return;
+    await printArchivedLetter(row);
   }
 
   function editHistoryReportInCompose() {
-    if (!historyReportLetter) return;
-    if (!letterHasBody(historyReportLetter)) {
-      showError("Letter text is not kept in the database. Open the Drive PDF, or compose a new letter.");
+    const row = historyReportLetter;
+    if (!row) return;
+    if (!letterHasBody(row)) {
+      AppError.showToast("Letter text is not kept in the database. Download the PDF, or compose a new letter.", "error");
       return;
     }
-    setComposeValues(valuesFromLetterRow(historyReportLetter));
+    setComposeValues(valuesFromLetterRow(row));
     closeHistoryReport();
     location.hash = "#compose";
     showSuccess("Letter loaded into Compose. Edit if needed, then save, print, or download.");
   }
 
+  function openLetterPreview(id) {
+    if (!id) return;
+    if (typeof DrivePreview === "undefined") {
+      AppError.showToast("Could not open the preview.", "error");
+      return;
+    }
+    const known = historyRows.get(id);
+    if (known?.drive_file_id && typeof preloadPdfPreview === "function") preloadPdfPreview();
+    clearMessages();
+    DrivePreview.open({
+      title: known?.subject?.trim() || "Letter",
+      subtitle: known ? formatNumericDate(known.letter_date) : "Loading…",
+      download: known && !known.drive_file_id ? null : () => downloadLetterFile(id),
+      actions: [
+        { id: "print", label: "Print", onClick: () => printHistoryReport() },
+        { id: "edit", label: "Edit in Compose", hidden: true, onClick: () => editHistoryReportInCompose() },
+      ],
+      load: async (ctx) => {
+        const row = await fetchLetterById(id);
+        if (!ctx.isCurrent()) return null;
+        if (!row) throw new Error("Could not load that letter.");
+        historyReportLetter = row;
+        ctx.setTitle(row.subject?.trim() || "(No subject)");
+        ctx.setSubtitle(formatNumericDate(row.letter_date));
+        ctx.showAction("edit", letterHasBody(row));
+        ctx.showDownload(Boolean(row.drive_file_id));
+        if (row.drive_file_id && typeof DriveFiles !== "undefined") {
+          const { blob, fileName } = await DriveFiles.download({ kind: "letter", id: row.id });
+          return { blob, fileName: fileName || row.drive_file_name || "letter.pdf" };
+        }
+        if (letterHasBody(row)) return { html: letterSheetHtml(row) };
+        return {
+          html: `<p class="muted">This letter is stored in Google Drive, and the file could not be opened.</p>`,
+        };
+      },
+    });
+  }
+
   async function loadHistory(reset = false) {
     const tbody = document.getElementById("letterhead-history-body");
     if (!tbody) return;
-    if (historyPagination.isLoading) return;
+    if (!reset && historyPagination.isLoading) return;
+
+    const seq = ++historyLoadSeq;
     historyPagination.isLoading = true;
 
     const { start, end } = getHistoryDateRange();
+    const needle = historySearchQuery();
+    const pageFrom = reset ? 0 : historyPagination.offset;
     const loadMoreBtn = document.getElementById("letterhead-load-more");
 
     if (reset) {
@@ -885,25 +818,23 @@
       loadMoreBtn.textContent = "Loading…";
     }
 
-    try {
-      if (reset) {
-        let countQuery = window.supabaseClient
-          .from("letterhead_letters")
-          .select("id", { count: "exact", head: true });
-        if (start) countQuery = countQuery.gte("letter_date", start);
-        if (end) countQuery = countQuery.lte("letter_date", end);
-        const { count } = await runAppRequest("Letter history count", () => countQuery);
-        historyPagination.totalCount = count || 0;
-      }
+    const stillCurrent = () => seq === historyLoadSeq;
 
-      let listQuery = window.supabaseClient
-        .from("letterhead_letters")
-        .select(LETTER_LIST_SELECT)
-        .order("created_at", { ascending: false })
-        .range(historyPagination.offset, historyPagination.offset + PAGE_SIZE - 1);
-      if (start) listQuery = listQuery.gte("letter_date", start);
-      if (end) listQuery = listQuery.lte("letter_date", end);
-      const { data, error } = await runAppRequest("Letter history", () => listQuery);
+    try {
+      const { data, error, count } = await runAppRequest("Letter history", () => {
+        let listQuery = window.supabaseClient
+          .from("letterhead_letters")
+          .select(LETTER_LIST_SELECT, { count: "exact" })
+          .order("letter_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .range(pageFrom, pageFrom + PAGE_SIZE - 1);
+        if (start) listQuery = listQuery.gte("letter_date", start);
+        if (end) listQuery = listQuery.lte("letter_date", end);
+        if (needle) listQuery = listQuery.ilike("subject", `%${escapeIlikePattern(needle)}%`);
+        return listQuery;
+      });
+
+      if (!stillCurrent()) return;
 
       if (error) {
         if (reset) {
@@ -914,47 +845,55 @@
       }
 
       const fetchedCount = data?.length || 0;
-      historyPagination.offset += fetchedCount;
-      historyPagination.hasMore = fetchedCount === PAGE_SIZE;
+      if (typeof count === "number") historyPagination.totalCount = count;
+      historyPagination.offset = pageFrom + fetchedCount;
+      historyPagination.hasMore =
+        typeof count === "number" ? historyPagination.offset < count : fetchedCount === PAGE_SIZE;
 
       if (reset && !fetchedCount) {
-        tbody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}" class="muted">No typed letters for this period.</td></tr>`;
+        historyRows.clear();
+        const emptyLabel = needle ? "No letters match that subject." : "No letters for this period.";
+        tbody.innerHTML = `<tr><td colspan="${HISTORY_COLSPAN}" class="muted">${emptyLabel}</td></tr>`;
         return;
       }
 
-      if (reset) tbody.innerHTML = "";
+      if (reset) {
+        tbody.innerHTML = "";
+        historyRows.clear();
+      }
 
       const isAdmin = currentAuth?.role === "admin";
 
       (data || []).forEach((row) => {
+        historyRows.set(row.id, row);
         const tr = document.createElement("tr");
         const subjectLabel = row.subject?.trim() || "(No subject)";
         const deleteBtn = isAdmin
-          ? ` ${AdminDelete.buttonHtml({
+          ? AdminDelete.buttonHtml({
               selector: "letterhead-delete-btn",
               data: {
                 letterId: row.id,
                 letterSubject: subjectLabel,
                 letterDate: row.letter_date,
+                letterFile: row.drive_file_name || "",
+                letterDrive: row.drive_file_id ? "1" : "0",
               },
               title: "Delete letter (admin)",
-            })}`
+            })
           : "";
-
-        const driveLink = row.drive_web_view_link
-          ? ` <a class="link" href="${escapeHtml(row.drive_web_view_link)}" target="_blank" rel="noopener">Drive</a>`
+        const downloadBtn = row.drive_file_id
+          ? `<button type="button" class="button-secondary button-small" data-download-letter="${row.id}">Download</button>`
           : "";
 
         tr.innerHTML = `
-          <td>${formatNumericDate(row.letter_date)}</td>
-          <td><strong>${escapeHtml(subjectLabel)}</strong></td>
-          <td class="letterhead-history-preview">${escapeHtml(
-            row.drive_file_name || (row.drive_file_id ? "Drive PDF" : previewSnippet(row.subject))
-          )}</td>
-          <td>${escapeHtml(exportTypeLabel(row.export_type))}</td>
-          <td class="table-actions">
-            <button type="button" class="link" data-view-letter="${row.id}">View</button>
-            <button type="button" class="link" data-print-letter="${row.id}">Print</button>${driveLink}${deleteBtn}
+          <td data-label="Date">${formatNumericDate(row.letter_date)}</td>
+          <td data-label="Subject"><strong>${escapeHtml(subjectLabel)}</strong></td>
+          <td class="table-actions" data-label="Actions">
+            <div class="drive-row-actions">
+              <button type="button" class="button-secondary button-small" data-view-letter="${row.id}">View</button>
+              ${downloadBtn}
+              ${deleteBtn}
+            </div>
           </td>
         `;
         tr.dataset.letterId = row.id;
@@ -966,15 +905,16 @@
         tbody.addEventListener("click", (e) => {
           const viewBtn = e.target.closest("[data-view-letter]");
           if (viewBtn) {
-            openHistoryReport(viewBtn.dataset.viewLetter);
+            openLetterPreview(viewBtn.dataset.viewLetter);
             return;
           }
-          const printBtn = e.target.closest("[data-print-letter]");
-          if (printBtn) reprintLetter(printBtn.dataset.printLetter);
+          const downloadBtnEl = e.target.closest("[data-download-letter]");
+          if (downloadBtnEl) downloadLetterFile(downloadBtnEl.dataset.downloadLetter, downloadBtnEl);
         });
         AdminDelete.bindOnce(tbody, ".letterhead-delete-btn", deleteLetter, "letterheadDeleteBound");
       }
     } catch (err) {
+      if (!stillCurrent()) return;
       if (reset && !isCancelledRequestError(err)) {
         renderTableRetryRow(tbody, HISTORY_COLSPAN, AppError.getUserMessage(err), () => loadHistory(true));
       }
@@ -982,6 +922,7 @@
         AppError.report(err, { context: "letterheadLoadHistory" });
       }
     } finally {
+      if (!stillCurrent()) return;
       resetPaginationLoading(historyPagination, loadMoreBtn);
       updateHistoryPaginationUI();
     }
@@ -1013,39 +954,33 @@
     refreshPreview();
   }
 
-  async function reprintLetter(id) {
-    clearMessages();
-    const row = await fetchLetterById(id);
-    if (!row) {
-      showError("Could not load that letter to print.");
-      return;
-    }
-    await printArchivedLetter(row);
-  }
-
   async function deleteLetter(btn) {
     const letterId = btn.dataset.letterId;
     const subject = btn.dataset.letterSubject || "this letter";
-    const letterDate = btn.dataset.letterDate || "";
+    const letterDate = formatNumericDate(btn.dataset.letterDate || "");
+    const fileName = (btn.dataset.letterFile || "").trim();
+    const lines = [`Delete letter “${subject}” dated ${letterDate}?`];
+    if (fileName) lines.push(`File: ${fileName}`);
+    lines.push(
+      "",
+      btn.dataset.letterDrive === "1"
+        ? "The PDF in Google Drive will also be deleted. This cannot be undone."
+        : "This cannot be undone."
+    );
 
     await AdminDelete.execute({
       btn,
       auth: currentAuth,
       actionLabel: "delete letterhead history",
-      confirmMessage: `Delete letter “${subject}” dated ${formatNumericDate(letterDate)}?\n\nThis cannot be undone.`,
+      confirmMessage: lines.join("\n"),
       deleteFn: async () => {
-        try {
-          await DriveFiles.remove({ kind: "letter", id: letterId });
-          return { error: null };
-        } catch (err) {
-          AppError?.report?.(err, { context: "letterheadDeleteDrive", letterId });
-          return window.supabaseClient.from("letterhead_letters").delete().eq("id", letterId);
-        }
+        await DriveFiles.remove({ kind: "letter", id: letterId });
+        return { error: null };
       },
       cacheScope: "operational",
-      onSuccess: () => {
+      onSuccess: async () => {
         if (historyReportLetter?.id === letterId) closeHistoryReport();
-        loadHistory(true);
+        await loadHistory(true);
       },
       errorContext: { context: "letterheadDeleteLetter", letterId },
     });
@@ -1083,15 +1018,6 @@
       printLetterhead({ includeContent: true });
     });
 
-    document
-      .getElementById("letterhead-report-print-btn")
-      ?.addEventListener("click", () => printHistoryReport());
-    document
-      .getElementById("letterhead-report-edit-btn")
-      ?.addEventListener("click", () => editHistoryReportInCompose());
-    document
-      .getElementById("letterhead-report-history-btn")
-      ?.addEventListener("click", () => closeHistoryReport());
   }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -1115,10 +1041,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         defaultSection: "compose",
         validSections: ["compose", "history", "guide"],
         onSectionChange: (section) => {
-          if (section === "history") {
-            closeHistoryReport();
-            loadHistory(true);
-          }
+          closeHistoryReport();
+          if (section === "history") loadHistory(true);
         },
       });
     }
@@ -1136,10 +1060,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   bindLiveRefresh(
     () => {
-      resetPaginationLoading(
-        historyPagination,
-        document.getElementById("letterhead-load-more")
-      );
       if (isSettingsPanelActive("history") || location.hash === "#history") {
         void loadHistory(true);
       }
