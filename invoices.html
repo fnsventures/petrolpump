@@ -65,7 +65,7 @@
           <div class="panel-head card-head snapshot-head">
             <div>
               <h2 class="dashboard-section-title">Document library</h2>
-              <p class="muted panel-lead">Documents are grouped by type. Each type stays closed until you open it.</p>
+              <p class="muted panel-lead">Grouped by type. The first group starts open. This year is shown until you change the period.</p>
             </div>
             <div class="snapshot-controls">
               <div class="form-field">
@@ -82,24 +82,11 @@
                   <option value="all-time">All time</option>
                 </select>
               </div>
-              <div id="invoice-custom-range" class="custom-range hidden" aria-hidden="true">
-                <div class="form-field">
-                  <label for="invoice-start">From</label>
-                  <input id="invoice-start" type="date" />
-                </div>
-                <div class="form-field">
-                  <label for="invoice-end">To</label>
-                  <input id="invoice-end" type="date" />
-                </div>
-              </div>
-              <div class="filter-actions">
-                <button type="button" id="invoice-apply-filter">Apply</button>
-              </div>
             </div>
           </div>
           <div id="invoice-library" class="vault-library">
-            <div id="vault-library-bar" class="vault-library-bar hidden">
-              <div class="form-field vault-search">
+            <div id="vault-library-bar" class="drive-list-bar hidden">
+              <div class="form-field drive-list-search">
                 <label for="invoice-search">Search</label>
                 <input id="invoice-search" type="search" placeholder="Title, party, or file name" autocomplete="off" spellcheck="false" />
               </div>
@@ -113,13 +100,13 @@
           </div>
           <div id="invoice-empty-cta" class="empty-state hidden">
             <p id="invoice-empty-message">No documents found for this period.</p>
-            <p id="invoice-empty-hint" class="empty-cta">Upload a document from the Upload document section.</p>
+            <p id="invoice-empty-hint" class="empty-cta">Upload a document from the <a href="#upload">Upload document section</a>.</p>
           </div>
         </section>
       </div>
     </main>
     <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-copyright">© <span id="invoice-footer-year">2026</span> F&S Ventures. All rights reserved.</p>
       <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
     </footer>
   </body>

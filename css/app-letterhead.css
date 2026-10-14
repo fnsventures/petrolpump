@@ -21,72 +21,9 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   max-width: 100%;
 }
 
-.letterhead-history-preview {
-  max-width: 22rem;
-  color: var(--muted, #64748b);
-  font-size: 0.9em;
-}
-
-/* E-20-style letter report view */
-.letterhead-report-view {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 0.25rem;
-}
-
-.letterhead-report-view.hidden {
-  display: none;
-}
-
-.letterhead-report-output-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.letterhead-report-title {
-  margin: 0;
-  font-size: var(--heading-sm, 1.05rem);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.letterhead-report-subtitle {
-  margin: 0.25rem 0 0;
-  font-size: var(--text-sm);
-}
-
-.letterhead-report-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.letterhead-sheet-preview {
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius-md, 8px);
-  padding: 1.25rem 1.5rem;
-  background: #e8eef5;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  max-width: 100%;
-  min-height: 18rem;
-}
-
-.letterhead-sheet-preview .letterhead-preview-sheet {
+.drive-preview-body .letterhead-preview-sheet {
   width: 100%;
-}
-
-.letterhead-pdf-frame {
-  display: block;
-  width: 100%;
-  min-height: 70vh;
-  border: 0;
-  background: var(--surface);
+  min-height: 0;
 }
 
 .letterhead-compose-layout {
@@ -450,10 +387,6 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   .letterhead-history-panel,
   .letterhead-guide-panel {
     gap: var(--space-3);
-  }
-
-  .letterhead-history-preview {
-    max-width: 14rem;
   }
 
   .letterhead-form textarea {

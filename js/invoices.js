@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppError, AppDialog, escapeHtml, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, VaultDocuments */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatNumericDate, AppError, AppDialog, escapeHtml, escapeIlikePattern, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, VaultDocuments, DrivePreview, debounce, preloadPdfPreview, fetchAllRows */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
@@ -17,7 +17,10 @@ const VAULT_OPEN_STORAGE_KEY = "vaultLibraryOpen";
 let currentAuth = null;
 let driveConfigured = false;
 let vaultListController = null;
-let vaultRows = [];
+let vaultGroups = [];
+let vaultPeriodCount = 0;
+let vaultSeq = 0;
+let suppressVaultToggle = 0;
 let vaultReady = false;
 let documentCategories = FALLBACK_DOCUMENT_CATEGORIES.slice();
 let documentCategoryLabelMap = Object.fromEntries(
@@ -34,6 +37,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   currentAuth = auth;
   applyRoleVisibility(auth.role);
+  const footerYear = document.getElementById("invoice-footer-year");
+  if (footerYear) footerYear.textContent = String(new Date().getFullYear());
   await loadPumpSettings();
   applyInvoicesBranding();
   applyLocalDriveBanner();
@@ -50,7 +55,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindInvoiceTableActions();
   bindVaultLibraryControls();
 
-  await Promise.all([refreshDriveStatus(), loadDocumentCategories(), loadVaultDocuments()]);
+  await Promise.all([refreshDriveStatus(), loadDocumentCategories()]);
+  await loadVaultDocuments();
 });
 
 function getDocumentCategoryLabel(value) {
@@ -106,7 +112,13 @@ async function loadDocumentCategories() {
 
   documentCategories = categories;
   documentCategoryLabelMap = Object.fromEntries(categories.map((c) => [c.value, c.label]));
-  if (vaultReady) renderVaultLibrary();
+  if (vaultReady) {
+    vaultGroups.forEach((group) => {
+      group.label = getDocumentCategoryLabel(group.value);
+    });
+    sortVaultGroups(vaultGroups);
+    renderVaultLibrary();
+  }
 
   fillSelectOptions(uploadSelect, categories, {
     selectedValue: categories.some((c) => c.value === previousUpload) ? previousUpload : "",
@@ -350,7 +362,7 @@ function bindUploadForm() {
         invoiceDate: RECORD_DATE_KEYS.invoiceUpload,
       });
       if (fileInput) fileInput.value = "";
-      loadVaultDocuments();
+      await loadVaultDocuments();
     } catch (err) {
       AppError.report(err, { context: "invoiceUpload" });
       showFormError(errorEl, err.message || "Upload failed.");
@@ -366,11 +378,7 @@ function bindUploadForm() {
 }
 
 function getVaultDateRange() {
-  const range = readDateRangeFromControls(
-    document.getElementById("invoice-range"),
-    document.getElementById("invoice-start"),
-    document.getElementById("invoice-end")
-  );
+  const range = readDateRangeFromControls(document.getElementById("invoice-range"), null, null);
   if (range) return { start: range.start, end: range.end };
   return getYearRange(new Date().getFullYear());
 }
@@ -381,14 +389,23 @@ function initInvoiceFilter() {
     ranges: ["this-year", "last-year", "all-time"],
     defaultRange: "this-year",
     rangeSelect: "invoice-range",
-    startInput: "invoice-start",
-    endInput: "invoice-end",
-    customRange: "invoice-custom-range",
-    applyBtn: "invoice-apply-filter",
-    trigger: "apply",
+    trigger: "auto",
     runOnInit: false,
     onApply: () => loadVaultDocuments(),
   });
+}
+
+function vaultPeriodLabel() {
+  const value = document.getElementById("invoice-range")?.value || "this-year";
+  if (value === "last-year") return "Last year";
+  if (value === "all-time") return "All time";
+  return "This year";
+}
+
+function isAbortError(err) {
+  const name = err?.name || "";
+  const message = err?.message || "";
+  return name === "AbortError" || /abort/i.test(message);
 }
 
 function vaultOpenStorageKey() {
@@ -421,48 +438,64 @@ function vaultSearchQuery() {
   return (document.getElementById("invoice-search")?.value || "").trim();
 }
 
-function filterVaultRows(rows, query) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return rows;
-  return rows.filter((row) => {
-    const haystack = [
-      row.invoice_date,
-      row.vendor,
-      row.title,
-      row.file_name,
-      getDocumentCategoryLabel(row.category),
-      row.amount != null ? String(row.amount) : "",
-    ].filter(Boolean).join(" ").toLowerCase();
-    return haystack.includes(needle);
-  });
-}
-
-function groupVaultDocuments(rows) {
+function sortVaultGroups(groups) {
   const order = new Map(documentCategories.map((category, index) => [category.value, index]));
-  const groups = new Map();
-  rows.forEach((row) => {
-    const value = row.category || "";
-    let group = groups.get(value);
-    if (!group) {
-      group = { value, label: getDocumentCategoryLabel(value), rows: [] };
-      groups.set(value, group);
-    }
-    group.rows.push(row);
-  });
-  return [...groups.values()].sort((a, b) => {
+  groups.sort((a, b) => {
     const aOrder = order.has(a.value) ? order.get(a.value) : Number.MAX_SAFE_INTEGER;
     const bOrder = order.has(b.value) ? order.get(b.value) : Number.MAX_SAFE_INTEGER;
     if (aOrder !== bOrder) return aOrder - bOrder;
     return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
   });
+  return groups;
+}
+
+function groupVaultDocuments(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const value = row.category || "";
+    let group = groups.get(value);
+    if (!group) {
+      group = {
+        value,
+        label: getDocumentCategoryLabel(value),
+        rows: [],
+        count: 0,
+        latest: "",
+        loading: false,
+        error: "",
+      };
+      groups.set(value, group);
+    }
+    group.rows.push(row);
+  });
+  groups.forEach((group) => {
+    group.count = group.rows.length;
+    group.latest = group.rows[0]?.invoice_date || "";
+  });
+  return sortVaultGroups([...groups.values()]);
 }
 
 function categoriesToOpen(groups) {
   const saved = readOpenCategories();
   if (saved) return saved;
+  if (!groups.length) return new Set();
   const filter = document.getElementById("invoice-category-filter")?.value || "all";
   if (filter !== "all" || groups.length === 1) return new Set(groups.map((group) => group.value));
-  return new Set();
+  return new Set([groups[0].value]);
+}
+
+function findVaultRow(id) {
+  for (const group of vaultGroups) {
+    const hit = group.rows?.find((row) => row.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function findGroupDetails(value) {
+  return [...document.querySelectorAll("#invoice-groups details.vault-group")].find(
+    (el) => el.dataset.category === value
+  );
 }
 
 function groupAmountTotal(rows) {
@@ -480,19 +513,29 @@ function groupAmountTotal(rows) {
 }
 
 function groupMeta(rows) {
-  const latest = rows[0]?.invoice_date ? `Latest ${rows[0].invoice_date}` : "";
+  const latest = rows[0]?.invoice_date ? `Latest ${formatNumericDate(rows[0].invoice_date)}` : "";
   const total = groupAmountTotal(rows);
   return [latest, total].filter(Boolean).join(" · ");
 }
 
-function librarySummary(groups, totalRows) {
-  const docs = groups.reduce((count, group) => count + group.rows.length, 0);
+function groupHeadingMeta(group) {
+  if (group.rows) return groupMeta(group.rows);
+  return group.latest ? `Latest ${formatNumericDate(group.latest)}` : "";
+}
+
+function librarySummary(groups) {
+  const docs = groups.reduce((count, group) => count + (group.count || 0), 0);
   const docWord = docs === 1 ? "document" : "documents";
   const typeWord = groups.length === 1 ? "type" : "types";
   const base = `${docs} ${docWord} in ${groups.length} ${typeWord}`;
-  if (totalRows != null && docs !== totalRows) return `${base}, filtered from ${totalRows}`;
-  return base;
+  const searching = vaultSearchQuery().length > 0;
+  const line = searching && vaultPeriodCount > 0 && docs !== vaultPeriodCount
+    ? `${base}, filtered from ${vaultPeriodCount}`
+    : base;
+  return `${line} · ${vaultPeriodLabel()}`;
 }
+
+const VAULT_UPLOAD_HINT = 'Upload a document from the <a href="#upload">Upload document section</a>.';
 
 function renderVaultDocumentRow(row, isAdmin) {
   const title = (row.title || "").trim();
@@ -501,35 +544,26 @@ function renderVaultDocumentRow(row, isAdmin) {
   const viewBtn = `<button type="button" class="button-secondary button-small" data-action="view" data-id="${escapeHtml(row.id)}">View</button>`;
   const downloadBtn = `<button type="button" class="button-secondary button-small" data-action="download" data-id="${escapeHtml(row.id)}">Download</button>`;
   const deleteBtn = isAdmin
-    ? `<button type="button" class="button-delete button-small" data-action="delete" data-id="${escapeHtml(row.id)}">Delete</button>`
+    ? `<button type="button" class="button-delete button-small" data-action="delete" data-id="${escapeHtml(row.id)}" data-title="${escapeHtml(title || fileName || "")}" data-vendor="${escapeHtml(row.vendor || "")}" data-date="${escapeHtml(row.invoice_date || "")}" data-file="${escapeHtml(fileName)}">Delete</button>`
     : "";
   const actions = [viewBtn, downloadBtn, deleteBtn].filter(Boolean).join("");
   return `<tr>
-    <td data-label="Date">${escapeHtml(row.invoice_date)}</td>
+    <td data-label="Date">${formatNumericDate(row.invoice_date)}</td>
     <td data-label="From">${escapeHtml(row.vendor || "—")}</td>
-    <td>
+    <td data-label="Document">
       <div class="vault-doc">
         <span class="vault-doc-title">${escapeHtml(title || fileName || "—")}</span>
         ${showFile ? `<span class="vault-doc-file">${escapeHtml(fileName)}</span>` : ""}
       </div>
     </td>
     <td class="vault-amount" data-label="Amount">${row.amount != null ? formatCurrency(row.amount) : "—"}</td>
-    <td class="table-actions"><div class="vault-row-actions">${actions || "—"}</div></td>
+    <td class="table-actions" data-label="Action"><div class="drive-row-actions">${actions || "—"}</div></td>
   </tr>`;
 }
 
-function renderVaultGroup(group, isOpen, isAdmin) {
-  const noun = group.rows.length === 1 ? "document" : "documents";
-  const meta = groupMeta(group.rows);
-  return `<details class="vault-group" data-category="${escapeHtml(group.value)}"${isOpen ? " open" : ""}>
-    <summary>
-      <span class="vault-group-text">
-        <span class="vault-group-title">${escapeHtml(group.label)}</span>
-        ${meta ? `<span class="vault-group-meta">${escapeHtml(meta)}</span>` : ""}
-      </span>
-      <span class="vault-count">${group.rows.length}<span class="sr-only"> ${noun}</span></span>
-    </summary>
-    <div class="table-wrap">
+function vaultTableHtml(group, isAdmin) {
+  if (!group.rows?.length) return `<p class="muted vault-group-loading">No documents in this type.</p>`;
+  return `<div class="table-wrap">
       <table>
         <thead>
           <tr>
@@ -544,8 +578,47 @@ function renderVaultGroup(group, isOpen, isAdmin) {
           ${group.rows.map((row) => renderVaultDocumentRow(row, isAdmin)).join("")}
         </tbody>
       </table>
-    </div>
+    </div>`;
+}
+
+function groupSlotHtml(group, isOpen, isAdmin) {
+  if (group.rows) return vaultTableHtml(group, isAdmin);
+  if (group.error) {
+    return `<p class="error vault-group-loading">${escapeHtml(group.error)} <button type="button" class="button-secondary button-small" data-vault-retry="${escapeHtml(group.value)}">Retry</button></p>`;
+  }
+  if (isOpen || group.loading) return `<p class="muted vault-group-loading">Loading…</p>`;
+  return "";
+}
+
+function renderVaultGroup(group, isOpen, isAdmin) {
+  const count = group.count ?? group.rows?.length ?? 0;
+  const noun = count === 1 ? "document" : "documents";
+  const meta = groupHeadingMeta(group);
+  return `<details class="vault-group" data-category="${escapeHtml(group.value)}"${isOpen ? " open" : ""}>
+    <summary>
+      <span class="vault-group-text">
+        <span class="vault-group-title">${escapeHtml(group.label)}</span>
+        ${meta ? `<span class="vault-group-meta">${escapeHtml(meta)}</span>` : `<span class="vault-group-meta" hidden></span>`}
+      </span>
+      <span class="vault-count"><span class="vault-count-num">${count}</span><span class="sr-only"> ${noun}</span></span>
+    </summary>
+    <div data-vault-slot>${groupSlotHtml(group, isOpen, isAdmin)}</div>
   </details>`;
+}
+
+function fillGroupBody(group) {
+  const details = findGroupDetails(group.value);
+  if (!details) return;
+  const slot = details.querySelector("[data-vault-slot]");
+  if (slot) slot.innerHTML = groupSlotHtml(group, details.open, currentAuth?.role === "admin");
+  const metaEl = details.querySelector(".vault-group-meta");
+  const meta = groupHeadingMeta(group);
+  if (metaEl) {
+    metaEl.textContent = meta;
+    metaEl.hidden = !meta;
+  }
+  const countEl = details.querySelector(".vault-count-num");
+  if (countEl && group.rows) countEl.textContent = String(group.rows.length);
 }
 
 function setVaultExpandDisabled(disabled) {
@@ -555,14 +628,17 @@ function setVaultExpandDisabled(disabled) {
   });
 }
 
-function showVaultEmpty(message, hint) {
+function showVaultEmpty() {
   const empty = document.getElementById("invoice-empty-cta");
   const messageEl = document.getElementById("invoice-empty-message");
   const hintEl = document.getElementById("invoice-empty-hint");
-  if (messageEl) messageEl.textContent = message;
+  const period = vaultPeriodLabel().toLowerCase();
+  if (messageEl) {
+    messageEl.textContent = period === "all time" ? "No documents found." : `No documents found for ${period}.`;
+  }
   if (hintEl) {
-    hintEl.textContent = hint;
-    hintEl.classList.toggle("hidden", !hint);
+    hintEl.innerHTML = VAULT_UPLOAD_HINT;
+    hintEl.classList.remove("hidden");
   }
   empty?.classList.remove("hidden");
 }
@@ -576,37 +652,34 @@ function renderVaultLibrary() {
 
   empty?.classList.add("hidden");
   const query = vaultSearchQuery();
+  summary?.classList.remove("error");
 
-  if (!vaultRows.length) {
-    bar?.classList.add("hidden");
+  if (!vaultGroups.length) {
     groupsEl.innerHTML = "";
-    if (summary) summary.textContent = "";
     setVaultExpandDisabled(true);
-    showVaultEmpty(
-      "No documents found for this period.",
-      "Upload a document from the Upload document section."
-    );
+    if (query) {
+      bar?.classList.remove("hidden");
+      if (summary) summary.textContent = `No documents match “${query}”.`;
+      return;
+    }
+    bar?.classList.add("hidden");
+    if (summary) summary.textContent = "";
+    showVaultEmpty();
     return;
   }
 
   bar?.classList.remove("hidden");
-  const matched = filterVaultRows(vaultRows, query);
-  if (!matched.length) {
-    groupsEl.innerHTML = "";
-    if (summary) summary.textContent = `No documents match “${query}”.`;
-    setVaultExpandDisabled(true);
-    return;
-  }
-
-  const groups = groupVaultDocuments(matched);
   const searching = query.length > 0;
-  const openSet = searching ? new Set(groups.map((group) => group.value)) : categoriesToOpen(groups);
+  const openSet = searching ? new Set(vaultGroups.map((group) => group.value)) : categoriesToOpen(vaultGroups);
   const isAdmin = currentAuth?.role === "admin";
-  if (summary) summary.textContent = librarySummary(groups, vaultRows.length);
-  groupsEl.innerHTML = groups
+  if (summary) summary.textContent = librarySummary(vaultGroups);
+  groupsEl.innerHTML = vaultGroups
     .map((group) => renderVaultGroup(group, openSet.has(group.value), isAdmin))
     .join("");
   setVaultExpandDisabled(false);
+  vaultGroups.forEach((group) => {
+    if (openSet.has(group.value) && !group.rows && !group.loading) void ensureGroupRows(group.value);
+  });
 }
 
 function setLibraryLoading() {
@@ -628,9 +701,11 @@ function setLibraryLoading() {
 function setLibraryError(message) {
   const summary = document.getElementById("invoice-library-summary");
   const groupsEl = document.getElementById("invoice-groups");
-  vaultRows = [];
+  vaultGroups = [];
   vaultReady = false;
-  if (groupsEl) groupsEl.innerHTML = "";
+  if (groupsEl) {
+    groupsEl.innerHTML = `<p><button type="button" class="button-secondary button-small" id="vault-library-retry">Retry</button></p>`;
+  }
   if (summary) {
     summary.textContent = message;
     summary.classList.add("error");
@@ -638,48 +713,204 @@ function setLibraryError(message) {
   setVaultExpandDisabled(true);
 }
 
-async function loadVaultDocuments() {
+function filteredListQuery(signal, categoryValue) {
+  const { start, end } = getVaultDateRange();
+  let query = window.supabaseClient.from("invoice_documents").select(INVOICE_LIST_COLUMNS);
+  if (start) query = query.gte("invoice_date", start);
+  if (end) query = query.lte("invoice_date", end);
+  const selected = document.getElementById("invoice-category-filter")?.value || "all";
+  const category = categoryValue || (selected !== "all" ? selected : "");
+  if (category) query = query.eq("category", category);
+  if (signal) query = query.abortSignal(signal);
+  return query;
+}
+
+function orderedListQuery(query) {
+  return query
+    .order("invoice_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true });
+}
+
+function listQuery(signal, categoryValue) {
+  return orderedListQuery(filteredListQuery(signal, categoryValue));
+}
+
+function searchQuery(signal, raw) {
+  const needle = escapeIlikePattern(raw).replace(/"/g, "");
+  const orFilter = ["title", "vendor", "file_name"].map((col) => `${col}.ilike."%${needle}%"`).join(",");
+  return orderedListQuery(filteredListQuery(signal).or(orFilter));
+}
+
+async function fetchCategoryCount(category, signal) {
+  const { start, end } = getVaultDateRange();
+  let query = window.supabaseClient
+    .from("invoice_documents")
+    .select("invoice_date", { count: "exact" })
+    .eq("category", category.value)
+    .order("invoice_date", { ascending: false })
+    .limit(1)
+    .abortSignal(signal);
+  if (start) query = query.gte("invoice_date", start);
+  if (end) query = query.lte("invoice_date", end);
+  const { data, error, count } = await query;
+  if (error) {
+    const err = new Error(error.message || "Could not load documents.");
+    err.code = error.code;
+    throw err;
+  }
+  return {
+    value: category.value,
+    label: category.label,
+    count: count || 0,
+    latest: data?.[0]?.invoice_date || "",
+    rows: null,
+    loading: false,
+    error: "",
+  };
+}
+
+async function loadVaultOutline(seq, controller) {
+  const filter = document.getElementById("invoice-category-filter")?.value || "all";
+  const categories = filter === "all"
+    ? documentCategories
+    : documentCategories.filter((category) => category.value === filter);
+  const summaries = await Promise.all(
+    categories.map((category) => fetchCategoryCount(category, controller.signal))
+  );
+  if (seq !== vaultSeq || controller.signal.aborted) return;
+  vaultGroups = sortVaultGroups(summaries.filter((group) => group.count > 0));
+  vaultPeriodCount = vaultGroups.reduce((sum, group) => sum + group.count, 0);
+  vaultReady = true;
+  renderVaultLibrary();
+}
+
+async function loadVaultSearch(seq, controller, raw) {
+  const { data, error } = await fetchAllRows(() => searchQuery(controller.signal, raw));
+  if (seq !== vaultSeq || controller.signal.aborted) return;
+  if (error) {
+    if (isAbortError(error)) return;
+    const err = new Error(error.message || "Could not search documents.");
+    err.code = error.code;
+    throw err;
+  }
+  vaultGroups = groupVaultDocuments(data || []);
+  vaultReady = true;
+  renderVaultLibrary();
+}
+
+async function loadVaultDocuments(options = {}) {
   const groupsEl = document.getElementById("invoice-groups");
   if (!groupsEl) return;
 
+  const soft = options.soft === true;
+  const seq = ++vaultSeq;
   vaultListController?.abort();
   const controller = new AbortController();
   vaultListController = controller;
-  setLibraryLoading();
-
-  const { start, end } = getVaultDateRange();
-  const categoryFilter = document.getElementById("invoice-category-filter")?.value || "all";
-  const { data, error } = await fetchAllRows(() => {
-    let query = window.supabaseClient
-      .from("invoice_documents")
-      .select(INVOICE_LIST_COLUMNS)
-      .order("invoice_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true })
-      .abortSignal(controller.signal);
-    if (start) query = query.gte("invoice_date", start);
-    if (end) query = query.lte("invoice_date", end);
-    if (categoryFilter !== "all") query = query.eq("category", categoryFilter);
-    return query;
-  });
-
-  if (controller.signal.aborted) return;
-
-  if (error) {
-    setLibraryError(AppError.getUserMessage(error));
-    return;
+  if (!soft) {
+    vaultPeriodCount = 0;
+    vaultGroups = [];
+    setLibraryLoading();
+  } else {
+    const summary = document.getElementById("invoice-library-summary");
+    if (summary) {
+      summary.textContent = "Loading…";
+      summary.classList.remove("error");
+    }
   }
 
-  vaultRows = data || [];
-  vaultReady = true;
-  const summary = document.getElementById("invoice-library-summary");
-  summary?.classList.remove("error");
-  renderVaultLibrary();
+  try {
+    const query = vaultSearchQuery();
+    if (query) await loadVaultSearch(seq, controller, query);
+    else await loadVaultOutline(seq, controller);
+  } catch (err) {
+    if (seq !== vaultSeq || controller.signal.aborted || isAbortError(err)) return;
+    setLibraryError(AppError.getUserMessage(err));
+    AppError.report(err, { context: "loadVaultDocuments" });
+  }
+}
+
+async function ensureGroupRows(value) {
+  const group = vaultGroups.find((item) => item.value === value);
+  if (!group || group.rows || group.loading) return;
+  const controller = vaultListController;
+  if (!controller || controller.signal.aborted) return;
+  const seq = vaultSeq;
+  group.loading = true;
+  group.error = "";
+  fillGroupBody(group);
+  try {
+    const { data, error } = await fetchAllRows(() => listQuery(controller.signal, group.value));
+    if (seq !== vaultSeq || controller.signal.aborted) return;
+    group.loading = false;
+    if (error) {
+      if (isAbortError(error)) return;
+      group.error = AppError.getUserMessage(error);
+      fillGroupBody(group);
+      return;
+    }
+    group.rows = data || [];
+    group.count = group.rows.length;
+    group.latest = group.rows[0]?.invoice_date || group.latest;
+    fillGroupBody(group);
+  } catch (err) {
+    if (seq !== vaultSeq || controller.signal.aborted || isAbortError(err)) return;
+    group.loading = false;
+    group.error = AppError.getUserMessage(err);
+    fillGroupBody(group);
+  }
+}
+
+async function loadAllGroupRows() {
+  if (vaultGroups.every((group) => Array.isArray(group.rows))) {
+    vaultGroups.forEach((group) => fillGroupBody(group));
+    return;
+  }
+  const controller = vaultListController;
+  if (!controller || controller.signal.aborted) return;
+  const seq = vaultSeq;
+  vaultGroups.forEach((group) => {
+    if (!group.rows) group.loading = true;
+  });
+  try {
+    const { data, error } = await fetchAllRows(() => listQuery(controller.signal));
+    if (seq !== vaultSeq || controller.signal.aborted) return;
+    if (error) {
+      if (isAbortError(error)) return;
+      const err = new Error(error.message || "Could not load documents.");
+      err.code = error.code;
+      throw err;
+    }
+    const byValue = new Map(groupVaultDocuments(data || []).map((group) => [group.value, group]));
+    vaultGroups.forEach((group) => {
+      const loaded = byValue.get(group.value);
+      group.rows = loaded?.rows || [];
+      group.count = group.rows.length;
+      group.loading = false;
+      group.error = "";
+      fillGroupBody(group);
+    });
+  } catch (err) {
+    if (seq !== vaultSeq || controller.signal.aborted || isAbortError(err)) return;
+    vaultGroups.forEach((group) => {
+      if (group.rows) return;
+      group.loading = false;
+      group.error = AppError.getUserMessage(err);
+      fillGroupBody(group);
+    });
+  }
 }
 
 function setAllVaultGroupsOpen(open) {
   const searching = vaultSearchQuery().length > 0;
   const saved = readOpenCategories() ?? new Set();
+  if (open && !searching) {
+    vaultGroups.forEach((group) => {
+      if (!group.rows) group.loading = true;
+    });
+  }
+  suppressVaultToggle += 1;
   document.querySelectorAll("#invoice-groups details.vault-group").forEach((details) => {
     details.open = open;
     if (searching) return;
@@ -687,7 +918,9 @@ function setAllVaultGroupsOpen(open) {
     if (open) saved.add(key);
     else saved.delete(key);
   });
+  suppressVaultToggle -= 1;
   if (!searching) writeOpenCategories(saved);
+  if (open && !searching) void loadAllGroupRows();
 }
 
 function bindVaultLibraryControls() {
@@ -695,17 +928,22 @@ function bindVaultLibraryControls() {
   groupsEl?.addEventListener("toggle", (event) => {
     const details = event.target;
     if (!(details instanceof HTMLDetailsElement) || !details.classList.contains("vault-group")) return;
+    if (suppressVaultToggle) return;
     if (vaultSearchQuery()) return;
     const saved = readOpenCategories() ?? new Set();
     const key = details.dataset.category ?? "";
     if (details.open) saved.add(key);
     else saved.delete(key);
     writeOpenCategories(saved);
+    if (details.open) void ensureGroupRows(key);
   }, true);
 
-  document.getElementById("invoice-search")?.addEventListener("input", () => {
-    if (vaultReady) renderVaultLibrary();
+  document.getElementById("invoice-category-filter")?.addEventListener("change", () => {
+    void loadVaultDocuments();
   });
+  document.getElementById("invoice-search")?.addEventListener("input", debounce(() => {
+    void loadVaultDocuments({ soft: true });
+  }, 300));
   document.getElementById("vault-expand-all")?.addEventListener("click", () => setAllVaultGroupsOpen(true));
   document.getElementById("vault-collapse-all")?.addEventListener("click", () => setAllVaultGroupsOpen(false));
 }
@@ -715,61 +953,107 @@ function bindInvoiceTableActions() {
   if (!groupsEl) return;
 
   groupsEl.addEventListener("click", async (event) => {
+    if (event.target.closest("#vault-library-retry")) {
+      void loadVaultDocuments();
+      return;
+    }
+    const retry = event.target.closest("[data-vault-retry]");
+    if (retry && groupsEl.contains(retry)) {
+      const group = vaultGroups.find((item) => item.value === retry.dataset.vaultRetry);
+      if (!group) return;
+      group.loading = false;
+      group.error = "";
+      group.rows = null;
+      void ensureGroupRows(group.value);
+      return;
+    }
     const btn = event.target.closest("[data-action]");
     if (!btn || !groupsEl.contains(btn)) return;
 
     const id = btn.dataset.id;
     if (btn.dataset.action === "view") {
-      const preview = window.open("", "_blank");
-      try {
-        await VaultDocuments.open(id, { previewWindow: preview });
-      } catch (err) {
-        AppError.report(err, { context: "invoiceView" });
-        AppError.showToast(err.message || "Could not open the document.", "error");
-      }
+      openVaultPreview(id);
       return;
     }
     if (btn.dataset.action === "download") await downloadInvoice(id, btn);
-    if (btn.dataset.action === "delete") await deleteVaultDocument(id);
+    if (btn.dataset.action === "delete") await deleteVaultDocument(id, btn);
+  });
+}
+
+function openVaultPreview(id) {
+  const row = findVaultRow(id);
+  const title = (row?.title || "").trim() || row?.file_name || "Document";
+  const dateLabel = formatNumericDate(row?.invoice_date);
+  const subtitle = [
+    dateLabel !== "—" ? dateLabel : "",
+    (row?.vendor || "").trim(),
+    getDocumentCategoryLabel(row?.category),
+  ].filter(Boolean).join(" · ");
+  const fileName = row?.file_name || "";
+  const mimeType = row?.mime_type || "";
+  if ((mimeType === "application/pdf" || /\.pdf$/i.test(fileName)) && typeof preloadPdfPreview === "function") {
+    preloadPdfPreview();
+  }
+  if (typeof DrivePreview === "undefined") {
+    AppError.showToast("Could not open the preview.", "error");
+    return;
+  }
+  DrivePreview.open({
+    title,
+    subtitle,
+    download: () => downloadInvoice(id),
+    load: async (ctx) => {
+      if (typeof VaultDocuments?.file !== "function") throw new Error("Could not open the document.");
+      const file = await VaultDocuments.file(id, { fileName, mimeType });
+      if (!ctx.isCurrent()) return null;
+      return { blob: file.blob, fileName: file.fileName || fileName };
+    },
   });
 }
 
 async function downloadInvoice(id, btn) {
   if (!id) return;
-  const originalText = btn?.textContent;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "…";
-  }
-  showProgress();
+  const row = findVaultRow(id);
+  if (btn) btn.disabled = true;
 
   try {
-    const res = await postInvoiceFunction({ action: "download", id });
-    const blob = await res.blob();
-    const match = (res.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/);
-    const fileName = match?.[1] || "invoice";
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
+    await ActionProgress.track(
+      {
+        title: "Downloading document",
+        status: "Fetching the file…",
+        doneStatus: "Downloaded",
+        timeoutMs: 180000,
+      },
+      async ({ setPercent }) => {
+        await VaultDocuments.save(id, {
+          fileName: row?.file_name,
+          mimeType: row?.mime_type,
+          onRatio(ratio) {
+            setPercent(ratio * 100, "Downloading…");
+          },
+        });
+      }
+    );
   } catch (err) {
     AppError.report(err, { context: "invoiceDownload" });
     AppError.showToast(err.message || "Download failed.", "error");
   } finally {
-    hideProgress();
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = originalText || "Download";
-    }
+    if (btn) btn.disabled = false;
   }
 }
 
-async function deleteVaultDocument(id) {
+function vaultDeleteMessage(btn) {
+  const title = (btn?.dataset.title || "").trim() || (btn?.dataset.file || "").trim() || "this document";
+  const party = (btn?.dataset.vendor || "").trim();
+  const date = formatNumericDate(btn?.dataset.date || "");
+  const partyBit = party ? ` from ${party}` : "";
+  const dateBit = date && date !== "—" ? ` dated ${date}` : "";
+  return `Delete “${title}”${partyBit}${dateBit} from Google Drive and the app?\n\nThis cannot be undone.`;
+}
+
+async function deleteVaultDocument(id, btn) {
   if (!id || currentAuth?.role !== "admin") return;
-  if (!(await AppDialog.confirm("Delete this document from Google Drive and the app?", { title: "Delete document", confirmLabel: "Delete", danger: true }))) return;
+  if (!(await AppDialog.confirm(vaultDeleteMessage(btn), { title: "Delete document", confirmLabel: "Delete", danger: true }))) return;
 
   try {
     await ActionProgress.track(
@@ -780,7 +1064,7 @@ async function deleteVaultDocument(id) {
       },
       async () => {
         await invokeInvoiceFunction({ action: "delete", id });
-        loadVaultDocuments();
+        await loadVaultDocuments();
       }
     );
   } catch (err) {
@@ -790,6 +1074,5 @@ async function deleteVaultDocument(id) {
 }
 
 bindLiveRefresh(() => {
-  vaultListController?.abort();
   void loadVaultDocuments();
 }, { match: () => Boolean(document.getElementById("invoice-groups")) });

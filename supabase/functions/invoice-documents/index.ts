@@ -224,12 +224,16 @@ Deno.serve(async (req: Request) => {
         getDriveAccessToken(),
       ]);
       const { bytes, mimeType, fileName } = await downloadFromDrive(token, doc.drive_file_id, doc);
+      const safeName = String(fileName || doc.file_name || "document").replace(/[\r\n"]/g, "").trim() || "document";
+      const type = mimeType || doc.mime_type || "application/octet-stream";
 
       return new Response(bytes, {
         headers: {
           ...corsHeaders,
-          "Content-Type": mimeType || doc.mime_type,
-          "Content-Disposition": `attachment; filename="${fileName || doc.file_name}"`,
+          "Content-Type": type,
+          "Content-Disposition": `attachment; filename="${safeName}"`,
+          "Content-Length": String(bytes.byteLength),
+          "Access-Control-Expose-Headers": "Content-Disposition, Content-Type, Content-Length",
         },
       });
     }

@@ -21,8 +21,9 @@ import path from "node:path";
 /** Never versioned or precached: generated per environment at deploy. */
 const UNSTAMPED = new Set(["js/env.js", "js/env.example.js"]);
 
-/** Source-only files that pages never load directly. */
-const NOT_PRECACHED = new Set([...UNSTAMPED, "js/supabaseLoginClient.js"]);
+/** Source-only files that pages never load directly.
+ *  js/pdf is fetched on demand (about 1.7MB) and must stay out of the precache. */
+const NOT_PRECACHED = new Set([...UNSTAMPED, "js/supabaseLoginClient.js", "js/pdfPreviewClient.js"]);
 
 const PRECACHE_IMAGES = [
   "assets/favicon-32.png",
@@ -197,7 +198,7 @@ async function main() {
     ...htmlFiles,
     "manifest.json",
     ...assetFiles
-      .filter((rel) => !NOT_PRECACHED.has(rel))
+      .filter((rel) => !NOT_PRECACHED.has(rel) && !rel.startsWith("js/pdf/"))
       .map((rel) => `${rel}?v=${stamper.hashes.get(rel)}`),
     ...(await listFiles(root, "fonts", ".woff2")),
     ...PRECACHE_IMAGES,

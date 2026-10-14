@@ -2844,6 +2844,188 @@ dialog.app-modal::backdrop {
       max(var(--space-4), var(--safe-bottom));
   }
 }
+
+/* Shared Drive document list: search row and row actions (letter history + vault). */
+.drive-list-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.drive-list-search {
+  flex: 1 1 16rem;
+  min-width: min(100%, 12rem);
+  margin: 0;
+}
+
+.drive-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+@media (max-width: 768px) {
+  .drive-row-actions {
+    justify-content: flex-start;
+  }
+}
+
+/* In-page Drive file preview. The list stays mounted behind the dialog. */
+.drive-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding:
+    max(var(--space-4, 1rem), var(--safe-top))
+    max(var(--space-4, 1rem), var(--safe-right))
+    max(var(--space-4, 1rem), var(--safe-bottom))
+    max(var(--space-4, 1rem), var(--safe-left));
+}
+
+.drive-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--shadow-rgb), 0.55);
+}
+
+.drive-preview-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 52rem);
+  max-height: min(
+    calc(var(--viewport-height) * 0.9),
+    calc(var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 2 * var(--space-4, 1rem))
+  );
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-5, 1.25rem);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.drive-preview-panel.card {
+  margin-bottom: 0;
+}
+
+.drive-preview-head.card-head {
+  margin-bottom: var(--space-3, 0.75rem);
+}
+
+.drive-preview-head h2 {
+  margin: 0;
+}
+
+.drive-preview-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.drive-preview-close {
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-elevated, #f1f5f9);
+  color: var(--text-muted, #64748b);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.drive-preview-close:hover {
+  background: var(--border, #e2e8f0);
+  color: var(--bpcl-blue, #0070c0);
+}
+
+.drive-preview-body {
+  min-height: 12rem;
+}
+
+.drive-preview-loading {
+  margin: 0;
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+}
+
+.drive-preview-frame {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-md, 10px);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.drive-preview-frame img {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  background: #111;
+}
+
+.drive-preview-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md, 10px);
+  background: #e8eef5;
+}
+
+.drive-preview-pages .pdf-preview-slot {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+.drive-preview-pages .pdf-preview-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+
+.drive-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: var(--space-4, 1rem);
+  padding-top: var(--space-3, 0.75rem);
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+@media (max-width: 640px) {
+  .drive-preview-modal {
+    align-items: flex-end;
+    justify-content: stretch;
+    padding: 0;
+    padding-top: var(--safe-top);
+  }
+
+  .drive-preview-backdrop {
+    position: fixed;
+  }
+
+  .drive-preview-panel {
+    width: 100%;
+    max-width: none;
+    max-height: min(
+      calc(var(--viewport-height) * 0.92),
+      calc(var(--viewport-height) - var(--safe-top) - 0.5rem)
+    );
+    border-radius: 1rem 1rem 0 0;
+    padding-bottom: max(var(--space-5, 1.25rem), var(--safe-bottom));
+  }
+}
 /* App shell: config,
 update,
 install,
