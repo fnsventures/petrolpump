@@ -11,6 +11,8 @@ A positive result is a shortage (money not accounted for). A negative result is 
 
 Frontend: `js/day-closing.js` (page `day-closing.html`, sections `#close` and `#register`).
 
+A save that the page rejects, or a short that no longer matches the books: [When a day will not close](#when-a-day-will-not-close).
+
 ## Finding the live definition
 
 These functions have been redefined many times with `create or replace`. The migration that sorts last by filename is the one running in prod. **Match `create function`, not the name.** `grant`, `comment on function`, and callers all contain `function public.<name>`, so a looser grep returns a file that does not hold the body. For `set_day_closing_certified` that file is `20260920120000` (a comment only); the body is still `20260817120000`.
@@ -65,7 +67,52 @@ The main design rule: a same-day settlement (a credit sale paid back on the same
 - **`sync_saved_day_closing_for_date`** refreshes a saved snapshot from live books after a credit delete, and after a ledger or meter write on an uncertified day (`refresh_open_day_closing`), then recascades.
 - **`apply_credit_payment_to_day_closing`** is called by `record_credit_payment` and refreshes the saved row. For a same-day settlement it also adds the amount to `night_cash` (Cash) or `phone_pay` (UPI); Bank adds nothing.
 - **`delete_day_closing`** is admin-only. It deletes only the latest closing, and only if it is not certified or collected.
-- **`set_day_closing_certified`** is admin-only. It certifies (records name and time) or revokes. While a row is certified, `day_closing_block_collected_mutation` and `raise_if_day_closing_certified` block figure changes, including by admin. `ledger_guard_certified_day` rejects expenses, credit sales, and payments on that date (settling an older sale may still update `amount_settled`). `dsr_validate_meter_row` rejects meter edits, including by admin. Linking a night-cash collection is still allowed.
+- **`set_day_closing_certified`** is admin-only. It certifies (records name and time) or revokes. While a row is certified, `day_closing_block_collected_mutation` and `raise_if_day_closing_certified` block figure changes, including by admin. `ledger_guard_certified_day` rejects expenses, credit sales, and payments on that date (settling an older sale may still update `amount_settled`). `expenses_guard_shift_write` also blocks a supervisor from adding, changing, or deleting a shift-attributed expense once day closing is saved, before certification. A book expense with no shift still refreshes an uncertified saved closing. `dsr_validate_meter_row` rejects meter edits, including by admin. Linking a night-cash collection is still allowed.
+
+## When a day will not close
+
+Read the message on the page. It is the exception from the database. `save_day_closing` is the write. Client update is denied, and a SQL update skips the short chain.
+
+| The page says | What is true | What to do |
+|---|---|---|
+| Certified and locked | `day_closing.certified` is true. Meters, expenses, credit sales, payments, and the closing are frozen, including for admin. | An admin revokes (`set_day_closing_certified(date, false)`), the books are corrected, the day is saved again, then certified again. |
+| Night cash was collected. Only an admin can modify it | `night_cash_collection_id` is set. A supervisor cannot overwrite. | An admin can still **Save changes** while the day is not certified. The typed night cash and phone pay are what get stored. |
+| Only the most recent day closing can be deleted | A later row exists. | Delete is the wrong tool. Overwrite the day, or delete later uncertified days first. |
+| Night cash was collected. Remove the collection in the database first | Delete of a collected row. The collection link cannot be cleared, and the collection row cannot be deleted while a closing points at it (`on delete restrict`). | Leave the collection. Correct the figures with an admin save. |
+| `night_cash` or `phone_pay` must be ≥ 0 | The typed amount was blank or negative. | Enter 0 or more. |
+| Save day closing before certifying | There is no row yet, or the form has unsaved edits. | Save, then certify. |
+
+A collected day that is also certified has to be revoked before that admin save. Delete stays refused.
+
+### The figure on screen does not match the books
+
+`get_day_closing_breakdown` returns `snapshot: true` when the row cannot be overwritten (certified, or collected and the caller is not an admin). Those left-hand numbers are the stored snapshot. Night cash and phone pay on a saved row are the typed amounts, not the suggestion.
+
+Compare the live calculation with the stored row. The SQL editor has no login, so `require_staff_access()` allows it. A signed-in supervisor can call the same function.
+
+```sql
+select public.compute_day_closing_components('2026-10-12'::date);
+
+select date, total_sale, collection, short_previous, night_cash, phone_pay,
+       credit_today, expenses_today, short_today, certified, night_cash_collection_id
+from public.day_closing
+where date = '2026-10-12';
+```
+
+Check the component that differs against [what the function computes](#compute_day_closing_componentsp_date-what-it-computes):
+
+- **Total sale** is 0 or low. There is no `dsr_petrol` or `dsr_diesel` row for that date, or the selling rate is null. Testing litres are included.
+- **Credit today** is high, or **collection** includes a payment that was paid back the same day. `credit_payments.same_day_settlement` is false, so the payment stays in both. The flag, not the payment mode, decides. With the flag set, the cash or UPI is expected inside the typed Night cash or Phone pay.
+- **Short previous** is 0. There is no `day_closing` row for the day before, or that row's `short_today` is null.
+- **Expenses** look high. Every `expenses` row for the date counts, including salary.
+
+An uncertified saved row is refreshed when that day's meters, credit, or expenses change (`refresh_open_day_closing`). A certified row is not. A collected row is refreshed only when the writer is an admin.
+
+To store the live figures, save the day again. That recomputes the snapshot from the books and keeps the night cash and phone pay you type. The first save of a date does not walk forward. A second save does: `recascade_day_closing_short_from` rewrites later uncertified days and skips certified ones. It does not replace those days' typed night cash or phone pay.
+
+### A later day's short is stale
+
+`short_previous` is the previous row's stored `short_today`. A missing day in the chain contributes 0 until that day is saved **twice** (the second save is what walks forward). A certified day in the middle keeps its frozen short, and every open day after it inherits that frozen number. Revoke the certified day, save it again, then certify it. That save walks the open days after it.
 
 ## History of `compute_day_closing_components`
 

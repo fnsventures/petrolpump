@@ -99,12 +99,6 @@
   margin-bottom: var(--space-3);
 }
 
-.analysis-panel-head--sub {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
-}
-
 .analysis-section-title {
   margin: 0 0 var(--space-1);
   font-size: var(--heading-lg);
@@ -236,23 +230,23 @@
   color: var(--bpcl-blue-dark);
   background: var(--bpcl-blue-soft);
   border: 1px solid rgba(0, 112, 192, 0.15);
-  box-shadow: 0 0 12px rgba(0, 112, 192, 0.12);
+  box-shadow: 0 0 12px var(--fuel-petrol-bg-strong);
 }
 
 .analysis-metrics-block__badge--core {
   color: var(--bpcl-blue-dark);
-  background: rgba(0, 112, 192, 0.12);
+  background: var(--fuel-petrol-bg-strong);
 }
 
 .analysis-metrics-block__badge--profit {
-  color: #047857;
+  color: var(--color-success);
   background: rgba(0, 122, 51, 0.1);
   border-color: rgba(0, 122, 51, 0.2);
   box-shadow: 0 0 12px rgba(0, 122, 51, 0.1);
 }
 
 .analysis-metrics-block__badge--volume {
-  color: #b45309;
+  color: var(--color-warning);
   background: rgba(255, 204, 0, 0.2);
   border-color: rgba(230, 184, 0, 0.35);
   box-shadow: 0 0 12px rgba(255, 204, 0, 0.15);
@@ -396,7 +390,7 @@
   height: 100%;
   min-width: 0;
   padding-left: calc(var(--space-4) + 5px);
-  background: linear-gradient(145deg, rgba(240, 249, 255, 0.9) 0%, #ffffff 55%, #f8fafc 100%);
+  background: linear-gradient(145deg, rgba(240, 249, 255, 0.9) 0%, var(--surface) 55%, var(--surface-muted) 100%);
   border: 1px solid rgba(186, 230, 253, 0.8);
   box-shadow:
     var(--shadow-xs),
@@ -407,7 +401,7 @@
 .analysis-kpi--featured:hover {
   box-shadow:
     var(--shadow-md),
-    0 8px 28px rgba(0, 112, 192, 0.1);
+    0 8px 28px var(--color-primary-soft);
   border-color: rgba(0, 112, 192, 0.35);
 }
 
@@ -489,7 +483,7 @@
 }
 
 .analysis-kpi--accent {
-  border-color: rgba(0, 112, 192, 0.22);
+  border-color: var(--fuel-petrol-border);
   background: linear-gradient(165deg, rgba(240, 249, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%);
 }
 
@@ -580,7 +574,7 @@
 
 .analysis-kpi[data-metric="growth"] .analysis-kpi-icon {
   background: rgba(255, 204, 0, 0.2);
-  color: #b45309;
+  color: var(--color-warning);
 }
 
 .analysis-kpi-body h3,
@@ -722,7 +716,7 @@ body.analysis-page .chart-wrap--donut {
 }
 
 .analysis-insights-panel.card {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: linear-gradient(135deg, var(--surface-muted) 0%, var(--surface-sunken) 100%);
   border: 1px solid var(--border);
   padding: var(--space-5);
   box-shadow: var(--shadow-sm);
@@ -778,9 +772,4 @@ body.analysis-page .chart-wrap--donut {
   position: relative;
   height: 280px;
   width: 100%;
-}
-
-.chart-wrap--half {
-  max-width: 360px;
-  height: 260px;
 }

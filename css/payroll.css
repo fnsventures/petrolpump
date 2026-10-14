@@ -68,7 +68,7 @@
   border-radius: var(--radius-sm);
   padding: 0.9rem 1rem 0.75rem;
   background: var(--surface);
-  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  box-shadow: 0 1px 0 rgba(var(--shadow-rgb), 0.03);
 }
 
 .payroll-rule-card .checkbox-label {

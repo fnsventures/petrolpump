@@ -127,6 +127,54 @@
     return { data: data ?? [], error };
   }
 
+  function asTotalRows(data) {
+    return (Array.isArray(data) ? data : []).map((row) => ({
+      date: row?.date || null,
+      category: row?.category || "misc",
+      amount: Number(row?.amount ?? 0),
+    }));
+  }
+
+  function indexTotalsByDate(rows) {
+    const byDate = new Map();
+    let total = 0;
+    for (const row of rows || []) {
+      const amount = Number(row.amount ?? 0);
+      if (!Number.isFinite(amount)) continue;
+      total += amount;
+      if (!row.date) continue;
+      byDate.set(row.date, (byDate.get(row.date) ?? 0) + amount);
+    }
+    return { total, byDate };
+  }
+
+  async function fetchJsonTotals(fn, args) {
+    const { data, error } = await window.supabaseClient.rpc(fn, args);
+    if (error) return { data: [], total: 0, byDate: new Map(), error };
+    const rows = asTotalRows(data);
+    return { data: rows, ...indexTotalsByDate(rows), error: null };
+  }
+
+  /** One row per category. Profit & loss expense lines. */
+  function fetchExpenseCategoryTotals(startDate, endDate) {
+    return fetchJsonTotals("expense_totals_by_category", { p_start: startDate, p_end: endDate });
+  }
+
+  /** One row per day and category. Analysis chart. */
+  function fetchExpenseDailyTotals(startDate, endDate) {
+    return fetchJsonTotals("expense_totals_by_day", { p_start: startDate, p_end: endDate });
+  }
+
+  /** Billing invoice totals by date. Lube / billing sales. */
+  function fetchBillingTotalsByDate(startDate, endDate) {
+    return fetchJsonTotals("billing_totals_by_date", { p_start: startDate, p_end: endDate });
+  }
+
+  /** Purchase-document totals by date. Lube cost. */
+  function fetchPurchaseTotalsByDate(startDate, endDate) {
+    return fetchJsonTotals("purchase_totals_by_date", { p_start: startDate, p_end: endDate });
+  }
+
   let missingBuyingPriceInflight = null;
   let missingBuyingPriceSeq = 0;
   const MISSING_BUYING_CACHE_KEY = "missing_buying_price";
@@ -153,10 +201,7 @@
     }
 
     const seq = ++missingBuyingPriceSeq;
-    const endStr =
-      typeof getLocalDateString === "function"
-        ? getLocalDateString()
-        : new Date().toISOString().slice(0, 10);
+    const endStr = getLocalDateString();
     const startStr = PumpSettings.getReceiptHistoryStart();
 
     const req = (async () => {
@@ -265,6 +310,10 @@
     fetchDsrRows,
     fetchMissingBuyingPriceRows,
     fetchExpenses,
+    fetchExpenseCategoryTotals,
+    fetchExpenseDailyTotals,
+    fetchBillingTotalsByDate,
+    fetchPurchaseTotalsByDate,
     fetchLubeSales,
     fetchLastDsrRate,
     mergeDsrStock,

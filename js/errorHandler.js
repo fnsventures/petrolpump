@@ -321,6 +321,67 @@
   }
 
   /**
+   * A modal dialog stays above other top-layer popovers. Park the element
+   * inside the topmost open dialog, then show it as a manual popover, so a
+   * toast or the progress overlay paints over that dialog. No-op where
+   * popovers are unsupported.
+   */
+  function topmostOpenDialog() {
+    const open = document.querySelectorAll("dialog[open]");
+    if (!open.length) return null;
+    const active = document.activeElement;
+    if (active && typeof active.closest === "function") {
+      const owner = active.closest("dialog[open]");
+      if (owner) return owner;
+    }
+    return open[open.length - 1];
+  }
+
+  function layerIsShowing(el) {
+    if (!el || el.hidden) return false;
+    if (el.id === "app-toast-container") return !!el.querySelector(".app-toast");
+    return el.id === "action-progress";
+  }
+
+  function raiseToTopLayer(el) {
+    if (!el || typeof el.showPopover !== "function") return;
+    const host = topmostOpenDialog() || document.body;
+    if (el.parentElement !== host) host.appendChild(el);
+    if (!el.hasAttribute("popover")) el.setAttribute("popover", "manual");
+    try {
+      if (el.matches(":popover-open")) el.hidePopover();
+      el.showPopover();
+    } catch (_) {
+      /* element not connected */
+    }
+  }
+
+  function retargetOpenLayers() {
+    ["app-toast-container", "action-progress"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!layerIsShowing(el)) return;
+      const host = topmostOpenDialog() || document.body;
+      if (el.parentElement !== host || !el.matches(":popover-open")) raiseToTopLayer(el);
+    });
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("close", (event) => {
+      if (event.target instanceof HTMLDialogElement) retargetOpenLayers();
+    }, true);
+    const layerObserver = new MutationObserver((records) => {
+      if (records.some((record) => record.target instanceof HTMLDialogElement && record.target.open)) {
+        retargetOpenLayers();
+      }
+    });
+    layerObserver.observe(document.documentElement, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["open"],
+    });
+  }
+
+  /**
    * Toast notification system for user-facing messages.
    * @param {string} message
    * @param {string} [type="info"] - "success" | "error" | "warning" | "info"
@@ -369,6 +430,7 @@
     toast.appendChild(closeBtn);
 
     container.appendChild(toast);
+    raiseToTopLayer(container);
 
     requestAnimationFrame(() => {
       toast.classList.add("app-toast--visible");
@@ -392,6 +454,7 @@
     isTransient: isTransientError,
     showGlobalBanner: showGlobalBanner,
     showToast: showToast,
+    raiseToTopLayer: raiseToTopLayer,
     normalize: normalizeError,
   };
 })();

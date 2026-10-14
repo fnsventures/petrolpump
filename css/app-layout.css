@@ -93,8 +93,6 @@
   padding: 0.85rem;
   margin-bottom: 0;
 }
-
-.app-sections-title,
 .settings-nav-title {
   font-size: 0.7rem;
   font-weight: 600;
@@ -234,10 +232,8 @@
   .settings-nav:has(.settings-nav-item:nth-child(6)) {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .app-sections-title,
-  .settings-nav-title,
-  .settings-nav-back {
+.settings-nav-title,
+.settings-nav-back {
     grid-column: 1 / -1;
   }
 

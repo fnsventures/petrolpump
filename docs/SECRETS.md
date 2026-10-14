@@ -88,6 +88,22 @@ Do **not** put the service-role key in the frontend. Anon key in `env.js` is exp
 
 ## Rotation recipes
 
+### JWT secret
+
+The anon key in `js/env.js` is a JWT signed by the project's legacy JWT secret. So is `SUPABASE_SERVICE_ROLE_KEY`, which Supabase injects into Edge Functions. This repo does not check that secret itself. Do one project at a time, staging first. Do not paste the JWT secret or the service-role key into `js/env.js` or GitHub.
+
+Supabase no longer mints a new legacy secret and a new anon key together. Use **Project Settings → JWT Keys**.
+
+**Bring the current secret into signing keys.** Click **Migrate JWT secret**. The current secret is imported and a standby key is created. The website, existing sessions, and the anon key keep working. Stop here if the secret was not leaked and you only wanted it on the new screen.
+
+**Sign new sessions with the standby key.** Click **Rotate keys**. People who are already signed in stay signed in. New tokens use the new key. Leave the old key under **Previously used**. Do not click **Revoke** in the same sitting.
+
+**Revoke is a different step, and this app is not ready for it.** Revoking the legacy secret makes every token it signed fail. That includes the anon key Deploy writes into `js/env.js` and the service-role key the functions use. The dashboard will not issue a replacement legacy anon key. The site and Drive uploads fail until a new key is deployed. Leave the legacy secret in **Previously used** unless the secret is actively leaked and a replacement key is already in GitHub.
+
+**After a rotate, check the functions.** They are deployed with the platform JWT check left on (`supabase functions deploy` does not turn it off). Open the dashboard, a report, and one invoice upload while signed in. A 401 means that check is still expecting the old signature. In **Edge Functions**, turn **Verify JWT** off for `get-dashboard-data`, `get-reports-data`, `get-pl-data`, `invoice-documents`, and `drive-files`. Each function still requires the caller's session in its own code.
+
+**If you do revoke** (an active leak only): everyone must sign in again. Copy the API key the project still accepts into GitHub `SUPABASE_ANON_KEY` for that environment, redeploy the website ([anon key or URL changed](#supabase-anon-key-or-url-changed)), and run **Deploy Supabase Functions** so the functions pick up the injected service-role key. `PROD_DB_URL` does not change. The database password is a separate secret.
+
 ### Supabase anon key or URL changed
 
 1. Update GitHub env secrets for **prod** and/or **staging**.

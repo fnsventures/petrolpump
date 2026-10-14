@@ -47,7 +47,7 @@
   margin-bottom: 0.35rem;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .att-date-field input[type="date"] {
@@ -66,12 +66,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius, 6px);
   background: var(--surface, #fff);
-  overflow: hidden;
 }
 
 .att-month-control:focus-within {
-  outline: 2px solid var(--bpcl-blue, #0070c0);
-  outline-offset: 1px;
+  border-color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .att-month-control select {
@@ -97,6 +97,7 @@
   min-width: 0;
   padding-left: 0.7rem;
   padding-right: 0.35rem;
+  border-radius: var(--radius, 6px) 0 0 var(--radius, 6px);
 }
 
 .att-month-control #history-month-year {
@@ -105,6 +106,7 @@
   padding-left: 0.25rem;
   padding-right: 0.55rem;
   border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius, 6px) var(--radius, 6px) 0;
 }
 
 .att-mark-actions,
@@ -135,19 +137,19 @@
 /* Attendance matrix */
 /* Attendance: daily mark table row tint (absent / half-day / leave stand out) */
 .attendance-mark-table tbody tr.att-row-absent {
-  background: #fef2f2;
+  background: var(--danger-soft);
 }
 .attendance-mark-table tbody tr.att-row-absent:hover {
   background: #fee2e2;
 }
 .attendance-mark-table tbody tr.att-row-half {
-  background: #fffbeb;
+  background: var(--warning-soft);
 }
 .attendance-mark-table tbody tr.att-row-half:hover {
   background: #fef3c7;
 }
 .attendance-mark-table tbody tr.att-row-leave {
-  background: #f0f9ff;
+  background: var(--info-soft);
 }
 .attendance-mark-table tbody tr.att-row-leave:hover {
   background: #e0f2fe;
@@ -266,7 +268,7 @@ table.attendance-matrix {
   font-weight: 600;
   font-size: 0.52rem;
   line-height: 1;
-  color: rgba(15, 23, 42, 0.48);
+  color: rgba(var(--shadow-rgb), 0.48);
   letter-spacing: 0.02em;
 }
 
@@ -276,23 +278,23 @@ table.attendance-matrix {
 }
 
 .attendance-matrix td.att-cell-absent {
-  background: #fecaca;
+  background: var(--danger-border);
   color: #991b1b;
 }
 
 .attendance-matrix td.att-cell-half {
-  background: #fde68a;
+  background: var(--warning-border);
   color: #92400e;
 }
 
 .attendance-matrix td.att-cell-leave {
-  background: #bae6fd;
+  background: var(--info-border);
   color: var(--bpcl-blue-dark);
 }
 
 .attendance-matrix td.att-cell-empty {
   background: var(--surface-elevated, #f8fafc);
-  color: #cbd5e1;
+  color: var(--border-strong);
   font-weight: 600;
 }
 

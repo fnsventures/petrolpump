@@ -57,9 +57,9 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #475569;
+  color: var(--text-secondary);
   text-align: left;
-  background: #f1f5f9;
+  background: var(--surface-sunken);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -180,7 +180,7 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
-  color: #1e293b;
+  color: var(--text-body);
 }
 
 .billing-items-table .col-action {
@@ -199,8 +199,8 @@
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
   font-size: 1.05rem;
   font-weight: 500;
   line-height: 1;
@@ -210,14 +210,14 @@
 
 .billing-items-table .remove-item-btn:hover {
   background: #fee2e2;
-  color: #b91c1c;
+  color: var(--color-danger-hover);
   box-shadow: none;
 }
 
 .billing-items-table tfoot td {
   padding: 0.65rem 0.5rem;
   font-size: var(--text-sm);
-  background: #f1f5f9;
+  background: var(--surface-sunken);
   border-top: 1px solid var(--border);
   vertical-align: middle;
 }

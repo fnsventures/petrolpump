@@ -101,14 +101,6 @@ function normalizeEmployeeDetailFields(raw) {
   };
 }
 
-function invalidateEmployeeListCache() {
-  if (typeof StaffEmployees !== "undefined" && StaffEmployees) {
-    StaffEmployees.invalidateActiveEmployeesCache();
-  } else if (typeof AppCache !== "undefined" && AppCache) {
-    AppCache.invalidateByType("staff_list");
-  }
-}
-
 function staffPhotoImgHtml(url, className) {
   const safeUrl = escapeHtml(url);
   const isDrive = /googleusercontent\.com|drive\.google\.com/.test(url);
@@ -1193,11 +1185,6 @@ function initStaffPage(auth) {
   idCardModal?.addEventListener("click", (e) => {
     if (e.target === idCardModal) closeIdCardModal();
   });
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (aadhaarModalOpen) closeAadhaarModal();
-    else if (idCardModalOpen) closeIdCardModal();
-  });
 
   printBtn?.addEventListener("click", () => {
     const emp = staffList.find((s) => s.id === selectedId);
@@ -1316,7 +1303,7 @@ function initStaffPage(auth) {
         await uploadEmployeeAadhaar(employeeId, pendingAadhaarFile);
       }
 
-      invalidateEmployeeListCache();
+      StaffEmployees.invalidateActiveEmployeesCache();
       await refreshAndSelect(employeeId);
     }
   });

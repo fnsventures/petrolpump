@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId, syncLoadMorePager */
 
 let productsCache = [];
 let currentAuth = null;
@@ -263,11 +263,11 @@ function addItemRow(productId) {
                placeholder="Item name" required />
       </div>
     </td>
-    <td class="col-qty"><input type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
+    <td class="col-qty"><input inputmode="decimal" type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
     <td class="col-unit">
       <select data-field="unit" class="billing-line-control">${buildUnitOptions(product?.unit)}</select>
     </td>
-    <td class="col-rate"><input type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
+    <td class="col-rate"><input inputmode="decimal" type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
     <td class="col-gst">
       <select data-field="gst_percent" class="billing-line-control">
         ${buildGstSelectOptions(product?.gst_percent)}
@@ -709,6 +709,7 @@ function initFilterHandlers() {
     runOnInit: false,
     onApply: () => loadInvoices(true),
   });
+  document.getElementById("invoices-load-more")?.addEventListener("click", () => loadInvoices(false));
 }
 
 async function loadInvoices(reset = false) {
@@ -869,24 +870,14 @@ async function deleteInvoice(btn) {
 }
 
 function updateInvoicesPaginationUI() {
-  const loadMoreBtn = document.getElementById("invoices-load-more");
-  const paginationInfo = document.getElementById("invoices-pagination-info");
-
-  if (paginationInfo) {
-    if (invoicesPagination.totalCount > 0) {
-      const showing = Math.min(invoicesPagination.offset, invoicesPagination.totalCount);
-      paginationInfo.textContent = `Showing ${showing} of ${invoicesPagination.totalCount} invoices`;
-    } else {
-      paginationInfo.textContent = "";
-    }
-  }
-
-  if (loadMoreBtn) {
-    loadMoreBtn.disabled = false;
-    loadMoreBtn.textContent = "Load more";
-    loadMoreBtn.classList.toggle("hidden", !invoicesPagination.hasMore || invoicesPagination.offset === 0);
-    loadMoreBtn.onclick = () => loadInvoices(false);
-  }
+  syncLoadMorePager({
+    info: document.getElementById("invoices-pagination-info"),
+    button: document.getElementById("invoices-load-more"),
+    shown: Math.min(invoicesPagination.offset, invoicesPagination.totalCount || invoicesPagination.offset),
+    total: invoicesPagination.totalCount,
+    hasMore: invoicesPagination.hasMore,
+    noun: "invoices",
+  });
 }
 
 bindLiveRefresh(

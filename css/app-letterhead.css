@@ -86,7 +86,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   width: 100%;
   min-height: 70vh;
   border: 0;
-  background: #fff;
+  background: var(--surface);
 }
 
 .letterhead-compose-layout {
@@ -163,7 +163,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   gap: 0.55rem;
   font-size: var(--text-sm, 0.875rem);
   line-height: 1.45;
-  color: #1e293b;
+  color: var(--text-body);
   cursor: pointer;
 }
 
@@ -176,7 +176,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   padding: var(--space-3);
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: #f8fafc;
+  background: var(--surface-muted);
   min-width: 0;
 }
 
@@ -222,7 +222,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   margin: 0 0 0.15rem;
   font-size: var(--text-base, 1rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text);
 }
 
 .letterhead-preview-desc {
@@ -249,11 +249,11 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   min-height: 240mm;
   margin: 0 auto;
   padding: 10px 12px 8px;
-  background: #fff;
+  background: var(--surface);
   color: #1a2332;
   border: 1px solid #b8d4e8;
   border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 10px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.06), 0 10px 28px rgba(var(--shadow-rgb), 0.08);
   font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 11pt;
   line-height: 1.45;
@@ -267,7 +267,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   gap: 14px;
   align-items: flex-start;
   padding-bottom: 10px;
-  border-bottom: 3px solid #0070c0;
+  border-bottom: 3px solid var(--color-primary);
   margin-bottom: 14pt;
 }
 
@@ -292,11 +292,11 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   font-size: 18pt;
   font-weight: 700;
   line-height: 1.15;
-  color: #005a9c;
+  color: var(--color-primary-hover);
 }
 
 .letterhead-preview-sheet .invoice-brand span {
-  color: #0070c0;
+  color: var(--color-primary);
   font-weight: 800;
 }
 
@@ -304,7 +304,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   margin: 0 0 4px;
   font-size: 8.5pt;
   font-weight: 600;
-  color: #0070c0;
+  color: var(--color-primary);
 }
 
 .letterhead-preview-sheet .invoice-address {
@@ -376,7 +376,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #005a9c;
+  color: var(--color-primary-hover);
 }
 
 .letterhead-preview-sheet .letterhead-sign-role {
@@ -411,7 +411,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border, #e2e8f0);
   border-radius: var(--radius-md, 10px);
-  background: #fff;
+  background: var(--surface);
   min-width: 0;
 }
 
@@ -419,7 +419,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
   margin: 0 0 0.4rem;
   font-size: var(--text-base, 1rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text);
 }
 
 .letterhead-guide-item p {
@@ -429,7 +429,7 @@ body.letterhead-page main.settings-layout.page-layout-wide {
 
 .letterhead-guide-item strong {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-body);
 }
 
 /* Tablet */

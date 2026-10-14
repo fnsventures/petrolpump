@@ -365,7 +365,7 @@ Salary (salary.html)
    → Select salary_month (pay period — first of month) separate from payment date
    → Record installment → record_salary_payment() writes salary_payments (date = when paid,
      salary_month = period) and the linked expenses row (category Salary, salary_payment_id FK)
-     in one transaction; rejects overpay unless confirmed
+     in one transaction; rejects overpay unless an admin confirms
    → A certified payment date is rejected, and a collected date is rejected for a supervisor.
      If that month still has salary due, the form records the cash on today instead of the locked day
    → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
@@ -424,6 +424,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Letter Desk | letterhead_letters, drive-files |
 | Expenses | expenses, expense_categories |
 | Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, set_day_closing_certified, collect_night_cash, delete_day_closing |
+| E-20 testing (`e20-register.html`) | e20_testing_registers, e20_water_checks, e20_quality_checks, save_e20_testing_register |
 | Staff | employees, drive-files (photo + Aadhaar), set_employee_photo |
 | Attendance | employee_attendance, list_employees_roster, save_employee_attendance_batch |
 | Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees |

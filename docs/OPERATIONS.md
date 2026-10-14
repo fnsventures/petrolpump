@@ -161,16 +161,7 @@ Then, when the pump is quiet (nobody entering DSR or day closing):
 
 A backup is a read-only copy of production. It does not change data or deploy the website. What is inside the files, how to set Drive up, and how to restore: [RECOVERY.md](RECOVERY.md).
 
-| I want… | Do this |
-|---------|---------|
-| Last month on Drive | Actions → **Backup production database** → Run workflow, mode **month**. The scheduled run does this every 1st |
-| A chosen month from this laptop | `ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh` |
-| A complete copy on this laptop | `./scripts/db.sh backup` → `scripts/.prod-backups/` |
-| A complete copy on Drive | `./scripts/backup-prod-to-drive.sh` → Drive `Manual/<timestamp>/` |
-| Close a finished year | `YEAR=2026 ./scripts/backup-year-to-drive.sh`, or Actions mode **year-end**. Full copy in `Yearly/2026/`, then that year’s month folders go to trash |
-| See which audit rows a purge would delete | `./scripts/purge-audit-log.sh` |
-| Delete audit rows older than 6 months | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
-| Stop audit on staging and empty it | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
+The commands are in [Which command](#which-command).
 
 The scheduled run uploads the finished month, then deletes production audit rows older than 6 months. On 1 January it also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
@@ -183,15 +174,25 @@ Free-tier size, indexes, and archiving old years: [STORAGE_RETENTION.md](STORAGE
 | I want to… | Do this |
 |------------|---------|
 | Test with live data on staging | `./scripts/db.sh sync` |
+| Apply SQL on staging and keep its rows | [Staging schema](#apply-migrations-to-staging-only) |
 | Publish the test website | Push or merge to `staging` |
 | See pending production migrations | `./scripts/db.sh migrate` |
 | Upgrade the live schema | `./scripts/db.sh migrate --apply` |
 | Publish the live website | Merge `staging` → `main` |
-| Save the database to this laptop | `./scripts/db.sh backup` |
-| Save the finished month to Drive | Actions → **Backup production database**, mode month |
+| Put the live website back | [Recovery → Frontend rollback](RECOVERY.md#frontend-rollback) |
+| Save the finished month to Drive | Actions → **Backup production database**, mode **month**, or `./scripts/backup-month-to-drive.sh` |
+| Save a chosen month to Drive | `ARCHIVE_MONTH=2026-10 ./scripts/backup-month-to-drive.sh` |
+| Save the whole database on this laptop | `./scripts/db.sh backup` |
 | Save the whole database to Drive | `./scripts/backup-prod-to-drive.sh` |
-| Close a calendar year on Drive | `YEAR=2026 ./scripts/backup-year-to-drive.sh` |
+| Close a finished year on Drive | `YEAR=2026 ./scripts/backup-year-to-drive.sh`, or Actions mode **year-end** |
+| See which month folders would be trashed | `./scripts/prune-drive-backups.sh` |
+| Trash month folders whose year already has `Yearly/` | `CONFIRM_PRUNE_DRIVE=yes ./scripts/prune-drive-backups.sh` |
+| See how many audit rows are older than 6 months | `./scripts/purge-audit-log.sh` |
+| Delete those audit rows on production | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
+| Turn staging audit off and empty it | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
 | Check sibling DNS | `./scripts/check-dns-siblings.sh` |
 | Restore a missing CNAME | `./scripts/check-dns-siblings.sh --fix` |
 
-Failures: [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Restore and schema rollback: [RECOVERY.md](RECOVERY.md).
+`backup-year-to-drive.sh` refuses the current calendar year. In October 2026 it will not close 2026, because November and December do not exist yet and the month folders are not redundant.
+
+Failures: [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Restore, a bad frontend release, and schema rollback: [RECOVERY.md](RECOVERY.md).

@@ -195,14 +195,7 @@ Deno.serve(async (req: Request) => {
       await Promise.all([
         fetchDsrBundle(supabase, startDate, endDate, receiptStart),
         supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-        fetchAll(() =>
-          supabase
-            .from("expenses")
-            .select("date, category, amount, description")
-            .gte("date", startDate)
-            .lte("date", endDate)
-            .order("date", { ascending: true })
-        ),
+        supabase.rpc("expense_totals_by_category", { p_start: startDate, p_end: endDate }),
         fetchAll(() =>
           supabase
             .from("invoices")
@@ -264,7 +257,7 @@ Deno.serve(async (req: Request) => {
       dsrRows: dsrBundle.dsrRows ?? [],
       receiptRows: dsrBundle.receiptRows ?? [],
       stockRows: stockResult.data,
-      expenseRows: expenseResult.data,
+      expenseRows: Array.isArray(expenseResult.data) ? expenseResult.data : [],
       invoices: invoiceResult.data,
       invoiceItems,
       vaultPurchases: vaultResult.error ? [] : vaultResult.data,

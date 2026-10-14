@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -99,6 +99,19 @@ document.addEventListener("DOMContentLoaded", async () => {
           errorEl.classList.remove("hidden");
         }
         document.getElementById("expense-category")?.focus();
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Save expense";
+        }
+        return;
+      }
+
+      if (!(payload.amount > 0)) {
+        if (errorEl) {
+          errorEl.textContent = "Amount must be greater than 0.";
+          errorEl.classList.remove("hidden");
+        }
+        document.getElementById("expense-amount")?.focus();
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save expense";
@@ -212,28 +225,11 @@ function initExpenseFilter() {
  * Initialize pagination controls for expenses table
  */
 function initExpensesPaginationControls() {
-  const tableSection = document.getElementById("expense-table-body")?.closest("section.card");
-  if (!tableSection) return;
-
-  // Check if pagination controls already exist
-  if (tableSection.querySelector(".pagination-controls")) return;
-
-  // Create pagination controls container
-  const paginationDiv = document.createElement("div");
-  paginationDiv.className = "pagination-controls";
-  paginationDiv.innerHTML = `
-    <div class="pagination-info">
-      <span id="expenses-pagination-info" class="muted"></span>
-    </div>
-    <button id="expenses-load-more" class="button-secondary hidden">Load more</button>
-  `;
-  tableSection.appendChild(paginationDiv);
-
-  // Attach load more handler
-  const loadMoreBtn = document.getElementById("expenses-load-more");
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener("click", () => loadExpenses(false));
-  }
+  mountLoadMorePager(document.getElementById("expense-table-body")?.closest("section.card"), {
+    infoId: "expenses-pagination-info",
+    buttonId: "expenses-load-more",
+    onMore: () => loadExpenses(false),
+  });
 }
 
 /**
@@ -361,20 +357,18 @@ async function loadExpenses(reset = false) {
     }
 
     if (reset && totalRow && totalValue) {
-      const { data: sumData } = await fetchAllRows(() =>
-        applyNonSalaryExpenseFilter(
-          supabaseClient
-            .from("expenses")
-            .select("id, amount")
-            .gte("date", start)
-            .lte("date", end)
-            .order("date", { ascending: true })
-            .order("id", { ascending: true })
-        )
-      );
-      const total = (sumData || []).reduce((s, r) => s + Number(r.amount ?? 0), 0);
-      totalValue.textContent = formatCurrency(total);
-      totalRow.classList.remove("hidden");
+      const { data: total, error: sumError } = await window.supabaseClient.rpc("sum_expenses", {
+        p_start: start,
+        p_end: end,
+        p_exclude_salary: true,
+      });
+      if (sumError) {
+        AppError.report(sumError, { context: "loadExpenses total" });
+        totalRow.classList.add("hidden");
+      } else {
+        totalValue.textContent = formatCurrency(Number(total ?? 0));
+        totalRow.classList.remove("hidden");
+      }
     }
 
   } catch (err) {
@@ -419,30 +413,14 @@ async function deleteExpense(btn) {
  * Update pagination UI elements for expenses
  */
 function updateExpensesPaginationUI() {
-  const loadMoreBtn = document.getElementById("expenses-load-more");
-  const paginationInfo = document.getElementById("expenses-pagination-info");
-  
-  // Update info text
-  if (paginationInfo) {
-    if (expensesPagination.totalCount > 0) {
-      const showing = Math.min(expensesPagination.offset, expensesPagination.totalCount);
-      paginationInfo.textContent = `Showing ${showing} of ${expensesPagination.totalCount} entries`;
-    } else {
-      paginationInfo.textContent = "";
-    }
-  }
-
-  // Update load more button
-  if (loadMoreBtn) {
-    loadMoreBtn.disabled = false;
-    loadMoreBtn.textContent = "Load more";
-    
-    if (expensesPagination.hasMore && expensesPagination.offset > 0) {
-      loadMoreBtn.classList.remove("hidden");
-    } else {
-      loadMoreBtn.classList.add("hidden");
-    }
-  }
+  syncLoadMorePager({
+    info: document.getElementById("expenses-pagination-info"),
+    button: document.getElementById("expenses-load-more"),
+    shown: Math.min(expensesPagination.offset, expensesPagination.totalCount || expensesPagination.offset),
+    total: expensesPagination.totalCount,
+    hasMore: expensesPagination.hasMore,
+    noun: "entries",
+  });
 }
 
 bindLiveRefresh(

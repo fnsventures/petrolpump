@@ -476,7 +476,7 @@ async function fetchReportDataDirect(start, end) {
   ] = await Promise.all([
     DsrQueries.fetchDsrRows(start, end, { select: DsrQueries.DSR_SELECT_FULL }),
     window.supabaseClient.rpc("get_dsr_stock_range", { p_start: start, p_end: end }),
-    DsrQueries.fetchExpenses(start, end, "date, category, amount, description"),
+    DsrQueries.fetchExpenseCategoryTotals(start, end),
     fetchAllRows(() =>
       supabaseClient
         .from("invoices")

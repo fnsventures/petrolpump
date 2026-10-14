@@ -112,7 +112,6 @@
     if (!y || !m || !d) return base;
     const dt = new Date(y, m - 1, d);
     dt.setDate(dt.getDate() + (Number(days) || 0));
-    if (typeof global.toLocalDateString === "function") return global.toLocalDateString(dt);
     const year = dt.getFullYear();
     const month = String(dt.getMonth() + 1).padStart(2, "0");
     const day = String(dt.getDate()).padStart(2, "0");
@@ -341,26 +340,9 @@
     </div>`;
   }
 
-  /** Brief non-blocking status (works across Tasks + Dashboard). */
+  /** Brief success status; same toast stack as AppError.showToast. */
   function showTaskToast(message) {
-    if (typeof document === "undefined" || !document.body) return;
-    const text = String(message || "").trim();
-    if (!text) return;
-    let el = document.getElementById("task-toast");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "task-toast";
-      el.className = "task-toast";
-      el.setAttribute("role", "status");
-      el.setAttribute("aria-live", "polite");
-      document.body.appendChild(el);
-    }
-    el.textContent = text;
-    el.classList.add("is-visible");
-    clearTimeout(el._hideTimer);
-    el._hideTimer = setTimeout(() => {
-      el.classList.remove("is-visible");
-    }, 2800);
+    global.AppError?.showToast(message, "success", 2800);
   }
 
   global.TaskUtils = {

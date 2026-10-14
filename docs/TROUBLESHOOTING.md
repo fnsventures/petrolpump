@@ -112,13 +112,18 @@ Deploy via Actions (on `supabase/functions/**` push) or the CLI — [ARCHITECTUR
 
 ---
 
+## Day closing
+
+The page message is the database exception. Repair steps, and how to compare the live calculation with the stored row: [DAY_CLOSING.md → When a day will not close](DAY_CLOSING.md#when-a-day-will-not-close).
+
 ## Incident quick paths
 
 | Severity | First move |
 |----------|------------|
 | Site down / wrong config banner | DNS check → redeploy prod |
-| Bad release (frontend only) | Revert merge on `main` or redeploy previous `ref` via Actions |
+| Bad release (frontend only) | [RECOVERY.md → Frontend rollback](RECOVERY.md#frontend-rollback) |
 | Bad migration / data | Stop writes if you can → forward fix or restore ([RECOVERY.md](RECOVERY.md)) |
+| Day closing will not save, or the short looks wrong | [DAY_CLOSING.md → When a day will not close](DAY_CLOSING.md#when-a-day-will-not-close) |
 | OAuth broken | Invoices + backups both affected — rotate OAuth trio ([SECRETS.md](SECRETS.md)) |
 
 ---

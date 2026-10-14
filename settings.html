@@ -114,16 +114,16 @@
               </div>
               <div class="form-field">
                 <label for="bill-fuel-gst">Default fuel GST % (billing)</label>
-                <input id="bill-fuel-gst" type="number" min="0" max="28" step="0.01" />
+                <input inputmode="decimal" id="bill-fuel-gst" type="number" min="0" max="28" step="0.01" />
               </div>
               <div class="form-field form-field--fuel form-field--fuel-petrol">
                 <label for="bill-petrol-vat">MS purchase VAT/LST %</label>
-                <input id="bill-petrol-vat" type="number" min="0" max="100" step="0.01" />
+                <input inputmode="decimal" id="bill-petrol-vat" type="number" min="0" max="100" step="0.01" />
                 <small class="muted">As on fuel invoice “VAT/LST” (e.g. 28%). Used automatically on Purchase cost.</small>
               </div>
               <div class="form-field form-field--fuel form-field--fuel-diesel">
                 <label for="bill-diesel-vat">HSD purchase VAT/LST %</label>
-                <input id="bill-diesel-vat" type="number" min="0" max="100" step="0.01" />
+                <input inputmode="decimal" id="bill-diesel-vat" type="number" min="0" max="100" step="0.01" />
                 <small class="muted">As on fuel invoice “VAT/LST” (e.g. 24%). Used automatically on Purchase cost.</small>
               </div>
               <div class="form-field form-field-full">
@@ -178,7 +178,7 @@
               </div>
               <div class="form-field">
                 <label for="prod-rate">Default rate (₹)</label>
-                <input id="prod-rate" name="default_rate" type="number" step="0.01" min="0" value="0" required />
+                <input inputmode="decimal" id="prod-rate" name="default_rate" type="number" step="0.01" min="0" value="0" required />
               </div>
               <div class="form-field">
                 <label for="prod-gst">GST %</label>
@@ -219,11 +219,11 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="pump-petrol-pumps">Pumps</label>
-                <input id="pump-petrol-pumps" type="number" min="1" max="2" required />
+                <input inputmode="numeric" id="pump-petrol-pumps" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-petrol-nozzles">Nozzles per pump</label>
-                <input id="pump-petrol-nozzles" type="number" min="1" max="2" required />
+                <input inputmode="numeric" id="pump-petrol-nozzles" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-petrol-label">Tank label</label>
@@ -240,11 +240,11 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="pump-diesel-pumps">Pumps</label>
-                <input id="pump-diesel-pumps" type="number" min="1" max="2" required />
+                <input inputmode="numeric" id="pump-diesel-pumps" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-diesel-nozzles">Nozzles per pump</label>
-                <input id="pump-diesel-nozzles" type="number" min="1" max="2" required />
+                <input inputmode="numeric" id="pump-diesel-nozzles" type="number" min="1" max="2" required />
               </div>
               <div class="form-field">
                 <label for="pump-diesel-label">Tank label</label>
@@ -403,18 +403,18 @@
             <div class="form-grid">
               <div class="form-field form-field--fuel form-field--fuel-petrol">
                 <label for="low-stock-petrol">Petrol minimum (L)</label>
-                <input id="low-stock-petrol" type="number" min="0" step="100" />
+                <input inputmode="decimal" id="low-stock-petrol" type="number" min="0" step="100" />
               </div>
               <div class="form-field form-field--fuel form-field--fuel-diesel">
                 <label for="low-stock-diesel">Diesel minimum (L)</label>
-                <input id="low-stock-diesel" type="number" min="0" step="100" />
+                <input inputmode="decimal" id="low-stock-diesel" type="number" min="0" step="100" />
               </div>
             </div>
             <h3 class="settings-subheading">Day closing short</h3>
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-day-closing-shortage">Shortage / surplus threshold (₹)</label>
-                <input id="alert-day-closing-shortage" type="number" min="0" step="1" />
+                <input inputmode="numeric" id="alert-day-closing-shortage" type="number" min="0" step="1" />
                 <small class="muted">Short or surplus beyond this amount is flagged. Use 0 to flag any imbalance.</small>
               </div>
             </div>
@@ -434,7 +434,7 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-night-cash-min">Minimum uncollected (₹)</label>
-                <input id="alert-night-cash-min" type="number" min="0" step="100" />
+                <input inputmode="decimal" id="alert-night-cash-min" type="number" min="0" step="100" />
                 <small class="muted">Alert when uncollected night cash is at or above this amount. Use 0 for any positive total.</small>
               </div>
             </div>
@@ -467,24 +467,24 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-high-credit">Total high credit limit (₹)</label>
-                <input id="alert-high-credit" type="number" min="0" step="1000" />
+                <input inputmode="decimal" id="alert-high-credit" type="number" min="0" step="1000" />
                 <small class="muted">Alert when portfolio outstanding exceeds this. Use 0 to disable.</small>
               </div>
               <div class="form-field">
                 <label for="alert-individual-high-credit">Individual high credit limit (₹)</label>
-                <input id="alert-individual-high-credit" type="number" min="0" step="1000" />
+                <input inputmode="decimal" id="alert-individual-high-credit" type="number" min="0" step="1000" />
                 <small class="muted">List customers whose balance exceeds this. Use 0 to disable.</small>
               </div>
             </div>
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-stale-credit-days">Stale credit (days)</label>
-                <input id="alert-stale-credit-days" type="number" min="1" step="1" />
+                <input inputmode="numeric" id="alert-stale-credit-days" type="number" min="1" step="1" />
                 <small class="muted">Customers with unpaid balance and no payment for this many days.</small>
               </div>
               <div class="form-field">
                 <label for="alert-high-variation">High variation (L)</label>
-                <input id="alert-high-variation" type="number" min="0" step="10" />
+                <input inputmode="decimal" id="alert-high-variation" type="number" min="0" step="10" />
                 <small class="muted">Alert when |stock variation| exceeds this. Use 0 to disable.</small>
               </div>
             </div>
@@ -511,12 +511,12 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-expense-ratio-pct">Expense ratio threshold (%)</label>
-                <input id="alert-expense-ratio-pct" type="number" min="1" max="100" step="1" />
+                <input inputmode="numeric" id="alert-expense-ratio-pct" type="number" min="1" max="100" step="1" />
                 <small class="muted">Month-to-date expenses ÷ fuel sales. Off by default.</small>
               </div>
               <div class="form-field">
                 <label for="alert-missing-invoice-days">Missing invoice lookback (days)</label>
-                <input id="alert-missing-invoice-days" type="number" min="1" step="1" />
+                <input inputmode="numeric" id="alert-missing-invoice-days" type="number" min="1" step="1" />
                 <small class="muted">Only when Google Drive is enabled.</small>
               </div>
             </div>

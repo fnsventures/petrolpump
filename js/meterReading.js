@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -1140,45 +1140,24 @@ async function getPreviousDayDipStock(product, dateStr) {
  * Initialize pagination controls for DSR reading history table
  */
 function initMeterPaginationControls(product) {
-  const historySection = document.querySelector(`#dsr-table-${product}`)?.closest(".dsr-history");
-  if (!historySection) return;
-
-  // Check if pagination controls already exist
-  if (historySection.querySelector(".pagination-controls")) return;
-
-  // Create pagination controls container
-  const paginationDiv = document.createElement("div");
-  paginationDiv.className = "pagination-controls";
-  paginationDiv.innerHTML = `
-    <div class="pagination-info">
-      <span id="dsr-pagination-info-${product}" class="muted"></span>
-    </div>
-    <div class="pagination-buttons">
-      <button type="button" id="dsr-pagination-back-${product}" class="button-secondary hidden">Back</button>
-      <button type="button" id="dsr-load-more-${product}" class="button-secondary hidden">Load more</button>
-    </div>
-  `;
-  historySection.appendChild(paginationDiv);
-
-  const backBtn = document.getElementById(`dsr-pagination-back-${product}`);
-  const loadMoreBtn = document.getElementById(`dsr-load-more-${product}`);
-  if (backBtn) {
-    backBtn.addEventListener("click", () => {
+  mountWindowPager(document.querySelector(`#dsr-table-${product}`)?.closest(".dsr-history"), {
+    infoId: `dsr-pagination-info-${product}`,
+    backId: `dsr-pagination-back-${product}`,
+    moreId: `dsr-load-more-${product}`,
+    onBack: () => {
       if (dsrPagination[product].currentPage > 0) {
         dsrPagination[product].currentPage--;
         loadReadingHistory(product, false);
       }
-    });
-  }
-  if (loadMoreBtn) {
-    loadMoreBtn.addEventListener("click", () => {
+    },
+    onMore: () => {
       const totalPages = Math.ceil(dsrPagination[product].totalCount / METER_RECENT_PAGE_SIZE);
       if (dsrPagination[product].currentPage < totalPages - 1) {
         dsrPagination[product].currentPage++;
         loadReadingHistory(product, false);
       }
-    });
-  }
+    },
+  });
 }
 
 /**
@@ -1338,42 +1317,18 @@ async function loadReadingHistory(product, reset = false) {
  * Update pagination UI elements for DSR reading history (info text, Back, Load more).
  */
 function updateDsrPaginationUI(product) {
-  const backBtn = document.getElementById(`dsr-pagination-back-${product}`);
-  const loadMoreBtn = document.getElementById(`dsr-load-more-${product}`);
-  const paginationInfo = document.getElementById(`dsr-pagination-info-${product}`);
   const pagination = dsrPagination[product];
-
-  if (paginationInfo) {
-    if (pagination.totalCount > 0) {
-      const totalPages = Math.ceil(pagination.totalCount / METER_RECENT_PAGE_SIZE);
-      const page = pagination.currentPage;
-      const from = page * METER_RECENT_PAGE_SIZE + 1;
-      const to = Math.min((page + 1) * METER_RECENT_PAGE_SIZE, pagination.totalCount);
-      const total = pagination.totalCount;
-      if (totalPages <= 1) {
-        paginationInfo.textContent = `Showing all ${total} entries`;
-      } else {
-        paginationInfo.textContent = `Showing ${from}–${to} of ${total}`;
-      }
-    } else {
-      paginationInfo.textContent = "";
-    }
-  }
-
-  const totalPages = Math.ceil(pagination.totalCount / METER_RECENT_PAGE_SIZE);
-  const hasMultiplePages = totalPages > 1;
-  const canGoBack = pagination.currentPage > 0;
-  const canGoForward = pagination.currentPage < totalPages - 1;
-
-  if (backBtn) {
-    backBtn.disabled = !canGoBack;
-    backBtn.classList.toggle("hidden", !hasMultiplePages);
-  }
-  if (loadMoreBtn) {
-    loadMoreBtn.disabled = !canGoForward;
-    loadMoreBtn.textContent = "Load more";
-    loadMoreBtn.classList.toggle("hidden", !hasMultiplePages);
-  }
+  const total = pagination.totalCount;
+  syncWindowPager({
+    info: document.getElementById(`dsr-pagination-info-${product}`),
+    back: document.getElementById(`dsr-pagination-back-${product}`),
+    more: document.getElementById(`dsr-load-more-${product}`),
+    page: pagination.currentPage,
+    pageSize: METER_RECENT_PAGE_SIZE,
+    total,
+    singlePageText: total > 0 ? `Showing all ${total} entries` : "",
+    moreLabel: "Load more",
+  });
 }
 
 // --- DSR prefill: fetch and apply helpers ---

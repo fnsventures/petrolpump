@@ -572,11 +572,8 @@
     el("shift-ledger-close")?.addEventListener("click", close);
     el("shift-ledger-dismiss")?.addEventListener("click", close);
     el("shift-ledger-backdrop")?.addEventListener("click", close);
-    document.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && overlay?.getAttribute("aria-hidden") === "false") {
-        close();
-      }
-    });
+    // Escape: AppDialog.show routes the dialog's cancel event to close, and
+    // only the topmost dialog gets it, so a confirm on top closes alone.
   }
 
   /** Fetch ledger totals keyed by employee_id for a shift. */

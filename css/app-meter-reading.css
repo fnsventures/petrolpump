@@ -62,8 +62,8 @@ body.meter-reading-page .dsr-table td {
 }
 
 body.meter-reading-page .dsr-table thead th {
-  background: #f8fafc;
-  color: #1e293b;
+  background: var(--surface-muted);
+  color: var(--text-body);
   font-weight: 600;
   font-size: var(--text-sm);
   text-transform: uppercase;
@@ -99,8 +99,8 @@ body.meter-reading-page .dsr-table .meter-reading {
 }
 
 body.meter-reading-page .dsr-table .calc-field[readonly] {
-  background: #f8fafc;
-  color: #475569;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
 }
 
 /* ─── Wide data-entry layout (Meter Reading, Sales daily) ───────────────── */
@@ -117,10 +117,6 @@ body.meter-reading-page main.settings-layout.page-layout-wide {
 
 body.meter-reading-page .page-layout-wide .settings-panel.card.dsr-card {
   padding: 1.35rem 1.5rem 1.5rem;
-}
-
-body.meter-reading-page .page-layout-wide .meter-toolbar {
-  margin-bottom: 0.25rem;
 }
 
 /* Meter tables: fixed layout keeps header cells aligned with inputs */
@@ -187,7 +183,7 @@ body.meter-reading-page .page-layout-wide .meter-table-scroll {
   overflow-x: auto;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .page-layout-wide .sheet-rate-row {
@@ -214,12 +210,12 @@ body.meter-reading-page .page-layout-wide .sheet-rate-row input {
 
 body.meter-reading-page .dsr-card--petrol .meter-block {
   border-left: 3px solid var(--bpcl-blue);
-  background: linear-gradient(90deg, rgba(0, 112, 192, 0.04) 0%, #f8fafc 12%);
+  background: linear-gradient(90deg, rgba(0, 112, 192, 0.04) 0%, var(--surface-muted) 12%);
 }
 
 body.meter-reading-page .dsr-card--diesel .meter-block {
   border-left: 3px solid var(--bpcl-yellow-dark);
-  background: linear-gradient(90deg, rgba(255, 204, 0, 0.1) 0%, #f8fafc 12%);
+  background: linear-gradient(90deg, rgba(255, 204, 0, 0.1) 0%, var(--surface-muted) 12%);
 }
 
 body.meter-reading-page .dsr-card--petrol .meter-table thead th {
@@ -229,7 +225,7 @@ body.meter-reading-page .dsr-card--petrol .meter-table thead th {
 
 body.meter-reading-page .dsr-card--diesel .meter-table thead th {
   background: rgba(255, 204, 0, 0.18);
-  color: #854d0e;
+  color: var(--fuel-diesel-text);
 }
 
 body.meter-reading-page .dsr-card--petrol .dsr-table thead th {
@@ -249,7 +245,7 @@ body.meter-reading-page .dsr-card--petrol .meter-table .calc-field[readonly] {
 
 body.meter-reading-page .dsr-card--diesel .meter-table .calc-field[readonly] {
   background: rgba(255, 204, 0, 0.14);
-  color: #854d0e;
+  color: var(--fuel-diesel-text);
 }
 
 body.meter-reading-page .dsr-field-legend {
@@ -270,11 +266,11 @@ body.meter-reading-page .dsr-legend-dot {
 }
 
 body.meter-reading-page .dsr-legend-dot--calc {
-  background: #f1f5f9;
+  background: var(--surface-sunken);
 }
 
 body.meter-reading-page .dsr-card--petrol .dsr-legend-dot--calc {
-  background: rgba(0, 112, 192, 0.12);
+  background: var(--fuel-petrol-bg-strong);
   border-color: rgba(0, 112, 192, 0.2);
 }
 
@@ -284,7 +280,7 @@ body.meter-reading-page .dsr-card--diesel .dsr-legend-dot--calc {
 }
 
 body.meter-reading-page .dsr-legend-dot--input {
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .dsr-legend-sep {
@@ -448,7 +444,7 @@ body.meter-reading-page .shift-register-meta .shift-context-label {
   max-width: none;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: #475569;
+  color: var(--text-secondary);
   line-height: 1.3;
 }
 
@@ -456,7 +452,7 @@ body.meter-reading-page .shift-context-hours {
   margin-left: 0.2rem;
   font-size: 0.68rem;
   font-weight: 500;
-  color: #64748b;
+  color: var(--text-muted);
   letter-spacing: 0.01em;
 }
 
@@ -479,8 +475,8 @@ body.meter-reading-page .shift-status-badge {
 }
 
 body.meter-reading-page .shift-status-badge--idle {
-  background: #e2e8f0;
-  color: #475569;
+  background: var(--border);
+  color: var(--text-secondary);
 }
 
 body.meter-reading-page .shift-status-badge--draft {
@@ -490,14 +486,14 @@ body.meter-reading-page .shift-status-badge--draft {
 }
 
 body.meter-reading-page .shift-status-badge--saved {
-  background: #ecfdf5;
-  color: #047857;
+  background: var(--success-soft);
+  color: var(--color-success);
   border: 1px solid #6ee7b7;
 }
 
 body.meter-reading-page .shift-status-badge--locked {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--danger-soft);
+  color: var(--color-danger-hover);
   border: 1px solid #fca5a5;
 }
 
@@ -509,7 +505,7 @@ body.meter-reading-page .shift-meter-controls {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .shift-meter-controls .form-field {
@@ -593,11 +589,11 @@ body.meter-reading-page .shift-section {
   padding: 0.5rem 0.6rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .shift-section--quiet {
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 body.meter-reading-page .shift-section-title {
@@ -619,7 +615,7 @@ body.meter-reading-page .shift-totals-strip {
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #f8fafc;
+  background: var(--surface-muted);
   font-size: var(--text-sm);
 }
 
@@ -636,26 +632,26 @@ body.meter-reading-page .shift-totals-strip .shift-total--petrol strong {
 }
 
 body.meter-reading-page .shift-totals-strip .shift-total--diesel strong {
-  color: #854d0e;
+  color: var(--fuel-diesel-text);
 }
 
 body.meter-reading-page .shift-totals-strip .shift-short--shortage {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
 }
 
 body.meter-reading-page .shift-totals-strip .shift-short--shortage strong {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
   font-weight: 700;
 }
 
 body.meter-reading-page .shift-totals-strip .shift-short--surplus,
 body.meter-reading-page .shift-totals-strip .shift-short--balanced {
-  color: #047857;
+  color: var(--color-success);
 }
 
 body.meter-reading-page .shift-totals-strip .shift-short--surplus strong,
 body.meter-reading-page .shift-totals-strip .shift-short--balanced strong {
-  color: #047857;
+  color: var(--color-success);
   font-weight: 700;
 }
 
@@ -708,7 +704,7 @@ body.meter-reading-page .shift-product-head .fuel-rate-icon {
 }
 
 body.meter-reading-page .shift-product-head .fuel-rate-icon--diesel {
-  color: #854d0e;
+  color: var(--fuel-diesel-text);
   background: rgba(255, 204, 0, 0.35);
 }
 
@@ -733,7 +729,7 @@ body.meter-reading-page .shift-product-block--petrol .shift-nozzle-table thead t
 
 body.meter-reading-page .shift-product-block--diesel .shift-nozzle-table thead th {
   background: rgba(255, 204, 0, 0.18);
-  color: #854d0e;
+  color: var(--fuel-diesel-text);
 }
 
 body.meter-reading-page .shift-nozzle-table {
@@ -772,18 +768,18 @@ body.meter-reading-page .shift-nozzle-table .calc-field {
 
 body.meter-reading-page .shift-nozzle-table .shift-closing {
   border-color: rgba(0, 112, 192, 0.45);
-  background: #f0f9ff;
+  background: var(--info-soft);
   font-weight: 600;
 }
 
 body.meter-reading-page .shift-row--assigned {
-  background: rgba(15, 23, 42, 0.02);
+  background: rgba(var(--shadow-rgb), 0.02);
 }
 
 body.meter-reading-page .shift-row--warn .shift-closing,
 body.meter-reading-page .shift-row--warn .shift-opening {
-  border-color: #b91c1c;
-  background: #fef2f2;
+  border-color: var(--color-danger-hover);
+  background: var(--danger-soft);
 }
 
 body.meter-reading-page .shift-staff-host {
@@ -798,7 +794,7 @@ body.meter-reading-page .shift-staff-empty {
 body.meter-reading-page .shift-rate-hint {
   margin: 0 0 0.65rem;
   font-size: var(--text-xs);
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-staff-cards {
@@ -819,8 +815,8 @@ body.meter-reading-page .shift-staff-card {
   padding: 0.55rem 0.7rem;
   border: 1px solid #e8edf3;
   border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.03);
   box-sizing: border-box;
 }
 
@@ -863,7 +859,7 @@ body.meter-reading-page .shift-staff-name {
   margin: 0;
   font-size: 0.9rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text);
   line-height: 1.2;
 }
 
@@ -896,7 +892,7 @@ body.meter-reading-page .shift-coll-due .shift-metric-expected {
 body.meter-reading-page .shift-meter-list {
   margin: 0.1rem 0 0.14rem;
   font-size: 0.66rem;
-  color: #64748b;
+  color: var(--text-muted);
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -910,7 +906,7 @@ body.meter-reading-page .shift-coll-meta {
   align-items: center;
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
-  color: #334155;
+  color: var(--text-heading);
 }
 
 body.meter-reading-page .shift-coll-meta .muted {
@@ -918,13 +914,13 @@ body.meter-reading-page .shift-coll-meta .muted {
   font-size: 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-coll-meta .shift-metric-ms,
 body.meter-reading-page .shift-coll-meta .shift-metric-hsd {
   font-weight: 700;
-  color: #334155;
+  color: var(--text-heading);
 }
 
 body.meter-reading-page .shift-coll-money {
@@ -957,7 +953,7 @@ body.meter-reading-page .shift-coll-label {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-money-input,
@@ -970,10 +966,10 @@ body.meter-reading-page .shift-phone-pay {
   box-sizing: border-box;
   margin: 0;
   padding: 0.35rem 0.6rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
-  color: #0f172a;
+  background: var(--surface);
+  color: var(--text);
   font: inherit;
   font-size: 0.95rem;
   font-weight: 600;
@@ -992,7 +988,7 @@ body.meter-reading-page .shift-coll-ledger-box {
   box-sizing: border-box;
   margin: 0;
   padding: 0.28rem 0.3rem 0.28rem 0.4rem;
-  border: 1px solid rgba(0, 112, 192, 0.22);
+  border: 1px solid var(--fuel-petrol-border);
   border-radius: 7px;
   background: #eef6fc;
   overflow: hidden;
@@ -1022,7 +1018,7 @@ body.meter-reading-page .shift-coll-ledger-tag {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-coll-ledger-amt {
@@ -1047,8 +1043,8 @@ body.meter-reading-page .shift-coll-add-btn {
   padding: 0 0.35rem;
   border: 0;
   border-radius: 4px;
-  background: #0070c0;
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--text-on-accent);
   font: inherit;
   font-size: 0.58rem;
   font-weight: 700;
@@ -1059,10 +1055,14 @@ body.meter-reading-page .shift-coll-add-btn {
   box-shadow: none;
 }
 
-body.meter-reading-page .shift-coll-add-btn:hover,
+body.meter-reading-page .shift-coll-add-btn:hover {
+  background: var(--color-primary-hover);
+}
+
 body.meter-reading-page .shift-coll-add-btn:focus-visible {
-  background: #005a9c;
-  outline: none;
+  background: var(--color-primary-hover);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 body.meter-reading-page .shift-coll-foot {
@@ -1081,7 +1081,7 @@ body.meter-reading-page .shift-coll-result {
   gap: 0.4rem;
   padding: 0.35rem 0.5rem;
   border-radius: 7px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 body.meter-reading-page .shift-coll-result .muted {
@@ -1089,21 +1089,21 @@ body.meter-reading-page .shift-coll-result .muted {
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-coll-result strong {
   font-size: 0.84rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: #0f172a;
+  color: var(--text);
   white-space: nowrap;
 }
 
 body.meter-reading-page .shift-money-input:hover,
 body.meter-reading-page .shift-cash-collected:hover,
 body.meter-reading-page .shift-phone-pay:hover {
-  border-color: #64748b;
+  border-color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-staff-card input.shift-money-input:focus,
@@ -1112,31 +1112,32 @@ body.meter-reading-page .shift-staff-card input.shift-phone-pay:focus,
 body.meter-reading-page .shift-staff-card input.shift-money-input:focus-visible,
 body.meter-reading-page .shift-staff-card input.shift-cash-collected:focus-visible,
 body.meter-reading-page .shift-staff-card input.shift-phone-pay:focus-visible {
-  outline: none !important;
-  border-color: #64748b !important;
-  background: #fff !important;
-  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.22) !important;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-color: var(--color-primary);
+  background: var(--surface);
+  box-shadow: var(--focus-ring);
 }
 
 body.meter-reading-page .shift-staff-short.shift-short--shortage {
-  background: #fef2f2;
+  background: var(--danger-soft);
 }
 
 body.meter-reading-page .shift-staff-short.shift-short--surplus,
 body.meter-reading-page .shift-staff-short.shift-short--balanced {
-  background: #ecfdf5;
+  background: var(--success-soft);
 }
 
 body.meter-reading-page .shift-short--shortage,
 body.meter-reading-page .shift-short--shortage strong {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
 }
 
 body.meter-reading-page .shift-short--surplus,
 body.meter-reading-page .shift-short--surplus strong,
 body.meter-reading-page .shift-short--balanced,
 body.meter-reading-page .shift-short--balanced strong {
-  color: #047857;
+  color: var(--color-success);
 }
 
 body.meter-reading-page .shift-reconcile {
@@ -1158,7 +1159,7 @@ body.meter-reading-page .shift-sheet-card {
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
   text-decoration: none;
   color: inherit;
 }
@@ -1179,7 +1180,7 @@ body.meter-reading-page .shift-sheet-card-title {
 
 body.meter-reading-page .shift-sheet-card-meta {
   font-size: var(--text-xs);
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-sheet-card-action {
@@ -1215,7 +1216,7 @@ body.meter-reading-page .shift-save-row {
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .shift-save-row[hidden] {
@@ -1267,13 +1268,10 @@ body.meter-reading-page .shift-opening.shift-opening--locked {
   color: #4b5563;
   cursor: default;
 }
-
 body.meter-reading-page .shift-register-supervisor-locked .shift-nozzle-table input,
 body.meter-reading-page .shift-register-supervisor-locked .shift-nozzle-table select,
 body.meter-reading-page .shift-register-supervisor-locked .shift-cash-collected,
 body.meter-reading-page .shift-register-supervisor-locked .shift-phone-pay,
-body.meter-reading-page .shift-register-supervisor-locked .shift-credit-amount,
-body.meter-reading-page .shift-register-supervisor-locked .shift-expense-amount,
 body.meter-reading-page .shift-register-supervisor-locked #shift-meter-remarks,
 body.meter-reading-page .shift-register-supervisor-locked #shift-meter-rate-petrol,
 body.meter-reading-page .shift-register-supervisor-locked #shift-meter-rate-diesel {
@@ -1308,9 +1306,6 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
     grid-column: 1 / -1;
     justify-content: flex-start;
   }
-}
-
-@media (max-width: 960px) {
 }
 
 @media (max-width: 720px) {
@@ -1355,6 +1350,18 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
   body.meter-reading-page .shift-save-row .shift-save-btn {
     width: 100%;
   }
+
+  body.meter-reading-page .shift-coll-add-btn {
+    height: auto;
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+    font-size: var(--text-sm);
+  }
+
+  body.meter-reading-page .shift-ledger-remove {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
 }
 
 @media (max-width: 520px) {
@@ -1363,46 +1370,7 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
   }
 }
 
-/* Sales breakdown */
-body.meter-reading-page .sales-breakdown-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0.75rem 0 1rem;
-}
-
-body.meter-reading-page .sales-breakdown-tab {
-  border: 1px solid var(--border);
-  background: #f8fafc;
-  color: var(--text);
-  padding: 0.45rem 0.85rem;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-body.meter-reading-page .sales-breakdown-tab.is-active {
-  background: var(--text);
-  color: #fff;
-  border-color: var(--text);
-}
-
-body.meter-reading-page .sales-breakdown-table {
-  min-width: 36rem;
-}
-
-body.meter-reading-page .sales-breakdown-table td.num,
-body.meter-reading-page .sales-breakdown-table th:nth-child(n + 4) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ─── Shift register view popup ───────────────────────────────────────────── */
-
-body.meter-reading-page.modal-open {
-  overflow: hidden;
-}
 
 .shift-view-overlay {
   position: fixed;
@@ -1427,7 +1395,7 @@ body.meter-reading-page.modal-open {
 .shift-view-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background: rgba(var(--shadow-rgb), 0.55);
 }
 
 .shift-view-card {
@@ -1468,8 +1436,8 @@ body.meter-reading-page.modal-open {
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
@@ -1499,7 +1467,7 @@ body.meter-reading-page.modal-open {
   gap: 0.5rem;
   padding: 0.85rem 0 1rem;
   border-top: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
 }
 
 .shift-view-kpis {
@@ -1513,7 +1481,7 @@ body.meter-reading-page.modal-open {
   padding: 0.65rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #f8fafc;
+  background: var(--surface-muted);
   min-width: 0;
 }
 
@@ -1523,7 +1491,7 @@ body.meter-reading-page.modal-open {
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--text-muted);
   margin-bottom: 0.2rem;
 }
 
@@ -1539,7 +1507,7 @@ body.meter-reading-page.modal-open {
   font-style: normal;
   font-size: var(--text-xs);
   font-weight: 500;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 .shift-view-kpi.shift-total--petrol {
@@ -1561,25 +1529,25 @@ body.meter-reading-page.modal-open {
 }
 
 .shift-view-kpi.shift-short--shortage {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--color-danger-hover);
 }
 
 .shift-view-kpi.shift-short--shortage strong {
-  color: #b91c1c;
+  color: var(--color-danger-hover);
 }
 
 .shift-view-kpi.shift-short--surplus,
 .shift-view-kpi.shift-short--balanced {
-  background: #ecfdf5;
+  background: var(--success-soft);
   border-color: #a7f3d0;
-  color: #047857;
+  color: var(--color-success);
 }
 
 .shift-view-kpi.shift-short--surplus strong,
 .shift-view-kpi.shift-short--balanced strong {
-  color: #047857;
+  color: var(--color-success);
 }
 
 .shift-view-rates {
@@ -1642,7 +1610,7 @@ body.meter-reading-page.modal-open {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 0.7rem 0.75rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 .shift-view-staff-card header {
@@ -1729,7 +1697,7 @@ body.meter-reading-page .shift-ledger-summary {
 
 body.meter-reading-page .shift-ledger-summary-item {
   padding: 0.65rem 0.75rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(var(--shadow-rgb), 0.08);
   border-radius: 0.4rem;
   background: linear-gradient(180deg, #fbfcfe 0%, #f4f7fb 100%);
 }
@@ -1762,7 +1730,7 @@ body.meter-reading-page .shift-ledger-tab {
   border: 0;
   border-radius: 0.35rem;
   background: transparent;
-  color: #475569;
+  color: var(--text-secondary);
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -1770,9 +1738,9 @@ body.meter-reading-page .shift-ledger-tab {
 }
 
 body.meter-reading-page .shift-ledger-tab.is-active {
-  background: #fff;
-  color: #0f172a;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.08);
 }
 
 body.meter-reading-page .shift-ledger-form {
@@ -1810,7 +1778,7 @@ body.meter-reading-page .shift-ledger-field label {
   margin: 0 0 0.2rem;
   font-size: var(--text-xs);
   font-weight: 600;
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 body.meter-reading-page .shift-ledger-field input,
@@ -1844,9 +1812,9 @@ body.meter-reading-page .shift-ledger-list li {
   align-items: center;
   gap: 0.75rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(var(--shadow-rgb), 0.08);
   border-radius: 0.4rem;
-  background: #fff;
+  background: var(--surface);
 }
 
 body.meter-reading-page .shift-ledger-item-main strong {
@@ -1874,8 +1842,8 @@ body.meter-reading-page .shift-ledger-remove {
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: #f1f5f9;
-  color: #64748b;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
@@ -1883,7 +1851,7 @@ body.meter-reading-page .shift-ledger-remove {
 
 body.meter-reading-page .shift-ledger-remove:hover {
   background: #fee2e2;
-  color: #b91c1c;
+  color: var(--color-danger-hover);
 }
 
 body.meter-reading-page .shift-ledger-empty {
