@@ -59,7 +59,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Build login vendor bundle
+      - name: Build vendor bundles
         run: npm run build:vendor
 
       - name: >-

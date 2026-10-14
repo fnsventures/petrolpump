@@ -139,7 +139,7 @@
       "bodyClass": "invoices-page",
       "css": ["css/app-invoices.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
-      "afterAuth": ["js/driveFiles.js"],
+      "afterAuth": ["js/driveFiles.js", "js/drivePreview.js"],
       "page": "js/invoices.js"
     },
     "attendance.html": {
@@ -175,7 +175,7 @@
       "noPrint": true,
       "css": ["css/app-letterhead.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
-      "afterAuth": ["js/printUtils.js", "js/driveFiles.js"],
+      "afterAuth": ["js/printUtils.js", "js/driveFiles.js", "js/drivePreview.js"],
       "page": "js/letterhead.js"
     },
     "analysis.html": {

@@ -384,6 +384,28 @@ body.staff-page button.link:disabled {
   background: var(--surface);
 }
 
+.staff-aadhaar-frame.staff-aadhaar-pdf {
+  overflow: auto;
+  background: #e8eef5;
+  padding: 0.75rem;
+}
+
+.staff-aadhaar-pdf .pdf-preview-slot {
+  width: 100%;
+  background: #fff;
+}
+
+.staff-aadhaar-pdf .pdf-preview-slot + .pdf-preview-slot {
+  margin-top: 0.75rem;
+}
+
+.staff-aadhaar-pdf .pdf-preview-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #fff;
+}
+
 .staff-id-status-banner {
   margin: 0 0 0.75rem;
 }
