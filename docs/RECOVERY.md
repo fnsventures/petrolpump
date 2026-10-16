@@ -35,7 +35,7 @@ Zero-byte files are failed attempts. Always pair a schema file and a data file w
 | `./scripts/db.sh backup` | When you run it | Same folder | The whole database |
 | Supabase dashboard backups | Plan-dependent | Supabase | Useless if the project itself is gone |
 
-A month folder cannot rebuild logins, customers, or staff. Use `Yearly/`, `Manual/`, or a laptop `prod-schema` / `prod-data` pair for that. After the 1st-of-the-month upload succeeds, the workflow deletes production `audit_log` rows older than 6 months. Month folders are trashed only after `Yearly/YYYY` for that year has uploaded. Trash can be restored for about 30 days. The calendar and the file list: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+A month folder cannot rebuild logins, customers, or staff. Use `Yearly/`, `Manual/`, or a laptop `prod-schema` / `prod-data` pair for that. After the 1st-of-the-month upload succeeds, **Purge audit log** deletes production `audit_log` rows older than 6 months. Month folders are trashed only after `Yearly/YYYY` for that year has uploaded. Trash can be restored for about 30 days. The calendar and the file list: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 The real recovery point for the whole station is the **newest whole-database file** (`Yearly/`, `Manual/`, or the laptop pair). Before risky work, run `./scripts/backup-prod-to-drive.sh`.
 
@@ -376,12 +376,13 @@ Not problems: object owner (`postgres` exists on Supabase), extensions (`pgcrypt
 
 | File | Role |
 |------|------|
-| `.github/workflows/backup-prod-db.yml` | 1st: finished month, then audit purge. 1 January: also full copy and removal of that year’s month folders |
+| `.github/workflows/backup-prod-db.yml` | 1st: finished month. 1 January: also full copy and removal of that year’s month folders |
+| `.github/workflows/purge-audit-log.yml` | After the scheduled backup succeeds: delete `audit_log` rows older than 6 months. By hand: 3, 2, or 1 month. No Drive upload |
 | `scripts/backup-month-to-drive.sh` | One month of activity, gzipped CSV, upload |
 | `scripts/backup-prod-to-drive.sh` | Whole database into `Manual/<timestamp>/` |
 | `scripts/backup-year-to-drive.sh` | Whole database into `Yearly/YYYY/`, then trash that year’s month folders |
 | `scripts/disable-staging-audit.sh` | Staging only: stop audit and empty `audit_log` |
-| `scripts/purge-audit-log.sh` | Delete `audit_log` rows older than 6 months |
+| `scripts/purge-audit-log.sh` | Delete `audit_log` rows older than 6 months, or `AUDIT_KEEP_MONTHS` 1, 2, or 3 |
 | `scripts/prune-drive-backups.sh` | Trash month folders whose year already has `Yearly/YYYY` |
 | `scripts/backup-prod.sh` | Local backup |
 | `scripts/restore-dump.sh` | Local or new-project restore |
