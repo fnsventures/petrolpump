@@ -29,13 +29,11 @@
       "e20-register.html",
       "reminders.html"
     ],
-    "Finance": ["credit.html", "expenses.html", "day-closing.html", "billing.html"],
+    "Finance": ["credit.html", "expenses.html", "day-closing.html", "billing.html", "invoices.html", "letterhead.html"],
     "HR": [
       "attendance.html",
       "salary.html",
-      "staff.html",
-      "invoices.html",
-      "letterhead.html"
+      "staff.html"
     ],
     "Admin": ["analysis.html", "reports.html", "settings.html"]
   },
@@ -184,6 +182,7 @@
       "bodyClass": "analysis-page",
       "css": ["css/app-analysis.css"],
       "beforeAuth": [
+        "js/vendor/chart.min.js",
         "js/purchaseTaxUtils.js",
         "js/dateRangeFilter.js",
         "js/pageSections.js"

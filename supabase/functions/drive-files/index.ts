@@ -8,6 +8,8 @@ import {
   canEmbedRaster,
 } from "../_shared/archivePdf.ts";
 import {
+  bindRequestCors,
+  assertFileInsideRoot,
   buildDriveStatus,
   corsHeaders,
   deleteFromDrive,
@@ -19,7 +21,6 @@ import {
   jsonResponse,
   letterFolderSegments,
   parseIsoDate,
-  publicDriveImageUrl,
   readPumpSettings,
   salesInvoiceFolderSegments,
   sanitizeFileName,
@@ -78,7 +79,8 @@ async function loadEmployee(id: string) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  bindRequestCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -411,16 +413,15 @@ async function handleStaffPhotoUpload(form: FormData, file: File) {
   if (employee.photo_drive_file_id) {
     await deleteFromDrive(token, employee.photo_drive_file_id).catch(() => {});
   }
-  const { fileId, webViewLink } = await uploadToDrive(token, folderId, fileName, file.type, bytes, {
-    makePublic: true,
+  const { fileId } = await uploadToDrive(token, folderId, fileName, file.type, bytes, {
+    makePublic: false,
   });
   await archiveStaffPhotoPdf(token, folderId, settings.station, employee.name, bytes, file.type);
-  const photoUrl = `${publicDriveImageUrl(fileId)}?v=${Date.now()}`;
 
   const { error: updateError } = await supabaseAdmin
     .from("employees")
     .update({
-      photo_url: photoUrl,
+      photo_url: null,
       photo_drive_file_id: fileId,
     })
     .eq("id", employeeId);
@@ -433,9 +434,8 @@ async function handleStaffPhotoUpload(form: FormData, file: File) {
     ok: true,
     photo: {
       employee_id: employeeId,
-      photo_url: photoUrl,
+      photo_url: null,
       drive_file_id: fileId,
-      drive_web_view_link: webViewLink,
       file_name: fileName,
     },
   });
@@ -513,6 +513,12 @@ async function handleStaffAadhaarUpload(form: FormData, file: File) {
   });
 }
 
+async function requireStationFile(token: string, fileId: string) {
+  const settings = await readPumpSettings();
+  if (!settings.rootFolderId) throw new Error("Google Drive root folder ID is not configured in Settings.");
+  await assertFileInsideRoot(token, fileId, settings.rootFolderId);
+}
+
 async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
   const token = await getDriveAccessToken();
 
@@ -526,6 +532,7 @@ async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data?.drive_file_id) throw new Error("Invoice not found");
+    await requireStationFile(token, data.drive_file_id);
     const { bytes, mimeType, fileName } = await downloadFromDrive(token, data.drive_file_id, {
       fileName: data.drive_file_name,
       mimeType: "application/pdf",
@@ -543,6 +550,7 @@ async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data?.drive_file_id) throw new Error("Letter not found");
+    await requireStationFile(token, data.drive_file_id);
     const { bytes, mimeType, fileName } = await downloadFromDrive(token, data.drive_file_id, {
       fileName: data.drive_file_name,
       mimeType: data.mime_type,
@@ -555,15 +563,14 @@ async function handleDownload(kind: DriveKind, body: Record<string, unknown>) {
   const employee = await loadEmployee(employeeId);
   const fileId = kind === "staff_photo" ? employee.photo_drive_file_id : employee.aadhaar_drive_file_id;
   if (!fileId) throw new Error("Document not found");
+  await requireStationFile(token, fileId);
   const fallbackName = kind === "staff_photo" ? "Photo.jpg" : employee.aadhaar_file_name || "Aadhaar.pdf";
   const { bytes, mimeType, fileName } = await downloadFromDrive(token, fileId, { fileName: fallbackName });
   return fileResponse(bytes, mimeType, fileName);
 }
 
 async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string, unknown>) {
-  if (kind === "sales_invoice" || kind === "letter") {
-    if (auth.role !== "admin") return jsonResponse({ error: "Admin only" }, 403);
-  }
+  if (auth.role !== "admin") return jsonResponse({ error: "Admin only" }, 403);
 
   const token = await getDriveAccessToken().catch(() => null);
 
@@ -576,7 +583,10 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
       .eq("id", id)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    if (token && data?.drive_file_id) await deleteFromDrive(token, data.drive_file_id);
+    if (token && data?.drive_file_id) {
+      await requireStationFile(token, data.drive_file_id);
+      await deleteFromDrive(token, data.drive_file_id);
+    }
     if (body.deleteRecord === true) {
       const { error: delError } = await supabaseAdmin.from("invoices").delete().eq("id", id);
       if (delError) throw new Error(delError.message);
@@ -604,7 +614,10 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) throw new Error("Letter not found");
-    if (token && data.drive_file_id) await deleteFromDrive(token, data.drive_file_id);
+    if (token && data.drive_file_id) {
+      await requireStationFile(token, data.drive_file_id);
+      await deleteFromDrive(token, data.drive_file_id);
+    }
     const { error: delError } = await supabaseAdmin.from("letterhead_letters").delete().eq("id", id);
     if (delError) throw new Error(delError.message);
     return jsonResponse({ ok: true });
@@ -615,7 +628,14 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
   const employee = await loadEmployee(employeeId);
 
   if (kind === "staff_photo") {
-    if (token && employee.photo_drive_file_id) await deleteFromDrive(token, employee.photo_drive_file_id);
+    if (token && employee.photo_drive_file_id) {
+      try {
+        await requireStationFile(token, employee.photo_drive_file_id);
+        await deleteFromDrive(token, employee.photo_drive_file_id);
+      } catch {
+        /* A file outside the station folder is not deleted. */
+      }
+    }
     if (token) {
       const settings = await readPumpSettings().catch(() => null);
       if (settings?.rootFolderId) {
@@ -635,7 +655,14 @@ async function handleDelete(auth: AuthUser, kind: DriveKind, body: Record<string
     return jsonResponse({ ok: true });
   }
 
-  if (token && employee.aadhaar_drive_file_id) await deleteFromDrive(token, employee.aadhaar_drive_file_id);
+  if (token && employee.aadhaar_drive_file_id) {
+    try {
+      await requireStationFile(token, employee.aadhaar_drive_file_id);
+      await deleteFromDrive(token, employee.aadhaar_drive_file_id);
+    } catch {
+      /* A file outside the station folder is not deleted. */
+    }
+  }
   const { error: updateError } = await supabaseAdmin
     .from("employees")
     .update({ aadhaar_drive_file_id: null, aadhaar_file_name: null })
@@ -648,7 +675,7 @@ function fileResponse(bytes: Uint8Array, mimeType: string, fileName: string) {
   const safeName = String(fileName || "download").replace(/[\r\n"]/g, "").trim() || "download";
   return new Response(bytes, {
     headers: {
-      ...corsHeaders,
+      ...corsHeaders(),
       "Content-Type": mimeType || "application/octet-stream",
       "Content-Disposition": `attachment; filename="${safeName}"`,
       "Access-Control-Expose-Headers": "Content-Disposition, Content-Type",

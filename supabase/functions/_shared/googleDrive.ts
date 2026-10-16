@@ -1,12 +1,9 @@
 // Shared Google Drive helpers for invoice-documents and drive-files edge functions.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.94.1?target=denonext";
+import { bindRequestCors, corsHeaders } from "./cors.ts";
 
-export const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+export { bindRequestCors, corsHeaders };
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -102,7 +99,7 @@ export const supabaseAdmin = createClient(
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...corsHeaders(), "Content-Type": "application/json" },
   });
 }
 
@@ -444,6 +441,27 @@ export async function revokeAnyonePermission(
     removed += 1;
   }
   return { removed, stillPublic };
+}
+
+export async function assertFileInsideRoot(token: string, fileId: string, rootFolderId: string) {
+  if (!fileId || !rootFolderId) throw new Error("Drive file is not in the station folder.");
+  let current = fileId;
+  const seen = new Set<string>();
+  for (let i = 0; i < 12; i += 1) {
+    if (seen.has(current)) break;
+    seen.add(current);
+    const res = await driveFetch(
+      `/files/${current}?fields=id,parents&supportsAllDrives=true`,
+      token
+    );
+    if (!res.ok) throw new Error("Drive file is not in the station folder.");
+    const data = await res.json();
+    const parents: string[] = Array.isArray(data.parents) ? data.parents : [];
+    if (current === rootFolderId || parents.includes(rootFolderId)) return;
+    if (!parents.length) break;
+    current = parents[0];
+  }
+  throw new Error("Drive file is not in the station folder.");
 }
 
 export async function downloadFromDrive(

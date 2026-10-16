@@ -396,14 +396,11 @@ declare
   v_auth_id uuid;
 begin
   if not public.is_admin() then
-    if exists (select 1 from public.users where role = 'admin') then
+    if coalesce(current_setting('app.allow_first_admin', true), '') is distinct from 'on'
+       or exists (select 1 from public.users where role = 'admin')
+       or lower(trim(p_email)) <> lower(trim(coalesce(auth.jwt() ->> 'email', '')))
+       or p_role <> 'admin' then
       raise exception 'Access denied: Admin role required';
-    end if;
-    if lower(trim(p_email)) <> lower(trim(auth.jwt() ->> 'email')) then
-      raise exception 'Bootstrap: can only provision your own email as the first admin';
-    end if;
-    if p_role <> 'admin' then
-      raise exception 'Bootstrap: first user must be admin';
     end if;
   end if;
   if p_role not in ('admin', 'supervisor') then
@@ -484,6 +481,7 @@ returns jsonb
 language plpgsql
 security definer
 stable
+set search_path = public
 as $$
 declare
   v_role text;
@@ -792,11 +790,24 @@ declare
   v_new jsonb;
   v_old jsonb;
   v_label text := case when tg_table_name = 'dsr_petrol' then 'MS' else 'HSD' end;
+  v_product text := case when tg_table_name = 'dsr_petrol' then 'petrol' else 'diesel' end;
   v_open numeric;
   v_close numeric;
   v_key text;
   v_pump int;
   v_nozzle int;
+  v_sales1 numeric := 0;
+  v_sales2 numeric := 0;
+  v_prev_o1 numeric;
+  v_prev_o2 numeric;
+  v_prev_o3 numeric;
+  v_prev_o4 numeric;
+  v_prev_rate numeric;
+  v_rate numeric;
+  v_expected numeric;
+  v_rate_text text;
+  v_meters_changed boolean := tg_op = 'INSERT';
+  v_rate_changed boolean := tg_op = 'INSERT';
   v_keys constant text[] := array[
     'opening_pump1_nozzle1', 'opening_pump1_nozzle2', 'opening_pump2_nozzle1', 'opening_pump2_nozzle2',
     'closing_pump1_nozzle1', 'closing_pump1_nozzle2', 'closing_pump2_nozzle1', 'closing_pump2_nozzle2',
@@ -816,36 +827,116 @@ begin
 
   if tg_op = 'UPDATE' then
     v_old := to_jsonb(old);
-    if not exists (select 1 from unnest(v_keys) k where v_new->k is distinct from v_old->k) then
+    v_meters_changed := exists (select 1 from unnest(v_keys) k where v_new->k is distinct from v_old->k);
+    if tg_table_name = 'dsr_petrol' then
+      v_rate_changed := new.petrol_rate is distinct from old.petrol_rate;
+    else
+      v_rate_changed := new.diesel_rate is distinct from old.diesel_rate;
+    end if;
+    if not v_meters_changed and not v_rate_changed then
       return new;
     end if;
   end if;
 
-  for v_pump in 1..2 loop
-    for v_nozzle in 1..2 loop
-      v_open := (v_new->>format('opening_pump%s_nozzle%s', v_pump, v_nozzle))::numeric;
-      v_close := (v_new->>format('closing_pump%s_nozzle%s', v_pump, v_nozzle))::numeric;
-      if v_open < 0 or v_close < 0 then
+  if v_meters_changed then
+    for v_pump in 1..2 loop
+      for v_nozzle in 1..2 loop
+        v_open := (v_new->>format('opening_pump%s_nozzle%s', v_pump, v_nozzle))::numeric;
+        v_close := (v_new->>format('closing_pump%s_nozzle%s', v_pump, v_nozzle))::numeric;
+        if v_open < 0 or v_close < 0 then
+          raise exception using errcode = 'check_violation',
+            message = format('%s meter readings must be >= 0 (Pump %s · Nozzle %s).', v_label, v_pump, v_nozzle);
+        end if;
+        if v_close < v_open then
+          raise exception using errcode = 'check_violation',
+            message = format('%s closing must be >= opening for Pump %s · Nozzle %s.', v_label, v_pump, v_nozzle);
+        end if;
+      end loop;
+    end loop;
+
+    v_sales1 :=
+      ((v_new->>'closing_pump1_nozzle1')::numeric - (v_new->>'opening_pump1_nozzle1')::numeric)
+      + ((v_new->>'closing_pump1_nozzle2')::numeric - (v_new->>'opening_pump1_nozzle2')::numeric);
+    v_sales2 :=
+      ((v_new->>'closing_pump2_nozzle1')::numeric - (v_new->>'opening_pump2_nozzle1')::numeric)
+      + ((v_new->>'closing_pump2_nozzle2')::numeric - (v_new->>'opening_pump2_nozzle2')::numeric);
+    new.sales_pump1 := v_sales1;
+    new.sales_pump2 := v_sales2;
+    new.total_sales := v_sales1 + v_sales2;
+
+    foreach v_key in array array['sales_pump1', 'sales_pump2', 'total_sales', 'testing', 'stock', 'receipts'] loop
+      if (to_jsonb(new)->>v_key)::numeric < 0 then
         raise exception using errcode = 'check_violation',
-          message = format('%s meter readings must be >= 0 (Pump %s · Nozzle %s).', v_label, v_pump, v_nozzle);
-      end if;
-      if v_close < v_open then
-        raise exception using errcode = 'check_violation',
-          message = format('%s closing must be >= opening for Pump %s · Nozzle %s.', v_label, v_pump, v_nozzle);
+          message = format('%s %s cannot be negative.', v_label, replace(v_key, '_', ' '));
       end if;
     end loop;
-  end loop;
 
-  foreach v_key in array array['sales_pump1', 'sales_pump2', 'total_sales', 'testing', 'stock', 'receipts'] loop
-    if (v_new->>v_key)::numeric < 0 then
+    if new.testing > new.total_sales then
       raise exception using errcode = 'check_violation',
-        message = format('%s %s cannot be negative.', v_label, replace(v_key, '_', ' '));
+        message = format('%s testing cannot exceed total sales.', v_label);
     end if;
-  end loop;
 
-  if new.testing > new.total_sales then
-    raise exception using errcode = 'check_violation',
-      message = format('%s testing cannot exceed total sales.', v_label);
+    if tg_table_name = 'dsr_petrol' then
+      select p.closing_pump1_nozzle1, p.closing_pump1_nozzle2, p.closing_pump2_nozzle1, p.closing_pump2_nozzle2
+      into v_prev_o1, v_prev_o2, v_prev_o3, v_prev_o4
+      from public.dsr_petrol p
+      where p.date < new.date
+      order by p.date desc
+      limit 1;
+    else
+      select d.closing_pump1_nozzle1, d.closing_pump1_nozzle2, d.closing_pump2_nozzle1, d.closing_pump2_nozzle2
+      into v_prev_o1, v_prev_o2, v_prev_o3, v_prev_o4
+      from public.dsr_diesel d
+      where d.date < new.date
+      order by d.date desc
+      limit 1;
+    end if;
+
+    if found and not public.is_admin() and (
+      abs(new.opening_pump1_nozzle1 - v_prev_o1) > 0.001
+      or abs(new.opening_pump1_nozzle2 - v_prev_o2) > 0.001
+      or abs(new.opening_pump2_nozzle1 - v_prev_o3) > 0.001
+      or abs(new.opening_pump2_nozzle2 - v_prev_o4) > 0.001
+    ) then
+      raise exception using errcode = 'check_violation',
+        message = format('%s opening must match the previous closing. An admin can record a meter rollover.', v_label);
+    end if;
+  end if;
+
+  if v_rate_changed or v_meters_changed then
+    if tg_table_name = 'dsr_petrol' then
+      v_rate := new.petrol_rate;
+      select p.petrol_rate into v_prev_rate
+      from public.dsr_petrol p
+      where p.date < new.date and p.petrol_rate is not null
+      order by p.date desc
+      limit 1;
+    else
+      v_rate := new.diesel_rate;
+      select d.diesel_rate into v_prev_rate
+      from public.dsr_diesel d
+      where d.date < new.date and d.diesel_rate is not null
+      order by d.date desc
+      limit 1;
+    end if;
+
+    select s.config #>> array['rates', v_product] into v_rate_text
+    from public.pump_settings s
+    where s.id = 1;
+    if v_rate_text ~ '^[0-9]+(\.[0-9]+)?$' then
+      v_expected := v_rate_text::numeric;
+    else
+      v_expected := v_prev_rate;
+    end if;
+
+    if v_rate_changed and coalesce(v_rate, 0) <= 0 then
+      raise exception using errcode = 'check_violation',
+        message = format('%s selling rate is required.', v_label);
+    end if;
+    if coalesce(v_rate, 0) > 0 and v_expected is not null and abs(v_rate - v_expected) > 0.009 and not public.is_admin() then
+      raise exception using errcode = 'check_violation',
+        message = format('%s rate must match the configured price (%s). An admin can change the price.', v_label, v_expected);
+    end if;
   end if;
 
   return new;
@@ -853,7 +944,7 @@ end;
 $$;
 
 comment on function public.dsr_validate_meter_row() is
-  'Trigger: reject a certified day, then require closing >= opening per nozzle, non-negative sales/testing/stock/receipts, and testing <= total sales. Skips the meter checks when those columns are unchanged.';
+  'Trigger: reject a certified day, calculate nozzle sales, require opening to match the previous closing unless an admin records a rollover, and require the selling rate to match the configured price unless an admin changes it.';
 
 revoke all on function public.dsr_validate_meter_row() from public, anon;
 grant execute on function public.dsr_validate_meter_row() to authenticated;
@@ -2003,8 +2094,9 @@ create policy "users_insert_admin" on public.users
   with check (
     public.is_admin()
     or (
-      not exists (select 1 from public.users u where u.role = 'admin')
-      and lower(trim(email)) = lower(trim(auth.jwt() ->> 'email'))
+      coalesce(current_setting('app.allow_first_admin', true), '') = 'on'
+      and not exists (select 1 from public.users u where u.role = 'admin')
+      and lower(trim(email)) = lower(trim(coalesce(auth.jwt() ->> 'email', '')))
       and role = 'admin'
     )
   );
@@ -2383,13 +2475,18 @@ security definer
 set search_path = public
 as $$
 begin
-  if public.is_admin() then
+  if coalesce(auth.role(), '') = 'service_role' or public.is_admin() then
     return new;
   end if;
 
   if tg_op = 'INSERT' then
     if coalesce(new.monthly_salary, 0) <> 0 or new.pf_contribution is not null then
       raise exception 'Only an admin can set salary or PF contribution.';
+    end if;
+    if new.photo_drive_file_id is not null
+       or new.aadhaar_drive_file_id is not null
+       or new.photo_url is not null then
+      raise exception 'Only an admin can set staff document files.';
     end if;
     return new;
   end if;
@@ -2399,12 +2496,19 @@ begin
     raise exception 'Only an admin can change salary or PF contribution.';
   end if;
 
+  if new.photo_drive_file_id is distinct from old.photo_drive_file_id
+     or new.aadhaar_drive_file_id is distinct from old.aadhaar_drive_file_id
+     or new.aadhaar_file_name is distinct from old.aadhaar_file_name
+     or new.photo_url is distinct from old.photo_url then
+    raise exception 'Only an admin can change staff document files.';
+  end if;
+
   return new;
 end;
 $$;
 
 comment on function public.employees_guard_salary_columns() is
-  'Trigger: supervisors may edit an employee profile, but monthly_salary and pf_contribution stay admin-only.';
+  'Trigger: supervisors may edit an employee profile. Salary, PF, and Drive file ids stay admin-only. The Drive edge function uses the service role.';
 
 revoke all on function public.employees_guard_salary_columns() from public, anon;
 grant execute on function public.employees_guard_salary_columns() to authenticated;
@@ -2718,20 +2822,18 @@ comment on function public.expense_totals_by_day(date, date) is
 
 create or replace function public.sum_credit_given(p_start date, p_end date)
 returns numeric
-language plpgsql
-stable
-security definer
+language plpgsql stable security definer
 set search_path = public
 as $$
 declare
   total numeric;
 begin
   perform public.require_staff_access();
-  select coalesce(sum(c.amount), 0)
-    into total
+  select coalesce(sum(c.amount), 0) into total
   from public.credit_entries c
   where c.transaction_date >= p_start
-    and c.transaction_date <= p_end;
+    and c.transaction_date <= p_end
+    and c.status = 'posted';
   return total;
 end;
 $$;
@@ -3018,6 +3120,13 @@ begin
 
   -- 0.05 absorbs paisa rounding differences against the browser's floating-point figures.
   -- p_allow_overpay is ignored unless the caller is an admin.
+  -- A supervisor-created employee has salary 0, so payable 0 must not accept a payment.
+  if v_payable <= 0 and not (public.is_admin() and coalesce(p_allow_overpay, false)) then
+    raise exception using
+      message = 'This staff member has no salary payable for the month.',
+      detail = jsonb_build_object('payable', v_payable, 'paid', v_paid, 'pending', v_pending)::text,
+      hint = 'salary_overpay';
+  end if;
   if v_payable > 0 and p_amount > v_pending + 0.05
      and not (public.is_admin() and coalesce(p_allow_overpay, false)) then
     raise exception using
@@ -3190,8 +3299,29 @@ begin
     raise exception 'Supervisor or admin access required';
   end if;
 
+  if p_date is null then
+    raise exception 'Date is required';
+  end if;
+  if p_date > public.meter_station_today() then
+    raise exception 'Attendance cannot be marked for a future date';
+  end if;
+  perform public.raise_if_day_closing_certified(p_date);
+
   if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
     return jsonb_build_object('saved', 0);
+  end if;
+
+  if exists (
+    select 1
+    from public.salary_payments sp
+    where sp.salary_month = date_trunc('month', p_date)::date
+      and sp.employee_id in (
+        select (t.value->>'employee_id')::uuid
+        from jsonb_array_elements(p_rows) as t(value)
+        where nullif(trim(t.value->>'employee_id'), '') is not null
+      )
+  ) then
+    raise exception 'Attendance is locked because salary for this month has been paid';
   end if;
 
   select count(*)::int into v_bad_count
@@ -3214,6 +3344,14 @@ begin
     end if;
 
     v_emp_id := (v_row->>'employee_id')::uuid;
+    if not public.is_admin() and exists (
+      select 1 from public.employee_attendance a
+      where a.employee_id = v_emp_id
+        and a.date = p_date
+        and a.created_by is distinct from auth.uid()
+    ) then
+      raise exception 'Attendance for this staff member was entered by someone else';
+    end if;
     v_status := coalesce(nullif(trim(v_row->>'status'), ''), 'present');
     v_over_duty := v_status = 'present' and coalesce((v_row->>'over_duty')::boolean, false);
 
@@ -3244,7 +3382,7 @@ end;
 $$;
 
 comment on function public.save_employee_attendance_batch(date, jsonb) is
-  'Upsert attendance rows for one date, including over_duty on present days. Supervisor or admin only. Rejects inactive employees.';
+  'Upsert attendance for one date. Blocks future and certified dates, a month that already has salary paid, and rows another user created.';
 
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 
@@ -3261,16 +3399,25 @@ create table if not exists public.credit_customers (
   date date default public.meter_station_today(),
   mobile text check (mobile is null or char_length(trim(mobile)) <= 20),
   address text check (address is null or char_length(trim(address)) <= 500),
-  prepaid_balance numeric(14,2) not null default 0 check (prepaid_balance >= 0)
+  prepaid_balance numeric(14,2) not null default 0 check (prepaid_balance >= 0),
+  credit_limit numeric(14,2) check (credit_limit is null or credit_limit >= 0)
 );
 
 create index if not exists credit_amount_idx on public.credit_customers (amount_due desc);
 create index if not exists credit_customers_created_at_idx on public.credit_customers (created_at desc);
 create index if not exists credit_customers_date_idx on public.credit_customers (date desc);
-create index if not exists credit_customers_name_norm_idx on public.credit_customers (lower(trim(customer_name)));
+create unique index if not exists credit_customers_name_mobile_unique
+  on public.credit_customers (
+    lower(trim(customer_name)),
+    regexp_replace(mobile, '\D', '', 'g')
+  )
+  where nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is not null;
 
 comment on table public.credit_customers is 'Credit ledger for fleet and institutional customers.';
-comment on column public.credit_customers.date is 'Date for which this credit applies; used for day-closing credit_today sum.';
+comment on column public.credit_customers.date is
+  'Fixed at creation. Opening balances are credit entries, so this date no longer moves day closing.';
+comment on column public.credit_customers.credit_limit is
+  'Optional cap. A sale over the limit warns the operator; it is not rejected.';
 comment on column public.credit_customers.mobile is 'Customer mobile / phone (optional)';
 comment on column public.credit_customers.address is 'Customer address (optional)';
 comment on column public.credit_customers.prepaid_balance is
@@ -3333,7 +3480,11 @@ create table if not exists public.credit_entries (
   created_at timestamp with time zone default timezone('utc'::text, now()),
   employee_id uuid references public.employees (id) on delete set null,
   shift text check (shift is null or shift in ('morning', 'afternoon')),
-  constraint credit_entries_settled_le_amount check (amount_settled <= amount)
+  constraint credit_entries_settled_le_amount check (amount_settled <= amount),
+  status text not null default 'posted' check (status in ('posted', 'cancelled')),
+  entry_kind text not null default 'sale' check (entry_kind in ('sale', 'opening')),
+  cancelled_at timestamptz,
+  cancelled_by uuid references auth.users (id) on delete set null
 );
 
 create index if not exists credit_entries_customer_date_idx on public.credit_entries (credit_customer_id, transaction_date);
@@ -3370,7 +3521,9 @@ create policy "credit_entries_update_by_role" on public.credit_entries
 
 drop policy if exists "credit_entries_delete_admin" on public.credit_entries;
 create policy "credit_entries_delete_admin" on public.credit_entries
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using (false);
+
+revoke delete on table public.credit_entries from public, anon, authenticated;
 
 -- Browser roles cannot write balances. Security-definer RPCs run as the owner.
 revoke insert, update on table public.credit_customers from public, anon, authenticated;
@@ -3392,9 +3545,9 @@ grant update (
   vehicle_no,
   last_payment,
   notes,
-  date,
   mobile,
-  address
+  address,
+  credit_limit
 ) on table public.credit_customers to authenticated;
 
 -- credit_entries: no column grants. add_credit_entry and the payment RPCs write the row.
@@ -3436,11 +3589,13 @@ begin
     coalesce(sum(amount_settled), 0)
   into v_new_due, v_settled_total
   from public.credit_entries
-  where credit_customer_id = p_credit_customer_id;
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted';
 
   select coalesce(sum(amount), 0) into v_payment_total
   from public.credit_payments
-  where credit_customer_id = p_credit_customer_id;
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted';
 
   v_prepaid := greatest(0, v_payment_total - v_settled_total);
 
@@ -3473,7 +3628,10 @@ create table if not exists public.credit_payments (
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamp with time zone default timezone('utc'::text, now()),
   payment_mode text check (payment_mode in ('Cash', 'UPI', 'Bank')),
-  same_day_settlement boolean not null default false
+  same_day_settlement boolean not null default false,
+  status text not null default 'posted' check (status in ('posted', 'cancelled')),
+  cancelled_at timestamptz,
+  cancelled_by uuid references auth.users (id) on delete set null
 );
 
 create index if not exists credit_payments_date_idx on public.credit_payments (date desc);
@@ -3503,7 +3661,9 @@ create policy "credit_payments_update_by_role" on public.credit_payments
 
 drop policy if exists "credit_payments_delete_admin" on public.credit_payments;
 create policy "credit_payments_delete_admin" on public.credit_payments
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using (false);
+
+revoke delete on table public.credit_payments from public, anon, authenticated;
 
 -- ============================================================================
 -- REMINDERS (station todos: credit follow-ups, calls, dated tasks)
@@ -3898,6 +4058,7 @@ create table if not exists public.day_closing (
   certified_at timestamptz,
   certified_by uuid references auth.users (id) on delete set null,
   certified_by_name text check (certified_by_name is null or char_length(trim(certified_by_name)) <= 120),
+  revoke_reason text check (revoke_reason is null or char_length(trim(revoke_reason)) between 3 and 500),
   constraint day_closing_certified_consistency check (
     (certified = false and certified_at is null and certified_by is null and certified_by_name is null)
     or (certified = true and certified_at is not null)
@@ -3923,6 +4084,7 @@ comment on column public.day_closing.certified is 'True after an admin acknowled
 comment on column public.day_closing.certified_at is 'When the admin certified this closing.';
 comment on column public.day_closing.certified_by is 'auth.users.id of the admin who certified.';
 comment on column public.day_closing.certified_by_name is 'Display name (or email) snapshot of the certifying admin.';
+comment on column public.day_closing.revoke_reason is 'Why certification was removed. Required when an admin revokes. The audit row is written even if the audit flag is off.';
 
 alter table public.day_closing enable row level security;
 
@@ -4138,12 +4300,8 @@ begin
       sum(amount) as pay_today,
       sum(amount) filter (where coalesce(same_day_settlement, false)) as same_day_pay,
       sum(amount) filter (where not coalesce(same_day_settlement, false)) as collection_pay,
-      sum(amount) filter (
-        where lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash'
-      ) as pay_cash,
-      sum(amount) filter (
-        where lower(trim(coalesce(payment_mode, ''))) = 'upi'
-      ) as pay_upi,
+      sum(amount) filter (where lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash') as pay_cash,
+      sum(amount) filter (where lower(trim(coalesce(payment_mode, ''))) = 'upi') as pay_upi,
       sum(amount) filter (
         where coalesce(same_day_settlement, false)
           and lower(trim(coalesce(payment_mode, 'Cash'))) = 'cash'
@@ -4158,17 +4316,17 @@ begin
       ) as same_day_bank
     from public.credit_payments
     where date = p_date
+      and status = 'posted'
     group by credit_customer_id
   ),
   cred as (
     select
       credit_customer_id,
       sum(amount) as credit_today,
-      sum(amount) filter (
-        where employee_id is not null and shift is not null
-      ) as credit_shift
+      sum(amount) filter (where employee_id is not null and shift is not null) as credit_shift
     from public.credit_entries
     where transaction_date = p_date
+      and status = 'posted'
     group by credit_customer_id
   ),
   split as (
@@ -4211,10 +4369,10 @@ begin
   from public.credit_customers c
   where c.date = p_date
     and not exists (
-      select 1 from public.credit_entries e where e.credit_customer_id = c.id
+      select 1 from public.credit_entries e
+      where e.credit_customer_id = c.id and e.status = 'posted'
     );
 
-  -- Day closing Credit today = open credit only (same-day settled removed).
   v_open_credit := greatest(v_credit_entries - v_same_day_credit_reduce, 0);
   v_credit_ledger := v_open_credit + v_credit_legacy;
 
@@ -4222,8 +4380,6 @@ begin
   from public.day_closing where date = p_date - interval '1 day' limit 1;
   v_short_previous := coalesce(v_short_previous, 0);
 
-  -- Open shift-attributed credit only (for Credit today breakdown).
-  -- Gross shift credit stays on meter_shift_cash for shift short.
   v_credit_shift := least(v_credit_shift_gross, v_open_credit);
 
   select coalesce(sum(amount), 0) into v_expenses_ledger
@@ -4233,9 +4389,7 @@ begin
   from public.expenses
   where date = p_date and employee_id is not null and shift is not null;
 
-  select
-    coalesce(sum(cash_collected), 0),
-    coalesce(sum(phone_pay), 0)
+  select coalesce(sum(cash_collected), 0), coalesce(sum(phone_pay), 0)
   into v_shift_cash, v_shift_phone
   from public.meter_shift_cash
   where reading_date = p_date;
@@ -4485,6 +4639,7 @@ comment on function public.get_day_closing_breakdown(date) is
 create or replace function public.get_night_cash_available()
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_total numeric := 0;
@@ -4530,6 +4685,7 @@ create or replace function public.preview_night_cash_collection(
 )
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_included jsonb;
@@ -4588,6 +4744,7 @@ create or replace function public.collect_night_cash(
 )
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_preview jsonb;
@@ -4763,7 +4920,8 @@ comment on function public.save_day_closing(date, numeric, numeric, text) is
 
 create or replace function public.set_day_closing_certified(
   p_date date,
-  p_certified boolean
+  p_certified boolean,
+  p_reason text default null
 )
 returns jsonb
 language plpgsql security definer
@@ -4815,7 +4973,8 @@ begin
       certified = true,
       certified_at = v_at,
       certified_by = auth.uid(),
-      certified_by_name = v_name
+      certified_by_name = v_name,
+      revoke_reason = null
     where date = p_date;
 
     return jsonb_build_object(
@@ -4837,12 +4996,20 @@ begin
     );
   end if;
 
+  if nullif(trim(coalesce(p_reason, '')), '') is null
+     or char_length(trim(p_reason)) < 3 then
+    raise exception 'A reason is required to remove certification';
+  end if;
+
+  perform set_config('app.force_audit', 'true', true);
   update public.day_closing set
     certified = false,
     certified_at = null,
     certified_by = null,
-    certified_by_name = null
+    certified_by_name = null,
+    revoke_reason = trim(p_reason)
   where date = p_date;
+  perform set_config('app.force_audit', '', true);
 
   return jsonb_build_object(
     'date', p_date,
@@ -4854,8 +5021,8 @@ begin
 end;
 $$;
 
-comment on function public.set_day_closing_certified(date, boolean) is
-  'Admin-only: certify a saved statement (locks figures) or revoke so it can be edited and acknowledged again.';
+comment on function public.set_day_closing_certified(date, boolean, text) is
+  'Admin-only: certify a saved statement or revoke it. Revoke requires a reason and always writes an audit row.';
 
 -- RPC: Add credit entry (Transaction Date = DSR date; optional shift attribution)
 drop function if exists public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text);
@@ -4886,11 +5053,10 @@ declare
   v_entry_id uuid;
   v_fuel_type text;
   v_quantity numeric;
-  v_remaining numeric;
-  v_entry record;
-  v_alloc numeric;
-  v_prepaid numeric;
   v_shift text;
+  v_name text;
+  v_mobile text;
+  v_name_matches int;
 begin
   perform public.require_staff_access();
 
@@ -4899,6 +5065,10 @@ begin
     return v_replay;
   end if;
 
+  v_name := trim(p_customer_name);
+  if v_name is null or v_name = '' then
+    raise exception 'customer name is required';
+  end if;
   if p_amount is null or p_amount <= 0 then
     raise exception 'amount must be positive';
   end if;
@@ -4933,82 +5103,86 @@ begin
     raise exception 'quantity must be positive when provided';
   end if;
 
-  select id into v_customer_id
-  from public.credit_customers
-  where trim(lower(customer_name)) = trim(lower(p_customer_name))
-  order by created_at desc limit 1;
+  v_mobile := nullif(regexp_replace(coalesce(p_mobile, ''), '\D', '', 'g'), '');
+  perform pg_advisory_xact_lock(hashtext(lower(v_name) || ':' || coalesce(v_mobile, '')));
+
+  if v_mobile is not null then
+    select id into v_customer_id
+    from public.credit_customers
+    where lower(trim(customer_name)) = lower(v_name)
+      and regexp_replace(coalesce(mobile, ''), '\D', '', 'g') = v_mobile
+    limit 1;
+  else
+    select count(*) into v_name_matches
+    from public.credit_customers
+    where lower(trim(customer_name)) = lower(v_name)
+      and nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is null;
+    if v_name_matches > 1 then
+      raise exception 'More than one customer is named %. Enter a mobile number.', v_name;
+    end if;
+    select id into v_customer_id
+    from public.credit_customers
+    where lower(trim(customer_name)) = lower(v_name)
+      and nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is null
+    limit 1;
+  end if;
 
   if v_customer_id is null then
-    insert into public.credit_customers (
-      customer_name, vehicle_no, amount_due, date, notes, mobile, address, created_by
-    )
-    values (
-      trim(p_customer_name),
-      nullif(trim(p_vehicle_no), ''),
-      0,
-      p_transaction_date,
-      nullif(trim(p_notes), ''),
-      nullif(trim(p_mobile), ''),
-      nullif(trim(p_address), ''),
-      auth.uid()
-    )
-    returning id into v_customer_id;
+    begin
+      insert into public.credit_customers (
+        customer_name, vehicle_no, amount_due, date, notes, mobile, address, created_by
+      )
+      values (
+        v_name,
+        nullif(trim(p_vehicle_no), ''),
+        0,
+        p_transaction_date,
+        nullif(trim(p_notes), ''),
+        nullif(trim(p_mobile), ''),
+        nullif(trim(p_address), ''),
+        auth.uid()
+      )
+      returning id into v_customer_id;
+    exception
+      when unique_violation then
+        select id into v_customer_id
+        from public.credit_customers
+        where lower(trim(customer_name)) = lower(v_name)
+          and (
+            (v_mobile is not null and regexp_replace(coalesce(mobile, ''), '\D', '', 'g') = v_mobile)
+            or (
+              v_mobile is null
+              and nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is null
+            )
+          )
+        limit 1;
+    end;
   elsif nullif(trim(p_mobile), '') is not null
-     or nullif(trim(p_address), '') is not null then
+     or nullif(trim(p_address), '') is not null
+     or nullif(trim(p_vehicle_no), '') is not null then
     update public.credit_customers
     set
       mobile = coalesce(nullif(trim(p_mobile), ''), mobile),
-      address = coalesce(nullif(trim(p_address), ''), address)
+      address = coalesce(nullif(trim(p_address), ''), address),
+      vehicle_no = coalesce(nullif(trim(p_vehicle_no), ''), vehicle_no)
     where id = v_customer_id;
   end if;
 
   perform public.raise_if_day_closing_certified(p_transaction_date);
 
-  -- Hold the customer row until commit so two sales cannot spend the same prepaid balance.
-  select prepaid_balance into v_prepaid
-  from public.credit_customers
-  where id = v_customer_id
-  for update;
+  perform 1 from public.credit_customers where id = v_customer_id for update;
 
   insert into public.credit_entries (
     credit_customer_id, transaction_date, fuel_type, quantity, amount,
-    created_by, employee_id, shift
+    created_by, employee_id, shift, entry_kind, status
   )
   values (
     v_customer_id, p_transaction_date, v_fuel_type, v_quantity, p_amount,
-    auth.uid(), p_employee_id, v_shift
+    auth.uid(), p_employee_id, v_shift, 'sale', 'posted'
   )
   returning id into v_entry_id;
 
-  if coalesce(v_prepaid, 0) > 0 then
-    perform set_config('app.skip_credit_sync', 'true', true);
-    begin
-      v_remaining := v_prepaid;
-      for v_entry in
-        select id, amount, amount_settled
-        from public.credit_entries
-        where credit_customer_id = v_customer_id
-          and amount_settled < amount
-        order by transaction_date asc, id asc
-        for update
-      loop
-        exit when v_remaining <= 0;
-        v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
-        update public.credit_entries
-        set amount_settled = amount_settled + v_alloc
-        where id = v_entry.id;
-        v_remaining := v_remaining - v_alloc;
-      end loop;
-      perform public.sync_credit_customer_balances(v_customer_id);
-    exception
-      when others then
-        perform set_config('app.skip_credit_sync', '', true);
-        raise;
-    end;
-    perform set_config('app.skip_credit_sync', '', true);
-  else
-    perform public.sync_credit_customer_balances(v_customer_id);
-  end if;
+  perform public.credit_settle_latest_sale(v_customer_id, v_entry_id, p_transaction_date, p_amount);
 
   v_out := jsonb_build_object(
     'credit_customer_id', v_customer_id,
@@ -5080,15 +5254,15 @@ begin
   v_night_cash := coalesce(v_row.night_cash, 0);
   v_phone_pay := coalesce(v_row.phone_pay, 0);
 
-  if coalesce(p_same_day_settlement, false) and coalesce(p_amount, 0) > 0
+  if coalesce(p_same_day_settlement, false) and coalesce(p_amount, 0) <> 0
      and v_row.night_cash_collection_id is null then
     v_mode := lower(trim(coalesce(p_payment_mode, 'Cash')));
     if v_mode = 'upi' then
-      v_phone_pay := v_phone_pay + p_amount;
+      v_phone_pay := greatest(0, v_phone_pay + p_amount);
     elsif v_mode = 'bank' then
       null;
     else
-      v_night_cash := v_night_cash + p_amount;
+      v_night_cash := greatest(0, v_night_cash + p_amount);
     end if;
   end if;
 
@@ -5133,9 +5307,6 @@ as $$
 declare
   v_replay jsonb;
   v_out jsonb;
-  v_remaining numeric := p_amount;
-  v_entry record;
-  v_alloc numeric;
   v_new_due numeric;
   v_prepaid numeric;
 begin
@@ -5158,7 +5329,6 @@ begin
 
   perform public.raise_if_day_closing_certified(p_date);
 
-  -- Same lock batch_record_credit_settlements takes, before any entry allocation.
   perform 1
   from public.credit_customers
   where id = p_credit_customer_id
@@ -5167,59 +5337,40 @@ begin
     raise exception 'Credit customer not found';
   end if;
 
+  perform set_config('app.skip_day_closing_refresh', 'true', true);
   perform set_config('app.skip_credit_sync', 'true', true);
 
-  begin
-    for v_entry in
-      select id, amount, amount_settled
-      from public.credit_entries
-      where credit_customer_id = p_credit_customer_id
-        and amount_settled < amount
-        and transaction_date <= p_date
-      order by transaction_date desc, id desc
-      for update
-    loop
-      exit when v_remaining <= 0;
-      v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
-      update public.credit_entries
-      set amount_settled = amount_settled + v_alloc
-      where id = v_entry.id;
-      v_remaining := v_remaining - v_alloc;
-    end loop;
-
-    insert into public.credit_payments (
-      credit_customer_id, date, amount, note, payment_mode, same_day_settlement, created_by
-    )
-    values (
-      p_credit_customer_id,
-      p_date,
-      p_amount,
-      nullif(trim(p_note), ''),
-      coalesce(p_payment_mode, 'Cash'),
-      coalesce(p_same_day_settlement, false),
-      auth.uid()
-    );
-
-    perform public.sync_credit_customer_balances(p_credit_customer_id);
-
-    update public.credit_customers
-    set last_payment = p_date
-    where id = p_credit_customer_id;
-  exception
-    when others then
-      perform set_config('app.skip_credit_sync', '', true);
-      raise;
-  end;
+  insert into public.credit_payments (
+    credit_customer_id, date, amount, note, payment_mode, same_day_settlement, created_by, status
+  )
+  values (
+    p_credit_customer_id,
+    p_date,
+    p_amount,
+    nullif(trim(p_note), ''),
+    coalesce(p_payment_mode, 'Cash'),
+    coalesce(p_same_day_settlement, false),
+    auth.uid(),
+    'posted'
+  );
 
   perform set_config('app.skip_credit_sync', '', true);
+  perform set_config('app.skip_day_closing_refresh', '', true);
 
-  -- Keep day closing / register in sync with open credit (and same-day cash routing).
-  perform public.apply_credit_payment_to_day_closing(
-    p_date,
-    coalesce(p_same_day_settlement, false),
-    coalesce(p_payment_mode, 'Cash'),
-    p_amount
-  );
+  perform public.credit_settle_latest_payment(p_credit_customer_id, p_date, p_amount);
+
+  update public.credit_customers
+  set last_payment = p_date
+  where id = p_credit_customer_id;
+
+  if coalesce(current_setting('app.defer_credit_day_closing', true), '') is distinct from 'true' then
+    perform public.apply_credit_payment_to_day_closing(
+      p_date,
+      coalesce(p_same_day_settlement, false),
+      coalesce(p_payment_mode, 'Cash'),
+      p_amount
+    );
+  end if;
 
   select amount_due, prepaid_balance into v_new_due, v_prepaid
   from public.credit_customers
@@ -5292,15 +5443,14 @@ begin
   if p_primary_customer_id is null then
     raise exception 'primary_customer_id required';
   end if;
-  if not exists (select 1 from public.credit_customers where id = p_primary_customer_id) then
-    raise exception 'Primary credit customer not found';
-  end if;
 
   perform id
   from public.credit_customers
   where id = any(p_customer_ids || array[p_primary_customer_id])
   order by id
   for update;
+
+  perform set_config('app.defer_credit_day_closing', 'true', true);
 
   foreach v_cust_id in array p_customer_ids
   loop
@@ -5333,6 +5483,15 @@ begin
     v_settlements := v_settlements || jsonb_build_array(v_result);
   end if;
 
+  perform set_config('app.defer_credit_day_closing', '', true);
+
+  perform public.apply_credit_payment_to_day_closing(
+    p_date,
+    coalesce(p_same_day_settlement, false),
+    coalesce(p_payment_mode, 'Cash'),
+    p_total_amount
+  );
+
   v_out := jsonb_build_object(
     'date', p_date,
     'total_amount', p_total_amount,
@@ -5349,67 +5508,228 @@ comment on function public.batch_record_credit_settlements(uuid[], uuid, date, n
 -- Re-apply LIFO settlements after a payment is removed (admin delete)
 create or replace function public.reallocate_credit_settlements(p_credit_customer_id uuid)
 returns void
-language plpgsql security definer
+language plpgsql
+security definer
 set search_path = public
 as $$
 declare
+  v_entry_ids uuid[];
+  v_entry_dates date[];
+  v_entry_amounts numeric[];
+  v_settled numeric[];
   v_pay record;
-  v_entry record;
+  v_i int;
+  v_n int;
   v_remaining numeric;
+  v_open numeric;
   v_alloc numeric;
+  v_pool numeric;
 begin
   perform set_config('app.skip_credit_sync', 'true', true);
+  perform set_config('app.skip_credit_audit', 'true', true);
+  perform set_config('app.skip_day_closing_refresh', 'true', true);
 
-  begin
-    update public.credit_entries
-    set amount_settled = 0
-    where credit_customer_id = p_credit_customer_id;
+  select
+    array_agg(id order by transaction_date asc, id asc),
+    array_agg(transaction_date order by transaction_date asc, id asc),
+    array_agg(amount order by transaction_date asc, id asc)
+  into v_entry_ids, v_entry_dates, v_entry_amounts
+  from public.credit_entries
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted';
 
-    for v_pay in
-      select id, amount, date
-      from public.credit_payments
-      where credit_customer_id = p_credit_customer_id
-      order by date asc, created_at asc, id asc
-    loop
-      v_remaining := v_pay.amount;
-      for v_entry in
-        select id, amount, amount_settled
-        from public.credit_entries
-        where credit_customer_id = p_credit_customer_id
-          and amount_settled < amount
-          and transaction_date <= v_pay.date
-        order by transaction_date desc, id desc
-        for update
-      loop
-        exit when v_remaining <= 0;
-        v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
-        update public.credit_entries
-        set amount_settled = amount_settled + v_alloc
-        where id = v_entry.id;
-        v_remaining := v_remaining - v_alloc;
-      end loop;
+  v_n := coalesce(array_length(v_entry_ids, 1), 0);
+  if v_n > 0 then
+    v_settled := array_fill(0::numeric, array[v_n]);
+  end if;
+
+  for v_pay in
+    select amount, date
+    from public.credit_payments
+    where credit_customer_id = p_credit_customer_id
+      and status = 'posted'
+    order by date asc, created_at asc, id asc
+  loop
+    v_remaining := v_pay.amount;
+    for v_i in reverse v_n..1 loop
+      exit when v_remaining <= 0;
+      if v_entry_dates[v_i] > v_pay.date then
+        continue;
+      end if;
+      v_open := v_entry_amounts[v_i] - v_settled[v_i];
+      if v_open <= 0 then
+        continue;
+      end if;
+      v_alloc := least(v_remaining, v_open);
+      v_settled[v_i] := v_settled[v_i] + v_alloc;
+      v_remaining := v_remaining - v_alloc;
+    end loop;
+  end loop;
+
+  select coalesce(sum(amount), 0) into v_pool
+  from public.credit_payments
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted';
+
+  if v_n > 0 then
+    v_pool := v_pool - coalesce((select sum(x) from unnest(v_settled) as x), 0);
+    for v_i in 1..v_n loop
+      exit when v_pool <= 0;
+      v_open := v_entry_amounts[v_i] - v_settled[v_i];
+      if v_open <= 0 then
+        continue;
+      end if;
+      v_alloc := least(v_pool, v_open);
+      v_settled[v_i] := v_settled[v_i] + v_alloc;
+      v_pool := v_pool - v_alloc;
     end loop;
 
-    perform public.sync_credit_customer_balances(p_credit_customer_id);
-  exception
-    when others then
-      perform set_config('app.skip_credit_sync', '', true);
-      raise;
-  end;
+    update public.credit_entries e
+    set amount_settled = s.settled
+    from unnest(v_entry_ids, v_settled) as s(id, settled)
+    where e.id = s.id
+      and e.amount_settled is distinct from s.settled;
+  end if;
 
+  perform set_config('app.skip_credit_audit', '', true);
+  perform set_config('app.skip_day_closing_refresh', '', true);
   perform set_config('app.skip_credit_sync', '', true);
+  perform public.sync_credit_customer_balances(p_credit_customer_id);
 end;
 $$;
 
 comment on function public.reallocate_credit_settlements(uuid) is
-  'Reset amount_settled; re-apply each payment LIFO to entries on/before that payment date.';
-
-
-comment on function public.reallocate_credit_settlements(uuid) is
-  'Reset amount_settled; re-apply each payment LIFO to entries on/before that payment date.';
+  'One pass: payments settle newest open sale on or before the payment date, then leftover advance settles the oldest open sale. Writes amount_settled once.';
 
 revoke all on function public.reallocate_credit_settlements(uuid) from public;
 revoke all on function public.reallocate_credit_settlements(uuid) from authenticated;
+
+create or replace function public.credit_settle_latest_sale(
+  p_credit_customer_id uuid,
+  p_entry_id uuid,
+  p_date date,
+  p_amount numeric
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_max_entry date;
+  v_max_pay date;
+  v_prepaid numeric;
+  v_apply numeric;
+begin
+  select max(transaction_date) into v_max_entry
+  from public.credit_entries
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted'
+    and id <> p_entry_id;
+
+  select max(date) into v_max_pay
+  from public.credit_payments
+  where credit_customer_id = p_credit_customer_id
+    and status = 'posted';
+
+  if p_date < coalesce(v_max_entry, p_date)
+     or p_date < coalesce(v_max_pay, p_date) then
+    perform public.reallocate_credit_settlements(p_credit_customer_id);
+    return;
+  end if;
+
+  select prepaid_balance into v_prepaid
+  from public.credit_customers
+  where id = p_credit_customer_id;
+
+  v_apply := least(greatest(coalesce(v_prepaid, 0), 0), coalesce(p_amount, 0));
+  if v_apply > 0 then
+    perform set_config('app.skip_credit_sync', 'true', true);
+    perform set_config('app.skip_credit_audit', 'true', true);
+    update public.credit_entries
+    set amount_settled = v_apply
+    where id = p_entry_id;
+    perform set_config('app.skip_credit_audit', '', true);
+    perform set_config('app.skip_credit_sync', '', true);
+  end if;
+  perform public.sync_credit_customer_balances(p_credit_customer_id);
+end;
+$$;
+
+create or replace function public.credit_settle_latest_payment(
+  p_credit_customer_id uuid,
+  p_date date,
+  p_amount numeric
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_entry record;
+  v_remaining numeric;
+  v_alloc numeric;
+begin
+  if exists (
+    select 1 from public.credit_payments
+    where credit_customer_id = p_credit_customer_id
+      and status = 'posted'
+      and date > p_date
+  ) then
+    perform public.reallocate_credit_settlements(p_credit_customer_id);
+    return;
+  end if;
+
+  v_remaining := coalesce(p_amount, 0);
+  perform set_config('app.skip_credit_sync', 'true', true);
+  perform set_config('app.skip_credit_audit', 'true', true);
+
+  for v_entry in
+    select id, amount, amount_settled
+    from public.credit_entries
+    where credit_customer_id = p_credit_customer_id
+      and status = 'posted'
+      and transaction_date <= p_date
+      and amount_settled < amount
+    order by transaction_date desc, id desc
+    for update
+  loop
+    exit when v_remaining <= 0;
+    v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
+    update public.credit_entries
+    set amount_settled = amount_settled + v_alloc
+    where id = v_entry.id;
+    v_remaining := v_remaining - v_alloc;
+  end loop;
+
+  if v_remaining > 0 then
+    for v_entry in
+      select id, amount, amount_settled
+      from public.credit_entries
+      where credit_customer_id = p_credit_customer_id
+        and status = 'posted'
+        and amount_settled < amount
+      order by transaction_date asc, id asc
+      for update
+    loop
+      exit when v_remaining <= 0;
+      v_alloc := least(v_remaining, v_entry.amount - v_entry.amount_settled);
+      update public.credit_entries
+      set amount_settled = amount_settled + v_alloc
+      where id = v_entry.id;
+      v_remaining := v_remaining - v_alloc;
+    end loop;
+  end if;
+
+  perform set_config('app.skip_credit_audit', '', true);
+  perform set_config('app.skip_credit_sync', '', true);
+  perform public.sync_credit_customer_balances(p_credit_customer_id);
+end;
+$$;
+
+revoke all on function public.credit_settle_latest_sale(uuid, uuid, date, numeric) from public, anon, authenticated;
+revoke all on function public.credit_settle_latest_payment(uuid, date, numeric) from public, anon, authenticated;
 
 create or replace function public.sync_saved_day_closing_for_date(p_date date)
 returns void
@@ -5526,8 +5846,6 @@ declare
   v_old_date date;
 begin
   if tg_table_name = 'credit_entries' then
-    -- Settling an older sale only changes amount_settled. That must stay allowed
-    -- when the sale's own date is already certified.
     if tg_op = 'UPDATE'
        and old.transaction_date is not distinct from new.transaction_date
        and old.amount is not distinct from new.amount
@@ -5536,6 +5854,8 @@ begin
        and old.quantity is not distinct from new.quantity
        and old.employee_id is not distinct from new.employee_id
        and old.shift is not distinct from new.shift
+       and old.status is not distinct from new.status
+       and old.entry_kind is not distinct from new.entry_kind
     then
       return null;
     end if;
@@ -5556,9 +5876,31 @@ begin
     end if;
   end if;
 
+  if tg_table_name = 'expenses' and v_date > public.meter_station_today() then
+    raise exception 'Expense date cannot be in the future';
+  end if;
+
   perform public.raise_if_day_closing_certified(v_date);
   if v_old_date is not null and v_old_date is distinct from v_date then
     perform public.raise_if_day_closing_certified(v_old_date);
+  end if;
+
+  if tg_table_name in ('expenses', 'credit_entries', 'credit_payments') then
+    if exists (
+      select 1 from public.day_closing dc
+      where dc.date = v_date and dc.night_cash_collection_id is not null
+    ) or (
+      v_old_date is not null and exists (
+        select 1 from public.day_closing dc
+        where dc.date = v_old_date and dc.night_cash_collection_id is not null
+      )
+    ) then
+      raise exception 'Night cash for this day has already been collected';
+    end if;
+  end if;
+
+  if coalesce(current_setting('app.skip_day_closing_refresh', true), '') = 'true' then
+    return null;
   end if;
 
   perform public.refresh_open_day_closing(v_date);
@@ -5638,7 +5980,7 @@ declare
   v_last_payment date;
 begin
   if not public.is_admin() then
-    raise exception 'Only an admin can delete credit settlements';
+    raise exception 'Only an admin can cancel credit settlements';
   end if;
 
   select * into v_payment
@@ -5648,23 +5990,33 @@ begin
   if not found then
     raise exception 'Settlement record not found';
   end if;
+  if v_payment.status = 'cancelled' then
+    raise exception 'Settlement is already cancelled';
+  end if;
 
+  perform public.raise_if_day_closing_certified(v_payment.date);
+
+  perform 1
+  from public.credit_customers
+  where id = v_payment.credit_customer_id
+  for update;
+
+  perform set_config('app.skip_day_closing_refresh', 'true', true);
   perform set_config('app.skip_credit_sync', 'true', true);
 
-  begin
-    delete from public.credit_payments where id = p_payment_id;
-    perform public.reallocate_credit_settlements(v_payment.credit_customer_id);
-  exception
-    when others then
-      perform set_config('app.skip_credit_sync', '', true);
-      raise;
-  end;
+  update public.credit_payments
+  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  where id = p_payment_id;
 
   perform set_config('app.skip_credit_sync', '', true);
+  perform set_config('app.skip_day_closing_refresh', '', true);
+
+  perform public.reallocate_credit_settlements(v_payment.credit_customer_id);
 
   select max(date) into v_last_payment
   from public.credit_payments
-  where credit_customer_id = v_payment.credit_customer_id;
+  where credit_customer_id = v_payment.credit_customer_id
+    and status = 'posted';
 
   update public.credit_customers
   set last_payment = v_last_payment
@@ -5674,12 +6026,18 @@ begin
   from public.credit_customers
   where id = v_payment.credit_customer_id;
 
-  perform public.sync_saved_day_closing_for_date(v_payment.date);
+  perform public.apply_credit_payment_to_day_closing(
+    v_payment.date,
+    coalesce(v_payment.same_day_settlement, false),
+    coalesce(v_payment.payment_mode, 'Cash'),
+    -v_payment.amount
+  );
 
   return jsonb_build_object(
     'credit_customer_id', v_payment.credit_customer_id,
     'deleted_amount', v_payment.amount,
     'deleted_date', v_payment.date,
+    'cancelled', true,
     'new_due', v_new_due,
     'prepaid_balance', v_prepaid
   );
@@ -5692,6 +6050,7 @@ comment on function public.delete_credit_payment(uuid) is
 create or replace function public.delete_day_closing(p_id uuid)
 returns jsonb
 language plpgsql security definer
+set search_path = public
 as $$
 declare
   v_row record;
@@ -5745,7 +6104,7 @@ declare
   v_prepaid numeric;
 begin
   if not public.is_admin() then
-    raise exception 'Only an admin can delete credit entries';
+    raise exception 'Only an admin can cancel credit entries';
   end if;
 
   select * into v_entry
@@ -5755,21 +6114,28 @@ begin
   if not found then
     raise exception 'Credit entry not found';
   end if;
-
-  if coalesce(v_entry.amount_settled, 0) > 0 then
-    perform set_config('app.skip_credit_sync', 'true', true);
-    begin
-      delete from public.credit_entries where id = p_entry_id;
-      perform public.reallocate_credit_settlements(v_entry.credit_customer_id);
-    exception
-      when others then
-        perform set_config('app.skip_credit_sync', '', true);
-        raise;
-    end;
-    perform set_config('app.skip_credit_sync', '', true);
-  else
-    delete from public.credit_entries where id = p_entry_id;
+  if v_entry.status = 'cancelled' then
+    raise exception 'Credit entry is already cancelled';
   end if;
+
+  perform public.raise_if_day_closing_certified(v_entry.transaction_date);
+
+  perform 1
+  from public.credit_customers
+  where id = v_entry.credit_customer_id
+  for update;
+
+  perform set_config('app.skip_day_closing_refresh', 'true', true);
+  perform set_config('app.skip_credit_sync', 'true', true);
+
+  update public.credit_entries
+  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  where id = p_entry_id;
+
+  perform set_config('app.skip_credit_sync', '', true);
+  perform set_config('app.skip_day_closing_refresh', '', true);
+
+  perform public.reallocate_credit_settlements(v_entry.credit_customer_id);
 
   select amount_due, prepaid_balance into v_new_due, v_prepaid
   from public.credit_customers
@@ -5781,6 +6147,7 @@ begin
     'credit_customer_id', v_entry.credit_customer_id,
     'amount', v_entry.amount,
     'transaction_date', v_entry.transaction_date,
+    'cancelled', true,
     'new_due', v_new_due,
     'prepaid_balance', v_prepaid
   );
@@ -5805,6 +6172,7 @@ as $$
     from public.credit_entries e
     inner join public.credit_customers c on c.id = e.credit_customer_id
     where e.transaction_date <= p_date
+      and e.status = 'posted'
     group by 1
   ),
   pay as (
@@ -5813,6 +6181,7 @@ as $$
     from public.credit_payments p
     inner join public.credit_customers c on c.id = p.credit_customer_id
     where p.date <= p_date
+      and p.status = 'posted'
     group by 1
   )
   select coalesce(sum(
@@ -5855,6 +6224,7 @@ as $$
     from public.credit_entries e
     inner join public.credit_customers c on c.id = e.credit_customer_id
     where e.transaction_date <= p_date
+      and e.status = 'posted'
     group by 1
   ),
   pay as (
@@ -5864,6 +6234,7 @@ as $$
     from public.credit_payments p
     inner join public.credit_customers c on c.id = p.credit_customer_id
     where p.date <= p_date
+      and p.status = 'posted'
     group by 1
   )
   select cust.customer_name,
@@ -5915,6 +6286,7 @@ begin
            max(e.transaction_date) as max_txn_date
     from public.credit_entries e
     where e.transaction_date <= p_date
+      and e.status = 'posted'
       and e.credit_customer_id in (select credit_customer_id from name_match)
     group by e.credit_customer_id
   ),
@@ -5924,6 +6296,7 @@ begin
            max(date) as last_pay_date
     from public.credit_payments
     where date <= p_date
+      and status = 'posted'
       and credit_customer_id in (select credit_customer_id from name_match)
     group by credit_customer_id
   ),
@@ -5981,6 +6354,7 @@ begin
     from public.credit_entries e
     join customer_ids ci on ci.credit_customer_id = e.credit_customer_id
     where e.transaction_date <= p_date
+      and e.status = 'posted'
   ),
   payments as (
     select 'payment'::text as entry_type,
@@ -5989,6 +6363,7 @@ begin
     from public.credit_payments p
     join customer_ids ci on ci.credit_customer_id = p.credit_customer_id
     where p.date <= p_date
+      and p.status = 'posted'
   )
   select u.entry_type, u.entry_date, u.amount
   from (
@@ -6004,7 +6379,8 @@ comment on function public.get_customer_credit_breakdown_as_of(text, date) is 'P
 -- Combined: summary + breakdown in one call (one round-trip for overdue modal)
 create or replace function public.get_customer_credit_detail_as_of(
   p_customer_name text,
-  p_date date
+  p_date date,
+  p_from date default null
 )
 returns table (
   customer_name text,
@@ -6016,90 +6392,138 @@ returns table (
   first_sale_date date,
   last_credit_date date,
   credit_entries jsonb,
-  payment_entries jsonb
+  payment_entries jsonb,
+  opening_balance numeric,
+  closing_balance numeric
 )
-language plpgsql security definer stable
+language plpgsql
+security definer
+stable
+set search_path = public
 as $$
+declare
+  v_from date := p_from;
 begin
   perform public.require_staff_access();
   return query
   with customer_ids as (
-    select c.id as credit_customer_id from public.credit_customers c
+    select c.id as credit_customer_id
+    from public.credit_customers c
     where lower(trim(c.customer_name)) = lower(trim(p_customer_name))
   ),
-  bal as (
-    select e.credit_customer_id, coalesce(sum(e.amount), 0) as credit_tot,
-           min(e.transaction_date) as min_txn_date, max(e.transaction_date) as max_txn_date
+  opening as (
+    select
+      coalesce(sum(e.amount) filter (where e.status = 'posted' and (v_from is not null and e.transaction_date < v_from)), 0)
+      - coalesce(sum(0), 0) as credit_before
     from public.credit_entries e
-    where e.transaction_date <= p_date and e.credit_customer_id in (select credit_customer_id from customer_ids)
-    group by e.credit_customer_id
+    where e.credit_customer_id in (select credit_customer_id from customer_ids)
   ),
-  pay as (
-    select p.credit_customer_id, coalesce(sum(p.amount), 0) as payment_tot, max(p.date) as last_pay_date
+  pay_before as (
+    select coalesce(sum(p.amount), 0) as paid_before
     from public.credit_payments p
-    where p.date <= p_date and p.credit_customer_id in (select credit_customer_id from customer_ids)
-    group by p.credit_customer_id
+    where p.credit_customer_id in (select credit_customer_id from customer_ids)
+      and p.status = 'posted'
+      and v_from is not null
+      and p.date < v_from
   ),
-  name_match as (
-    select c.id as credit_customer_id, max(c.customer_name)::text as customer_name, max(c.vehicle_no)::text as vehicle_no
-    from public.credit_customers c join customer_ids ci on ci.credit_customer_id = c.id group by c.id
+  period_credit as (
+    select coalesce(sum(e.amount), 0) as credit_taken,
+           min(e.transaction_date) as first_sale_date,
+           max(e.transaction_date) as last_credit_date
+    from public.credit_entries e
+    where e.credit_customer_id in (select credit_customer_id from customer_ids)
+      and e.status = 'posted'
+      and e.transaction_date <= p_date
+      and (v_from is null or e.transaction_date >= v_from)
   ),
-  per_customer as (
-    select nm.customer_name, nm.vehicle_no, coalesce(b.credit_tot, 0) as credit_taken,
-           coalesce(p.payment_tot, 0) as settlement_done,
-           greatest(coalesce(b.credit_tot, 0) - coalesce(p.payment_tot, 0), 0)::numeric as remaining,
-           p.last_pay_date as last_payment_date, b.min_txn_date as first_sale_date, b.max_txn_date as last_credit_date
-    from name_match nm
-    left join bal b on b.credit_customer_id = nm.credit_customer_id
-    left join pay p on p.credit_customer_id = nm.credit_customer_id
+  period_pay as (
+    select coalesce(sum(p.amount), 0) as settlement_done,
+           max(p.date) as last_payment_date
+    from public.credit_payments p
+    where p.credit_customer_id in (select credit_customer_id from customer_ids)
+      and p.status = 'posted'
+      and p.date <= p_date
+      and (v_from is null or p.date >= v_from)
   ),
-  agg as (
-    select (max(pc.customer_name))::text as customer_name, (max(pc.vehicle_no))::text as vehicle_no,
-           sum(pc.credit_taken)::numeric as credit_taken, sum(pc.settlement_done)::numeric as settlement_done,
-           sum(pc.remaining)::numeric as remaining, max(pc.last_payment_date) as last_payment_date,
-           min(pc.first_sale_date) as first_sale_date, max(pc.last_credit_date) as last_credit_date
-    from per_customer pc
+  name_row as (
+    select max(c.customer_name)::text as customer_name, max(c.vehicle_no)::text as vehicle_no
+    from public.credit_customers c
+    where c.id in (select credit_customer_id from customer_ids)
   ),
   credits_json as (
-    select coalesce(
-      (select jsonb_agg(
-        jsonb_build_object(
-          'id', e.id,
-          'entry_date', e.transaction_date,
-          'amount', e.amount,
-          'fuel_type', e.fuel_type,
-          'quantity', e.quantity,
-          'amount_settled', e.amount_settled
-        ) order by e.transaction_date desc
-      )
-       from public.credit_entries e
-       where e.credit_customer_id in (select credit_customer_id from customer_ids) and e.transaction_date <= p_date),
-      '[]'::jsonb
-    ) as entries
+    select coalesce(jsonb_agg(
+      jsonb_build_object(
+        'id', e.id,
+        'entry_date', e.transaction_date,
+        'amount', e.amount,
+        'fuel_type', e.fuel_type,
+        'quantity', e.quantity,
+        'amount_settled', e.amount_settled,
+        'status', e.status,
+        'entry_kind', e.entry_kind,
+        'created_by_name', coalesce(nullif(trim(u.display_name), ''), nullif(trim(u.email), ''), '')
+      ) order by e.transaction_date, e.created_at, e.id
+    ), '[]'::jsonb) as entries
+    from public.credit_entries e
+    left join public.users u on u.auth_user_id = e.created_by
+    where e.credit_customer_id in (select credit_customer_id from customer_ids)
+      and e.transaction_date <= p_date
+      and (v_from is null or e.transaction_date >= v_from)
   ),
   payments_json as (
-    select coalesce(
-      (select jsonb_agg(
-        jsonb_build_object(
-          'id', p.id,
-          'entry_date', p.date,
-          'amount', p.amount,
-          'payment_mode', p.payment_mode,
-          'note', p.note,
-          'same_day_settlement', coalesce(p.same_day_settlement, false)
-        ) order by p.date desc
-      )
-       from public.credit_payments p
-       where p.credit_customer_id in (select credit_customer_id from customer_ids) and p.date <= p_date),
-      '[]'::jsonb
-    ) as entries
+    select coalesce(jsonb_agg(
+      jsonb_build_object(
+        'id', p.id,
+        'entry_date', p.date,
+        'amount', p.amount,
+        'payment_mode', p.payment_mode,
+        'note', p.note,
+        'same_day_settlement', coalesce(p.same_day_settlement, false),
+        'status', p.status,
+        'created_by_name', coalesce(nullif(trim(u.display_name), ''), nullif(trim(u.email), ''), '')
+      ) order by p.date, p.created_at, p.id
+    ), '[]'::jsonb) as entries
+    from public.credit_payments p
+    left join public.users u on u.auth_user_id = p.created_by
+    where p.credit_customer_id in (select credit_customer_id from customer_ids)
+      and p.date <= p_date
+      and (v_from is null or p.date >= v_from)
   )
-  select a.customer_name, a.vehicle_no, a.credit_taken, a.settlement_done, a.remaining,
-         a.last_payment_date, a.first_sale_date, a.last_credit_date, cj.entries as credit_entries, pj.entries as payment_entries
-  from agg a, credits_json cj, payments_json pj;
+  select
+    n.customer_name,
+    n.vehicle_no,
+    pc.credit_taken,
+    pp.settlement_done,
+    (pc.credit_taken - pp.settlement_done),
+    pp.last_payment_date,
+    pc.first_sale_date,
+    pc.last_credit_date,
+    cj.entries,
+    pj.entries,
+    case when v_from is null then 0::numeric
+         else (select coalesce(sum(e.amount), 0) from public.credit_entries e
+               where e.credit_customer_id in (select credit_customer_id from customer_ids)
+                 and e.status = 'posted' and e.transaction_date < v_from)
+            - (select paid_before from pay_before)
+    end,
+    case when v_from is null then (pc.credit_taken - pp.settlement_done)
+         else (
+           (select coalesce(sum(e.amount), 0) from public.credit_entries e
+            where e.credit_customer_id in (select credit_customer_id from customer_ids)
+              and e.status = 'posted' and e.transaction_date < v_from)
+           - (select paid_before from pay_before)
+           + pc.credit_taken - pp.settlement_done
+         )
+    end
+  from name_row n
+  cross join period_credit pc
+  cross join period_pay pp
+  cross join credits_json cj
+  cross join payments_json pj;
 end;
 $$;
-comment on function public.get_customer_credit_detail_as_of(text, date) is 'Combined credit detail: summary + credit_entries and payment_entries jsonb for overdue modal (one round-trip).';
+comment on function public.get_customer_credit_detail_as_of(text, date, date) is
+  'Customer statement for a date range. Totals, opening and closing come from SQL. p_from null means all history up to p_date.';
 
 -- Credit ledger aggregated by customer name (one row per customer; primary id for Settle/Delete)
 create or replace function public.get_credit_ledger_aggregated()
@@ -6178,6 +6602,7 @@ as $$
     from public.credit_entries e
     inner join public.credit_customers c on c.id = e.credit_customer_id
     where e.transaction_date <= p_to
+      and e.status = 'posted'
       and (p_from is null or e.transaction_date >= p_from)
     group by 1
   ),
@@ -6188,6 +6613,7 @@ as $$
     from public.credit_payments p
     inner join public.credit_customers c on c.id = p.credit_customer_id
     where p.date <= p_to
+      and p.status = 'posted'
       and (p_from is null or p.date >= p_from)
     group by 1
   ),
@@ -6237,6 +6663,247 @@ $$;
 comment on function public.get_credit_overview_period(date, date) is
   'Portfolio credit activity for a date range (null p_from = all time): totals and per-customer breakdown.';
 
+create or replace function public.credit_customers_guard_date()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'UPDATE' and old.date is distinct from new.date then
+    raise exception 'Customer date is fixed. Opening balances are recorded as credit entries.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists credit_customers_guard_date on public.credit_customers;
+create trigger credit_customers_guard_date
+  before update on public.credit_customers
+  for each row execute function public.credit_customers_guard_date();
+
+create or replace function public.credit_customers_guard_limit()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE'
+     and new.credit_limit is distinct from old.credit_limit
+     and not public.is_admin()
+     and coalesce(auth.role(), '') is distinct from 'service_role' then
+    raise exception 'Only an admin can change the credit limit.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists credit_customers_guard_limit on public.credit_customers;
+create trigger credit_customers_guard_limit
+  before update on public.credit_customers
+  for each row execute function public.credit_customers_guard_limit();
+
+revoke all on function public.credit_customers_guard_limit() from public, anon;
+grant execute on function public.credit_customers_guard_limit() to authenticated;
+
+create or replace function public.get_credit_aging(p_as_of date default public.meter_station_today())
+returns table (
+  customer_id uuid,
+  customer_name text,
+  open_amount numeric,
+  oldest_unpaid date,
+  age_days integer,
+  bucket text
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_cust uuid;
+  v_ids uuid[];
+  v_dates date[];
+  v_amounts numeric[];
+  v_settled numeric[];
+  v_pay record;
+  v_i int;
+  v_n int;
+  v_remaining numeric;
+  v_open numeric;
+  v_alloc numeric;
+  v_pool numeric;
+  v_open_amount numeric;
+  v_oldest date;
+  v_name text;
+begin
+  perform public.require_staff_access();
+
+  for v_cust in
+    select distinct e.credit_customer_id
+    from public.credit_entries e
+    where e.status = 'posted'
+      and e.transaction_date <= p_as_of
+  loop
+    select
+      array_agg(id order by transaction_date asc, id asc),
+      array_agg(transaction_date order by transaction_date asc, id asc),
+      array_agg(amount order by transaction_date asc, id asc)
+    into v_ids, v_dates, v_amounts
+    from public.credit_entries
+    where credit_customer_id = v_cust
+      and status = 'posted'
+      and transaction_date <= p_as_of;
+
+    v_n := coalesce(array_length(v_ids, 1), 0);
+    if v_n = 0 then
+      continue;
+    end if;
+    v_settled := array_fill(0::numeric, array[v_n]);
+
+    for v_pay in
+      select amount, date
+      from public.credit_payments
+      where credit_customer_id = v_cust
+        and status = 'posted'
+        and date <= p_as_of
+      order by date asc, created_at asc, id asc
+    loop
+      v_remaining := v_pay.amount;
+      for v_i in reverse v_n..1 loop
+        exit when v_remaining <= 0;
+        if v_dates[v_i] > v_pay.date then
+          continue;
+        end if;
+        v_open := v_amounts[v_i] - v_settled[v_i];
+        if v_open <= 0 then
+          continue;
+        end if;
+        v_alloc := least(v_remaining, v_open);
+        v_settled[v_i] := v_settled[v_i] + v_alloc;
+        v_remaining := v_remaining - v_alloc;
+      end loop;
+    end loop;
+
+    select coalesce(sum(amount), 0) into v_pool
+    from public.credit_payments
+    where credit_customer_id = v_cust
+      and status = 'posted'
+      and date <= p_as_of;
+
+    v_pool := v_pool - coalesce((select sum(x) from unnest(v_settled) as x), 0);
+    for v_i in 1..v_n loop
+      exit when v_pool <= 0;
+      v_open := v_amounts[v_i] - v_settled[v_i];
+      if v_open <= 0 then
+        continue;
+      end if;
+      v_alloc := least(v_pool, v_open);
+      v_settled[v_i] := v_settled[v_i] + v_alloc;
+      v_pool := v_pool - v_alloc;
+    end loop;
+
+    v_open_amount := 0;
+    v_oldest := null;
+    for v_i in 1..v_n loop
+      v_open := v_amounts[v_i] - v_settled[v_i];
+      if v_open > 0 then
+        v_open_amount := v_open_amount + v_open;
+        if v_oldest is null or v_dates[v_i] < v_oldest then
+          v_oldest := v_dates[v_i];
+        end if;
+      end if;
+    end loop;
+
+    if v_open_amount > 0 and v_oldest is not null then
+      customer_id := v_cust;
+      select c.customer_name into v_name
+      from public.credit_customers c
+      where c.id = v_cust;
+      customer_name := v_name;
+      open_amount := v_open_amount;
+      oldest_unpaid := v_oldest;
+      age_days := (p_as_of - v_oldest)::integer;
+      bucket := case
+        when age_days <= 30 then '0-30'
+        when age_days <= 60 then '31-60'
+        when age_days <= 90 then '61-90'
+        else '90+'
+      end;
+      return next;
+    end if;
+  end loop;
+end;
+$$;
+
+comment on function public.get_credit_aging(date) is
+  'Open credit as of p_as_of. Payments after that date are left out. Buckets follow the oldest unpaid bill: 0-30, 31-60, 61-90, 90+.';
+
+grant execute on function public.get_credit_aging(date) to authenticated;
+
+create or replace function public.check_credit_balances()
+returns table (
+  customer_id uuid,
+  customer_name text,
+  stored_due numeric,
+  stored_prepaid numeric,
+  book_due numeric,
+  book_prepaid numeric,
+  issue text
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Only an admin can run the credit balance check';
+  end if;
+
+  return query
+  with books as (
+    select
+      c.id,
+      c.customer_name,
+      c.amount_due as stored_due,
+      c.prepaid_balance as stored_prepaid,
+      coalesce(e.due, 0) as book_due,
+      greatest(0, coalesce(p.paid, 0) - coalesce(e.settled, 0)) as book_prepaid
+    from public.credit_customers c
+    left join (
+      select credit_customer_id,
+             sum(amount - amount_settled) as due,
+             sum(amount_settled) as settled
+      from public.credit_entries
+      where status = 'posted'
+      group by credit_customer_id
+    ) e on e.credit_customer_id = c.id
+    left join (
+      select credit_customer_id, sum(amount) as paid
+      from public.credit_payments
+      where status = 'posted'
+      group by credit_customer_id
+    ) p on p.credit_customer_id = c.id
+  )
+  select
+    b.id,
+    b.customer_name::text,
+    b.stored_due,
+    b.stored_prepaid,
+    b.book_due,
+    b.book_prepaid,
+    case
+      when b.stored_due > 0.009 and b.stored_prepaid > 0.009 then 'Owes money and holds advance'
+      else 'Stored balance does not match entries'
+    end
+  from books b
+  where abs(b.stored_due - b.book_due) > 0.009
+     or abs(b.stored_prepaid - b.book_prepaid) > 0.009
+     or (b.stored_due > 0.009 and b.stored_prepaid > 0.009)
+  order by b.customer_name;
+end;
+$$;
+
 -- ============================================================================
 -- AUDIT TRIGGERS (automatic logging of sensitive operations)
 -- ============================================================================
@@ -6249,29 +6916,35 @@ security definer
 set search_path = public
 as $$
 begin
-  -- Missing row: production, keep logging. Staging sets value 'off'.
-  if exists (
-    select 1 from public.runtime_flags
-    where key = 'audit' and value = 'off'
-  ) then
-    if TG_OP = 'DELETE' then
-      return OLD;
+  if coalesce(current_setting('app.force_audit', true), '') is distinct from 'true' then
+    if coalesce(current_setting('app.skip_credit_audit', true), '') = 'true' then
+      if tg_op = 'DELETE' then
+        return old;
+      end if;
+      return new;
+    elsif exists (
+      select 1 from public.runtime_flags
+      where key = 'audit' and value = 'off'
+    ) then
+    if tg_op = 'DELETE' then
+      return old;
     end if;
-    return NEW;
+    return new;
+  end if;
   end if;
 
-  if TG_OP = 'DELETE' then
+  if tg_op = 'DELETE' then
     insert into public.audit_log (table_name, record_id, action, old_data, performed_by, performed_by_email)
-    values (TG_TABLE_NAME, OLD.id, TG_OP, to_jsonb(OLD), auth.uid(), auth.jwt() ->> 'email');
-    return OLD;
-  elsif TG_OP = 'UPDATE' then
+    values (tg_table_name, old.id, tg_op, to_jsonb(old), auth.uid(), auth.jwt() ->> 'email');
+    return old;
+  elsif tg_op = 'UPDATE' then
     insert into public.audit_log (table_name, record_id, action, old_data, new_data, performed_by, performed_by_email)
-    values (TG_TABLE_NAME, NEW.id, TG_OP, to_jsonb(OLD), to_jsonb(NEW), auth.uid(), auth.jwt() ->> 'email');
-    return NEW;
-  elsif TG_OP = 'INSERT' then
+    values (tg_table_name, new.id, tg_op, to_jsonb(old), to_jsonb(new), auth.uid(), auth.jwt() ->> 'email');
+    return new;
+  elsif tg_op = 'INSERT' then
     insert into public.audit_log (table_name, record_id, action, new_data, performed_by, performed_by_email)
-    values (TG_TABLE_NAME, NEW.id, TG_OP, to_jsonb(NEW), auth.uid(), auth.jwt() ->> 'email');
-    return NEW;
+    values (tg_table_name, new.id, tg_op, to_jsonb(new), auth.uid(), auth.jwt() ->> 'email');
+    return new;
   end if;
   return null;
 end;
@@ -6446,7 +7119,7 @@ grant execute on function public.get_night_cash_available() to authenticated;
 grant execute on function public.preview_night_cash_collection(date, date) to authenticated;
 grant execute on function public.collect_night_cash(date, date, text) to authenticated;
 grant execute on function public.save_day_closing(date, numeric, numeric, text) to authenticated;
-grant execute on function public.set_day_closing_certified(date, boolean) to authenticated;
+grant execute on function public.set_day_closing_certified(date, boolean, text) to authenticated;
 grant execute on function public.save_e20_testing_register(date, text, text, jsonb, jsonb, boolean, timestamptz, text, text) to authenticated;
 grant execute on function public.e20_parse_yes_no(text) to authenticated;
 grant execute on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text, uuid, text, uuid) to authenticated;
@@ -6460,7 +7133,9 @@ grant execute on function public.get_credit_overview_period(date, date) to authe
 grant execute on function public.get_open_credit_as_of(date) to authenticated;
 grant execute on function public.get_outstanding_credit_list_as_of(date) to authenticated;
 grant execute on function public.get_customer_credit_summary_as_of(text, date) to authenticated;
-grant execute on function public.get_customer_credit_detail_as_of(text, date) to authenticated;
+grant execute on function public.get_customer_credit_detail_as_of(text, date, date) to authenticated;
+grant execute on function public.get_credit_aging(date) to authenticated;
+grant execute on function public.check_credit_balances() to authenticated;
 grant execute on function public.upsert_staff(text, text, text) to authenticated;
 grant execute on function public.delete_staff(text) to authenticated;
 grant execute on function public.save_invoice(date, text, text, text, text, text, text, text, numeric, text, jsonb, uuid) to authenticated;
@@ -6656,6 +7331,7 @@ begin
       where ce.transaction_date = p_date
         and ce.shift = v_shift
         and ce.employee_id = p_employee_id
+        and ce.status = 'posted'
     ), 0),
     coalesce((
       select sum(ex.amount)
@@ -6716,6 +7392,7 @@ begin
        or old.shift is distinct from new.shift
        or old.transaction_date is distinct from new.transaction_date
        or old.amount is distinct from new.amount
+       or old.status is distinct from new.status
      )
      and old.employee_id is not null
      and old.shift is not null
@@ -6731,6 +7408,7 @@ begin
        or old.shift is distinct from new.shift
        or old.transaction_date is distinct from new.transaction_date
        or old.amount is distinct from new.amount
+       or old.status is distinct from new.status
      )
   then
     perform public.sync_meter_shift_cash_ledger_totals(
@@ -6922,20 +7600,33 @@ begin
   if v_row.employee_id is null or v_row.shift is null then
     raise exception 'Only shift-register credit entries can be removed here';
   end if;
+  if v_row.status = 'cancelled' then
+    raise exception 'Credit entry is already cancelled';
+  end if;
 
   perform public.require_meter_shift_writable(v_row.transaction_date, v_row.shift);
+  perform public.raise_if_day_closing_certified(v_row.transaction_date);
 
-  if coalesce(v_row.amount_settled, 0) > 0 then
-    raise exception 'Cannot delete a credit sale that already has payments';
-  end if;
   if not public.is_admin() and v_row.created_by is distinct from auth.uid() then
     raise exception 'Only the creator or an admin can remove this credit sale';
   end if;
 
-  delete from public.credit_entries where id = p_entry_id;
-  perform public.sync_credit_customer_balances(v_row.credit_customer_id);
+  perform 1 from public.credit_customers where id = v_row.credit_customer_id for update;
 
-  return jsonb_build_object('deleted', true, 'id', p_entry_id);
+  perform set_config('app.skip_day_closing_refresh', 'true', true);
+  perform set_config('app.skip_credit_sync', 'true', true);
+
+  update public.credit_entries
+  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  where id = p_entry_id;
+
+  perform set_config('app.skip_credit_sync', '', true);
+  perform set_config('app.skip_day_closing_refresh', '', true);
+
+  perform public.reallocate_credit_settlements(v_row.credit_customer_id);
+  perform public.sync_saved_day_closing_for_date(v_row.transaction_date);
+
+  return jsonb_build_object('deleted', true, 'cancelled', true, 'id', p_entry_id);
 end;
 $$;
 
@@ -7002,6 +7693,7 @@ begin
           'quantity', e.quantity,
           'amount', e.amount,
           'amount_settled', e.amount_settled,
+          'status', e.status,
           'created_by', e.created_by
         )
         order by c.customer_name, e.created_at
@@ -7011,6 +7703,7 @@ begin
       where e.transaction_date = p_date
         and e.shift = v_shift
         and e.employee_id is not null
+        and e.status = 'posted'
     ), '[]'::jsonb),
     'expenses', coalesce((
       select jsonb_agg(
@@ -7360,6 +8053,7 @@ begin
   where e.transaction_date = p_date
     and e.shift = v_shift
     and e.employee_id is not null
+    and e.status = 'posted'
     and coalesce(e.amount_settled, 0) > 0;
   if v_settled > 0 then
     raise exception
@@ -7373,15 +8067,20 @@ begin
     where e.transaction_date = p_date
       and e.shift = v_shift
       and e.employee_id is not null
+      and e.status = 'posted'
   loop
-    delete from public.credit_entries e
+    update public.credit_entries e
+    set status = 'cancelled',
+        cancelled_at = timezone('utc', now()),
+        cancelled_by = auth.uid()
     where e.transaction_date = p_date
       and e.shift = v_shift
       and e.employee_id is not null
-      and e.credit_customer_id = v_customer_id;
+      and e.credit_customer_id = v_customer_id
+      and e.status = 'posted';
     get diagnostics v_n = row_count;
     v_credit := v_credit + v_n;
-    perform public.sync_credit_customer_balances(v_customer_id);
+    perform public.reallocate_credit_settlements(v_customer_id);
   end loop;
 
   delete from public.expenses x
@@ -7413,7 +8112,7 @@ end;
 $$;
 
 comment on function public.delete_meter_shift_readings(date, text) is
-  'Admin-only: remove shift nozzles/cash and attributed credit/expenses; refresh dsr_* meters.';
+  'Admin-only: remove shift nozzles and cash, cancel posted shift credit (the row stays), delete shift expenses, and refresh dsr_* meters.';
 
 grant execute on function public.delete_meter_shift_readings(date, text) to authenticated;
 
@@ -8539,6 +9238,63 @@ comment on function public.get_meter_sales_breakdown(date, date) is
   'Pump / shift / salesman aggregates (cash + phone + credit + expense + total) plus daily pump columns.';
 
 
+create or replace function public.get_dashboard_snapshot(p_start date, p_end date)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_dsr jsonb;
+  v_stock jsonb;
+  v_expense numeric;
+  v_credit numeric;
+begin
+  perform public.require_staff_access();
+  if p_start is null or p_end is null or p_end < p_start then
+    raise exception 'A valid date range is required';
+  end if;
+
+  select coalesce(jsonb_agg(
+    jsonb_build_object(
+      'date', d.date,
+      'product', d.product,
+      'total_sales', d.total_sales,
+      'testing', d.testing,
+      'stock', d.stock,
+      'petrol_rate', d.petrol_rate,
+      'diesel_rate', d.diesel_rate
+    )
+    order by d.date, d.product
+  ), '[]'::jsonb)
+  into v_dsr
+  from public.dsr d
+  where d.date between p_start and p_end;
+
+  select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb)
+  into v_stock
+  from public.get_dsr_stock_range(p_start, p_end) s;
+
+  v_expense := public.sum_expenses(p_start, p_end, false);
+  v_credit := public.sum_credit_given(p_start, p_end);
+
+  return jsonb_build_object(
+    'dsrData', v_dsr,
+    'stockData', v_stock,
+    'expenseData', null,
+    'creditData', null,
+    'expenseTotal', v_expense,
+    'creditGiven', v_credit
+  );
+end;
+$$;
+
+comment on function public.get_dashboard_snapshot(date, date) is
+  'Dashboard range in one call: meter rows, stock, expense total, and posted credit given.';
+
+grant execute on function public.get_dashboard_snapshot(date, date) to authenticated;
+
 -- ============================================================================
 -- STORAGE: avatar + staff photo buckets and object policies
 -- ============================================================================
@@ -8547,8 +9303,8 @@ comment on function public.get_meter_sales_breakdown(date, date) is
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
-  ('user-avatars', 'user-avatars', true, 2097152, array['image/jpeg', 'image/png', 'image/webp']),
-  ('staff-photos', 'staff-photos', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+  ('user-avatars', 'user-avatars', false, 2097152, array['image/jpeg', 'image/png', 'image/webp']),
+  ('staff-photos', 'staff-photos', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,
@@ -8606,7 +9362,7 @@ create policy "staff_photos_update_staff" on storage.objects
 drop policy if exists "staff_photos_delete_staff" on storage.objects;
 create policy "staff_photos_delete_staff" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
+  using (bucket_id = 'staff-photos' and public.is_admin());
 
 -- Anon / PUBLIC may not execute app functions (20261013092142_revoke_anon_function_execute).
 do $$

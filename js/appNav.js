@@ -91,6 +91,8 @@
         { href: "expenses.html", label: "Expenses", icon: "expenses" },
         { href: "day-closing.html", label: "Day closing & short", icon: "closing" },
         { href: "billing.html", label: "Billing", icon: "billing" },
+        { href: "invoices.html", label: "Purchase vault", icon: "vault" },
+        { href: "letterhead.html", label: "Letter desk", icon: "letter" },
       ],
     },
     {
@@ -101,8 +103,6 @@
         { href: "attendance.html", label: "Attendance", icon: "attendance" },
         { href: "salary.html", label: "Salary", icon: "salary" },
         { href: "staff.html", label: "Staff", icon: "staff" },
-        { href: "invoices.html", label: "Vault", icon: "vault" },
-        { href: "letterhead.html", label: "Letter Desk", icon: "letter" },
       ],
     },
     {

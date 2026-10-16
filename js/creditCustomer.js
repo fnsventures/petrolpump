@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId */
+/* global window.supabaseClient, formatCurrency, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById */
 
 (function () {
   const page = () => window.CreditPage;
@@ -81,11 +81,7 @@ async function initCustomerView() {
     el.hidden = true;
   });
 
-  const breadcrumbEl = document.getElementById("breadcrumb-customer");
-  const titleEl = document.getElementById("customer-title");
-  if (breadcrumbEl) breadcrumbEl.textContent = page().state.customerName;
-  if (titleEl) titleEl.textContent = page().state.customerName;
-  document.title = `${page().state.customerName} · Credit · Bishnupriya Fuels`;
+  if (page().state.customerName) applyCustomerDisplayName(page().state.customerName);
 
   const settleDate = document.getElementById("settle-date");
   if (settleDate) initPersistedDateInput(settleDate, RECORD_DATE_KEYS.creditSettle);
@@ -297,22 +293,16 @@ function initCustomerSettlePanel() {
   document.getElementById("settle-fill-full")?.addEventListener("click", () => {
     const amountInput = document.getElementById("settle-amount");
     if (!amountInput || page().state.customerNetBalance <= 0) return;
-    amountInput.value = String(page().state.customerNetBalance);
+    amountInput.value = formatMoneyInput(page().state.customerNetBalance);
+    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
     amountInput.focus();
     amountInput.select();
   });
 }
 
 function pickCustomerContact(rows) {
-  const primary =
-    rows.find((r) => r.id === page().state.customerId) ||
-    rows.find((r) => Number(r.amount_due) > 0) ||
-    rows[0];
-  if (!primary) return { mobile: "", address: "" };
-  return {
-    mobile: String(primary.mobile ?? "").trim(),
-    address: String(primary.address ?? "").trim(),
-  };
+  const contact = pickCreditCustomerContact(rows, page().state.customerId);
+  return { mobile: contact.mobile, address: contact.address };
 }
 
 function setHiddenEl(el, hidden) {
@@ -378,7 +368,8 @@ function applyCustomerDisplayName(name) {
   if (titleEl) titleEl.textContent = trimmed;
   document.title = `${trimmed} · Credit · Bishnupriya Fuels`;
   const params = new URLSearchParams(window.location.search);
-  params.set("name", trimmed);
+  if (page().state.customerId) params.set("id", page().state.customerId);
+  else params.set("name", trimmed);
   const hash = window.location.hash || "";
   const url = `${window.location.pathname}?${params.toString()}${hash}`;
   history.replaceState(null, "", url);
@@ -396,6 +387,10 @@ function openCustomerEditModal() {
   if (nameInput) nameInput.value = page().state.customerName;
   if (mobileInput) mobileInput.value = page().state.customerContact.mobile;
   if (addressInput) addressInput.value = page().state.customerContact.address;
+  const limitInput = document.getElementById("edit-customer-limit");
+  const limitField = limitInput?.closest(".form-field");
+  if (limitField) limitField.hidden = !window.CreditPage?.isAdmin;
+  if (limitInput) limitInput.value = page().state.creditLimit ? String(page().state.creditLimit) : "";
   msg?.classList.add("hidden");
   msg?.classList.remove("success", "error");
 
@@ -442,7 +437,7 @@ async function isCustomerNameTakenByOther(newName, ids) {
   const { data, error } = await fetchAllRows(() =>
     window.supabaseClient
       .from("credit_customers")
-      .select("id, customer_name")
+      .select("id, customer_name, mobile")
       .ilike("customer_name", pattern)
       .order("customer_name", { ascending: true })
       .order("id", { ascending: true })
@@ -451,9 +446,12 @@ async function isCustomerNameTakenByOther(newName, ids) {
     AppError.report(error, { context: "isCustomerNameTakenByOther" });
     return false;
   }
-  return (data || []).some(
-    (r) => normCustomerName(r.customer_name) === targetNorm && !ids.includes(r.id)
-  );
+  const mobileKey = (document.getElementById("edit-customer-mobile")?.value || "").replace(/\D/g, "");
+  return (data || []).some((r) => {
+    if (ids.includes(r.id) || normCustomerName(r.customer_name) !== targetNorm) return false;
+    const other = String(r.mobile || "").replace(/\D/g, "");
+    return Boolean(mobileKey) && mobileKey === other;
+  });
 }
 
 async function saveCustomerContact() {
@@ -473,6 +471,8 @@ async function saveCustomerContact() {
   const newName = (document.getElementById("edit-customer-name")?.value || "").trim();
   const mobile = (document.getElementById("edit-customer-mobile")?.value || "").trim();
   const address = (document.getElementById("edit-customer-address")?.value || "").trim();
+  const limitRaw = document.getElementById("edit-customer-limit")?.value;
+  const creditLimit = limitRaw === "" || limitRaw == null ? null : Number(limitRaw);
 
   if (!newName) {
     if (msg) {
@@ -496,14 +496,15 @@ async function saveCustomerContact() {
   if (submitBtn) submitBtn.disabled = true;
   if (msg) msg.classList.add("hidden");
 
-  const { error } = await window.supabaseClient
-    .from("credit_customers")
-    .update({
-      customer_name: newName,
-      mobile: mobile || null,
-      address: address || null,
-    })
-    .in("id", ids);
+  const patch = {
+    customer_name: newName,
+    mobile: mobile || null,
+    address: address || null,
+  };
+  if (window.CreditPage?.isAdmin) {
+    patch.credit_limit = Number.isFinite(creditLimit) ? creditLimit : null;
+  }
+  const { error } = await window.supabaseClient.from("credit_customers").update(patch).in("id", ids);
 
   if (submitBtn) submitBtn.disabled = false;
 
@@ -518,6 +519,7 @@ async function saveCustomerContact() {
   }
 
   page().state.customerContact = { mobile, address };
+  page().state.creditLimit = Number.isFinite(creditLimit) ? creditLimit : null;
   if (nameChanged) applyCustomerDisplayName(newName);
   page().invalidateCreditCaches();
   await resolveCustomerIds();
@@ -526,6 +528,11 @@ async function saveCustomerContact() {
 }
 
 async function resolveCustomerIds(isCurrent) {
+  if (!page().state.customerName && page().state.customerId) {
+    const row = await fetchCreditCustomerById(page().state.customerId);
+    if (typeof isCurrent === "function" && !isCurrent()) return;
+    if (row?.customer_name) applyCustomerDisplayName(String(row.customer_name).trim());
+  }
   const needle = (page().state.customerName || "").trim();
   if (!needle) {
     page().state.customerIds = [];
@@ -536,7 +543,7 @@ async function resolveCustomerIds(isCurrent) {
   const { data: list, error } = await fetchAllRows(() =>
     window.supabaseClient
       .from("credit_customers")
-      .select("id, vehicle_no, amount_due, prepaid_balance, last_payment, customer_name, mobile, address")
+      .select("id, vehicle_no, amount_due, prepaid_balance, credit_limit, last_payment, customer_name, mobile, address")
       .ilike("customer_name", pattern)
       .order("customer_name", { ascending: true })
       .order("id", { ascending: true })
@@ -560,6 +567,8 @@ async function resolveCustomerIds(isCurrent) {
   }
 
   page().state.customerContact = pickCustomerContact(rows);
+  page().state.creditLimit =
+    rows.map((row) => Number(row.credit_limit)).find((value) => Number.isFinite(value) && value > 0) || null;
   renderCustomerMeta(rows);
   setCustomerNameEditable(rows.length > 0);
 
@@ -652,7 +661,7 @@ function syncCustomerContactActions() {
     waBtn.removeAttribute("href");
     waBtn.classList.add("is-disabled");
     waBtn.setAttribute("aria-disabled", "true");
-    waBtn.setAttribute("aria-label", "Send statement on WhatsApp");
+    waBtn.setAttribute("aria-label", "Send the outstanding reminder on WhatsApp");
   }
 }
 
@@ -680,31 +689,13 @@ function creditCustomerWaHref(mobile, text) {
 }
 
 function buildCreditWhatsAppText() {
-  const station =
-    (typeof PumpSettings?.getStationLegalName === "function" && PumpSettings.getStationLegalName()) ||
-    "Bishnupriya Fuels";
-  const asOf = formatDisplayDate(getLocalDateString());
-  const net = Number(page().state.customerNetBalance) || 0;
-  const prepaid = Number(page().state.customerPrepaidBalance) || 0;
-  const hasAdvance = prepaid > 0 && net <= 0;
-  const cleared = !hasAdvance && net <= 0.009;
-  const balanceLabel = hasAdvance ? "Credit balance" : "Outstanding";
-  const balanceValue = hasAdvance ? prepaid : Math.max(0, net);
-  const closing = hasAdvance
-    ? "Reply if you need anything else."
-    : cleared
-      ? "Nothing is unpaid on this account."
-      : "Please clear this at the pump, or reply to this chat.";
-  return [
-    "Hello,",
-    "",
-    `This is ${station}.`,
-    "",
-    `As on ${asOf}`,
-    `${balanceLabel}: ${formatCurrency(balanceValue)}`,
-    "",
-    closing,
-  ].join("\n");
+  const net = Number(page().state.customerNetBalance);
+  const unpaid = Number.isFinite(net) ? Math.max(0, net) : 0;
+  const name = page().state.lastCustomerSummaryContext?.customerName || "";
+  if (typeof TaskUtils?.waMessageForCustomer === "function") {
+    return TaskUtils.waMessageForCustomer(name, unpaid);
+  }
+  return formatCurrency(unpaid);
 }
 
 function showCreditShareNotice(message) {
@@ -1402,9 +1393,11 @@ async function loadCustomerDetail() {
     await resolveCustomerIds(stillCurrent);
     if (!stillCurrent()) return;
 
+    const detailArgs = { p_customer_name: page().state.customerName, p_date: asOfDate };
+    if (from) detailArgs.p_from = from;
     const { data: summaryData, error: summaryErr } = await window.supabaseClient.rpc(
       "get_customer_credit_detail_as_of",
-      { p_customer_name: page().state.customerName, p_date: asOfDate }
+      detailArgs
     );
     if (!stillCurrent()) return;
     if (summaryErr) throw summaryErr;
@@ -1431,7 +1424,10 @@ async function loadCustomerDetail() {
     }
 
     page().state.lastCustomerSummaryFull = summary;
-    const periodSummary = buildPeriodScopedSummary(summary, from, to);
+    const periodSummary =
+      summary.opening_balance != null && summary.opening_balance !== undefined
+        ? summary
+        : buildPeriodScopedSummary(summary, from, to);
     applyLifetimeSummary(periodSummary, {
       heroAmountDue: page().state.customerOutstandingDue,
       heroPrepaidBalance: page().state.customerPrepaidBalance,
@@ -1440,19 +1436,29 @@ async function loadCustomerDetail() {
     const creditEntries = (periodSummary.credit_entries || []).map((e) => ({
       id: e.id ?? null,
       transaction_date: e.entry_date,
+      entry_date: e.entry_date,
       amount: e.amount,
       fuel_type: e.fuel_type ?? null,
       quantity: e.quantity ?? null,
       amount_settled: e.amount_settled ?? 0,
+      status: e.status || "posted",
+      entry_kind: e.entry_kind || "sale",
+      created_by_name: e.created_by_name || "",
     }));
     const paymentEntries = (periodSummary.payment_entries || []).map((e) => ({
       id: e.id ?? null,
       date: e.entry_date,
+      entry_date: e.entry_date,
       amount: e.amount,
       payment_mode: e.payment_mode ?? null,
       note: e.note ?? null,
       same_day_settlement: Boolean(e.same_day_settlement),
+      status: e.status || "posted",
+      created_by_name: e.created_by_name || "",
     }));
+
+    periodSummary.credit_entries = creditEntries;
+    periodSummary.payment_entries = paymentEntries;
 
     const periodCredit = Number(periodSummary.credit_taken) || 0;
     const periodSettled = Number(periodSummary.settlement_done) || 0;
@@ -1466,6 +1472,9 @@ async function loadCustomerDetail() {
       periodActivity,
       periodCredit,
       periodSettled,
+      openingBalance: Number(periodSummary.opening_balance) || 0,
+      closingBalance:
+        periodSummary.closing_balance != null ? Number(periodSummary.closing_balance) : null,
       mobile: page().state.customerContact.mobile,
       address: page().state.customerContact.address,
       vehicles: [...page().state.customerVehicleNos],
@@ -1516,6 +1525,13 @@ async function handleSettle() {
   if (!amount || amount <= 0) {
     if (msg) msg.textContent = "Enter a valid amount.";
     return;
+  }
+  if (amount >= 10000) {
+    const ok = await AppDialog.confirm(`Record a payment of ${formatCurrency(amount)}?`, {
+      title: "Confirm payment",
+      confirmLabel: "Record payment",
+    });
+    if (!ok) return;
   }
   if (settlementDate > todayStr) {
     if (msg) msg.textContent = "Settlement date cannot be in the future.";
@@ -1665,8 +1681,8 @@ async function deleteCreditEntry(entryId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Delete credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
-      { title: "Delete credit entry", confirmLabel: "Delete", danger: true }
+      `Cancel the credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
+      { title: "Cancel credit entry", confirmLabel: "Cancel entry", danger: true }
     );
     if (!confirmed) return;
 
@@ -1701,8 +1717,8 @@ async function deleteCreditPayment(paymentId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Delete settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nOutstanding balance will be recalculated. This cannot be undone.`,
-      { title: "Delete settlement", confirmLabel: "Delete", danger: true }
+      `Cancel the settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
+      { title: "Cancel settlement", confirmLabel: "Cancel settlement", danger: true }
     );
     if (!confirmed) return;
 

@@ -73,7 +73,7 @@ Both steps are required — an Auth account alone sees empty pages.
   values ('operator@example.com', 'supervisor')
   on conflict (email) do update set role = excluded.role;
   ```
-- [ ] **First admin on a new project** — sign in, then **Settings → Users** lets you provision only your own email as `admin` (bootstrap rule).
+- [ ] **First admin on a new project** — sign-up cannot create an admin. In the SQL editor, as the service role, insert the row (or run `select set_config('app.allow_first_admin', 'on', true);` in the same transaction as `upsert_staff` for that email). Turn public sign-up off after that.
 - [ ] User signs in; supervisors must not see Staff (unless permitted), Analysis, Reports or Settings.
 
 **Remove a user:** **Settings → Users → delete** (`delete_staff`) removes app access; also delete the Auth user in Supabase so they cannot sign in.

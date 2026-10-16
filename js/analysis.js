@@ -858,14 +858,7 @@ async function loadAndRender(range) {
 
 function loadChartJs() {
   if (typeof window.Chart !== "undefined") return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1";
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Chart.js"));
-    document.head.appendChild(script);
-  });
+  return Promise.reject(new Error("Chart.js is not loaded"));
 }
 
 async function initAnalysisPage() {

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppCache, AppError, escapeHtml, normCustomerName, formatCurrency, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId */
+/* global window.supabaseClient, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact */
 
 (function () {
   const page = () => window.CreditPage;
@@ -7,6 +7,7 @@
   let customerComboboxActiveIndex = -1;
   let customerComboboxMatches = [];
   let quickPaymentCustomerId = null;
+  let quickPaymentCustomerIds = [];
   let quickPaymentNetBalance = 0;
 
 function initRecordSalePanel() {
@@ -20,7 +21,8 @@ function initRecordSalePanel() {
   document.getElementById("quick-settle-fill-full")?.addEventListener("click", () => {
     const amountInput = document.getElementById("quick-settle-amount");
     if (!amountInput || quickPaymentNetBalance <= 0) return;
-    amountInput.value = String(quickPaymentNetBalance);
+    amountInput.value = formatMoneyInput(quickPaymentNetBalance);
+    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
     amountInput.focus();
     amountInput.select();
   });
@@ -62,11 +64,13 @@ function syncQuickPaymentPanel(nameInput) {
     panel.classList.add("hidden");
     panel.hidden = true;
     quickPaymentCustomerId = null;
+    quickPaymentCustomerIds = [];
     quickPaymentNetBalance = 0;
     return;
   }
 
   quickPaymentCustomerId = suggestion.primaryId;
+  quickPaymentCustomerIds = (suggestion.customerIds || []).filter(Boolean);
   quickPaymentNetBalance = suggestion.netBalance;
 
   if (customerEl) customerEl.textContent = suggestion.name;
@@ -88,7 +92,12 @@ async function handleQuickPayment() {
     msg.classList.add("hidden");
   }
 
-  if (!quickPaymentCustomerId) {
+  const settleIds = quickPaymentCustomerIds.length
+    ? [...quickPaymentCustomerIds]
+    : quickPaymentCustomerId
+      ? [quickPaymentCustomerId]
+      : [];
+  if (settleIds.length === 0) {
     if (msg) {
       msg.textContent = "Select an existing customer with outstanding balance.";
       msg.classList.remove("hidden");
@@ -119,40 +128,25 @@ async function handleQuickPayment() {
     return;
   }
 
+  if (amount >= 10000) {
+    const ok = await AppDialog.confirm(`Record a payment of ${formatCurrency(amount)}?`, {
+      title: "Confirm payment",
+      confirmLabel: "Record payment",
+    });
+    if (!ok) return;
+  }
+
   if (submitBtn) {
     submitBtn.disabled = true;
     submitBtn.textContent = "Saving…";
   }
 
-  const cacheKey = `credit_${quickPaymentCustomerId}`;
-  const mutationKey = `credit_payment:${quickPaymentCustomerId}:${amount}:${settlementDate}`;
-  let previousCreditData = null;
-
-  if (typeof AppCache !== "undefined" && AppCache?.applyOptimisticUpdate) {
-    previousCreditData = AppCache.applyOptimisticUpdate(
-      cacheKey,
-      (current) => {
-        if (!current) return current;
-        return {
-          ...current,
-          netBalance: Math.max(0, (current.netBalance || 0) - amount),
-          amountDue: Math.max(0, (current.amountDue || 0) - amount),
-        };
-      },
-      "credit_overview"
-    );
-  }
+  const mutationKey = `credit_payment:${settleIds.slice().sort().join(",")}:${amount}:${settlementDate}`;
 
   const restoreSubmit = () => {
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Record payment";
-    }
-  };
-
-  const rollback = () => {
-    if (typeof AppCache !== "undefined" && AppCache?.rollbackOptimisticUpdate && previousCreditData !== null) {
-      AppCache.rollbackOptimisticUpdate(cacheKey, previousCreditData, "credit_overview");
     }
   };
 
@@ -163,24 +157,36 @@ async function handleQuickPayment() {
         : (_key, fn) => fn();
 
     const quickPaymentForm = document.getElementById("credit-quick-payment-form");
-    const paymentParams = {
-      p_credit_customer_id: quickPaymentCustomerId,
-      p_date: settlementDate,
-      p_amount: amount,
-      p_note: null,
-      p_payment_mode: paymentMode,
-      p_same_day_settlement: sameDaySettlement,
-    };
+    const primaryId = quickPaymentCustomerId || settleIds[0];
+    const paymentParams =
+      settleIds.length === 1
+        ? {
+            p_credit_customer_id: settleIds[0],
+            p_date: settlementDate,
+            p_amount: amount,
+            p_note: null,
+            p_payment_mode: paymentMode,
+            p_same_day_settlement: sameDaySettlement,
+          }
+        : {
+            p_customer_ids: settleIds,
+            p_primary_customer_id: primaryId,
+            p_date: settlementDate,
+            p_total_amount: amount,
+            p_note: null,
+            p_payment_mode: paymentMode,
+            p_same_day_settlement: sameDaySettlement,
+          };
+    const rpcName = settleIds.length === 1 ? "record_credit_payment" : "batch_record_credit_settlements";
     paymentParams.p_request_id = formRequestId(quickPaymentForm, paymentParams);
 
     await runMutation(mutationKey, async () => {
-      const { error } = await window.supabaseClient.rpc("record_credit_payment", paymentParams);
+      const { error } = await window.supabaseClient.rpc(rpcName, paymentParams);
       if (error) throw error;
     });
     clearFormRequestId(quickPaymentForm);
 
     restoreSubmit();
-    AppCache?.confirmOptimisticUpdate?.(cacheKey);
 
     const amountInput = document.getElementById("quick-settle-amount");
     if (amountInput) amountInput.value = "";
@@ -201,7 +207,6 @@ async function handleQuickPayment() {
     restoreSubmit();
     if (err?.name === "DuplicateMutationError") return;
 
-    rollback();
     if (msg) {
       msg.textContent = AppError.getUserMessage(err);
       msg.classList.remove("hidden", "success");
@@ -215,13 +220,7 @@ async function handleQuickPayment() {
 }
 
 function pickContactFromRows(rows) {
-  const primary = rows.find((r) => Number(r.amount_due) > 0) || rows[0];
-  if (!primary) return { mobile: "", address: "", vehicleNo: "" };
-  return {
-    mobile: String(primary.mobile ?? "").trim(),
-    address: String(primary.address ?? "").trim(),
-    vehicleNo: String(primary.vehicle_no ?? "").trim(),
-  };
+  return pickCreditCustomerContact(rows);
 }
 
 function buildCustomerSuggestions(rows) {
@@ -251,7 +250,12 @@ function buildCustomerSuggestions(rows) {
       mobile: contact.mobile,
       address: contact.address,
       netBalance: Math.max(0, netBalance),
+      creditLimit: groupRows.map((row) => Number(row.credit_limit)).find((value) => Number.isFinite(value) && value > 0) || null,
       primaryId: primary?.id || null,
+      customerIds: groupRows.map((row) => row.id).filter(Boolean),
+      mobiles: [
+        ...new Set(groupRows.map((row) => String(row.mobile ?? "").trim()).filter(Boolean)),
+      ],
     };
   });
 
@@ -261,10 +265,51 @@ function buildCustomerSuggestions(rows) {
 
 let customerSearchSeq = 0;
 
+function mobileMatchesNeedle(mobile, needle) {
+  const text = String(mobile || "").trim().toLowerCase();
+  if (!text || !needle) return false;
+  if (text.includes(needle)) return true;
+  const digits = needle.replace(/\D/g, "");
+  return Boolean(digits) && text.replace(/\D/g, "").includes(digits);
+}
+
+function suggestionMobiles(item) {
+  return item.mobiles?.length ? item.mobiles : [item.mobile];
+}
+
+function suggestionMatchesQuery(item, needle) {
+  if (!needle) return true;
+  if (item.nameNorm.includes(needle)) return true;
+  if (String(item.vehicleNo || "").trim().toLowerCase().includes(needle)) return true;
+  return suggestionMobiles(item).some((mobile) => mobileMatchesNeedle(mobile, needle));
+}
+
+const CREDIT_LARGE_AMOUNT = 10000;
+
+function withNewCustomerOption(matches, query) {
+  const trimmed = String(query || "").trim();
+  const needle = normCustomerName(trimmed);
+  if (!needle) return matches;
+  if (matches.some((item) => item.nameNorm === needle)) return matches;
+  return matches.concat([
+    {
+      name: trimmed,
+      nameNorm: needle,
+      isNew: true,
+      vehicleNo: "",
+      mobile: "",
+      mobiles: [],
+      netBalance: 0,
+      customerIds: [],
+      primaryId: null,
+    },
+  ]);
+}
+
 function matchingSuggestions(query) {
   const needle = normCustomerName(query);
   if (!needle) return customerSuggestions.slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
-  return customerSuggestions.filter((item) => item.nameNorm.includes(needle)).slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
+  return customerSuggestions.filter((item) => suggestionMatchesQuery(item, needle)).slice(0, CREDIT_CUSTOMER_SUGGEST_LIMIT);
 }
 
 function setComboboxOpen(open) {
@@ -282,7 +327,7 @@ function renderCustomerSuggestions(query) {
   const input = document.getElementById("customer");
   if (!list || !input) return;
 
-  const matches = matchingSuggestions(query);
+  const matches = withNewCustomerOption(matchingSuggestions(query), query);
   customerComboboxActiveIndex = -1;
   customerComboboxMatches = matches;
 
@@ -292,11 +337,21 @@ function renderCustomerSuggestions(query) {
     return;
   }
 
+  const needle = normCustomerName(query);
   list.innerHTML = matches
-    .map(
-      (item, index) =>
-        `<li class="combobox-option" role="option" data-index="${index}" data-name="${escapeHtml(item.name)}">${escapeHtml(item.name)}</li>`
-    )
+    .map((item, index) => {
+      const label = item.isNew ? `New customer “${item.name}”` : item.name;
+      const nameHit = item.isNew || !needle || item.nameNorm.includes(needle);
+      const mobile = nameHit
+        ? ""
+        : suggestionMobiles(item).find((value) => mobileMatchesNeedle(value, needle)) || "";
+      const mobileHtml = mobile ? ` <span class="muted">${escapeHtml(mobile)}</span>` : "";
+      const vehicleHtml =
+        !item.isNew && needle && String(item.vehicleNo || "").toLowerCase().includes(needle) && !item.nameNorm.includes(needle)
+          ? ` <span class="muted">${escapeHtml(item.vehicleNo)}</span>`
+          : "";
+      return `<li class="combobox-option" role="option" data-index="${index}" data-name="${escapeHtml(item.name)}">${escapeHtml(label)}${mobileHtml}${vehicleHtml}</li>`;
+    })
     .join("");
 
   list.querySelectorAll(".combobox-option").forEach((el, index) => {
@@ -326,9 +381,11 @@ function selectCustomerSuggestion(item) {
   const addressInput = document.getElementById("credit-customer-address");
 
   if (input) input.value = item.name;
-  if (vehicleInput) vehicleInput.value = item.vehicleNo || "";
-  if (mobileInput) mobileInput.value = item.mobile || "";
-  if (addressInput) addressInput.value = item.address || "";
+  if (!item.isNew) {
+    if (vehicleInput) vehicleInput.value = item.vehicleNo || "";
+    if (mobileInput) mobileInput.value = item.mobile || "";
+    if (addressInput) addressInput.value = item.address || "";
+  }
 
   setComboboxOpen(false);
   syncQuickPaymentPanel(item.name);
@@ -447,32 +504,32 @@ async function handleCreditSubmit(event) {
     return;
   }
 
-  const mutationKey = `credit_entry:${customerNameInput}:${amount}:${transactionDate}`;
-  let previousCreditData = null;
-
-  if (typeof AppCache !== "undefined" && AppCache?.applyOptimisticUpdate) {
-    previousCreditData = AppCache.applyOptimisticUpdate(
-      "credit_ledger",
-      (current) => {
-        const row = {
-          id: `temp-${Date.now()}`,
-          customer_name: customerNameInput,
-          amount,
-          transaction_date: transactionDate,
-          fuel_type: fuelType,
-          quantity,
-          notes,
-          vehicle_no: vehicleNo,
-          mobile,
-          address,
-          amount_settled: 0,
-        };
-        if (!current) return [row];
-        return [row, ...current];
-      },
-      "credit_overview"
-    );
+  const existing = findCustomerSuggestionByName(customerNameInput);
+  const overLimit =
+    existing?.creditLimit && existing.netBalance + amount > existing.creditLimit;
+  let confirmText = "";
+  let confirmTitle = "Confirm sale";
+  if (!existing) {
+    confirmTitle = "New customer";
+    confirmText = `Create a new customer “${customerNameInput}” and record ${formatCurrency(amount)}?`;
+  } else if (overLimit) {
+    confirmTitle = "Over credit limit";
+    confirmText = `${customerNameInput} has a credit limit of ${formatCurrency(existing.creditLimit)}. This sale goes over it. Save ${formatCurrency(amount)} anyway?`;
+  } else if (amount >= CREDIT_LARGE_AMOUNT) {
+    confirmText = `Record ${formatCurrency(amount)} for ${customerNameInput}?`;
   }
+  if (confirmText) {
+    const ok = await AppDialog.confirm(confirmText, { title: confirmTitle, confirmLabel: "Save sale" });
+    if (!ok) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Save sale";
+      }
+      return;
+    }
+  }
+
+  const mutationKey = `credit_entry:${customerNameInput}:${amount}:${transactionDate}`;
 
   const restoreSubmit = () => {
     if (submitBtn) {
@@ -507,7 +564,6 @@ async function handleCreditSubmit(event) {
     clearFormRequestId(form);
 
     restoreSubmit();
-    AppCache?.confirmOptimisticUpdate?.("credit_ledger");
 
     finishRecordFormSave(form, { credit_date: transactionDate }, {
       credit_date: RECORD_DATE_KEYS.creditTransaction,
@@ -528,9 +584,6 @@ async function handleCreditSubmit(event) {
     restoreSubmit();
     if (err?.name === "DuplicateMutationError") return;
 
-    if (typeof AppCache !== "undefined" && AppCache?.rollbackOptimisticUpdate && previousCreditData !== null) {
-      AppCache.rollbackOptimisticUpdate("credit_ledger", previousCreditData, "credit_overview");
-    }
     AppError.handle(err, { target: errorEl });
   }
 }

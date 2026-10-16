@@ -6,7 +6,7 @@
 const CREDIT_CUSTOMER_SUGGEST_LIMIT = 20;
 
 const CREDIT_CUSTOMER_SEARCH_SELECT =
-  "id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance, created_at";
+  "id, customer_name, vehicle_no, mobile, address, amount_due, prepaid_balance, credit_limit, created_at";
 
 function escapeCreditIlike(value) {
   return String(value ?? "")
@@ -21,7 +21,31 @@ function creditCustomerSearchFilter(query) {
     .replace(/[,()*]/g, " ")
     .replace(/\s+/g, " ");
   const pattern = `%${escapeCreditIlike(raw)}%`;
-  return `customer_name.ilike.${pattern},mobile.ilike.${pattern}`;
+  const parts = [
+    `customer_name.ilike.${pattern}`,
+    `mobile.ilike.${pattern}`,
+    `vehicle_no.ilike.${pattern}`,
+  ];
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length >= 3) {
+    parts.push(`mobile.ilike.%${digits.split("").join("%")}%`);
+  }
+  return parts.join(",");
+}
+
+/** Contact fields from one name's customer rows. Prefer a chosen id, then a row that still owes money. */
+function pickCreditCustomerContact(rows, preferredId) {
+  const list = rows || [];
+  const primary =
+    (preferredId && list.find((row) => row.id === preferredId)) ||
+    list.find((row) => Number(row.amount_due) > 0) ||
+    list[0];
+  if (!primary) return { mobile: "", address: "", vehicleNo: "" };
+  return {
+    mobile: String(primary.mobile ?? "").trim(),
+    address: String(primary.address ?? "").trim(),
+    vehicleNo: String(primary.vehicle_no ?? "").trim(),
+  };
 }
 
 /**

@@ -192,28 +192,28 @@
 </details>`;
   }
 
-  function waMessageForCustomer(customerName, amountDue) {
-    const station =
-      (typeof PumpSettings !== "undefined" &&
-        typeof PumpSettings.getStationLegalName === "function" &&
-        PumpSettings.getStationLegalName()) ||
-      "Bishnupriya Fuels";
-    const asOf =
-      typeof formatDisplayDate === "function" && typeof getLocalDateString === "function"
-        ? formatDisplayDate(getLocalDateString())
-        : "";
+  function waMessageForCustomer(_customerName, amountDue) {
     const n = Number(amountDue);
-    const hasAmount = Number.isFinite(n) && n > 0 && typeof formatCurrency === "function";
-    const lines = ["Hello,", "", `This is ${station} with your credit statement.`];
-    if (asOf || hasAmount) {
-      lines.push("");
-      if (asOf) lines.push(`As on ${asOf}`);
-      if (hasAmount) lines.push(`Outstanding: ${formatCurrency(n)}`);
-    } else if (customerName) {
-      lines.push("", `Regarding ${customerName}.`);
-    }
-    lines.push("", "Please clear this at the pump, or reply to this chat.");
-    return lines.join("\n");
+    const unpaid = Number.isFinite(n) ? Math.max(0, n) : 0;
+    const amount = typeof formatCurrency === "function" ? formatCurrency(unpaid) : String(unpaid);
+    const today = typeof getLocalDateString === "function" ? getLocalDateString() : "";
+    const asOn =
+      today && typeof formatDisplayDate === "function" && formatDisplayDate(today) !== "—"
+        ? formatDisplayDate(today)
+        : today;
+    const station =
+      (typeof PumpSettings !== "undefined" && PumpSettings.getStationLegalName?.()) ||
+      (typeof AppConfig !== "undefined" && AppConfig.DEFAULT_STATION?.legalName) ||
+      "BISHNU PRIYA FUELS";
+    return [
+      "Hello,",
+      "",
+      `This is ${station}. As on ${asOn}, your outstanding balance is ${amount}.`,
+      "",
+      "Please clear this at the earliest.",
+      "",
+      "Thank you.",
+    ].join("\n");
   }
 
   const CONTACT_CALL_ICON =

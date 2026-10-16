@@ -32,6 +32,17 @@ await esbuild.build({
   target: ["es2020"],
   logLevel: "info",
 });
+await esbuild.build({
+  entryPoints: [path.join(root, "js/chartClient.js")],
+  outfile: path.join(root, "js/vendor/chart.min.js"),
+  bundle: true,
+  minify: true,
+  format: "iife",
+  platform: "browser",
+  target: ["es2020"],
+  logLevel: "info",
+});
+
 await copyFile(
   path.join(root, "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"),
   path.join(pdfDir, "pdf.worker.min.js")

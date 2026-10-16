@@ -572,7 +572,36 @@
         });
         return;
       }
-      TaskUtils.showTaskToast?.("Marked done");
+      if (global.AppError?.showToast) global.AppError.showToast("Marked done", "success", 8000);
+      else TaskUtils.showTaskToast?.("Marked done");
+      const toast = document.querySelector("#app-toast-container .app-toast:last-child");
+      if (toast) {
+        const undo = document.createElement("button");
+        undo.type = "button";
+        undo.className = "button-secondary button-small";
+        undo.textContent = "Undo";
+        undo.addEventListener("click", async () => {
+          undo.disabled = true;
+          const { error: undoError } = await global.supabaseClient
+            .from("reminders")
+            .update({
+              status: "open",
+              completed_at: null,
+              completed_by: null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", id)
+            .eq("status", "done");
+          if (undoError) {
+            AppError.handle(undoError, { context: { source: "notificationsUndoReminder" } });
+            return;
+          }
+          TaskUtils.showTaskToast?.("Restored");
+          TaskUtils.notifyTasksUpdated?.();
+          await refreshReminders();
+        });
+        toast.append(undo);
+      }
       TaskUtils.notifyTasksUpdated?.();
       await refreshReminders();
       inFlight.delete(id);

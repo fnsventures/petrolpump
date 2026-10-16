@@ -108,10 +108,35 @@ function staffPhotoImgHtml(url, className) {
   return `<img class="${className}" src="${safeUrl}" alt=""${cors} />`;
 }
 
-function buildPhotoSlotHtml(employee) {
-  if (employee.photo_url) {
-    return staffPhotoImgHtml(employee.photo_url, "staff-id-photo");
+function staffPhotoHtml(employee, className) {
+  if (employee.photo_drive_file_id) {
+    return `<img class="${className}" data-staff-photo="${escapeHtml(employee.id)}" alt="" />`;
   }
+  if (employee.photo_url) return staffPhotoImgHtml(employee.photo_url, className);
+  return "";
+}
+
+async function hydrateStaffPhotos(root) {
+  if (typeof DriveFiles === "undefined") return;
+  const imgs = (root || document).querySelectorAll("img[data-staff-photo]");
+  await Promise.all(
+    Array.from(imgs).map(async (img) => {
+      const id = img.getAttribute("data-staff-photo");
+      if (!id || img.dataset.hydrated === "1") return;
+      img.dataset.hydrated = "1";
+      try {
+        const { blob } = await DriveFiles.download({ kind: "staff_photo", employeeId: id });
+        img.src = URL.createObjectURL(blob);
+      } catch (err) {
+        AppError.report(err, { context: "hydrateStaffPhotos" });
+      }
+    })
+  );
+}
+
+function buildPhotoSlotHtml(employee) {
+  const photo = staffPhotoHtml(employee, "staff-id-photo");
+  if (photo) return photo;
   return `<div class="staff-id-photo-placeholder" aria-hidden="true">${escapeHtml(staffInitial(employee.name))}</div>`;
 }
 
@@ -638,6 +663,7 @@ function initStaffPage(auth) {
     const mount = getIdCardPreviewMount();
     if (!mount) return false;
     mount.innerHTML = `<div class="staff-id-sheet">${buildIdCardSheetHtml(emp)}</div>`;
+    void hydrateStaffPhotos(mount);
     idCardRenderedForId = emp.id;
     return true;
   }
@@ -810,9 +836,8 @@ function initStaffPage(auth) {
       .map((s) => {
         const active = s.id === selectedId ? " is-active" : "";
         const inactiveCls = s.is_active === false ? " is-inactive-member" : "";
-        const thumb = s.photo_url
-          ? staffPhotoImgHtml(s.photo_url, "staff-roster-thumb")
-          : `<span class="staff-roster-thumb staff-roster-thumb-placeholder">${escapeHtml(staffInitial(s.name))}</span>`;
+        const thumb = staffPhotoHtml(s, "staff-roster-thumb")
+          || `<span class="staff-roster-thumb staff-roster-thumb-placeholder">${escapeHtml(staffInitial(s.name))}</span>`;
         let badge;
         if (s.is_active === false) {
           badge = `<span class="staff-id-badge staff-id-badge--inactive">Inactive</span>`;
@@ -835,6 +860,7 @@ function initStaffPage(auth) {
         </li>`;
       })
       .join("");
+    void hydrateStaffPhotos(rosterList);
   }
 
   async function loadStaffMembers() {
