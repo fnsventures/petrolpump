@@ -336,7 +336,7 @@ supabase/
 - **Engine:** PostgreSQL (Supabase).
 - **Schema:** Defined in `supabase/schema.sql`; changes are applied via migrations under `supabase/migrations/`.
 - **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()`, and `require_staff_access()` (security definer). Only users provisioned in `public.users` (admin or supervisor) can read or write operational data.
-- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. Production deletes rows older than 6 months after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
+- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. Production deletes rows older than 1 month after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
 
 ### 6.3 Key server-side constructs
 

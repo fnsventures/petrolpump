@@ -163,7 +163,7 @@ A backup is a read-only copy of production. It does not change data or deploy th
 
 The commands are in [Which command](#which-command).
 
-The scheduled run uploads the finished month. After that run succeeds, **Purge audit log** deletes production audit rows older than 6 months. On 1 January the backup also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+The scheduled run uploads the finished month. After that run succeeds, **Purge audit log** deletes production audit rows older than 1 month. On 1 January the backup also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 `migrate --apply` writes a local backup before it changes schema. It does not upload to Drive.
 
@@ -187,10 +187,11 @@ Free-tier size, indexes, and archiving old years: [STORAGE_RETENTION.md](STORAGE
 | Close a finished year on Drive | `YEAR=2026 ./scripts/backup-year-to-drive.sh`, or Actions mode **year-end** |
 | See which month folders would be trashed | `./scripts/prune-drive-backups.sh` |
 | Trash month folders whose year already has `Yearly/` | `CONFIRM_PRUNE_DRIVE=yes ./scripts/prune-drive-backups.sh` |
-| See how many audit rows are older than 6 months | `./scripts/purge-audit-log.sh` |
+| See how many audit rows are older than 1 month | `./scripts/purge-audit-log.sh` |
 | Delete those audit rows on production | `CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
-| See how many audit rows are older than 1, 2, or 3 months | `AUDIT_KEEP_MONTHS=3 ./scripts/purge-audit-log.sh` |
-| Delete audit rows older than 1, 2, or 3 months | Actions → **Purge audit log**, or `AUDIT_KEEP_MONTHS=3 CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
+| See how many audit rows are older than 2 or 3 months, or N days | `AUDIT_KEEP_MONTHS=3 ./scripts/purge-audit-log.sh` or `AUDIT_KEEP_DAYS=45 ./scripts/purge-audit-log.sh` |
+| Delete audit rows older than 1, 2, or 3 months, or N days (30 or more) | Actions → **Purge audit log**, or `AUDIT_KEEP_DAYS=45 CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh` |
+| Return freed audit space to the free-tier quota | Quiet window: [Storage → Return freed audit space](STORAGE_RETENTION.md#return-freed-audit-space) |
 | Turn staging audit off and empty it | `CONFIRM_STAGING_AUDIT=yes ./scripts/disable-staging-audit.sh` |
 | Check sibling DNS | `./scripts/check-dns-siblings.sh` |
 | Restore a missing CNAME | `./scripts/check-dns-siblings.sh --fix` |

@@ -100,7 +100,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (insert, delete, and updates of cash, phone pay, remarks, date, shift, or employee — not cache-only refreshes of `credit_amount` / `expense_amount`), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
 
-**Retention:** After the scheduled monthly Drive backup succeeds, **Purge audit log** deletes production rows older than 6 months through `purge_audit_log_batch` (maintenance script only, not granted to app roles). The same workflow, started by hand, can pass a keep of 3, 2, or 1 month. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+**Retention:** After the scheduled monthly Drive backup succeeds, **Purge audit log** deletes production rows older than 1 month through `purge_audit_log_batch` (maintenance script only, not granted to app roles). The same workflow, started by hand, can keep 1, 2, or 3 months, or at least 30 days. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 ---
 
@@ -944,7 +944,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_shift_expense(id)` | Remove a shift-register expense. Same lock | — |
 | `enqueue_drive_pdf_archive(kind, id)` | Ask `drive-files` to archive a sales invoice or letter. Returns immediately; a failure is a warning | invoice and letter triggers |
 
-Triggers and helpers (not a page call). `recascade_day_closing_short_from`, `reallocate_credit_settlements`, `sync_credit_customer_balances`, `credit_entries_sync_amount_due`, `purge_audit_log_batch` (one batch of `audit_log` rows older than 6 months), `salary_month_payable`, and `write_request_replay` / `write_request_store` are not granted to `authenticated`.
+Triggers and helpers (not a page call). `recascade_day_closing_short_from`, `reallocate_credit_settlements`, `sync_credit_customer_balances`, `credit_entries_sync_amount_due`, `purge_audit_log_batch` (one batch of `audit_log` rows older than 1 month by default, minimum 30 days), `salary_month_payable`, and `write_request_replay` / `write_request_store` are not granted to `authenticated`.
 
 | Function | What calls it |
 |----------|----------------|

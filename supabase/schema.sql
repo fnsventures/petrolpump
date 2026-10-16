@@ -344,7 +344,7 @@ create index if not exists audit_log_record_idx on public.audit_log (record_id);
 create index if not exists audit_log_performed_at_idx on public.audit_log (performed_at);
 
 comment on table public.audit_log is
-  'Audit trail for sensitive operations (admin-only view). Rows older than 6 months are deleted by purge_audit_log_batch.';
+  'Audit trail for sensitive operations (admin-only view). Rows older than 1 month are deleted by purge_audit_log_batch after the scheduled backup. A manual run can keep 1, 2, or 3 months, or at least 30 days.';
 
 alter table public.audit_log enable row level security;
 
@@ -6282,7 +6282,7 @@ comment on function public.audit_trigger_fn() is
 
 -- One batch per call so the maintenance script can commit between deletes.
 create or replace function public.purge_audit_log_batch(
-  p_keep interval default interval '6 months',
+  p_keep interval default interval '1 month',
   p_batch integer default 5000
 )
 returns integer
@@ -6318,7 +6318,7 @@ end;
 $$;
 
 comment on function public.purge_audit_log_batch(interval, integer) is
-  'Delete one batch of audit_log rows older than p_keep (default 6 months). Not granted to app roles; scripts/purge-audit-log.sh calls it.';
+  'Delete one batch of audit_log rows older than p_keep (default 1 month, minimum 30 days). Not granted to app roles; scripts/purge-audit-log.sh calls it.';
 
 revoke all on function public.purge_audit_log_batch(interval, integer) from public, anon, authenticated, service_role;
 

@@ -407,7 +407,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Reports (`reports.html`):** Printable registers — see §6.
 - **Dashboard Net profit:** Quick glance — see §1b.
 - **Meter Reading → Purchase cost:** Inline buying price — see §1b.
-- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months after the monthly Drive backup. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
+- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 1 month after the monthly Drive backup. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
 
 ---
 

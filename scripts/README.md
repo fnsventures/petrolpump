@@ -65,7 +65,7 @@ For a legacy prod that predates migration tracking (`users` table, legacy `dsr` 
 | `./scripts/backup-month-to-drive.sh` | Finished month only (CSV), uploaded. `ARCHIVE_MONTH=2026-10` picks the month. Scheduled on the 1st |
 | `./scripts/backup-prod-to-drive.sh` | Whole database, uploaded to `Manual/<timestamp>/` |
 | `./scripts/backup-year-to-drive.sh` | `YEAR=2026`: whole database to `Yearly/2026/`, then trash that year’s month folders |
-| `./scripts/purge-audit-log.sh` | Dry-run. `CONFIRM_PURGE_AUDIT=yes` deletes production `audit_log` rows older than 6 months. `AUDIT_KEEP_MONTHS=1`, `2`, or `3` shortens that window |
+| `./scripts/purge-audit-log.sh` | Dry-run keeps 1 month. `CONFIRM_PURGE_AUDIT=yes` deletes those production `audit_log` rows. `AUDIT_KEEP_MONTHS` (1–24) or `AUDIT_KEEP_DAYS` (30–3650) changes the window; days win when both are set |
 | `./scripts/prune-drive-backups.sh` | Dry-run. `CONFIRM_PRUNE_DRIVE=yes` trashes month folders whose year already has `Yearly/YYYY` |
 | `./scripts/disable-staging-audit.sh` | Dry-run. `CONFIRM_STAGING_AUDIT=yes` turns audit off on staging and empties `audit_log` |
 | `./scripts/restore-dump.sh --local` | Inspect or drill in Docker |

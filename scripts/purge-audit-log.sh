@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Delete production audit_log rows older than AUDIT_KEEP_MONTHS (default 6).
-# Allowed windows: 1, 2, 3, or 6 months. Dry-run unless CONFIRM_PURGE_AUDIT=yes.
+# Delete production audit_log rows older than the keep window.
+# Default is 1 month. AUDIT_KEEP_MONTHS (1–24) or AUDIT_KEEP_DAYS (30–3650)
+# overrides it. Days win when both are set. Dry-run unless CONFIRM_PURGE_AUDIT=yes.
 # Does not touch operational tables.
-# .github/workflows/purge-audit-log.yml calls this at 1, 2, or 3 months when started by hand,
-# and at 6 months after the scheduled backup workflow succeeds.
+# .github/workflows/purge-audit-log.yml calls this at 1 month after the
+# scheduled backup succeeds, and with a chosen month or day count when started by hand.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,26 +22,37 @@ if [[ -z "${PROD_DB_URL:-}" ]]; then
   exit 1
 fi
 
-keep_months="${AUDIT_KEEP_MONTHS:-6}"
-case "${keep_months}" in
-  1|2|3|6) ;;
-  *)
-    echo "AUDIT_KEEP_MONTHS must be 1, 2, 3, or 6 (got '${keep_months}')." >&2
-    exit 1
-    ;;
-esac
+keep_days="$(printf '%s' "${AUDIT_KEEP_DAYS:-}" | tr -d '[:space:]')"
+keep_months="$(printf '%s' "${AUDIT_KEEP_MONTHS:-}" | tr -d '[:space:]')"
 
-if [[ "${keep_months}" == "1" ]]; then
-  keep_label="1 month"
+if [[ -n "${keep_days}" ]]; then
+  if [[ ! "${keep_days}" =~ ^[0-9]+$ ]] || (( 10#${keep_days} < 30 || 10#${keep_days} > 3650 )); then
+    echo "AUDIT_KEEP_DAYS must be a whole number from 30 to 3650 (got '${AUDIT_KEEP_DAYS:-}')." >&2
+    exit 1
+  fi
+  keep_sql="interval '${keep_days} days'"
+  keep_label="${keep_days} days"
 else
-  keep_label="${keep_months} months"
+  if [[ -z "${keep_months}" ]]; then
+    keep_months="1"
+  fi
+  if [[ ! "${keep_months}" =~ ^[0-9]+$ ]] || (( 10#${keep_months} < 1 || 10#${keep_months} > 24 )); then
+    echo "AUDIT_KEEP_MONTHS must be a whole number from 1 to 24 (got '${AUDIT_KEEP_MONTHS:-}')." >&2
+    exit 1
+  fi
+  keep_sql="interval '${keep_months} months'"
+  if [[ "${keep_months}" == "1" ]]; then
+    keep_label="1 month"
+  else
+    keep_label="${keep_months} months"
+  fi
 fi
 
 init_db_client
 
 echo "==> audit_log before (older than ${keep_label})"
 run_psql_query "${PROD_DB_URL}" \
-  "select pg_size_pretty(pg_database_size(current_database())) || ' database, ' || pg_size_pretty(pg_total_relation_size('public.audit_log')) || ' audit_log, ' || count(*) || ' rows, ' || count(*) filter (where performed_at < timezone('utc', now()) - interval '${keep_months} months') || ' older than ${keep_label}' from public.audit_log"
+  "select pg_size_pretty(pg_database_size(current_database())) || ' database, ' || pg_size_pretty(pg_total_relation_size('public.audit_log')) || ' audit_log, ' || count(*) || ' rows, ' || count(*) filter (where performed_at < timezone('utc', now()) - ${keep_sql}) || ' older than ${keep_label}' from public.audit_log"
 
 if [[ "${CONFIRM_PURGE_AUDIT:-}" != "yes" ]]; then
   echo
@@ -59,7 +71,7 @@ echo
 echo "==> Deleting audit_log rows older than ${keep_label}"
 total=0
 while true; do
-  deleted="$(run_psql_query "${PROD_DB_URL}" "select public.purge_audit_log_batch(interval '${keep_months} months', 5000)")"
+  deleted="$(run_psql_query "${PROD_DB_URL}" "select public.purge_audit_log_batch(${keep_sql}, 5000)")"
   if [[ ! "${deleted}" =~ ^[0-9]+$ ]]; then
     echo "Unexpected purge result: ${deleted}" >&2
     exit 1
@@ -84,4 +96,4 @@ echo "==> audit_log after"
 run_psql_query "${PROD_DB_URL}" \
   "select pg_size_pretty(pg_database_size(current_database())) || ' database, ' || pg_size_pretty(pg_total_relation_size('public.audit_log')) || ' audit_log, ' || count(*) || ' rows' from public.audit_log"
 echo "Deleted ${total} audit row(s) older than ${keep_label}. Operational tables were not changed."
-echo "Reusable space may not shrink pg_database_size. A one-time VACUUM FULL on audit_log, in a quiet window, returns that space to the free-tier quota."
+echo "Reusable space may not shrink pg_database_size. A one-time VACUUM FULL on audit_log, in a quiet window, returns that space to the free-tier quota. See docs/STORAGE_RETENTION.md."
