@@ -570,9 +570,28 @@
       document.body.appendChild(status);
     }
 
+    const saveSelector = 'button[type="submit"], button.shift-save-btn, button.button-primary, #day-closing-save';
+    const setSavesEnabled = (online) => {
+      document.querySelectorAll(saveSelector).forEach((btn) => {
+        if (!(btn instanceof HTMLButtonElement)) return;
+        if (!online) {
+          if (btn.disabled && btn.dataset.offlineDisabled !== "1") return;
+          btn.dataset.offlineDisabled = "1";
+          btn.disabled = true;
+          btn.title = "Reconnect to save";
+          return;
+        }
+        if (btn.dataset.offlineDisabled === "1") {
+          btn.disabled = false;
+          btn.title = "";
+          delete btn.dataset.offlineDisabled;
+        }
+      });
+    };
     const update = (online) => {
+      setSavesEnabled(online);
       if (!online) {
-        status.textContent = "You are offline. Data may be outdated until connection returns.";
+        status.textContent = "You are offline. Saves are paused until the connection returns.";
         status.classList.remove("hidden");
         return;
       }

@@ -245,7 +245,7 @@
               <div class="combobox">
                 <input id="shift-ledger-customer" name="customer_name" type="text" autocomplete="off"
                   aria-autocomplete="list" aria-expanded="false" aria-controls="shift-ledger-customer-list"
-                  placeholder="Name" required />
+                  placeholder="Name or mobile" required />
                 <ul id="shift-ledger-customer-list" class="combobox-list hidden" role="listbox" hidden></ul>
               </div>
             </div>

@@ -3,13 +3,7 @@
 // This reduces latency by ~60-70% compared to multiple parallel API calls
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { fetchAll } from "../_shared/pageQuery.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { bindRequestCors, corsHeaders } from "../_shared/cors.ts";
 
 interface DashboardRequest {
   startDate: string;
@@ -49,8 +43,9 @@ interface DashboardResponse {
 }
 
 Deno.serve(async (req: Request) => {
+  bindRequestCors(req);
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders() });
   }
 
   try {
@@ -60,7 +55,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Missing authorization header" }),
         {
           status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(), "Content-Type": "application/json" },
         }
       );
     }
@@ -72,7 +67,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "startDate and endDate are required" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(), "Content-Type": "application/json" },
         }
       );
     }
@@ -85,48 +80,36 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    const [dsrResult, stockResult, expenseSum, creditSum] = await Promise.all([
-      fetchAll(() =>
-        supabase
-          .from("dsr")
-          .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
-          .gte("date", startDate)
-          .lte("date", endDate)
-          .order("date", { ascending: true })
-          .order("product", { ascending: true })
-      ),
-      supabase.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-      supabase.rpc("sum_expenses", {
-        p_start: startDate,
-        p_end: endDate,
-        p_exclude_salary: false,
-      }),
-      supabase.rpc("sum_credit_given", { p_start: startDate, p_end: endDate }),
-    ]);
+    const { data, error } = await supabase.rpc("get_dashboard_snapshot", {
+      p_start: startDate,
+      p_end: endDate,
+    });
+    if (error) throw new Error(error.message);
+    const snap = (data || {}) as {
+      dsrData?: DsrRow[];
+      stockData?: StockRow[];
+      expenseTotal?: number | null;
+      creditGiven?: number | null;
+    };
 
     const response: DashboardResponse = {
-      dsrData: dsrResult.data,
-      stockData: stockResult.data,
+      dsrData: snap.dsrData ?? [],
+      stockData: snap.stockData ?? [],
       expenseData: null,
       creditData: null,
-      expenseTotal: expenseSum.error ? null : Number(expenseSum.data ?? 0),
-      creditGiven: creditSum.error ? null : Number(creditSum.data ?? 0),
-      errors: {
-        dsr: dsrResult.error?.message ?? null,
-        stock: stockResult.error?.message ?? null,
-        expense: expenseSum.error?.message ?? null,
-        credit: creditSum.error?.message ?? null,
-      },
+      expenseTotal: snap.expenseTotal == null ? null : Number(snap.expenseTotal),
+      creditGiven: snap.creditGiven == null ? null : Number(snap.creditGiven),
+      errors: { dsr: null, stock: null, expense: null, credit: null },
     };
 
     return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(), "Content-Type": "application/json" },
     });
   }
 });

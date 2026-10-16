@@ -592,7 +592,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 ## credit_customers
 
-**Purpose:** Credit ledger: customer master. `amount_due` and `prepaid_balance` are kept in sync with entries/payments by RPC/triggers. Net balance = `amount_due − prepaid_balance`. `date` is used for legacy/day-closing “credit today” when there are no entries yet.
+**Purpose:** Credit ledger: customer master. The same name may belong to more than one customer. A name plus a mobile number is unique. `amount_due` and `prepaid_balance` are kept in sync with posted entries and payments. Net balance = `amount_due − prepaid_balance`. A customer is not both owing and in advance. `date` is fixed at creation. Carried-over balances are opening credit entries.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -603,13 +603,14 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | address | text | Optional address |
 | amount_due | numeric | Current outstanding from unsettled sales (synced) |
 | prepaid_balance | numeric | Advance from overpayment (≥ 0); net = amount_due − prepaid |
-| date | date | Used for day-closing credit_today legacy |
+| date | date | Fixed at creation. Not granted for update |
+| credit_limit | numeric | Optional. A sale over it warns; it is not rejected. Only an admin can change it |
 | last_payment | date | Last payment date |
 | notes | text | Optional |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** Default operational pattern. Supervisors and admins may update contact fields. `authenticated` has no insert or update on `amount_due` or `prepaid_balance`; `sync_credit_customer_balances` (security definer) writes them.
+**RLS:** Default operational pattern. Supervisors and admins may update contact fields. `credit_limit` is granted on the table, and `credit_customers_guard_limit` rejects a change unless the caller is an admin. `authenticated` has no insert or update on `amount_due` or `prepaid_balance`; `sync_credit_customer_balances` (security definer) writes them.
 
 **Trigger / sync:** Entry and payment RPCs keep `amount_due` and `prepaid_balance` consistent.
 ---
@@ -629,12 +630,16 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | amount_settled | numeric | Amount already paid. Payments allocate newest-open-first (LIFO). Prepaid is applied oldest-first when a new sale is saved |
 | employee_id | uuid | Optional staff for a shift-register sale |
 | shift | text | `morning` \| `afternoon`, or null. Set together with `employee_id` or leave both null |
+| status | text | `posted` or `cancelled`. Cancelled rows stay for the record and are left out of balances and shift short |
+| entry_kind | text | `sale`, or `opening` when a carried-over balance was turned into a normal entry |
+| cancelled_at | timestamptz | Set when status becomes `cancelled` |
+| cancelled_by | uuid | auth.users.id of the person who cancelled |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
 **Constraint:** `amount_settled <= amount`.
 
-**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client (`authenticated` has no insert or update grant). `add_credit_entry` writes the sale, including `amount`, and applies prepaid. Payment RPCs write `amount_settled`. DELETE admin only.
+**RLS:** SELECT provisioned staff; INSERT, UPDATE, and DELETE denied on the client. `add_credit_entry` writes the sale. Payment RPCs write `amount_settled`. Cancel goes through `delete_credit_entry`, which keeps the row.
 
 **Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed inside those RPCs, so a later payment can settle that sale.
 
@@ -653,12 +658,16 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | note | text | Optional |
 | payment_mode | text | `Cash` \| `UPI` \| `Bank` |
 | same_day_settlement | boolean | True when the payment settles same-day credit (excluded from collection) |
+| status | text | `posted` or `cancelled`. Cancelled payments stay for the record and are left out of balances |
+| cancelled_at | timestamptz | Set when status becomes `cancelled` |
+| cancelled_by | uuid | auth.users.id of the person who cancelled |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client — same pattern as `salary_payments`. `record_credit_payment` and `batch_record_credit_settlements` insert the row. DELETE admin only.
+**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client — same pattern as `salary_payments`. `record_credit_payment` and `batch_record_credit_settlements` insert the row. Direct DELETE is denied. Cancel goes through `delete_credit_payment`, which keeps the row and sets `status` to `cancelled`.
 
-**Note:** Payment allocation to entries (LIFO — newest open sale on or before the payment date first) is done in RPC `record_credit_payment` (and `batch_record_credit_settlements` for multi-customer). Both lock the customer row (`for update`) before allocating. Overpayment increases `prepaid_balance`. A certified payment date is rejected. A direct insert or update is denied, so it cannot skip the customer lock, LIFO allocation, prepaid, or the future-date check.
+**Note:** A sale or payment that is not backdated settles only the open rows it touches. A backdated write, and every cancel, runs `reallocate_credit_settlements`: newest open sale on or before the payment date first, then any leftover advance settles the oldest open sale. A payment refreshes day closing once. A certified payment date is rejected. Cancelling a same-day Cash or UPI payment subtracts it from night cash or phone pay.
+
 ---
 
 ## reminders
@@ -929,12 +938,14 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
 | `record_salary_payment(...)` | Salary payment + linked expense; server overpay check (admin-only override); rejects a certified payment date | — |
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
-| `delete_credit_entry(id)` | Remove unsettled sale | admin |
-| `delete_credit_payment(id)` | Remove payment + reallocate | admin |
+| `delete_credit_entry(id)` | Cancel a sale (row stays) and reallocate. Locks the customer first | admin |
+| `delete_credit_payment(id)` | Cancel a payment (row stays) and reallocate. Locks the customer first | admin |
+| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets | — |
+| `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
 | `get_open_credit_as_of(date)` | Total open credit | — |
 | `get_outstanding_credit_list_as_of(date)` | Overdue/outstanding customers | — |
-| `get_customer_credit_detail_as_of(name, date)` | Customer breakdown as of date | — |
+| `get_customer_credit_detail_as_of(name, date, from?)` | Statement for a date range: opening, totals, closing, and lines | — |
 | `get_customer_credit_summary_as_of(name, date)` | Summary totals | — |
 | `get_customer_credit_breakdown_as_of(name, date)` | Line-level breakdown | — |
 | `get_credit_overview_period(from, to)` | Credit overview totals and per-customer rows for a range (`from` null = all time) | — |

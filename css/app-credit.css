@@ -64,6 +64,16 @@ payments {
   }
 }
 
+.credit-list-view .snapshot-controls .search-field {
+  flex: 1 1 22rem;
+  min-width: 18rem;
+  max-width: 28rem;
+}
+
+.credit-list-view #credit-search-suggestions .combobox-option {
+  white-space: nowrap;
+}
+
 /* Credit overdue: customer detail modal */
 .overdue-detail-overlay {
   position: fixed;
@@ -911,7 +921,54 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   line-height: 1.45;
 }
 
+.credit-balance-check-result {
+  white-space: pre-wrap;
+}
+
 @media (max-width: 640px) {
+  .credit-ledger-table thead {
+    display: none;
+  }
+
+  .credit-ledger-table,
+  .credit-ledger-table tbody,
+  .credit-ledger-table tr,
+  .credit-ledger-table td {
+    display: block;
+    width: auto;
+  }
+
+  .credit-ledger-table tr.credit-ledger-row {
+    margin: 0 0 0.75rem;
+    padding: 0.35rem 0.85rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+  }
+
+  .credit-ledger-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    border: 0;
+    text-align: right;
+  }
+
+  .credit-ledger-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .credit-ledger-table td[data-label=""]::before,
+  .credit-ledger-table td:not([data-label])::before {
+    content: none;
+  }
+
+  .credit-ledger-table td.table-actions {
+    justify-content: flex-end;
+  }
+
   .customer-balance-hero-body {
     flex-direction: column;
     align-items: stretch;

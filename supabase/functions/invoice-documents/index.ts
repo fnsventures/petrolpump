@@ -2,6 +2,8 @@
 // Upload, download, and delete vault documents (purchase invoices + other pump files) in Google Drive.
 
 import {
+  assertFileInsideRoot,
+  bindRequestCors,
   buildDriveStatus,
   corsHeaders,
   deleteFromDrive,
@@ -38,7 +40,8 @@ async function getInvoiceDocument(id: string, columns: string) {
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  bindRequestCors(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders() });
 
   try {
     const contentType = req.headers.get("content-type") || "";
@@ -223,13 +226,16 @@ Deno.serve(async (req: Request) => {
         getInvoiceDocument(id, "drive_file_id, file_name, mime_type"),
         getDriveAccessToken(),
       ]);
+      const settings = await readPumpSettings();
+      if (!settings.rootFolderId) throw new Error("Google Drive root folder ID is not configured in Settings.");
+      await assertFileInsideRoot(token, doc.drive_file_id, settings.rootFolderId);
       const { bytes, mimeType, fileName } = await downloadFromDrive(token, doc.drive_file_id, doc);
       const safeName = String(fileName || doc.file_name || "document").replace(/[\r\n"]/g, "").trim() || "document";
       const type = mimeType || doc.mime_type || "application/octet-stream";
 
       return new Response(bytes, {
         headers: {
-          ...corsHeaders,
+          ...corsHeaders(),
           "Content-Type": type,
           "Content-Disposition": `attachment; filename="${safeName}"`,
           "Content-Length": String(bytes.byteLength),
@@ -247,6 +253,10 @@ Deno.serve(async (req: Request) => {
         getInvoiceDocument(id, "drive_file_id"),
         getDriveAccessToken(),
       ]);
+      const settings = await readPumpSettings();
+      if (settings.rootFolderId) {
+        await assertFileInsideRoot(token, doc.drive_file_id, settings.rootFolderId);
+      }
       await deleteFromDrive(token, doc.drive_file_id);
       const { error: delError } = await supabaseAdmin.from("invoice_documents").delete().eq("id", id);
       if (delError) throw new Error(delError.message);

@@ -1555,18 +1555,27 @@ async function setDayClosingCertified(certified) {
   const collected = !!dayClosingBreakdown?.night_cash_collected;
   dcCertifyPromptOpen = true;
   let confirmed = false;
+  let revokeReason = null;
   try {
-    confirmed = await AppDialog.confirm(
-      certified
-        ? `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`
-        : collected
+    if (certified) {
+      confirmed = await AppDialog.confirm(
+        `Acknowledge and certify day closing for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nThis statement will lock. Nobody can edit it, including admin, until certification is revoked.`,
+        { title: "Certify day closing", confirmLabel: "Certify" }
+      );
+    } else {
+      revokeReason = await AppDialog.prompt(
+        collected
           ? `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable for admin. Supervisors remain locked because night cash was already collected. You must acknowledge again after any change.`
           : `Revoke certification for ${dateLabel}${ref ? ` (${ref})` : ""}?\n\nFigures will become editable again. You must acknowledge and certify after any change.`,
-      {
-        title: certified ? "Certify day closing" : "Revoke certification",
-        confirmLabel: certified ? "Certify" : "Revoke",
-      }
-    );
+        {
+          title: "Revoke certification",
+          confirmLabel: "Revoke",
+          reasonLabel: "Why is certification being removed?",
+          danger: true,
+        }
+      );
+      confirmed = Boolean(revokeReason);
+    }
   } finally {
     // Hold the guard past this click so a fall-through cannot open the popup again.
     window.setTimeout(() => {
@@ -1596,6 +1605,7 @@ async function setDayClosingCertified(certified) {
     const { data, error } = await window.supabaseClient.rpc("set_day_closing_certified", {
       p_date: dateStr,
       p_certified: !!certified,
+      p_reason: revokeReason,
     });
     if (error) throw error;
 

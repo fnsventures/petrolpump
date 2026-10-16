@@ -15,6 +15,7 @@
     "minify": "node scripts/minify-assets.mjs"
   },
   "devDependencies": {
+    "chart.js": "^4.4.1",
     "esbuild": "^0.25.0",
     "nunjucks": "^3.2.4",
     "pdfjs-dist": "^4.10.38"

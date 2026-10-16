@@ -1498,12 +1498,15 @@
         resolvedLock.locked ? null : resolved.openings,
         suggestClose
       );
+      const restoredDraft = !resolvedLock.locked && restoreMeterDraft(date, shift);
       lastStaffStructureKey = "";
       updateDerivedUi({ forceStaffRender: true });
       applySupervisorLockUi(resolvedLock.locked, resolvedLock.reason);
       updateShiftContext({ date, shift, hasSaved: shiftHasSavedRows });
 
-      if (resolvedLock.locked) {
+      if (restoredDraft) {
+        showMsg("Restored unsaved meter readings from this device.", false);
+      } else if (resolvedLock.locked) {
         showMsg("", false);
       } else {
         const filled = countMeaningfulSuggestions(resolved.openings);
@@ -1702,6 +1705,7 @@
 
       try {
         localStorage.setItem("shift-updated", String(Date.now()));
+        localStorage.removeItem(meterDraftKey(date, shift));
       } catch (_) {
         /* ignore quota / private mode */
       }
@@ -2301,6 +2305,55 @@
     }
   }
 
+  function meterDraftKey(date, shift) {
+    return `bpf.meterDraft.${date || ""}.${shift || ""}`;
+  }
+
+  function captureMeterDraft() {
+    const date = el("shift-meter-date")?.value;
+    const shift = el("shift-meter-shift")?.value;
+    const zone = el("shift-meter-edit-zone");
+    if (!date || !shift || !zone) return;
+    const fields = {};
+    zone.querySelectorAll("input, textarea, select").forEach((field) => {
+      if (!field.id || field.type === "hidden") return;
+      fields[field.id] = field.value;
+    });
+    const remarks = el("shift-meter-remarks");
+    if (remarks) fields[remarks.id] = remarks.value;
+    try {
+      localStorage.setItem(meterDraftKey(date, shift), JSON.stringify({ at: Date.now(), fields }));
+    } catch (_) {
+      /* ignore quota */
+    }
+  }
+
+  function restoreMeterDraft(date, shift) {
+    let raw;
+    try {
+      raw = localStorage.getItem(meterDraftKey(date, shift));
+    } catch (_) {
+      return false;
+    }
+    if (!raw) return false;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      return false;
+    }
+    const fields = parsed?.fields || {};
+    let applied = false;
+    Object.keys(fields).forEach((id) => {
+      const field = el(id);
+      if (!field || field.disabled) return;
+      if (String(field.value || "") === String(fields[id] || "")) return;
+      field.value = fields[id];
+      applied = true;
+    });
+    return applied;
+  }
+
   function bindEvents() {
     el("shift-meter-date")?.addEventListener("change", () => void loadShift());
     el("shift-meter-shift")?.addEventListener("change", () => void loadShift());
@@ -2322,6 +2375,7 @@
 
     const panel = el("shift-readings") || document.querySelector('[data-panel="shift-readings"]');
     panel?.addEventListener("input", (e) => {
+      captureMeterDraft();
       if (supervisorReadonly && !isAdmin) return;
       if (
         e.target.matches?.(
