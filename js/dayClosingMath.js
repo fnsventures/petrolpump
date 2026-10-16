@@ -1,0 +1,1 @@
+function dcMoney(t){const n=Number(t);return Number.isFinite(n)?n:0}function computeOpenShiftCredit(t,n,o=0){const e=dcMoney(t),r=dcMoney(n);return e>.005||r>.005?Math.max(0,e-r):dcMoney(o)}function computeDayClosingShort({totalSale:t=0,collection:n=0,shortPrevious:o=0,nightCash:e=0,phonePay:r=0,creditToday:u=0,expensesToday:i=0}={}){return t+n+o-(e+r+u+i)}

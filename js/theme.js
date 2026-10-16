@@ -1,0 +1,1 @@
+(function(){var t="bpf.theme";try{localStorage.removeItem(t)}catch{}document.documentElement.setAttribute("data-theme","light"),document.documentElement.style.colorScheme="light";var e=document.querySelector('meta[name="theme-color"]');e&&e.setAttribute("content","#0070c0")})();
