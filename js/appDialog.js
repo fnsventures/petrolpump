@@ -18,6 +18,7 @@
   let form = null;
   let titleEl = null;
   let messageEl = null;
+  let reasonInput = null;
   let okBtn = null;
   let cancelBtn = null;
   let lastFocus = null;
@@ -55,6 +56,13 @@
     messageEl.id = "app-dialog-message";
     messageEl.className = "app-dialog-message";
 
+    reasonInput = document.createElement("textarea");
+    reasonInput.id = "app-dialog-reason";
+    reasonInput.className = "app-dialog-reason";
+    reasonInput.rows = 3;
+    reasonInput.maxLength = 500;
+    reasonInput.required = true;
+
     const actions = document.createElement("div");
     actions.className = "app-dialog-actions";
 
@@ -70,7 +78,7 @@
     cancelBtn.value = "cancel";
 
     actions.append(okBtn, cancelBtn);
-    form.append(logo, titleEl, messageEl, actions);
+    form.append(logo, titleEl, messageEl, reasonInput, actions);
     dialog.append(form);
     document.body.append(dialog);
 
@@ -132,6 +140,13 @@
     const showCancel = kind !== "alert";
     cancelBtn.hidden = !showCancel;
     cancelBtn.disabled = !showCancel;
+    const showReason = kind === "prompt";
+    reasonInput.hidden = !showReason;
+    reasonInput.required = showReason;
+    reasonInput.disabled = !showReason;
+    reasonInput.value = "";
+    reasonInput.placeholder = config.reasonLabel || "Reason";
+    if (showReason) reasonInput.setAttribute("aria-label", config.reasonLabel || "Reason");
 
     lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     // Esc closes a <dialog> without touching returnValue. Clear it so a
@@ -142,8 +157,8 @@
       const finish = () => {
         dialog.removeEventListener("close", onClose);
         const accepted = dialog.returnValue === "ok";
-        let result = null;
-        resolve(kind === "confirm" ? accepted : undefined);
+        if (kind === "prompt") resolve(accepted ? reasonInput.value.trim() : null);
+        else resolve(kind === "confirm" ? accepted : undefined);
         unlockPage();
         if (lastFocus && document.contains(lastFocus)) {
           try {
@@ -162,7 +177,8 @@
       }
       document.body.classList.add("modal-open");
       requestAnimationFrame(() => {
-        if (danger && showCancel) cancelBtn.focus();
+        if (kind === "prompt") reasonInput.focus();
+        else if (danger && showCancel) cancelBtn.focus();
         else okBtn.focus();
       });
     });
@@ -211,6 +227,19 @@
       message,
       title: opts.title || "Notice",
       confirmLabel: opts.confirmLabel || "OK",
+    });
+  }
+
+  function promptDialog(message, options) {
+    const opts = options || {};
+    return enqueue({
+      kind: "prompt",
+      message,
+      title: opts.title || "Please confirm",
+      confirmLabel: opts.confirmLabel || "Confirm",
+      cancelLabel: opts.cancelLabel || "Cancel",
+      reasonLabel: opts.reasonLabel || "Reason",
+      danger: opts.danger === true,
     });
   }
 
@@ -302,6 +331,7 @@
   window.AppDialog = {
     alert: alertDialog,
     confirm: confirmDialog,
+    prompt: promptDialog,
     show,
     hide,
     toast,

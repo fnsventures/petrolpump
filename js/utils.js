@@ -506,6 +506,24 @@ function normalizeProduct(value) {
  * @param {number|null|undefined} value
  * @returns {string}
  */
+function formatQty(value) {
+  return formatQuantity(value);
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
 function formatQuantity(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
   return Number(value).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -734,6 +752,13 @@ const RECORD_DATE_KEYS = {
   meterShift: "record_meter_shift_date",
 };
 
+/** Credit sale and payment dates reset to today on the next Indian morning. */
+const CREDIT_RECORD_DATE_KEYS = new Set([
+  RECORD_DATE_KEYS.creditTransaction,
+  RECORD_DATE_KEYS.creditQuickSettle,
+  RECORD_DATE_KEYS.creditSettle,
+]);
+
 /**
  * Read a persisted single-date value (dashboard snapshot, record forms, etc.).
  * @param {string} storageKey
@@ -755,7 +780,9 @@ function getPersistedDate(storageKey, fallback) {
  */
 function savePersistedDate(storageKey, dateStr) {
   if (dateStr && typeof setFilterState === "function") {
-    setFilterState(storageKey, { range: "date", start: dateStr });
+    const state = { range: "date", start: dateStr };
+    if (CREDIT_RECORD_DATE_KEYS.has(storageKey)) state.savedOn = getLocalDateString();
+    setFilterState(storageKey, state);
   }
 }
 
@@ -779,8 +806,15 @@ function initPersistedDateInput(inputRef, storageKey, opts = {}) {
     if (fromUrl && /^\d{4}-\d{2}-\d{2}$/.test(fromUrl)) dateStr = fromUrl;
   }
   if (!dateStr) {
-    const stored = getPersistedDate(storageKey, fallback);
-    if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) dateStr = stored;
+    const storedState =
+      typeof getValidFilterState === "function"
+        ? getValidFilterState(storageKey, SINGLE_DATE_FILTER_RANGE)
+        : null;
+    const today = getLocalDateString();
+    const stored = storedState?.start;
+    const creditDate = CREDIT_RECORD_DATE_KEYS.has(storageKey);
+    const stillToday = !creditDate || storedState?.savedOn === today;
+    if (stillToday && stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) dateStr = stored;
   }
   if (!dateStr) {
     dateStr =
@@ -861,19 +895,33 @@ function finishRecordFormSave(form, fieldValues, dateStorageKeys = {}) {
 }
 
 /**
- * Get today's date as YYYY-MM-DD in the user's local timezone.
- * Use this for "today" in credit payments and day closing so the same calendar day is used.
+ * Station calendar date as YYYY-MM-DD (Asia/Kolkata), matching meter_station_today().
+ * @param {Date} [date]
+ * @returns {string}
+ */
+function getStationDateString(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/**
+ * Today's date as YYYY-MM-DD in Indian time.
  * @returns {string}
  */
 function getLocalDateString() {
-  return toLocalDateString(new Date());
+  return getStationDateString();
 }
 
-/** Yesterday's date as YYYY-MM-DD in local timezone. */
+/** Yesterday's date as YYYY-MM-DD in Indian time. */
 function getYesterdayDateString() {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return formatDateInput(d);
+  const [year, month, day] = getStationDateString().split("-").map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
 }
 
 /**
@@ -889,6 +937,18 @@ function formatCurrency(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/**
+ * Amount for `<input type="number" step="0.01">`.
+ * A raw sum such as 1234.5600000001 fails the step check and blocks submit.
+ * @param {number} value
+ * @returns {string}
+ */
+function formatMoneyInput(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
 }
 
 /**
@@ -1286,8 +1346,10 @@ function getRangeForSelection(selection, startInput, endInput) {
 window.resolveDateRange = resolveDateRange;
 window.getRangeForSelection = getRangeForSelection;
 window.setCustomRangeVisibility = setCustomRangeVisibility;
+window.getStationDateString = getStationDateString;
 window.getLocalDateString = getLocalDateString;
 window.formatCurrency = formatCurrency;
+window.formatMoneyInput = formatMoneyInput;
 window.formatMonthLabel = formatMonthLabel;
 window.getFilterState = getFilterState;
 window.getValidFilterState = getValidFilterState;
@@ -2091,26 +2153,21 @@ function onAppResumeEvent(event) {
     recoverStuckUi();
 
     const shouldInvalidate =
-      reason === "online" ||
       reason === "bfcache" ||
       hiddenForMs >= APP_RESUME_INVALIDATE_MS;
-    if (shouldInvalidate && typeof AppCache !== "undefined" && AppCache?.invalidateOperational) {
+    if (reason !== "online" && shouldInvalidate && typeof AppCache !== "undefined" && AppCache?.invalidateOperational) {
       AppCache.invalidateOperational();
     }
 
-    if (reason === "online" && window.PWA?.sendToServiceWorker) {
-      void window.PWA.sendToServiceWorker("INVALIDATE_PATTERN", { pattern: "\\.(js|css)(\\?|$)" });
-    }
-
     if (
-      hiddenForMs >= APP_RESUME_CANCEL_AFTER_MS ||
-      reason === "bfcache" ||
-      reason === "online"
+      reason !== "online" &&
+      (hiddenForMs >= APP_RESUME_CANCEL_AFTER_MS || reason === "bfcache")
     ) {
       bumpAppLoadGeneration();
     }
 
     _appHiddenAt = 0;
+    if (reason === "online") return;
     for (const { handler, match } of _appResumeHandlers.values()) {
       try {
         if (typeof match === "function" && !match()) continue;

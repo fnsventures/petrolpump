@@ -5,11 +5,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { fetchAll, LOOKUP_ROW_LIMIT } from "../_shared/pageQuery.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
+import { bindRequestCors, corsHeaders } from "../_shared/cors.ts";
 
 const DSR_SELECT_FULL =
   "date, product, sales_pump1, sales_pump2, total_sales, testing, stock, receipts, petrol_rate, diesel_rate, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl";
@@ -153,8 +149,9 @@ async function fetchDsrBundle(supabase: any, startDate: string, endDate: string,
 }
 
 Deno.serve(async (req: Request) => {
+  bindRequestCors(req);
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders() });
   }
 
   try {
@@ -164,7 +161,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Missing authorization header" }),
         {
           status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(), "Content-Type": "application/json" },
         }
       );
     }
@@ -176,7 +173,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "startDate and endDate are required" }),
         {
           status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          headers: { ...corsHeaders(), "Content-Type": "application/json" },
         }
       );
     }
@@ -274,13 +271,13 @@ Deno.serve(async (req: Request) => {
     };
 
     return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(), "Content-Type": "application/json" },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return new Response(JSON.stringify({ error: message }), {
       status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders(), "Content-Type": "application/json" },
     });
   }
 });

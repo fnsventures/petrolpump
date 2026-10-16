@@ -1544,6 +1544,28 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
 
   const fetchFn = async () => {
     try {
+      const snap = await window.supabaseClient.rpc("get_dashboard_snapshot", {
+        p_start: startDate,
+        p_end: endDate,
+      });
+      if (!snap.error && snap.data) {
+        return {
+          dsrData: snap.data.dsrData || [],
+          stockData: snap.data.stockData || [],
+          expenseData: null,
+          creditData: null,
+          expenseTotal: snap.data.expenseTotal == null ? null : Number(snap.data.expenseTotal),
+          creditGiven: snap.data.creditGiven == null ? null : Number(snap.data.creditGiven),
+          dsrError: null,
+          stockError: null,
+          expenseError: null,
+          creditError: null,
+        };
+      }
+    } catch {
+      /* older database: fall through to the edge function */
+    }
+    try {
       // Edge Function with retry; we retry only on transient errors (via isTransientError)
       const { data, error } = await AppError.withRetry(
         () =>

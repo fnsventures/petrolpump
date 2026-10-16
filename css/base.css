@@ -3489,152 +3489,6 @@ html.app-booting::after {
   }
 }
 
-/* Dark theme. js/theme.js stays on light unless the account menu pins dark. */
-html[data-theme="dark"] {
-  color-scheme: dark;
-  --surface: #111827;
-  --surface-elevated: #1e293b;
-  --surface-muted: #0b1220;
-  --surface-sunken: #1e293b;
-  --border: #334155;
-  --border-strong: #475569;
-  --text: #f8fafc;
-  --text-body: #e2e8f0;
-  --text-secondary: #cbd5e1;
-  --text-heading: #f1f5f9;
-  --text-muted: #94a3b8;
-  --text-on-accent: #ffffff;
-  --inverse: #e2e8f0;
-  --inverse-text: #0f172a;
-  --bpcl-blue: #7dd3fc;
-  --bpcl-blue-dark: #e0f2fe;
-  --bpcl-blue-soft: rgba(125, 211, 252, 0.16);
-  --color-primary: #7dd3fc;
-  --color-primary-hover: #e0f2fe;
-  --color-primary-soft: rgba(125, 211, 252, 0.16);
-  --color-danger: #f87171;
-  --color-danger-hover: #fca5a5;
-  --color-success: #34d399;
-  --color-warning: #fbbf24;
-  --fuel-petrol-bg: rgba(56, 189, 248, 0.12);
-  --fuel-petrol-bg-strong: rgba(56, 189, 248, 0.18);
-  --fuel-petrol-border: rgba(56, 189, 248, 0.35);
-  --fuel-petrol-text: #7dd3fc;
-  --fuel-diesel-bg: rgba(251, 191, 36, 0.16);
-  --fuel-diesel-bg-strong: rgba(251, 191, 36, 0.12);
-  --fuel-diesel-border: rgba(251, 191, 36, 0.4);
-  --fuel-diesel-text: #fcd34d;
-  --danger-soft: rgba(248, 113, 113, 0.16);
-  --danger-border: rgba(248, 113, 113, 0.4);
-  --success-soft: rgba(52, 211, 153, 0.16);
-  --warning-soft: rgba(251, 191, 36, 0.16);
-  --warning-border: rgba(251, 191, 36, 0.45);
-  --info-soft: rgba(56, 189, 248, 0.14);
-  --info-border: rgba(56, 189, 248, 0.4);
-  --shadow-rgb: 0, 0, 0;
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
-  --focus-ring: 0 0 0 3px rgba(125, 211, 252, 0.45);
-  color: var(--text);
-  background-color: var(--surface-muted);
-}
-
-html[data-theme="dark"] :is(
-  button:not([class]),
-  button.button-primary,
-  button.primary,
-  button.settle-confirm,
-  button.shift-save-btn,
-  button.reminders-landing-dismiss,
-  button.analysis-apply-btn,
-  button.button-small:not(.button-secondary, .button-delete, .link)
-) {
-  background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);
-  color: #fff;
-}
-
-html[data-theme="dark"] :is(
-  button:not([class]),
-  button.button-primary,
-  button.primary,
-  button.settle-confirm,
-  button.shift-save-btn,
-  button.reminders-landing-dismiss,
-  button.analysis-apply-btn,
-  button.button-small:not(.button-secondary, .button-delete, .link)
-):hover {
-  background: linear-gradient(180deg, #0369a1 0%, #075985 100%);
-}
-
-html[data-theme="dark"] body:not(.login-page):not(.landing-page)::before {
-  background:
-    radial-gradient(ellipse 100% 60% at 50% -8%, rgba(56, 189, 248, 0.1), transparent 55%),
-    linear-gradient(180deg, #0b1220 0%, #111827 55%, #0f172a 100%);
-}
-
-html[data-theme="dark"] body.login-page {
-  background:
-    radial-gradient(ellipse 85% 50% at 50% -5%, rgba(56, 189, 248, 0.18), transparent 58%),
-    linear-gradient(165deg, #0b1220 0%, #111827 52%, #1c1408 100%);
-}
-
-html[data-theme="dark"] .login-card {
-  background: rgba(17, 24, 39, 0.96);
-  border-color: var(--border);
-}
-
-html[data-theme="dark"].app-booting::before {
-  background: rgba(11, 18, 32, 0.94);
-}
-
-@media print {
-  html[data-theme="dark"] {
-    color-scheme: light;
-    --surface: #ffffff;
-    --surface-elevated: #f8fafc;
-    --surface-muted: #f8fafc;
-    --surface-sunken: #f1f5f9;
-    --border: #e2e8f0;
-    --border-strong: #cbd5e1;
-    --text: #0f172a;
-    --text-body: #1e293b;
-    --text-secondary: #475569;
-    --text-heading: #334155;
-    --text-muted: #64748b;
-    --text-on-accent: #ffffff;
-    --inverse: #0f172a;
-    --inverse-text: #f8fafc;
-    --bpcl-blue: #0070c0;
-    --bpcl-blue-dark: #005a9c;
-    --bpcl-blue-soft: rgba(0, 112, 192, 0.1);
-    --color-primary: #0070c0;
-    --color-primary-hover: #005a9c;
-    --color-primary-soft: rgba(0, 112, 192, 0.1);
-    --color-danger: #dc2626;
-    --color-danger-hover: #b91c1c;
-    --color-success: #047857;
-    --color-warning: #b45309;
-    --fuel-petrol-bg: rgba(0, 112, 192, 0.1);
-    --fuel-petrol-bg-strong: rgba(0, 112, 192, 0.12);
-    --fuel-petrol-border: rgba(0, 112, 192, 0.22);
-    --fuel-petrol-text: #005a9c;
-    --fuel-diesel-bg: rgba(255, 204, 0, 0.25);
-    --fuel-diesel-bg-strong: rgba(255, 204, 0, 0.18);
-    --fuel-diesel-border: rgba(230, 184, 0, 0.45);
-    --fuel-diesel-text: #854d0e;
-    --danger-soft: #fef2f2;
-    --danger-border: #fecaca;
-    --success-soft: #ecfdf5;
-    --warning-soft: #fffbeb;
-    --warning-border: #fde68a;
-    --info-soft: #f0f9ff;
-    --info-border: #bae6fd;
-    --shadow-rgb: 15, 23, 42;
-  }
-}
-
 /* Invalid fields — native constraint checks and aria-invalid share one treatment. */
 :is(input, select, textarea):user-invalid,
 :is(input, select, textarea).is-invalid,
@@ -3660,9 +3514,34 @@ html[data-theme="dark"].app-booting::before {
   a.button-secondary,
   .topbar-icon-btn,
   .date-range-edit,
-  .staff-status-chip {
+  .staff-status-chip,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+  select,
+  textarea {
     min-height: 2.75rem;
+  }
+
+  button,
+  .button-small,
+  .button-secondary,
+  .button-delete,
+  a.button-secondary,
+  .topbar-icon-btn,
+  .date-range-edit,
+  .staff-status-chip {
     min-width: 2.75rem;
+  }
+
+  .shift-save-row,
+  #day-closing-form .form-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin: 0 -0.25rem;
+    padding: 0.75rem 0.25rem calc(0.75rem + env(safe-area-inset-bottom));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
   }
 }
 

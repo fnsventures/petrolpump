@@ -43,7 +43,7 @@
     return AdminDelete.buttonHtml({
       selector: extraClass || "credit-delete-btn",
       data: { [idKey]: entry.id, amount, date },
-      title: "Delete (admin)",
+      title: entry.status === "cancelled" ? "Cancelled" : "Cancel (admin)",
     });
   }
 
@@ -57,14 +57,16 @@
           const qty = e.quantity != null ? Number(e.quantity).toFixed(3) : "—";
           const settled = Number(e.amount_settled || 0);
           const open = Number(e.amount || 0) - settled;
-          const canDelete = showAdminActions && e.id;
+          const recorder = e.created_by_name ? ` <span class="muted">${escapeHtml(e.created_by_name)}</span>` : "";
+          const cancelled = e.status === "cancelled" ? " Cancelled" : "";
+          const canDelete = showAdminActions && e.id && e.status !== "cancelled";
           const actions = canDelete
             ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-entry")}</td>`
             : showAdminActions
               ? `<td class="table-actions muted">—</td>`
               : "";
           return `<tr>
-            <td>${escapeHtml(formatDisplayDate(e.transaction_date || e.entry_date))}</td>
+            <td>${escapeHtml(formatDisplayDate(e.transaction_date || e.entry_date))}${recorder}${escapeHtml(cancelled)}</td>
             <td>${fuel}</td>
             <td>${qty}</td>
             <td>${formatCurrency(e.amount)}</td>
@@ -77,13 +79,15 @@
     if (columns === "payment-rich") {
       return entries
         .map((e) => {
+          const recorder = e.created_by_name ? ` <span class="muted">${escapeHtml(e.created_by_name)}</span>` : "";
+          const cancelled = e.status === "cancelled" ? " Cancelled" : "";
           const actions = showAdminActions
-            ? e.id
+            ? e.id && e.status !== "cancelled"
               ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-payment", { idKey: "paymentId" })}</td>`
               : `<td class="table-actions muted">—</td>`
             : "";
           return `<tr>
-              <td>${escapeHtml(formatDisplayDate(e.date || e.entry_date))}</td>
+              <td>${escapeHtml(formatDisplayDate(e.date || e.entry_date))}${recorder}${escapeHtml(cancelled)}</td>
               <td>${formatCurrency(e.amount)}</td>
               <td>${escapeHtml(e.payment_mode || "—")}${
                 e.same_day_settlement
