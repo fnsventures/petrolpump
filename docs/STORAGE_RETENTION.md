@@ -13,6 +13,7 @@ Drive is the long-term copy. The calendar year is 1 January through 31 December.
 | 1st of February–December, 08:30 IST | Only the month that just finished | `2026/2026-10/` on 1 November holds October | Nothing on Drive. On production, audit rows older than 6 months |
 | 1 January, 08:30 IST | December, then a full copy of the whole database | December in `2026/2026-12/`. Full copy in `Yearly/2026/` | After the full copy has uploaded, trash `2026-01` through `2026-12`. Those month files repeat what `Yearly/2026` already contains. Audit rows older than 6 months |
 | Any day, when you ask | One month, or the whole database | Month folder, or `Manual/<timestamp>/` | Nothing, unless you run the year-end script |
+| Any day, **Purge audit log** | Nothing | — | Production `audit_log` rows older than 3, 2, or 1 month, only when that run’s confirm choice is **delete** |
 
 > **Back up first.** [OPERATIONS.md §4](OPERATIONS.md#4-backup-production-database) must be green before you drop indexes or strip columns, and every such change needs a staging dry-run.
 
@@ -86,24 +87,28 @@ A month folder cannot rebuild the station by itself.
 
 Triggers write `audit_log` when someone changes an audited table. Admins can read it. The app cannot insert into it directly.
 
-Kept for **6 months**, measured from `performed_at`. On the 1st, after the Drive upload succeeds, `scripts/purge-audit-log.sh` deletes older rows in batches of 5,000. A failed upload does not delete the diary.
+Kept for **6 months**, measured from `performed_at`. On the 1st, **Backup production database** uploads the finished month. After that scheduled run succeeds, **Purge audit log** deletes older rows in batches of 5,000. A failed upload does not start the purge. A backup you start by hand does not either.
+
+When the diary is large and nothing is 6 months old yet, Actions → **Purge audit log** → Run workflow deletes rows older than **3, 2, or 1 month**. **dry-run** only prints the count. **delete** removes the rows. The database function rejects a keep shorter than 30 days, so 1 month is the shortest choice.
 
 Shift cash and phone pay are still logged. Updates that only refresh the cached credit and expense totals on `meter_shift_cash` are not, because those totals are copied from the ledger.
 
 Deleting rows makes the space reusable. The number Supabase shows for database size can stay high until a one-time `VACUUM FULL public.audit_log` in a quiet window. That lock also blocks writes to every audited table, so it is not part of the monthly job.
 
-Apply migration `20261008150000_audit_log_retention` before the purge can succeed. Until it is on production, the 1st still uploads the month file, and the purge step fails with a clear message.
+Apply migration `20261008150000_audit_log_retention` before the purge can succeed. Until it is on production, the 1st still uploads the month file, and **Purge audit log** fails with a clear message.
 
-Preview without deleting:
+Preview without deleting (6 months, or set `AUDIT_KEEP_MONTHS` to 1, 2, or 3):
 
 ```bash
 ./scripts/purge-audit-log.sh
+AUDIT_KEEP_MONTHS=3 ./scripts/purge-audit-log.sh
 ```
 
 Delete:
 
 ```bash
 CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh
+AUDIT_KEEP_MONTHS=3 CONFIRM_PURGE_AUDIT=yes ./scripts/purge-audit-log.sh
 ```
 
 ## Staging
@@ -127,7 +132,7 @@ The script reads `STAGING_DB_URL` only. It stops if that URL is the same as `PRO
 
 [Operations → Which command](OPERATIONS.md#which-command). Google Drive variables come from the GitHub **prod** environment for Actions, or from your shell for a laptop run. `PROD_DB_URL` can come from `scripts/db.env`. None of these commands write business rows.
 
-Actions → **Backup production database** → Run workflow, and choose `month`, `full`, or `year-end`. The scheduled run needs no choice: every 1st it saves the finished month and deletes old audit rows; on 1 January it also closes the year.
+Actions → **Backup production database** → Run workflow, and choose `month`, `full`, or `year-end`. The scheduled run needs no choice: every 1st it saves the finished month; on 1 January it also closes the year. After that scheduled backup succeeds, **Purge audit log** deletes audit rows older than 6 months.
 
 ## If the database later nears 350 MB
 

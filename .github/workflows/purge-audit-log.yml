@@ -1,0 +1,72 @@
+name: Purge audit log
+
+# Manual runs delete rows older than 3, 2, or 1 month and do not upload a backup.
+# After the scheduled Backup production database workflow succeeds, this workflow
+# deletes rows older than 6 months. A failed or hand-started backup does not.
+on:
+  workflow_dispatch:
+    inputs:
+      keep_months:
+        description: Delete production audit_log rows older than
+        type: choice
+        required: true
+        options:
+          - "3"
+          - "2"
+          - "1"
+        default: "3"
+      confirm:
+        description: Dry run counts rows. Delete removes them on production.
+        type: choice
+        required: true
+        options:
+          - dry-run
+          - delete
+        default: dry-run
+  workflow_run:
+    workflows: ["Backup production database"]
+    types:
+      - completed
+
+concurrency:
+  group: prod-audit-purge
+  cancel-in-progress: false
+
+jobs:
+  purge-after-backup:
+    name: Delete audit rows older than 6 months
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Purge audit log older than 6 months
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          AUDIT_KEEP_MONTHS: "6"
+          CONFIRM_PURGE_AUDIT: yes
+        run: bash scripts/purge-audit-log.sh
+
+  purge:
+    name: Purge audit log
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Purge audit log
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          AUDIT_KEEP_MONTHS: ${{ inputs.keep_months }}
+          CONFIRM_PURGE_AUDIT: ${{ inputs.confirm == 'delete' && 'yes' || '' }}
+        run: bash scripts/purge-audit-log.sh

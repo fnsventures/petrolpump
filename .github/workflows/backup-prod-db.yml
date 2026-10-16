@@ -45,11 +45,9 @@ jobs:
           month_flag=no
           full_flag=no
           year_flag=no
-          purge_flag=no
           year_number="${INPUT_YEAR:-}"
           if [[ "${EVENT_NAME}" == "schedule" ]]; then
             month_flag=yes
-            purge_flag=yes
             if [[ "$(TZ=Asia/Kolkata date +%m)" == "01" ]]; then
               year_flag=yes
               year_number="$(( $(TZ=Asia/Kolkata date +%Y) - 1 ))"
@@ -66,7 +64,6 @@ jobs:
             echo "month=${month_flag}"
             echo "full=${full_flag}"
             echo "year=${year_flag}"
-            echo "purge=${purge_flag}"
             echo "year_number=${year_number}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -106,10 +103,3 @@ jobs:
           GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
           YEAR: ${{ steps.plan.outputs.year_number }}
         run: bash scripts/backup-year-to-drive.sh
-
-      - name: Purge audit log older than 6 months
-        if: steps.plan.outputs.purge == 'yes'
-        env:
-          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
-          CONFIRM_PURGE_AUDIT: yes
-        run: bash scripts/purge-audit-log.sh
