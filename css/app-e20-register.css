@@ -405,9 +405,9 @@ body.e20-register-page .e20-table select {
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  height: 2.25rem;
-  min-height: 2.25rem;
-  max-height: 2.25rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: none;
   margin: 0;
   box-sizing: border-box;
   border: 1px solid var(--border-strong);
@@ -416,7 +416,7 @@ body.e20-register-page .e20-table select {
   color: var(--text);
   padding: 0 0.5rem;
   line-height: 1.2;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
   font-family: inherit;
   field-sizing: fixed;
 }

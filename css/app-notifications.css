@@ -179,7 +179,7 @@
 .notif-item--task .notif-item-actions .button-small {
   flex: 1 1 auto;
   min-width: 5rem;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   justify-content: center;
 }
 

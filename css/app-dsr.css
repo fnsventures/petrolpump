@@ -12,6 +12,24 @@ body.meter-reading-page main.settings-layout.page-layout-wide {
   -webkit-overflow-scrolling: touch;
 }
 
+@media (min-width: 721px) {
+  body.dsr-page .dsr-daily-block .table-scroll {
+    content-visibility: visible;
+  }
+
+  body.dsr-page .dsr-daily-block .dsr-table :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--surface);
+    box-shadow: 2px 0 0 var(--border);
+  }
+
+  body.dsr-page .dsr-daily-block .dsr-table thead th:first-child {
+    z-index: 4;
+  }
+}
+
 .dsr-table {
   width: 100%;
   border-collapse: collapse;

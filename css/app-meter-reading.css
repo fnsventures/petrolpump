@@ -755,7 +755,7 @@ body.meter-reading-page .shift-nozzle-table .shift-meter-label {
 body.meter-reading-page .shift-nozzle-table select.shift-staff {
   width: 100%;
   min-width: 7.5rem;
-  min-height: 2.15rem;
+  min-height: 2.75rem;
   text-align: left;
   font-size: max(16px, var(--text-sm));
 }
@@ -911,7 +911,7 @@ body.meter-reading-page .shift-coll-meta {
 
 body.meter-reading-page .shift-coll-meta .muted {
   margin-right: 0.12rem;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -949,7 +949,7 @@ body.meter-reading-page .shift-coll-field--ledger {
 }
 
 body.meter-reading-page .shift-coll-label {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -971,7 +971,7 @@ body.meter-reading-page .shift-phone-pay {
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 0.95rem;
+  font-size: max(16px, 0.95rem);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -1014,7 +1014,7 @@ body.meter-reading-page .shift-coll-ledger-pair {
 
 body.meter-reading-page .shift-coll-ledger-tag {
   flex: 0 0 auto;
-  font-size: 0.54rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1246,7 +1246,7 @@ body.meter-reading-page .shift-save-notes textarea {
   min-height: 3.25rem;
   resize: vertical;
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1342,13 +1342,38 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
     width: 100%;
   }
 
+  /* Comments and the summary stay in the page. Only the save button stays pinned,
+     so the keyboard does not cover the staff rows with the whole bar. */
   body.meter-reading-page .shift-save-row {
+    position: static;
     flex-direction: column;
     align-items: stretch;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
   }
 
   body.meter-reading-page .shift-save-row .shift-save-btn {
-    width: 100%;
+    position: fixed;
+    z-index: 6;
+    left: max(0.75rem, var(--safe-left));
+    right: max(0.75rem, var(--safe-right));
+    bottom: max(0.5rem, var(--safe-bottom));
+    width: auto;
+  }
+
+  body:has(.app-network-status:not(.hidden)) .shift-save-row .shift-save-btn {
+    bottom: calc(2.75rem + var(--safe-bottom) + 0.5rem);
+  }
+
+  body.meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
+    padding-bottom: calc(4.5rem + var(--safe-bottom));
+  }
+
+  body:has(.app-network-status:not(.hidden)).meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
+    padding-bottom: calc(7.25rem + var(--safe-bottom));
   }
 
   body.meter-reading-page .shift-coll-add-btn {
@@ -1664,6 +1689,10 @@ body.meter-reading-page .shift-history-table .shift-history-view {
   .shift-view-actions button {
     width: 100%;
   }
+
+  .shift-view-staff-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 
@@ -1726,7 +1755,7 @@ body.meter-reading-page .shift-ledger-tabs {
 }
 
 body.meter-reading-page .shift-ledger-tab {
-  min-height: 2.15rem;
+  min-height: 2.75rem;
   border: 0;
   border-radius: 0.35rem;
   background: transparent;
@@ -1785,7 +1814,7 @@ body.meter-reading-page .shift-ledger-field input,
 body.meter-reading-page .shift-ledger-field select,
 body.meter-reading-page .shift-ledger-field button {
   width: 100%;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   box-sizing: border-box;
 }
 

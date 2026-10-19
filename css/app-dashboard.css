@@ -998,7 +998,7 @@
 .reminders-landing-item-actions .button-small {
   flex: 1 1 auto;
   min-width: 5rem;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   width: auto;
   box-sizing: border-box;
   justify-content: center;
@@ -1108,7 +1108,7 @@ button.task-later-choice:hover {
 }
 
 .task-later-pick .button-small {
-  min-height: 2.35rem;
+  min-height: 2.75rem;
   padding-left: 0.9rem;
   padding-right: 0.9rem;
 }
@@ -1328,7 +1328,7 @@ button.task-later-choice:hover {
   flex: 1 1 auto;
   width: auto;
   min-width: 5rem;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   box-sizing: border-box;
   justify-content: center;
   align-self: stretch;
@@ -1642,7 +1642,7 @@ button.credit-unhide-btn {
   background: none;
   box-shadow: none;
   font: inherit;
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-weight: 400;
   line-height: 1;
   letter-spacing: 0;
@@ -1664,6 +1664,14 @@ button.credit-unhide-btn:active {
 button.credit-unhide-btn:focus-visible {
   outline: 1px dotted var(--text-muted);
   outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  button.credit-unhide-btn {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+    padding: 0.35rem 0.5rem;
+  }
 }
 
 .dashboard-operator-name {
@@ -1935,8 +1943,15 @@ body.dashboard-page .highlight-card.clickable-card:hover {
   }
 }
 
+@media (max-width: 960px) {
+  /* Collapse without waiting for the JS class body.has-app-sections. */
+  .settings-layout.dashboard-page-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
-  .dashboard-context-rail {
+  .settings-layout.dashboard-page-layout > .dashboard-context-rail {
     grid-template-columns: 1fr;
   }
 

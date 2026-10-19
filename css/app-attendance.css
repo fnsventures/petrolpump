@@ -61,7 +61,7 @@
   display: flex;
   align-items: stretch;
   width: 100%;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: var(--radius, 6px);
@@ -79,9 +79,9 @@
   border: 0;
   border-radius: 0;
   background: transparent;
-  min-height: 2.5rem;
+  min-height: 2.75rem;
   box-shadow: none;
-  font-size: var(--text-sm);
+  font-size: max(16px, var(--text-sm));
   font-variant-numeric: tabular-nums;
   color: var(--text);
   cursor: pointer;
@@ -264,6 +264,44 @@ table.attendance-matrix {
 }
 
 /* Shift hint only — neutral; present/absent colors stay on the main letter */
+@media (hover: none) {
+  .attendance-matrix-wrap:has(.att-cell.is-detail-open) {
+    overflow: visible;
+    content-visibility: visible;
+  }
+
+  .attendance-matrix td.att-cell.is-detail-open {
+    position: relative;
+    z-index: 4;
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .attendance-matrix td.att-cell.is-detail-open::after {
+    content: attr(title);
+    position: absolute;
+    left: 50%;
+    top: calc(100% + 0.2rem);
+    transform: translateX(-50%);
+    z-index: 5;
+    width: max-content;
+    max-width: 12rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.35rem;
+    background: #0f172a;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0;
+    text-transform: none;
+    text-align: left;
+    white-space: normal;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.28);
+    pointer-events: none;
+  }
+}
+
 .attendance-matrix td.att-cell .att-cell-shift {
   font-weight: 600;
   font-size: 0.52rem;

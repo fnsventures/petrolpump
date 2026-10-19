@@ -600,6 +600,31 @@
       dispatchAppResume({ reason: "online" });
     };
 
+    /* Buttons inserted after the connection drops (shift rows, billing lines) stay blocked. */
+    let offlineWatch = 0;
+    const observer = new MutationObserver(() => {
+      if (navigator.onLine || offlineWatch) return;
+      offlineWatch = window.setTimeout(() => {
+        offlineWatch = 0;
+        if (!navigator.onLine) setSavesEnabled(false);
+      }, 50);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener(
+      "click",
+      (event) => {
+        if (navigator.onLine) return;
+        const btn = event.target instanceof Element ? event.target.closest(saveSelector) : null;
+        if (!(btn instanceof HTMLButtonElement)) return;
+        if (!btn.disabled) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        setSavesEnabled(false);
+      },
+      true
+    );
+
     window.addEventListener("online", () => update(true));
     window.addEventListener("offline", () => update(false));
     update(navigator.onLine);

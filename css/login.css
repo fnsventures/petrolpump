@@ -189,7 +189,7 @@ body.login-page main.login-card {
   box-sizing: border-box;
   min-height: var(--input-height);
   padding: 0 var(--control-padding-x);
-  font-size: var(--text-base);
+  font-size: max(16px, var(--text-base));
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: #fafbfc;

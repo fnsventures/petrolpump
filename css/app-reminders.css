@@ -343,7 +343,7 @@
 .reminder-card-actions .button-delete,
 .reminder-card-actions button {
   width: 100%;
-  min-height: 2.25rem;
+  min-height: 2.75rem;
   padding-left: 0.65rem;
   padding-right: 0.65rem;
   font-size: var(--text-sm);
@@ -451,7 +451,7 @@ button.reminder-later-choice:hover {
 }
 
 .reminder-later-pick .button-small {
-  min-height: 2.35rem;
+  min-height: 2.75rem;
   padding-left: 0.9rem;
   padding-right: 0.9rem;
 }
