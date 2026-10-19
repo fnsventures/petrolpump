@@ -117,6 +117,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const attendanceError = document.getElementById("attendance-error");
   const saveAllBtn = document.getElementById("attendance-save-all");
   const historyMatrixWrap = document.getElementById("attendance-matrix-wrap");
+  if (historyMatrixWrap && window.matchMedia("(hover: none)").matches) {
+    historyMatrixWrap.addEventListener("click", (event) => {
+      const cell = event.target instanceof Element ? event.target.closest("td.att-cell[title]") : null;
+      historyMatrixWrap.querySelectorAll("td.att-cell.is-detail-open").forEach((open) => {
+        if (open !== cell) open.classList.remove("is-detail-open");
+      });
+      cell?.classList.toggle("is-detail-open");
+    });
+  }
   const historyMatrixSummary = document.getElementById("attendance-matrix-summary");
   const historyRefreshBtn = document.getElementById("history-refresh");
   const historyDownloadBtn = document.getElementById("history-download-csv");

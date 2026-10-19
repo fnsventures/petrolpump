@@ -251,8 +251,8 @@ function addItemRow(productId) {
   ).join("");
 
   row.innerHTML = `
-    <td class="col-sl">${tbody.children.length + 1}</td>
-    <td class="col-item">
+    <td class="col-sl" data-label="#">${tbody.children.length + 1}</td>
+    <td class="col-item" data-label="Item Name">
       <div class="item-cell-fields">
         <select class="item-product-select billing-line-control" data-field="product_id">
           <option value="">— Custom —</option>
@@ -263,18 +263,18 @@ function addItemRow(productId) {
                placeholder="Item name" required />
       </div>
     </td>
-    <td class="col-qty"><input inputmode="decimal" type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
-    <td class="col-unit">
+    <td class="col-qty" data-label="Qty"><input inputmode="decimal" type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
+    <td class="col-unit" data-label="Unit">
       <select data-field="unit" class="billing-line-control">${buildUnitOptions(product?.unit)}</select>
     </td>
-    <td class="col-rate"><input inputmode="decimal" type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
-    <td class="col-gst">
+    <td class="col-rate" data-label="Rate"><input inputmode="decimal" type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
+    <td class="col-gst" data-label="GST %">
       <select data-field="gst_percent" class="billing-line-control">
         ${buildGstSelectOptions(product?.gst_percent)}
       </select>
     </td>
-    <td class="col-amount"><span class="item-amount">₹0.00</span></td>
-    <td class="col-action"><button type="button" class="remove-item-btn" title="Remove" aria-label="Remove item">&times;</button></td>
+    <td class="col-amount" data-label="Amount"><span class="item-amount">₹0.00</span></td>
+    <td class="col-action" data-label="Remove"><button type="button" class="remove-item-btn" title="Remove" aria-label="Remove item">&times;</button></td>
   `;
 
   tbody.appendChild(row);

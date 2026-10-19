@@ -197,6 +197,9 @@ function initReportsPage() {
     const btn = e.target.closest(".reports-pick");
     if (!btn?.dataset.report) return;
     setActiveReportTab(btn.dataset.report);
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      btn.closest("details")?.removeAttribute("open");
+    }
     document.querySelector(".reports-output")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     if (!cachedData) {
       const preview = document.getElementById("reports-preview");
@@ -298,6 +301,8 @@ function setActiveReportTab(reportId) {
   const label = findReportMeta(activeReport);
   if (titleEl && label) titleEl.textContent = label.title;
   if (descEl) descEl.textContent = label?.description ?? "";
+  const catalogCurrent = document.querySelector(".reports-catalog-current");
+  if (catalogCurrent && label) catalogCurrent.textContent = label.title;
   updateReportsCsvButtonVisibility();
 }
 

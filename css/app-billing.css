@@ -193,9 +193,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  min-height: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -297,6 +297,41 @@
 /* Invoice print layout lives in css/invoice-print.css (isolated iframe) */
 
 /* ── Responsive billing ── */
+@media (max-width: 720px) {
+  .billing-items-wrap {
+    overflow-x: visible;
+  }
+
+  .billing-items-table {
+    min-width: 0;
+    table-layout: auto;
+  }
+
+  .billing-items-table tbody tr {
+    margin: 0 0 0.75rem;
+    padding: 0.35rem 0.75rem 0.65rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .billing-items-table .item-cell-fields {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .billing-items-table tfoot tr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .billing-items-subtotal-row .billing-subtotal-label {
+    text-align: left;
+  }
+}
+
 @media (max-width: 768px) {
   .billing-header-grid {
     grid-template-columns: 1fr 1fr;
