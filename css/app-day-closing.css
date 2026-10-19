@@ -701,11 +701,33 @@
   background: var(--surface);
   box-shadow: 1px 0 0 var(--border, #e2e8f0);
 }
+
+@media (min-width: 721px) {
+  .dc-register-preview-table .day-closing-register-table :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--surface);
+    box-shadow: 1px 0 0 var(--border, #e2e8f0);
+  }
+}
 .day-closing-register-table tbody tr:nth-child(even) td.col-sticky {
   background: rgba(248, 250, 252, 0.98);
 }
 .day-closing-register-table th.col-sticky {
-  z-index: 2;
+  top: 0;
+  z-index: 4;
+}
+
+@media (min-width: 721px) {
+  .dc-register-preview-table .day-closing-register-table thead th:first-child {
+    top: 0;
+    z-index: 4;
+  }
+}
+
+.table-wrap:has(> .day-closing-register-table) {
+  content-visibility: visible;
 }
 .day-closing-register-table th.col-ref,
 .day-closing-register-table td.col-ref {

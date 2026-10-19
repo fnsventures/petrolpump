@@ -261,6 +261,25 @@ form.dsr-meter-shift-meters-locked .dsr-copy-prev {
   min-width: 0;
 }
 
+@media (min-width: 721px) {
+  .dsr-history .table-scroll {
+    content-visibility: visible;
+  }
+
+  .meter-history :is(th, td):first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--surface);
+    box-shadow: 2px 0 0 var(--border);
+  }
+
+  .meter-history thead th:first-child {
+    z-index: 4;
+    background: var(--surface-muted);
+  }
+}
+
 .meter-table {
   table-layout: fixed;
 }
@@ -717,6 +736,12 @@ tr.is-editing .expense-cat-drag-handle {
   padding: 0 0.65rem;
   font-size: var(--text-xs);
   line-height: 1.2;
+}
+
+@media (max-width: 720px) {
+  .button-small {
+    min-height: 2.75rem;
+  }
 }
 
 /* Shared panel titles (DSR, expenses, day closing, etc.) */
@@ -1195,6 +1220,14 @@ tr.is-editing .expense-cat-drag-handle {
   padding: 0;
   height: auto;
   background: transparent;
+}
+
+@media (max-width: 720px) {
+  #app-toast-container,
+  #app-toast-container[popover] {
+    top: calc(var(--topbar-offset) + var(--safe-top) + 0.5rem);
+    inset: calc(var(--topbar-offset) + var(--safe-top) + 0.5rem) max(1rem, env(safe-area-inset-right)) auto auto;
+  }
 }
 
 #action-progress[popover] {

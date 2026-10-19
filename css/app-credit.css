@@ -66,7 +66,7 @@ payments {
 
 .credit-list-view .snapshot-controls .search-field {
   flex: 1 1 22rem;
-  min-width: 18rem;
+  min-width: min(18rem, 100%);
   max-width: 28rem;
 }
 
@@ -506,6 +506,12 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 .customer-name-row.is-editable:hover .customer-name-edit-hint,
 .customer-name-row.is-editable:focus-visible .customer-name-edit-hint {
   opacity: 1;
+}
+
+@media (hover: none) {
+  .customer-name-row.is-editable .customer-name-edit-hint {
+    opacity: 1;
+  }
 }
 
 .customer-name-row.is-editable:hover .customer-balance-name,
@@ -957,6 +963,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   .credit-ledger-table td::before {
     content: attr(data-label);
     font-weight: 600;
+    font-size: max(0.7rem, var(--text-xs));
     text-align: left;
   }
 

@@ -689,6 +689,16 @@ body.analysis-page .chart-wrap {
   min-width: 0;
 }
 
+@media (max-width: 599px) {
+  .analysis-kpi .stat,
+  .analysis-kpi--featured .stat,
+  .analysis-kpi--compact .stat {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+  }
+}
+
 @media (max-width: 480px) {
   .analysis-kpi-grid--primary,
   .analysis-kpi-grid--bento,
