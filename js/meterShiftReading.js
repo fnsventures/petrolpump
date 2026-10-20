@@ -126,6 +126,10 @@
   let shiftViewFocusReturn = null;
   let shiftViewCurrent = { date: "", shift: "" };
   let shiftViewGeneration = 0;
+  // Date/shift controls change before loadShift replaces the tables. Drafts must
+  // stay tied to the shift still on screen, or the previous shift's meters are
+  // stored under the new date and then shown in place of the saved readings.
+  let displayedShift = { date: "", shift: "" };
 
   const MSG_DAY_CLOSING_SAVED =
     "Day closing is saved for this date. Only an admin can change shifts.";
@@ -1103,7 +1107,7 @@
     host.innerHTML = parts.join("");
   }
 
-  function renderNozzleTables(savedNozzles, attendanceHints, suggestedOpenings, suggestedClosings) {
+  function renderNozzleTables(savedNozzles, attendanceHints, suggestedOpenings) {
     const host = el("shift-meter-nozzle-tables");
     if (!host) return;
 
@@ -1117,7 +1121,6 @@
       hintIds.size === 1 ? Array.from(hintIds)[0] : "";
 
     const suggestOpen = suggestedOpenings || {};
-    const suggestClose = suggestedClosings || {};
 
     const blocks = PRODUCTS.map((product) => {
       const slots = nozzleSlots(product);
@@ -1125,21 +1128,10 @@
         .map((slot) => {
           const key = nozzleKey(product, slot.pump_no, slot.nozzle_no);
           const saved = byKey.get(key);
-          const empId = saved?.employee_id || defaultStaff || "";
-          let opening = saved ? formatMeterInput(saved.opening_meter) : "";
-          let closing = saved ? formatMeterInput(saved.closing_meter) : "";
-          // Auto-fill empty openings from daily / prior shift
-          if ((!opening || opening === "0") && suggestOpen[key] != null && suggestOpen[key] !== "") {
-            if (!saved || Number(saved.opening_meter) === 0) {
-              opening = formatMeterInput(suggestOpen[key]);
-            }
-          }
-          // Auto-fill empty closings from daily (end of day) when suggested
-          if ((!closing || closing === "0") && suggestClose[key] != null && suggestClose[key] !== "") {
-            if (!saved || Number(saved.closing_meter) === 0) {
-              closing = formatMeterInput(suggestClose[key]);
-            }
-          }
+          const shown = resolveNozzleInputs(saved, suggestOpen[key]);
+          const empId = saved ? shown.employeeId : defaultStaff || "";
+          const opening = shown.opening;
+          const closing = shown.closing;
           const openingReadonly = !isAdmin ? " readonly" : "";
           const openingClass = !isAdmin
             ? "shift-opening meter-reading shift-opening--locked"
@@ -1188,25 +1180,25 @@
   }
 
   /**
-   * Suggest end-of-day closings only when afternoon already has saved rows.
-   * Never prefill a blank afternoon from daily — after morning sync, daily
-   * closings equal morning closings and look like leftover values.
+   * Saved nozzle rows are shown as stored. Suggestions fill openings only on
+   * nozzles that have no saved row — never closings, and never a saved 0.
+   * Daily-sheet closings used to land in empty afternoon cells and looked like
+   * someone else's readings.
    */
-  function buildSuggestedClosings(shift, dailyMeters, { hasSavedNozzles = false } = {}) {
-    const out = {};
-    if (!dailyMeters || shift !== "afternoon" || !hasSavedNozzles) return out;
-    for (const product of PRODUCTS) {
-      const m = dailyMeters[product];
-      if (!m || m.is_complete !== true) continue;
-      for (const slot of nozzleSlots(product)) {
-        if (slot.pump_no > 2 || slot.nozzle_no > 2) continue; // daily schema is 2×2
-        const val = m[`closing_pump${slot.pump_no}_nozzle${slot.nozzle_no}`];
-        if (val != null && val !== "" && Number(val) !== 0) {
-          out[`${product}:${slot.pump_no}:${slot.nozzle_no}`] = Number(val);
-        }
-      }
+  function resolveNozzleInputs(saved, suggestOpen) {
+    if (saved) {
+      return {
+        opening: formatMeterInput(saved.opening_meter),
+        closing: formatMeterInput(saved.closing_meter),
+        employeeId: saved.employee_id ? String(saved.employee_id) : "",
+      };
     }
-    return out;
+    const n = Number(suggestOpen);
+    const opening =
+      suggestOpen != null && suggestOpen !== "" && Number.isFinite(n) && n !== 0
+        ? formatMeterInput(suggestOpen)
+        : "";
+    return { opening, closing: "", employeeId: "" };
   }
 
   /** Prefer first meaningful meter value (skip null/empty; allow 0 only if nothing better later). */
@@ -1403,6 +1395,7 @@
     if (!date || !shift) return;
 
     const gen = ++loadGeneration;
+    displayedShift = { date: "", shift: "" };
     showMsg("", false);
     const loading = el("shift-meter-loading");
     if (loading) loading.classList.remove("hidden");
@@ -1485,19 +1478,12 @@
       await ensureShiftStaffRoster(data);
       if (gen !== loadGeneration) return;
 
-      const suggestClose =
-        resolvedLock.locked
-          ? null
-          : buildSuggestedClosings(shift, data?.daily_meters, {
-              hasSavedNozzles: savedNozzles.length > 0,
-            });
-
       renderNozzleTables(
         savedNozzles,
         data?.attendance_hints || [],
-        resolvedLock.locked ? null : resolved.openings,
-        suggestClose
+        resolvedLock.locked ? null : resolved.openings
       );
+      displayedShift = { date, shift };
       const restoredDraft = !resolvedLock.locked && restoreMeterDraft(date, shift);
       lastStaffStructureKey = "";
       updateDerivedUi({ forceStaffRender: true });
@@ -1705,10 +1691,10 @@
 
       try {
         localStorage.setItem("shift-updated", String(Date.now()));
-        localStorage.removeItem(meterDraftKey(date, shift));
       } catch (_) {
         /* ignore quota / private mode */
       }
+      forgetMeterDraft(date, shift);
 
       cashByEmployee = new Map();
       (data?.cash || []).forEach(setCashFromRow);
@@ -1769,6 +1755,7 @@
 
       updateDerivedUi();
       applyOpeningFieldAccess();
+      captureMeterDraft();
       const prior = resolved.prior;
       const priorLabel = prior
         ? `${formatDisplayDate?.(prior.prior_date) || prior.prior_date} · ${shiftLabel(prior.prior_shift)}`
@@ -1823,6 +1810,7 @@
             });
           }
         }
+        forgetMeterDraft(date, shift);
         const curDate = el("shift-meter-date")?.value;
         const curShift = el("shift-meter-shift")?.value;
         if (curDate === date && curShift === shift) {
@@ -2305,15 +2293,50 @@
     }
   }
 
+  const LEGACY_DRAFT_PREFIX = "bpf.meterDraft.";
+  const DRAFT_PREFIX = "bpf.meterDraft.v2.";
+
   function meterDraftKey(date, shift) {
-    return `bpf.meterDraft.${date || ""}.${shift || ""}`;
+    return `${DRAFT_PREFIX}${date || ""}.${shift || ""}`;
   }
 
-  function captureMeterDraft() {
-    const date = el("shift-meter-date")?.value;
-    const shift = el("shift-meter-shift")?.value;
+  /** Draft key for an edit, or null when the event is not an edit of the visible shift. */
+  function draftCaptureKey(displayed, eventTargetId) {
+    if (!displayed?.date || !displayed?.shift) return null;
+    const id = eventTargetId || "";
+    if (id === "shift-meter-date" || id === "shift-meter-shift") return null;
+    return meterDraftKey(displayed.date, displayed.shift);
+  }
+
+  function forgetMeterDraft(date, shift) {
+    try {
+      localStorage.removeItem(meterDraftKey(date, shift));
+      localStorage.removeItem(`${LEGACY_DRAFT_PREFIX}${date || ""}.${shift || ""}`);
+    } catch (_) {
+      /* private mode */
+    }
+  }
+
+  function clearLegacyMeterDrafts() {
+    try {
+      const drop = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(LEGACY_DRAFT_PREFIX) && !key.startsWith(DRAFT_PREFIX)) {
+          drop.push(key);
+        }
+      }
+      drop.forEach((key) => localStorage.removeItem(key));
+    } catch (_) {
+      /* private mode */
+    }
+  }
+
+  function captureMeterDraft(eventTarget) {
+    const key = draftCaptureKey(displayedShift, eventTarget?.id || "");
+    if (!key) return;
     const zone = el("shift-meter-edit-zone");
-    if (!date || !shift || !zone) return;
+    if (!zone || !zone.querySelector("tr[data-product]")) return;
     const fields = {};
     zone.querySelectorAll("input, textarea, select").forEach((field) => {
       if (!field.id || field.type === "hidden") return;
@@ -2322,16 +2345,17 @@
     const remarks = el("shift-meter-remarks");
     if (remarks) fields[remarks.id] = remarks.value;
     try {
-      localStorage.setItem(meterDraftKey(date, shift), JSON.stringify({ at: Date.now(), fields }));
+      localStorage.setItem(key, JSON.stringify({ v: 2, at: Date.now(), fields }));
     } catch (_) {
       /* ignore quota */
     }
   }
 
   function restoreMeterDraft(date, shift) {
+    const key = meterDraftKey(date, shift);
     let raw;
     try {
-      raw = localStorage.getItem(meterDraftKey(date, shift));
+      raw = localStorage.getItem(key);
     } catch (_) {
       return false;
     }
@@ -2340,9 +2364,14 @@
     try {
       parsed = JSON.parse(raw);
     } catch (_) {
+      forgetMeterDraft(date, shift);
       return false;
     }
-    const fields = parsed?.fields || {};
+    if (parsed?.v !== 2 || !parsed.fields) {
+      forgetMeterDraft(date, shift);
+      return false;
+    }
+    const fields = parsed.fields;
     let applied = false;
     Object.keys(fields).forEach((id) => {
       const field = el(id);
@@ -2375,7 +2404,7 @@
 
     const panel = el("shift-readings") || document.querySelector('[data-panel="shift-readings"]');
     panel?.addEventListener("input", (e) => {
-      captureMeterDraft();
+      captureMeterDraft(e.target);
       if (supervisorReadonly && !isAdmin) return;
       if (
         e.target.matches?.(
@@ -2386,6 +2415,7 @@
       }
     });
     panel?.addEventListener("change", (e) => {
+      if (e.target?.matches?.(".shift-staff")) captureMeterDraft(e.target);
       if (supervisorReadonly && !isAdmin) return;
       if (e.target.matches?.(".shift-staff")) updateDerivedUi({ forceStaffRender: true });
     });
@@ -2423,6 +2453,7 @@
   let initPromise = null;
 
   async function bootstrapShiftRegister(opts = {}) {
+    clearLegacyMeterDrafts();
     isAdmin = opts.isAdmin === true;
     currentUserId = opts.userId || null;
     const clearBtn = el("shift-meter-clear");
@@ -2460,5 +2491,10 @@
     await loadShift();
   }
 
-  global.MeterShiftReading = { init, reload: loadShift };
+  global.MeterShiftReading = {
+    init,
+    reload: loadShift,
+    draftCaptureKey,
+    resolveNozzleInputs,
+  };
 })(typeof window !== "undefined" ? window : globalThis);
