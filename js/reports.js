@@ -157,6 +157,8 @@ function initReportsPage() {
 
   renderReportCatalog();
   setActiveReportTab(activeReport);
+  syncReportCatalogDisclosure();
+  window.matchMedia("(min-width: 769px)").addEventListener("change", syncReportCatalogDisclosure);
   PrintUtils.preloadReportPrintCss?.();
   initReportsAboutAccordion();
   initPageSections({
@@ -259,6 +261,12 @@ function ensureReportsDataLoaded() {
     reportsLoadInFlight = null;
   });
   return reportsLoadInFlight;
+}
+
+function syncReportCatalogDisclosure() {
+  const details = document.querySelector(".reports-catalog-details");
+  if (!details) return;
+  if (window.matchMedia("(min-width: 769px)").matches) details.open = true;
 }
 
 function renderReportCatalog() {
