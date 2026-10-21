@@ -1,0 +1,1 @@
+import{ArcElement as r,BarController as l,BarElement as t,CategoryScale as n,Chart as e,DoughnutController as o,Filler as i,Legend as a,LinearScale as m,LineController as C,LineElement as g,PointElement as E,Tooltip as L}from"chart.js";e.register(r,l,t,n,o,i,a,m,C,g,E,L),window.Chart=e;
