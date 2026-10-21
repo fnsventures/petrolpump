@@ -49,10 +49,44 @@
       return {
         message: String(err.message),
         code: err.code != null ? String(err.code) : undefined,
+        name: err.name != null ? String(err.name) : undefined,
         original: err,
       };
     }
     return { message: String(err), original: err };
+  }
+
+  const RELOAD_MESSAGE = "Something went wrong. Reload the page and try again.";
+
+  function isRawClientFailure(message, name) {
+    if (/^(TypeError|ReferenceError|SyntaxError|RangeError|URIError|EvalError)$/.test(name || "")) {
+      return true;
+    }
+    return /cannot read propert|cannot set propert|cannot convert|is not a function|is not defined|is not iterable|is not a constructor|undefined is not|null is not|unexpected token|unexpected end|maximum call stack|assignment to constant|circular structure/i.test(
+      message || ""
+    );
+  }
+
+  /** Postgres RAISE / check messages this app wrote. Shown unchanged. */
+  function isOwnServerMessage(message, code) {
+    const text = String(message || "").trim();
+    if (!text) return false;
+    if (code === "P0001") return true;
+    return code === "23514" && !/violates check constraint/i.test(text);
+  }
+
+  /**
+   * A sentence we wrote (client check or server RAISE whose code was dropped).
+   * Infrastructure and engine boilerplate stay out so they can be translated.
+   */
+  function isHumanAppMessage(message) {
+    const text = String(message || "").trim();
+    if (!text || text.length > 400 || !/\s/.test(text)) return false;
+    if (isRawClientFailure(text, "")) return false;
+    if (/\n/.test(text) && /\bat\s+\S+\s+\(/.test(text)) return false;
+    return !/violates |duplicate key|syntax error at|permission denied for (table|relation|schema)|row-level security|jwt|pgrst\d|failed to fetch|network\s*error|load failed|timeout|timed out|invalid login|invalid_credentials|email not confirmed|too many requests/i.test(
+      text
+    );
   }
 
   /**
@@ -64,68 +98,56 @@
   function getUserFriendlyMessage(message, context) {
     const code = (context && context.code) || "";
     const status = context && context.httpStatus;
-    const lower = (message || "").toLowerCase();
+    const name = (context && context.name) || "";
+    const text = String(message || "").trim();
+    const lower = text.toLowerCase();
 
-    // Auth
+    // PGRST116 - No rows returned (expected for .maybeSingle()/.single() when no match)
+    if (code === "PGRST116" || lower.includes("pgrst116") || lower.includes("no rows")) {
+      return "";
+    }
+
+    if (isRawClientFailure(text, name)) return RELOAD_MESSAGE;
+
+    // Application text, including RAISE EXCEPTION, stays as written.
+    if (isOwnServerMessage(text, code) || isHumanAppMessage(text)) return text;
+
     if (lower.includes("invalid login") || lower.includes("invalid_credentials")) {
       return "Invalid email or password. Please try again.";
     }
     if (lower.includes("email not confirmed")) {
       return "Please confirm your email before signing in.";
     }
-    if (lower.includes("access denied") || lower.includes("permission") || lower.includes("policy")) {
-      return "You don't have permission to perform this action.";
-    }
-    if (lower.includes("session") && (lower.includes("expired") || lower.includes("invalid"))) {
-      return "Your session has expired. Please sign in again.";
-    }
-
-    // Network / availability
     if (lower.includes("failed to fetch") || lower.includes("network error") || lower.includes("load failed")) {
       return "Connection problem. Please check your internet and try again.";
     }
     if (lower.includes("timeout") || lower.includes("timed out")) {
       return "The request took too long. Please try again.";
     }
-
-    // Rate limit
     if (status === 429 || lower.includes("too many requests")) {
       return "Too many requests. Please wait a moment and try again.";
     }
-
-    // Server errors
     if (status >= 500 || lower.includes("503") || lower.includes("502") || lower.includes("504")) {
       return "Our servers are temporarily busy. Please try again in a moment.";
     }
-
-    // Common DB / Supabase
-    if (lower.includes("duplicate") || lower.includes("unique") || code === "23505") {
+    if (lower.includes("duplicate key") || lower.includes("unique constraint") || code === "23505") {
       return "This record already exists. Please use a different value.";
-    }
-    // check_violation from server-side validation (e.g. meter closing < opening) carries a readable message
-    if (code === "23514" && message && !/violates check constraint/i.test(message)) {
-      return message;
     }
     if (lower.includes("foreign key") || code === "23503") {
       return "This action cannot be completed because it references missing data.";
     }
-    if (lower.includes("row-level security") || lower.includes("rlspolicy") || lower.includes("new row violates")) {
+    if (
+      lower.includes("row-level security") ||
+      lower.includes("permission denied for table") ||
+      lower.includes("permission denied for relation")
+    ) {
       return "You don't have permission to perform this action.";
     }
-    if (lower.includes("jwt") || lower.includes("token")) {
+    if (lower.includes("jwt") || lower.includes("invalid token") || lower.includes("token expired")) {
       return "Your session may have expired. Please sign in again.";
     }
 
-    // PGRST116 - No rows returned (expected for .maybeSingle()/.single() when no match)
-    if (code === "PGRST116" || lower.includes("pgrst116") || lower.includes("no rows")) {
-      return ""; // Empty string signals "not an error" - caller should handle
-    }
-
-    // Fallback: return original message but truncate long technical strings
-    if (message && message.length > 200) {
-      return message.slice(0, 197) + "...";
-    }
-    return message || "Something went wrong. Please try again.";
+    return RELOAD_MESSAGE;
   }
 
   /**
@@ -217,6 +239,127 @@
     throw lastErr;
   }
 
+  let fieldErrorSeq = 0;
+
+  function labelText(control) {
+    const doc = control.ownerDocument;
+    if (control.id && doc) {
+      const labels = doc.querySelectorAll("label[for]");
+      for (let i = 0; i < labels.length; i++) {
+        if (labels[i].htmlFor === control.id || labels[i].getAttribute("for") === control.id) {
+          return labels[i].textContent || "";
+        }
+      }
+    }
+    const wrap = control.closest && control.closest("label");
+    if (wrap) return wrap.textContent || "";
+    return control.getAttribute("aria-label") || "";
+  }
+
+  function findFieldForMessage(form, message) {
+    if (!form || !message || typeof form.querySelectorAll !== "function") return null;
+    const text = String(message).toLowerCase();
+    const controls = form.querySelectorAll("input, select, textarea, button");
+    let best = null;
+    let bestScore = 0;
+    const ignore = { input: 1, select: 1, field: 1, form: 1, this: 1, that: 1, with: 1, from: 1, enter: 1, value: 1, button: 1 };
+    for (let i = 0; i < controls.length; i++) {
+      const control = controls[i];
+      if (control.type === "hidden" || control.disabled) continue;
+      const label = labelText(control).toLowerCase().replace(/\s+/g, " ").trim();
+      const name = `${control.name || ""} ${control.id || ""}`.toLowerCase().replace(/[_-]+/g, " ");
+      let score = 0;
+      const cleanLabel = label.replace(/[:*()₹]/g, "").trim();
+      if (cleanLabel.length > 2 && text.includes(cleanLabel)) score += 50 + cleanLabel.length;
+      const tokens = `${label} ${name}`.split(/[^a-z0-9]+/);
+      for (let t = 0; t < tokens.length; t++) {
+        const token = tokens[t];
+        if (!token || token.length < 4 || ignore[token]) continue;
+        if (text.includes(token)) score += token.length;
+      }
+      if (score > bestScore) {
+        best = control;
+        bestScore = score;
+      }
+    }
+    return bestScore >= 4 ? best : null;
+  }
+
+  function clearFieldError(field) {
+    if (!field) return;
+    const id = field.dataset && field.dataset.fieldErrorId;
+    if (id && field.ownerDocument) {
+      const note = field.ownerDocument.getElementById(id);
+      if (note) note.remove();
+    }
+    if (field.dataset) delete field.dataset.fieldErrorId;
+    field.removeAttribute("aria-invalid");
+    const described = (field.getAttribute("aria-describedby") || "").split(/\s+/).filter((part) => part && part !== id);
+    if (described.length) field.setAttribute("aria-describedby", described.join(" "));
+    else field.removeAttribute("aria-describedby");
+  }
+
+  function showFieldError(field, message) {
+    if (!field || !field.ownerDocument) return;
+    clearFieldError(field);
+    const text = String(message || "").trim();
+    if (!text) return;
+    const note = field.ownerDocument.createElement("p");
+    note.className = "field-error";
+    note.id = `field-error-${++fieldErrorSeq}`;
+    note.setAttribute("role", "alert");
+    note.textContent = text;
+    const host = (field.closest && field.closest(".form-field, td")) || field.parentElement;
+    if (host) host.appendChild(note);
+    else field.insertAdjacentElement("afterend", note);
+    if (field.dataset) field.dataset.fieldErrorId = note.id;
+    field.setAttribute("aria-invalid", "true");
+    const described = field.getAttribute("aria-describedby");
+    field.setAttribute("aria-describedby", described ? `${described} ${note.id}` : note.id);
+    if (!field.dataset.fieldErrorClear) {
+      field.dataset.fieldErrorClear = "1";
+      const clear = () => clearFieldError(field);
+      field.addEventListener("input", clear);
+      field.addEventListener("change", clear);
+    }
+    const focusable = /^(INPUT|SELECT|TEXTAREA|BUTTON|A)$/.test(field.tagName || "");
+    if (!focusable && field.tabIndex < 0) field.tabIndex = -1;
+    try {
+      field.focus({ preventScroll: true });
+    } catch (_) {
+      try { field.focus(); } catch (_focus) { /* not focusable */ }
+    }
+    if (typeof field.scrollIntoView === "function") {
+      field.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  /**
+   * Put a save error on the control it describes and move focus there.
+   * Falls back to the form's error element when no control matches.
+   * @returns {boolean} true when the message was placed on a field
+   */
+  function showSaveError(message, options) {
+    const opts = options || {};
+    const text = String(message || "").trim();
+    if (!text) return false;
+    const form = opts.form || (opts.field && opts.field.form) || (opts.target && opts.target.closest && opts.target.closest("form"));
+    const field = opts.field || findFieldForMessage(form, text);
+    if (field) {
+      showFieldError(field, text);
+      if (opts.target && typeof opts.target.textContent !== "undefined") {
+        opts.target.textContent = "";
+        opts.target.classList && opts.target.classList.add("hidden");
+      }
+      return true;
+    }
+    if (opts.target && typeof opts.target.textContent !== "undefined") {
+      opts.target.textContent = text;
+      opts.target.classList && opts.target.classList.remove("hidden");
+    }
+    return false;
+  }
+
   /**
    * Central handle: normalize, get friendly message, report, optionally show in UI.
    * @param {*} err
@@ -235,6 +378,7 @@
     const httpStatus = getHttpStatus(normalized.original);
     const friendly = getUserFriendlyMessage(normalized.message, {
       code: normalized.code,
+      name: normalized.name,
       httpStatus,
     });
 
@@ -250,12 +394,15 @@
       console.error("[AppError]", friendly, normalized.original);
     }
 
-    if (target && typeof target.textContent !== "undefined") {
-      target.textContent = friendly;
-      target.classList && target.classList.remove("hidden");
+    const placedOnField = friendly
+      ? showSaveError(friendly, { field: opts.field, target, form: opts.form })
+      : false;
+    if (!placedOnField && target && typeof target.textContent !== "undefined" && !friendly) {
+      target.textContent = "";
+      target.classList && target.classList.add("hidden");
     }
 
-    if (shouldToast && friendly && !isExpectedNoRows) {
+    if (shouldToast && friendly && !isExpectedNoRows && !placedOnField) {
       showToast(friendly, "error");
     }
 
@@ -383,14 +530,18 @@
 
   /**
    * Toast notification system for user-facing messages.
+   * Error toasts stay until dismissed. Pass duration 0 to keep any toast up.
    * @param {string} message
    * @param {string} [type="info"] - "success" | "error" | "warning" | "info"
    * @param {number} [duration=4000]
+   * @param {{ actionLabel?: string, onAction?: () => void }} [extras]
    */
-  function showToast(message, type = "info", duration = 4000) {
+  function showToast(message, type = "info", duration = 4000, extras) {
     if (typeof document === "undefined" || !document.body) return;
     const text = String(message || "").trim();
     if (!text) return;
+    const options = extras && typeof extras === "object" ? extras : null;
+    const sticky = type === "error" || !duration;
 
     let container = document.getElementById("app-toast-container");
     if (!container) {
@@ -410,13 +561,31 @@
     body.textContent = text;
     toast.appendChild(body);
 
+    let timer = 0;
     const dismiss = () => {
-      clearTimeout(autoRemove);
+      clearTimeout(timer);
       toast.classList.remove("app-toast--visible");
       const remove = () => toast.remove();
       toast.addEventListener("transitionend", remove, { once: true });
       setTimeout(remove, 300);
     };
+
+    if (options && options.actionLabel && typeof options.onAction === "function") {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "app-toast-action";
+      action.textContent = options.actionLabel;
+      action.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dismiss();
+        try {
+          options.onAction();
+        } catch (err) {
+          if (window.AppError?.handle) AppError.handle(err, { context: { source: "toastAction" } });
+        }
+      });
+      toast.appendChild(action);
+    }
 
     const closeBtn = document.createElement("button");
     closeBtn.type = "button";
@@ -436,7 +605,7 @@
       toast.classList.add("app-toast--visible");
     });
 
-    const autoRemove = setTimeout(dismiss, duration);
+    if (!sticky) timer = setTimeout(dismiss, duration);
   }
 
   // Public API
@@ -446,6 +615,7 @@
       const n = normalizeError(err);
       return getUserFriendlyMessage(n.message, {
         code: n.code,
+        name: n.name,
         httpStatus: getHttpStatus(n.original),
       });
     },
@@ -454,6 +624,9 @@
     isTransient: isTransientError,
     showGlobalBanner: showGlobalBanner,
     showToast: showToast,
+    showFieldError: showFieldError,
+    clearFieldError: clearFieldError,
+    showSaveError: showSaveError,
     raiseToTopLayer: raiseToTopLayer,
     normalize: normalizeError,
   };

@@ -101,6 +101,27 @@ function normalizeEmployeeDetailFields(raw) {
   };
 }
 
+function readOptionalMoney(raw) {
+  const text = String(raw || "").replace(/,/g, "").trim();
+  if (!text) return { value: null };
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0) return { error: true };
+  return { value: amount };
+}
+
+/** Admins can set pay on the staff form. Supervisors never see these inputs. */
+function readOptionalSalaryFields(salaryInput, pfContributionInput) {
+  if (!salaryInput && !pfContributionInput) return { values: {} };
+  const salary = readOptionalMoney(salaryInput?.value);
+  if (salary.error) return { error: "Monthly salary must be zero or more." };
+  const pfAmt = readOptionalMoney(pfContributionInput?.value);
+  if (pfAmt.error) return { error: "PF contribution must be zero or more." };
+  const values = {};
+  if (salaryInput) values.monthly_salary = salary.value ?? 0;
+  if (pfContributionInput) values.pf_contribution = pfAmt.value;
+  return { values };
+}
+
 function staffPhotoImgHtml(url, className) {
   const safeUrl = escapeHtml(url);
   const isDrive = /googleusercontent\.com|drive\.google\.com/.test(url);
@@ -437,6 +458,9 @@ function initStaffPage(auth) {
   const aadharInput = document.getElementById("emp-aadhar");
   const panInput = document.getElementById("emp-pan");
   const pfInput = document.getElementById("emp-pf");
+  const salaryInput = document.getElementById("emp-monthly-salary");
+  const pfContributionInput = document.getElementById("emp-pf-contribution");
+  const profileSalary = document.getElementById("staff-profile-salary");
   const addressInput = document.getElementById("emp-address");
   const photoFileInput = document.getElementById("emp-photo-file");
   const photoPreviewBox = document.getElementById("emp-photo-preview");
@@ -584,6 +608,14 @@ function initStaffPage(auth) {
     if (aadharInput) aadharInput.value = emp.aadhar_number || "";
     if (panInput) panInput.value = emp.pan_number || "";
     if (pfInput) pfInput.value = emp.pf_number || "";
+    if (salaryInput) {
+      const salary = Number(emp.monthly_salary);
+      salaryInput.value = Number.isFinite(salary) && salary > 0 ? String(salary) : "";
+    }
+    if (pfContributionInput) {
+      const pfAmt = Number(emp.pf_contribution);
+      pfContributionInput.value = Number.isFinite(pfAmt) && pfAmt > 0 ? String(pfAmt) : "";
+    }
     if (addressInput) addressInput.value = emp.address || "";
     if (photoFileInput) photoFileInput.value = "";
     pendingPhotoFile = null;
@@ -770,12 +802,15 @@ function initStaffPage(auth) {
     }
     if (profilePan) profilePan.textContent = formatDetail(emp.pan_number);
     if (profilePf) profilePf.textContent = formatDetail(emp.pf_number);
+    if (profileSalary) {
+      const salary = Number(emp.monthly_salary);
+      profileSalary.textContent =
+        Number.isFinite(salary) && salary > 0 ? `${formatCurrency(salary)} / month` : "Not set";
+    }
     if (profilePfContribution) {
       const amt = Number(emp.pf_contribution);
       profilePfContribution.textContent =
-        Number.isFinite(amt) && amt > 0
-          ? `${formatCurrency(amt)} / month`
-          : "Not set — use Settings → Staff salaries";
+        Number.isFinite(amt) && amt > 0 ? `${formatCurrency(amt)} / month` : "Not set";
     }
     if (profileAddress) profileAddress.textContent = formatDetail(emp.address);
     setProfilePhoto(emp.photo_url, emp.name);
@@ -1281,7 +1316,20 @@ function initStaffPage(auth) {
       return;
     }
 
-    const payload = { name, role_display: roleInput?.value?.trim() || null, ...details };
+    const salaryFields = readOptionalSalaryFields(salaryInput, pfContributionInput);
+    if (salaryFields.error) {
+      if (staffFormError) {
+        staffFormError.textContent = salaryFields.error;
+        staffFormError.classList.remove("hidden");
+      }
+      if (staffSubmitBtn) {
+        staffSubmitBtn.disabled = false;
+        staffSubmitBtn.textContent = isEdit ? "Save changes" : "Save staff";
+      }
+      return;
+    }
+
+    const payload = { name, role_display: roleInput?.value?.trim() || null, ...details, ...salaryFields.values };
     if (!id && auth.session?.user?.id) payload.created_by = auth.session.user.id;
     const willTouchPhoto = Boolean(removePhotoOnSave || pendingPhotoFile);
     const willTouchAadhaar = Boolean(removeAadhaarOnSave || pendingAadhaarFile);

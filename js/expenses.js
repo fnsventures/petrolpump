@@ -14,6 +14,24 @@ function getCategoryLabel(value) {
 
 /** Salary is recorded on salary.html; linked expense rows stay for day-closing totals only. */
 const SALARY_EXPENSE_CATEGORY = "salary";
+const LAST_EXPENSE_CATEGORY_KEY = "bpf.expense.lastCategory";
+
+function readLastExpenseCategory() {
+  try {
+    return localStorage.getItem(LAST_EXPENSE_CATEGORY_KEY) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function rememberExpenseCategory(category) {
+  if (!category) return;
+  try {
+    localStorage.setItem(LAST_EXPENSE_CATEGORY_KEY, category);
+  } catch (_) {
+    /* private mode */
+  }
+}
 
 function applyNonSalaryExpenseFilter(query) {
   return query.neq("category", SALARY_EXPENSE_CATEGORY);
@@ -81,41 +99,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         payload.created_by = auth.session.user.id;
       }
 
-      if (!payload.date) {
-        if (errorEl) {
-          errorEl.textContent = "Date is required.";
-          errorEl.classList.remove("hidden");
-        }
+      const failExpense = (message, field) => {
+        AppError.showSaveError(message, { target: errorEl, field, form });
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save expense";
         }
+      };
+
+      if (!payload.date) {
+        failExpense("Date is required.", document.getElementById("expense-date"));
         return;
       }
 
       if (!payload.category) {
-        if (errorEl) {
-          errorEl.textContent = "Please select a category.";
-          errorEl.classList.remove("hidden");
-        }
-        document.getElementById("expense-category")?.focus();
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save expense";
-        }
+        failExpense("Please select a category.", document.getElementById("expense-category"));
         return;
       }
 
       if (!(payload.amount > 0)) {
-        if (errorEl) {
-          errorEl.textContent = "Amount must be greater than 0.";
-          errorEl.classList.remove("hidden");
-        }
-        document.getElementById("expense-amount")?.focus();
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save expense";
-        }
+        failExpense("Amount must be greater than 0.", document.getElementById("expense-amount"));
         return;
       }
 
@@ -133,12 +136,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       if (error) {
-        AppError.handle(error, { target: errorEl });
+        AppError.handle(error, { target: errorEl, form });
         return;
       }
 
       const savedDate = payload.date;
-      finishRecordFormSave(form, { date: savedDate }, { date: RECORD_DATE_KEYS.expense });
+      rememberExpenseCategory(payload.category);
+      finishRecordFormSave(form, { date: savedDate, category: payload.category }, { date: RECORD_DATE_KEYS.expense });
       successEl?.classList.remove("hidden");
       loadExpenses(true);
       try {
@@ -192,6 +196,15 @@ async function loadAndFillCategorySelect() {
       opt.textContent = c.label;
       select.appendChild(opt);
     });
+
+  const lastCategory = readLastExpenseCategory();
+  if (lastCategory && [...select.options].some((opt) => opt.value === lastCategory)) {
+    select.value = lastCategory;
+  }
+  if (!select.dataset.categoryMemoryBound) {
+    select.dataset.categoryMemoryBound = "1";
+    select.addEventListener("change", () => rememberExpenseCategory(select.value));
+  }
 }
 
 function getExpenseDateRange() {

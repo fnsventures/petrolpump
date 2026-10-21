@@ -20,7 +20,7 @@
           <div class="analysis-hero-inner">
             <p class="analysis-eyebrow">Business intelligence</p>
             <h2>Performance command center</h2>
-            <p class="analysis-hero-desc">KPIs, trends, and growth metrics across your pump operations. Choose a period, run analysis, then open Metrics, Charts, or Insights for results.</p>
+            <p class="analysis-hero-desc">KPIs, trends, and growth metrics across your pump operations. The selected period loads on open. Open Metrics, Charts, or Insights for the results.</p>
           </div>
           <div class="filter-card">
             <div class="filter-card-head">
@@ -30,11 +30,15 @@
               </div>
             </div>
             <form id="analysis-filter-form" class="filter-form" autocomplete="off">
+              <div id="analysis-date-presets" class="date-presets" aria-label="Date presets"></div>
               <div class="form-field">
                 <label for="analysis-range">Range</label>
                 <select id="analysis-range">
+                  <option value="today">Today</option>
+                  <option value="yesterday">Yesterday</option>
                   <option value="this-week">This week</option>
                   <option value="this-month" selected>This month</option>
+                  <option value="last-month">Last month</option>
                   <option value="last-3-months">Last 3 months</option>
                   <option value="custom">Custom dates</option>
                 </select>
@@ -73,7 +77,7 @@
                   </span>
                 </summary>
                 <div class="reports-about-item-body">
-                  <p>Select a range and click <strong>Run analysis</strong>. Results appear under Metrics, Charts, and Insights.</p>
+                  <p>Results load for the selected period when the page opens. Change the range to reload. Figures appear under Metrics, Charts, and Insights.</p>
                   <dl class="reports-about-rules">
                     <div>
                       <dt>Data sources</dt>

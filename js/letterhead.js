@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce */
+/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce, bindUnsavedDraft */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css";
@@ -11,6 +11,7 @@
   const LETTER_DETAIL_SELECT = `${LETTER_LIST_SELECT}, body`;
 
   let currentAuth = null;
+  let letterDraft = null;
   let letterheadPrintBusy = false;
   let letterheadPrintCssCache = null;
   let historyReportLetter = null;
@@ -257,6 +258,7 @@
       AppError?.report?.(error, { context: "letterheadSaveHistory" });
       return { ok: false, error };
     }
+    letterDraft?.markClean();
     return { ok: true, letter: data };
   }
 
@@ -952,6 +954,25 @@
     if (bodyEl) bodyEl.value = body || "";
     if (signEl) signEl.checked = includeSign !== false;
     refreshPreview();
+    letterDraft?.markClean();
+  }
+
+  function bindLetterDraft() {
+    const form = document.getElementById("letterhead-form");
+    if (!form || letterDraft || typeof bindUnsavedDraft !== "function") return;
+    const dateEl = document.getElementById("letterhead-date");
+    if (dateEl && !dateEl.value && typeof getLocalDateString === "function") {
+      dateEl.value = getLocalDateString();
+    }
+    letterDraft = bindUnsavedDraft({
+      key: "letterhead.compose",
+      root: form,
+    });
+    letterDraft.adoptServerState();
+    if (letterDraft.restore()) {
+      refreshPreview();
+      AppError.showToast("Restored an unsaved letter from this device.", "info");
+    }
   }
 
   async function deleteLetter(btn) {
@@ -1050,6 +1071,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadPumpSettings();
     refreshLetterheadDriveBanner();
     bindUi();
+    bindLetterDraft();
     initHistoryFilters();
     refreshPreview();
 

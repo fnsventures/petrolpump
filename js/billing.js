@@ -1,6 +1,7 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId, syncLoadMorePager */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId, syncLoadMorePager, bindUnsavedDraft */
 
 let productsCache = [];
+let billingDraft = null;
 let currentAuth = null;
 let printAfterSave = false;
 let invoiceSaveBusy = false;
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadProducts();
   addItemRow();
   initFormHandlers();
+  bindBillingDraft();
   initFilterHandlers();
   loadInvoices(true);
 });
@@ -263,11 +265,11 @@ function addItemRow(productId) {
                placeholder="Item name" required />
       </div>
     </td>
-    <td class="col-qty" data-label="Qty"><input inputmode="decimal" type="number" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
+    <td class="col-qty" data-label="Qty"><input inputmode="decimal" type="text" data-field="quantity" step="0.001" min="0.001" value="1" class="billing-line-control" /></td>
     <td class="col-unit" data-label="Unit">
       <select data-field="unit" class="billing-line-control">${buildUnitOptions(product?.unit)}</select>
     </td>
-    <td class="col-rate" data-label="Rate"><input inputmode="decimal" type="number" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
+    <td class="col-rate" data-label="Rate"><input inputmode="decimal" type="text" data-field="rate" step="0.01" min="0" value="${product?.default_rate || 0}" class="billing-line-control" /></td>
     <td class="col-gst" data-label="GST %">
       <select data-field="gst_percent" class="billing-line-control">
         ${buildGstSelectOptions(product?.gst_percent)}
@@ -310,10 +312,23 @@ function initItemsTableDelegation() {
     const btn = e.target.closest?.(".remove-item-btn");
     if (!btn) return;
     const row = btn.closest("tr");
-    if (!row) return;
+    if (!row || !row.parentNode) return;
+    const parent = row.parentNode;
+    const next = row.nextSibling;
     row.remove();
     renumberItems();
     recalcTotals();
+    billingDraft?.persist();
+    AppError.showToast("Item removed", "info", 8000, {
+      actionLabel: "Undo",
+      onAction: () => {
+        if (next && next.parentNode === parent) parent.insertBefore(row, next);
+        else parent.appendChild(row);
+        renumberItems();
+        recalcTotals();
+        billingDraft?.persist();
+      },
+    });
   });
 }
 
@@ -406,6 +421,78 @@ function recalcTotals() {
   document.getElementById("summary-nilrate").textContent = formatCurrency(nilRate);
 }
 
+function captureBillingDraft() {
+  const form = document.getElementById("invoice-form");
+  if (!form) return null;
+  const fields = {};
+  form.querySelectorAll("input[name], textarea[name], select[name]").forEach((field) => {
+    if (field.disabled || field.type === "hidden") return;
+    fields[field.name] =
+      field.type === "checkbox" || field.type === "radio" ? (field.checked ? "1" : "0") : field.value;
+  });
+  const lines = Array.from(document.querySelectorAll("#items-body tr")).map((row) => ({
+    product_id: row.querySelector("[data-field='product_id']")?.value || "",
+    item_name: row.querySelector("[data-field='item_name']")?.value || "",
+    quantity: row.querySelector("[data-field='quantity']")?.value || "",
+    unit: row.querySelector("[data-field='unit']")?.value || "",
+    rate: row.querySelector("[data-field='rate']")?.value || "",
+    gst_percent: row.querySelector("[data-field='gst_percent']")?.value || "",
+  }));
+  return { fields, lines };
+}
+
+function restoreBillingDraft(data) {
+  const form = document.getElementById("invoice-form");
+  const tbody = document.getElementById("items-body");
+  if (!form || !tbody || !data) return false;
+  Object.entries(data.fields || {}).forEach(([name, value]) => {
+    const field = form.elements.namedItem(name);
+    const input = field && "value" in field ? field : null;
+    if (!input || input.disabled) return;
+    if (input.type === "checkbox" || input.type === "radio") input.checked = value === "1";
+    else input.value = value ?? "";
+  });
+  const lines = Array.isArray(data.lines) ? data.lines : [];
+  tbody.innerHTML = "";
+  itemCounter = 0;
+  if (!lines.length) addItemRow();
+  lines.forEach((line) => {
+    addItemRow(line.product_id || undefined);
+    const row = tbody.lastElementChild;
+    if (!row) return;
+    const set = (field, val) => {
+      const el = row.querySelector(`[data-field="${field}"]`);
+      if (el && val != null) el.value = val;
+    };
+    set("item_name", line.item_name);
+    set("quantity", line.quantity);
+    set("unit", line.unit);
+    set("rate", line.rate);
+    set("gst_percent", line.gst_percent);
+    const product = productsCache.find((item) => item.id === line.product_id) || null;
+    syncItemNameField(row, product);
+    recalcRow(row);
+  });
+  recalcTotals();
+  return true;
+}
+
+function bindBillingDraft() {
+  const form = document.getElementById("invoice-form");
+  if (!form || billingDraft || typeof bindUnsavedDraft !== "function") return;
+  billingDraft = bindUnsavedDraft({
+    key: "billing.invoice",
+    root: form,
+    capture: captureBillingDraft,
+    restore: restoreBillingDraft,
+  });
+  billingDraft.adoptServerState();
+  if (billingDraft.restore()) {
+    recalcTotals();
+    AppError.showToast("Restored an unsaved invoice from this device.", "info");
+  }
+}
+
 // ─── Form Handlers ───────────────────────────────────────────────────────────
 
 function initFormHandlers() {
@@ -414,7 +501,10 @@ function initFormHandlers() {
   const discountInput = document.getElementById("discount");
   const saveOnlyBtn = document.getElementById("save-only-btn");
 
-  addBtn?.addEventListener("click", () => addItemRow());
+  addBtn?.addEventListener("click", () => {
+    addItemRow();
+    billingDraft?.persist();
+  });
 
   discountInput?.addEventListener("input", debounce(() => recalcTotals(), 120));
 
@@ -445,15 +535,30 @@ async function saveInvoice() {
 
   const items = getItemsData();
   if (!items.length) {
-    if (errorEl) { errorEl.textContent = "Add at least one item."; errorEl.classList.remove("hidden"); }
+    AppError.showSaveError("Add at least one item.", {
+      target: errorEl,
+      field: document.getElementById("add-item-btn"),
+    });
     resetSaveButtons();
     invoiceSaveBusy = false;
     return;
   }
 
-  const invalidItem = items.find(it => !it.item_name || !(it.rate > 0) || !(it.quantity > 0));
-  if (invalidItem) {
-    if (errorEl) { errorEl.textContent = "Each item needs a name, a quantity > 0 and a rate > 0."; errorEl.classList.remove("hidden"); }
+  const invalidRow = Array.from(document.querySelectorAll("#items-body tr")).find((row) => {
+    const name = row.querySelector("[data-field='item_name']");
+    const qty = row.querySelector("[data-field='quantity']");
+    const rate = row.querySelector("[data-field='rate']");
+    return !String(name?.value || "").trim() || !(parseFloat(qty?.value) > 0) || !(parseFloat(rate?.value) > 0);
+  });
+  if (invalidRow) {
+    const name = invalidRow.querySelector("[data-field='item_name']");
+    const qty = invalidRow.querySelector("[data-field='quantity']");
+    const rate = invalidRow.querySelector("[data-field='rate']");
+    const field = !String(name?.value || "").trim() ? name : !(parseFloat(qty?.value) > 0) ? qty : rate;
+    AppError.showSaveError("Each item needs a name, a quantity > 0 and a rate > 0.", {
+      target: errorEl,
+      field,
+    });
     resetSaveButtons();
     invoiceSaveBusy = false;
     return;
@@ -462,7 +567,10 @@ async function saveInvoice() {
   const discountValue = parseFloat(document.getElementById("discount")?.value) || 0;
   const subtotalValue = items.reduce((sum, it) => sum + it.amount, 0);
   if (discountValue < 0 || discountValue > subtotalValue) {
-    if (errorEl) { errorEl.textContent = "Discount must be between 0 and the invoice subtotal."; errorEl.classList.remove("hidden"); }
+    AppError.showSaveError("Discount must be between 0 and the invoice subtotal.", {
+      target: errorEl,
+      field: document.getElementById("discount"),
+    });
     resetSaveButtons();
     invoiceSaveBusy = false;
     return;
@@ -472,7 +580,10 @@ async function saveInvoice() {
   const partyName = document.getElementById("party-name")?.value?.trim() || "Cash A/c";
 
   if (!invoiceDate) {
-    if (errorEl) { errorEl.textContent = "Date is required."; errorEl.classList.remove("hidden"); }
+    AppError.showSaveError("Date is required.", {
+      target: errorEl,
+      field: document.getElementById("invoice-date"),
+    });
     resetSaveButtons();
     invoiceSaveBusy = false;
     return;
@@ -572,6 +683,7 @@ function resetForm() {
   itemCounter = 0;
   addItemRow();
   recalcTotals();
+  billingDraft?.markClean();
 }
 
 // ─── Print Invoice ───────────────────────────────────────────────────────────

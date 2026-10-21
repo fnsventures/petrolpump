@@ -218,10 +218,10 @@
             <div class="form-field">
               <label for="fuel-type">Fuel</label>
               <select id="fuel-type" name="fuel_type" class="credit-fuel-select" aria-describedby="fuel-type-hint">
-                <option value="HSD" selected>HSD</option>
-                <option value="MS">MS</option>
+                <option value="HSD" selected>Diesel (HSD)</option>
+                <option value="MS">Petrol (MS)</option>
               </select>
-              <span id="fuel-type-hint" class="sr-only">Defaults to HSD (Diesel) when unchanged.</span>
+              <span id="fuel-type-hint" class="sr-only">Diesel (HSD) unless this customer’s last sale was petrol (MS).</span>
             </div>
 
             <div class="form-field">
@@ -321,7 +321,7 @@
             <div class="form-field form-field-checkbox credit-same-day-field">
               <label class="checkbox-label" for="quick-settle-same-day">
                 <input type="checkbox" id="quick-settle-same-day" class="settle-same-day" />
-                <span>Same day settlement</span>
+                <span title="Payment for today’s credit sale. It goes to Night cash or Phone pay, not Collection.">Paid on the sale day</span>
               </label>
               <p class="muted text-sm credit-same-day-hint">Check when paying today’s credit sale — goes to Night cash / Phone pay, not Collection.</p>
             </div>
@@ -592,7 +592,7 @@
 
         <section id="settle-section" class="settings-panel card" data-panel="settle" hidden>
           <h2>Record payment</h2>
-          <p class="muted">Record a settlement against this customer&rsquo;s outstanding balance. Check <strong>Same day settlement</strong> when paying today&rsquo;s credit sale so it goes to Night cash / Phone pay instead of Collection.</p>
+          <p class="muted">Record a settlement against this customer&rsquo;s outstanding balance. Check <strong>Paid on the sale day</strong> when paying today&rsquo;s credit sale so it goes to Night cash / Phone pay instead of Collection.</p>
 
           <div class="credit-settle-balance-banner" aria-live="polite">
             <div class="credit-settle-balance-text">
@@ -632,7 +632,7 @@
             <div class="form-field form-field-checkbox credit-same-day-field">
               <label class="checkbox-label" for="settle-same-day">
                 <input type="checkbox" id="settle-same-day" class="settle-same-day" />
-                <span>Same day settlement</span>
+                <span title="Payment for today’s credit sale. It goes to Night cash or Phone pay, not Collection.">Paid on the sale day</span>
               </label>
               <p class="muted text-sm credit-same-day-hint">Check when paying today’s credit sale — goes to Night cash / Phone pay, not Collection.</p>
             </div>

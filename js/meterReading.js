@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -741,11 +741,40 @@ function clearMeterFormEntryFields(form, product) {
  * Prefill for new dates, load saved finished DSR, or shift rollup (clean model).
  * Finished sheet → show DSR. Otherwise → meters from shifts; keep any partial stock fields.
  */
+const meterDrafts = {};
+
+function ensureMeterDraft(product, form) {
+  if (meterDrafts[product] || typeof bindUnsavedDraft !== "function") return meterDrafts[product] || null;
+  meterDrafts[product] = bindUnsavedDraft({
+    key: () => {
+      const date = form.querySelector("input[name='date']")?.value;
+      return date ? `meter.${product}.${date}` : null;
+    },
+    root: form,
+    skipTarget: (target) => target?.name === "date",
+  });
+  return meterDrafts[product];
+}
+
+function settleMeterDraft(product, form) {
+  const draft = meterDrafts[product];
+  if (!draft) return;
+  draft.resume();
+  draft.adoptServerState();
+  if (draft.restore()) {
+    updateDerivedFields(form);
+    AppError.showToast("Restored unsaved meter readings from this device.", "info");
+  }
+}
+
 async function refreshMeterFormForSelectedDate(product, form) {
   const dateInput = form.querySelector("input[name='date']");
   if (!dateInput?.value) return;
 
+  const draft = ensureMeterDraft(product, form);
+  draft?.pause();
   const gen = (meterRefreshGeneration[product] = (meterRefreshGeneration[product] || 0) + 1);
+  try {
   const dateStr = dateInput.value;
 
   setMeterFormSupervisorLocked(form, false);
@@ -786,6 +815,10 @@ async function refreshMeterFormForSelectedDate(product, form) {
   if (gen !== meterRefreshGeneration[product]) return;
 
   applyMeterDayLockState(product, form, lockRow);
+  } finally {
+    if (gen === meterRefreshGeneration[product]) settleMeterDraft(product, form);
+    else draft?.resume();
+  }
 }
 
 function initReadingForm(product) {
@@ -894,11 +927,11 @@ function initReadingForm(product) {
               submitBtn.disabled = false;
               submitBtn.textContent = "Save meter entry";
             }
-            if (errorEl) {
-              errorEl.classList.remove("dsr-meter-locked-msg");
-              errorEl.textContent = `Closing must be ≥ opening for Pump ${p} · Nozzle ${n}.`;
-              errorEl.classList.remove("hidden");
-            }
+            errorEl?.classList.remove("dsr-meter-locked-msg");
+            AppError.showSaveError(`Closing must be ≥ opening for Pump ${p} · Nozzle ${n}.`, {
+              target: errorEl,
+              field: form.querySelector(`[name="closing_pump${p}_nozzle${n}"]`),
+            });
             return;
           }
         }
@@ -910,11 +943,11 @@ function initReadingForm(product) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save meter entry";
         }
-        if (errorEl) {
-          errorEl.classList.remove("dsr-meter-locked-msg");
-          errorEl.textContent = "Testing cannot exceed total sales.";
-          errorEl.classList.remove("hidden");
-        }
+        errorEl?.classList.remove("dsr-meter-locked-msg");
+        AppError.showSaveError("Testing cannot exceed total sales.", {
+          target: errorEl,
+          field: form.querySelector('[name="testing"]'),
+        });
         return;
       }
     }
@@ -946,11 +979,11 @@ function initReadingForm(product) {
         submitBtn.disabled = false;
         submitBtn.textContent = "Save meter entry";
       }
-      if (errorEl) {
-        errorEl.classList.remove("dsr-meter-locked-msg");
-        errorEl.textContent = "Date is required.";
-        errorEl.classList.remove("hidden");
-      }
+      errorEl?.classList.remove("dsr-meter-locked-msg");
+      AppError.showSaveError("Date is required.", {
+        target: errorEl,
+        field: form.querySelector('[name="date"]'),
+      });
       return;
     }
 
@@ -965,12 +998,14 @@ function initReadingForm(product) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Save meter entry";
         }
-        if (errorEl) {
-          errorEl.classList.remove("dsr-meter-locked-msg");
-          errorEl.textContent =
-            "Enter selling rate and dip reading or dip stock (L) before saving.";
-          errorEl.classList.remove("hidden");
-        }
+        errorEl?.classList.remove("dsr-meter-locked-msg");
+        const field = !(rateVal > 0)
+          ? form.querySelector(`[name="${rateField}"]`)
+          : form.querySelector('[name="dip_reading"]') || form.querySelector('[name="stock"]');
+        AppError.showSaveError("Enter selling rate and dip reading or dip stock (L) before saving.", {
+          target: errorEl,
+          field,
+        });
         return;
       }
     }
@@ -1052,10 +1087,11 @@ function initReadingForm(product) {
         submitBtn.textContent = "Save meter entry";
       }
       errorEl?.classList.remove("dsr-meter-locked-msg");
-      AppError.handle(saveError, { target: errorEl });
+      AppError.handle(saveError, { target: errorEl, form });
       return;
     }
 
+    meterDrafts[product]?.markClean();
     finishRecordFormSave(form, { date: payload.date }, {
       date: meterDateStorageKey(product),
     });

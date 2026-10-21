@@ -18,23 +18,20 @@
           <div class="panel-head">
             <div>
               <h2 class="dashboard-section-title">Record salary payment</h2>
-              <p class="muted panel-lead">Record each installment when salary is paid. Choose the <strong>salary month</strong> the payment applies to (can differ from the cash payment date). Multiple payments per staff member per month are supported.</p>
+              <p class="muted panel-lead">Record each installment when salary is paid. The salary month is the one selected on Monthly summary (the cash date can differ). Pay from the summary opens this form in that person’s details.</p>
             </div>
           </div>
+          <div id="salary-record-form-slot">
           <form id="salary-payment-form" class="form" autocomplete="off">
             <div class="form-grid">
-              <div class="form-field">
+              <div class="form-field payment-staff-field">
                 <label for="payment-staff">Staff</label>
                 <select id="payment-staff" name="staff_member_id" required>
                   <option value="">Select staff</option>
                 </select>
               </div>
-              <div class="form-field month-year-filter">
-                <label id="payment-salary-month-label">Salary for</label>
-                <div class="month-year-filter-controls">
-                  <select id="payment-salary-month-month" aria-labelledby="payment-salary-month-label" required></select>
-                  <select id="payment-salary-month-year" aria-label="Salary year" required></select>
-                </div>
+              <div class="form-field">
+                <p id="payment-month-value" class="muted payment-month-value">Salary month follows the summary above.</p>
               </div>
               <div class="form-field">
                 <label for="payment-date">Payment date</label>
@@ -69,6 +66,7 @@
             <p id="salary-payment-success" class="success hidden">Payment recorded.</p>
             <p id="salary-payment-error" class="error hidden"></p>
           </form>
+          </div>
         </section>
 
         <section class="settings-panel card dashboard-card is-visible" data-panel="summary">
@@ -141,16 +139,7 @@
           <div class="panel-head card-head snapshot-head">
             <div>
               <h2 class="dashboard-section-title">Payment history</h2>
-              <p class="muted panel-lead">All salary installments for the selected pay period (regardless of when cash was paid).</p>
-            </div>
-            <div class="snapshot-controls">
-              <div class="form-field month-year-filter">
-                <label id="salary-history-month-label">Salary month</label>
-                <div class="month-year-filter-controls">
-                  <select id="salary-history-month-month" aria-labelledby="salary-history-month-label"></select>
-                  <select id="salary-history-month-year" aria-label="Year"></select>
-                </div>
-              </div>
+              <p class="muted panel-lead">All salary installments for <strong id="salary-history-month">this month</strong> (regardless of when cash was paid).</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -214,6 +203,8 @@
             </table>
           </div>
         </div>
+
+        <div id="salary-detail-pay-host" hidden></div>
 
         <div class="salary-detail-actions">
           <button type="button" id="salary-detail-add-payment" class="button-secondary">Add payment</button>

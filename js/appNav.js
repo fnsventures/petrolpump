@@ -118,6 +118,14 @@
     },
   ];
 
+  /** One tap on a phone. Same destinations as the sidebar, only the pages used every shift. */
+  const DAILY_NAV = [
+    { href: "meter-reading.html#shift-readings", file: "meter-reading.html", label: "Meters", icon: "meter" },
+    { href: "credit.html", file: "credit.html", label: "Credit", icon: "credit" },
+    { href: "expenses.html", file: "expenses.html", label: "Expenses", icon: "expenses" },
+    { href: "day-closing.html", file: "day-closing.html", label: "Closing", icon: "closing" },
+  ];
+
   function iconSvg(name) {
     const path = ICONS[name] || ICONS.dashboard;
     return `<svg class="app-sidebar-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${path}</svg>`;
@@ -385,6 +393,16 @@
     <div class="app-sidebar-backdrop" hidden></div>`;
   }
 
+  function revealCurrentGroup(sidebar) {
+    if (!sidebar) return;
+    const current =
+      sidebar.querySelector(".app-sidebar-group.is-current") ||
+      sidebar.querySelector(".app-sidebar-link.is-active")?.closest(".app-sidebar-group");
+    if (!current) return;
+    openOnlyGroup(sidebar, current);
+    current.querySelector(".app-sidebar-link.is-active")?.scrollIntoView({ block: "nearest" });
+  }
+
   function setSidebarOpen(open) {
     const toggle = document.querySelector(".topbar .nav-toggle");
     const backdrop = document.querySelector(".app-sidebar-backdrop");
@@ -392,6 +410,17 @@
     document.body.classList.toggle("topbar-nav-open", open);
     toggle?.setAttribute("aria-expanded", String(open));
     if (backdrop) backdrop.hidden = !open;
+    if (open && !isDesktop()) revealCurrentGroup(document.getElementById("app-sidebar"));
+  }
+
+  function renderTabbarHtml() {
+    const links = DAILY_NAV.map((link) => {
+      const file = link.file || fileFromHref(link.href);
+      return `<a class="app-tabbar-link" href="${escapeHtml(link.href)}" data-nav-file="${escapeHtml(
+        file
+      )}">${iconSvg(link.icon)}<span>${escapeHtml(link.label)}</span></a>`;
+    }).join("");
+    return `<nav class="app-tabbar" aria-label="Daily pages">${links}</nav>`;
   }
 
   function syncBrandLogo() {
@@ -422,7 +451,7 @@
     if (!sidebar) return;
     const file = currentFileName();
 
-    sidebar.querySelectorAll(".app-sidebar-link").forEach((link) => {
+    document.querySelectorAll(".app-sidebar-link, .app-tabbar-link").forEach((link) => {
       const current = link.getAttribute("data-nav-file") === file;
       link.classList.toggle("is-active", current);
       if (current) link.setAttribute("aria-current", "page");
@@ -580,6 +609,10 @@
     document.body.classList.remove("app-sidebar-panel-open");
 
     topbar.insertAdjacentHTML("beforebegin", renderSidebarHtml());
+    if (!document.querySelector(".app-tabbar")) {
+      document.body.insertAdjacentHTML("beforeend", renderTabbarHtml());
+      document.body.classList.add("has-app-tabbar");
+    }
     const sidebar = document.getElementById("app-sidebar");
     if (!sidebar) return;
     if (topbar.classList.contains("no-print")) sidebar.classList.add("no-print");
@@ -587,7 +620,7 @@
     bindSidebar(sidebar);
     bindShell();
     setPinned(isPinned());
-    markActive({ deferOpen: true });
+    markActive({ deferOpen: isDesktop() });
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         markActive();

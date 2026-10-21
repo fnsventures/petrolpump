@@ -95,6 +95,39 @@
         </p>
         <p id="login-error" class="login-error hidden" role="alert" aria-live="polite"></p>
       </form>
+
+      <form id="reset-password-form" class="form login-form hidden" autocomplete="off" novalidate>
+        <p class="login-reset-copy">Choose a new password for your account.</p>
+        <div class="login-field">
+          <label for="new-password">New password</label>
+          <input
+            id="new-password"
+            name="password"
+            type="password"
+            placeholder="At least 6 characters"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <div class="login-field">
+          <label for="confirm-password">Confirm password</label>
+          <input
+            id="confirm-password"
+            name="confirm"
+            type="password"
+            placeholder="Repeat the new password"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <button type="submit" id="reset-password-button">Set new password</button>
+        <p class="login-forgot">
+          <a href="login.html" id="reset-password-back">Back to sign in</a>
+        </p>
+        <p id="reset-password-error" class="login-error hidden" role="alert" aria-live="polite"></p>
+      </form>
     </main>
     <footer class="app-footer app-footer--minimal">
       <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>

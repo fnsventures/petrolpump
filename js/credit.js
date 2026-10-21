@@ -191,16 +191,41 @@ function setSidebarMode(mode) {
   }
 }
 
+function creditListDefaultSection() {
+  return isAdmin ? "overview" : "record";
+}
+
+/** Supervisors record sales all day. Show that tab before auth finishes so Overview does not flash. */
+function showSupervisorRecordSale() {
+  if (location.hash || document.documentElement.classList.contains("role-admin")) return;
+  const params = new URLSearchParams(location.search);
+  if (params.get("id") || params.get("name")) return;
+  const recordBtn = document.querySelector('#credit-list-nav [data-section="record"]');
+  const overviewBtn = document.querySelector('#credit-list-nav [data-section="overview"]');
+  const record = document.getElementById("credit-panel-record");
+  const overview = document.getElementById("credit-panel-overview");
+  if (!record || !overview) return;
+  overviewBtn?.classList.remove("is-active");
+  recordBtn?.classList.add("is-active");
+  overview.classList.remove("is-visible");
+  overview.hidden = true;
+  record.classList.add("is-visible");
+  record.hidden = false;
+}
+
+showSupervisorRecordSale();
+
 function initListView() {
   setSidebarMode("list");
   setCustomerToolbarVisible(false);
   hideCustomerPanels();
 
+  const defaultSection = creditListDefaultSection();
   if (typeof initPageSections === "function") {
     initPageSections({
       navItemSelector: "#credit-list-nav .settings-nav-item",
       panelSelector: "#credit-panel-overview, #credit-panel-record, #credit-panel-outstanding, #credit-panel-aging",
-      defaultSection: "overview",
+      defaultSection,
       validSections: ["overview", "record", "outstanding", "aging"],
       onSectionChange: (section) => {
         void ensureListTab(section);
@@ -209,7 +234,7 @@ function initListView() {
   }
 
   const hash = (location.hash || "").replace(/^#/, "");
-  const initial = ["overview", "record", "outstanding", "aging"].includes(hash) ? hash : "overview";
+  const initial = ["overview", "record", "outstanding", "aging"].includes(hash) ? hash : defaultSection;
   void ensureListTab(initial);
 }
 
@@ -1058,8 +1083,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyRoleVisibility(auth.role);
 
   const params = new URLSearchParams(window.location.search);
-  creditState.customerName = (params.get("name") || "").trim();
-  creditState.customerId = params.get("id") || null;
+  creditState.customerName = (params.get("name") || params.get("customer_name") || "").trim();
+  creditState.customerId = params.get("id") || params.get("customer_id") || null;
+  if (!creditState.customerId) {
+    const legacyCustomer = (params.get("customer") || "").trim();
+    if (/^[0-9a-f-]{36}$/i.test(legacyCustomer)) creditState.customerId = legacyCustomer;
+    else if (!creditState.customerName && legacyCustomer) creditState.customerName = legacyCustomer;
+  }
 
   try {
     if (isCustomerView()) {

@@ -155,6 +155,13 @@ body.login-page main.login-card {
   border-radius: 999px;
 }
 
+.login-reset-copy {
+  margin: 0 0 0.35rem;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .login-intro {
   margin: 1rem 0 0;
   padding-top: 1rem;
@@ -210,10 +217,11 @@ body.login-page main.login-card {
 }
 
 .login-page .login-field input:focus {
-  outline: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
   border-color: var(--color-primary);
   background: var(--surface);
-  box-shadow: var(--focus-ring);
+  box-shadow: none;
 }
 
 .login-page button[type="submit"] {

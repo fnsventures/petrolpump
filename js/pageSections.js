@@ -68,7 +68,9 @@
         panel.hidden = !active;
       });
       if (section && location.hash !== "#" + section) {
-        history.replaceState(null, "", "#" + section);
+        const next = new URL(location.href);
+        next.hash = section;
+        history.replaceState(null, "", `${next.pathname}${next.search}${next.hash}`);
       }
       if (typeof config.onSectionChange === "function") {
         config.onSectionChange(section);

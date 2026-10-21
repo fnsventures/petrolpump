@@ -128,6 +128,14 @@
                 <label for="emp-pf">PF / UAN number</label>
                 <input id="emp-pf" type="text" maxlength="30" />
               </div>
+              <div class="form-field" data-role="admin-only">
+                <label for="emp-monthly-salary">Monthly salary (₹) <span class="optional-label">(opt.)</span></label>
+                <input id="emp-monthly-salary" type="text" inputmode="decimal" placeholder="0" />
+              </div>
+              <div class="form-field" data-role="admin-only">
+                <label for="emp-pf-contribution">PF contribution (₹ / month) <span class="optional-label">(opt.)</span></label>
+                <input id="emp-pf-contribution" type="text" inputmode="decimal" placeholder="e.g. 200" />
+              </div>
               <div class="form-field form-field-full">
                 <label for="emp-address">Address</label>
                 <textarea id="emp-address" rows="2" maxlength="500"></textarea>
@@ -170,6 +178,7 @@
                 </div>
                 <div><dt>PAN</dt><dd id="staff-profile-pan">—</dd></div>
                 <div><dt>PF / UAN</dt><dd id="staff-profile-pf">—</dd></div>
+                <div><dt>Monthly salary</dt><dd id="staff-profile-salary">—</dd></div>
                 <div><dt>PF contribution</dt><dd id="staff-profile-pf-contribution">—</dd></div>
                 <div class="staff-profile-address"><dt>Address</dt><dd id="staff-profile-address">—</dd></div>
               </dl>

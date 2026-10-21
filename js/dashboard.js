@@ -845,14 +845,8 @@ function maybeShowRemindersLanding(rows, todayStr) {
     return;
   }
 
-  // Always refresh an open popup (e.g. reopened via Review after session dismiss).
-  if (landingOpen) {
-    openRemindersLanding(rows, todayStr, { force: true });
-    return;
-  }
-
-  if (wasRemindersLandingDismissed()) return;
-  openRemindersLanding(rows, todayStr, { force: false });
+  // The inline strip is the reminder. Refresh the popup only when Review already opened it.
+  if (landingOpen) openRemindersLanding(rows, todayStr, { force: true });
 }
 
 function openRemindersLanding(rows, todayStr = getLocalDateString(), { force = false } = {}) {
@@ -1101,21 +1095,36 @@ function bindReminderDoneButtons(container) {
     if (inFlight.has(id)) return;
     inFlight.add(id);
     btn.disabled = true;
-    const { data: deleted, error } = await window.supabaseClient
-      .from("reminders")
-      .delete()
-      .eq("id", id)
-      .eq("status", "open")
-      .select("id");
-    if (error || !deleted?.length) {
+    const { data: sessionData } = await window.supabaseClient.auth.getSession();
+    const { data: doneRow, error } =
+      typeof TaskUtils?.markTaskDone === "function"
+        ? await TaskUtils.markTaskDone(window.supabaseClient, {
+            id,
+            userId: sessionData?.session?.user?.id || null,
+          })
+        : { data: null, error: new Error("Task helper unavailable") };
+    if (error || !doneRow?.id) {
       inFlight.delete(id);
       btn.disabled = false;
-      AppError.handle(error || new Error("Could not remove this reminder."), {
+      AppError.handle(error || new Error("Could not mark this reminder done."), {
         context: { source: "dashboardCompleteReminder" },
       });
       return;
     }
-    if (typeof TaskUtils?.showTaskToast === "function") TaskUtils.showTaskToast("Reminder removed");
+    if (typeof TaskUtils?.showUndoToast === "function") {
+      TaskUtils.showUndoToast("Marked done", async () => {
+        const { error: undoError } = await TaskUtils.reopenTask(window.supabaseClient, id);
+        if (undoError) {
+          AppError.handle(undoError, { context: { source: "dashboardUndoReminder" } });
+          return;
+        }
+        TaskUtils.showTaskToast?.("Restored");
+        TaskUtils.notifyTasksUpdated();
+        await loadRemindersBanners();
+      });
+    } else if (typeof TaskUtils?.showTaskToast === "function") {
+      TaskUtils.showTaskToast("Marked done");
+    }
     removeDashboardTaskCard(id);
     TaskUtils.notifyTasksUpdated();
     await loadRemindersBanners();
