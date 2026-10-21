@@ -421,6 +421,12 @@ body.reports-page main.settings-layout.page-layout-wide {
 }
 
 @media (min-width: 769px) {
+  /* Closed <details> hides its slot with content-visibility. display on the
+     nav no longer reveals it (Chrome 131+ / Safari 18.4+). */
+  .reports-catalog-details::details-content {
+    content-visibility: visible;
+  }
+
   .reports-catalog-details > .reports-catalog-nav {
     display: flex !important;
   }
