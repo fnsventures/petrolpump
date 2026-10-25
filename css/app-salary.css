@@ -283,6 +283,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+#salary-detail-pay-host {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+#salary-detail-pay-host[hidden] {
+  display: none;
+}
+
+.salary-pay-in-dialog .payment-staff-field {
+  display: none;
+}
+
+.payment-month-value {
+  margin: 0.35rem 0 0;
+  font-weight: 700;
+}
+
 .salary-detail-actions {
   display: flex;
   flex-wrap: wrap;
@@ -375,7 +394,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 2.25rem;
+    min-height: 2.75rem;
     margin: 0.1rem 0;
   }
 }

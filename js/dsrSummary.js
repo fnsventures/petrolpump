@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getLocalDateString, getValidFilterState, setFilterState */
+/* global window.supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getValidFilterState, setFilterState, mountDatePresets, syncDatePresetActive */
 
 /**
  * DSR summary section (filters / MS / HSD tabs) — loaded by dsr.html.
@@ -25,7 +25,6 @@
     if (!startInput || !endInput) return;
 
     const now = new Date();
-    const todayStr = getLocalDateString();
     const curY = now.getFullYear();
     const curM = now.getMonth();
     const pad2 = (n) => String(n).padStart(2, "0");
@@ -54,6 +53,12 @@
     }
 
     dsrDailyDateRange = { start: startInput.value, end: endInput.value };
+    if (startInput.value && endInput.value && startInput.value > endInput.value) {
+      AppError.showFieldError(startInput, "From must be on or before To.");
+    } else {
+      if (startInput.value) endInput.min = startInput.value;
+      if (endInput.value) startInput.max = endInput.value;
+    }
 
     const saveDailyFilter = () => {
       setFilterState &&
@@ -64,11 +69,29 @@
         });
     };
 
+    const presetHost = document.getElementById("dsr-date-presets");
+    const syncPresets = () => {
+      if (typeof syncDatePresetActive === "function") {
+        syncDatePresetActive(presetHost, startInput.value, endInput.value);
+      }
+    };
+
     const onChange = () => {
-      const start = startInput.value || todayStr;
-      const end = endInput.value || todayStr;
+      const start = startInput.value || "";
+      const end = endInput.value || "";
+      if (start) endInput.min = start;
+      else endInput.removeAttribute("min");
+      if (end) startInput.max = end;
+      else startInput.removeAttribute("max");
+      if (start && end && start > end) {
+        AppError.showFieldError(startInput, "From must be on or before To.");
+        return;
+      }
+      AppError.clearFieldError(startInput);
+      if (!start || !end) return;
       dsrDailyDateRange = { start, end };
       saveDailyFilter();
+      syncPresets();
       window.DsrSalesBreakdown?.invalidate?.();
       void loadDailySummary(start, end);
       const section = getCurrentSection();
@@ -79,6 +102,15 @@
 
     startInput.addEventListener("change", onChange);
     endInput.addEventListener("change", onChange);
+
+    if (presetHost && typeof mountDatePresets === "function") {
+      mountDatePresets(presetHost, (range) => {
+        startInput.value = range.start;
+        endInput.value = range.end;
+        onChange();
+      });
+      syncPresets();
+    }
     filtersReady = true;
   }
 
@@ -98,7 +130,7 @@
 
     const start = dsrDailyDateRange.start || document.getElementById("dsr-daily-start-date")?.value;
     const end = dsrDailyDateRange.end || document.getElementById("dsr-daily-end-date")?.value;
-    if (!start || !end) return;
+    if (!start || !end || start > end) return;
 
     const isBreakdown = window.DsrSections?.isBreakdownSection?.(section);
 
@@ -277,6 +309,13 @@
     const tbodyPetrol = document.getElementById("dsr-daily-petrol-body");
     const tbodyDiesel = document.getElementById("dsr-daily-diesel-body");
     if (!tbodyPetrol || !tbodyDiesel) return;
+    if (!startDate || !endDate || startDate > endDate) {
+      const startInput = document.getElementById("dsr-daily-start-date");
+      if (startDate && endDate && startDate > endDate && startInput) {
+        AppError.showFieldError(startInput, "From must be on or before To.");
+      }
+      return;
+    }
 
     setDailyTableLoading(tbodyPetrol);
     setDailyTableLoading(tbodyDiesel);

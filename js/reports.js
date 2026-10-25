@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatNumericDate, AppError, escapeHtml, PumpSettings, loadPumpSettings, DsrQueries, buildExpenseCategoryMap, initDocsAccordion, PrintUtils, createRequestGuard, withProgress, AppCache, fetchAllRows, VaultDocuments */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatNumericDate, AppError, escapeHtml, PumpSettings, loadPumpSettings, DsrQueries, buildExpenseCategoryMap, initDocsAccordion, PrintUtils, createRequestGuard, withProgress, AppCache, fetchAllRows, VaultDocuments, resolveDateRange, mountDatePresets, syncDatePresetActive */
 /**
  * Reports page: catalog, data load, and print.
  * Figures live in reportsGst.js, reportsGstr1.js, reportsGstr3b.js, reportsPl.js, reportsSales.js.
@@ -105,6 +105,39 @@ const REPORT_CATALOG = [
 ];
 
 let activeReport = "dsr";
+let reportsDatesChosen = false;
+
+function isGstReport(reportId) {
+  const id = String(reportId || "");
+  return id === "gstr1" || id === "gstr3b" || id.startsWith("gst-");
+}
+
+function defaultRangeForReport(reportId) {
+  if (typeof resolveDateRange !== "function") return null;
+  return resolveDateRange(isGstReport(reportId) ? "last-month" : "this-month");
+}
+
+function writeReportsRange(range) {
+  const startInput = document.getElementById("reports-start");
+  const endInput = document.getElementById("reports-end");
+  if (!range?.start || !range?.end || !startInput || !endInput) return false;
+  const changed = startInput.value !== range.start || endInput.value !== range.end;
+  startInput.value = range.start;
+  endInput.value = range.end;
+  if (typeof syncDatePresetActive === "function") {
+    syncDatePresetActive(document.getElementById("reports-date-presets"), range.start, range.end);
+  }
+  return changed;
+}
+
+function applyReportDefaultRange(reportId) {
+  if (reportsDatesChosen) return false;
+  const changed = writeReportsRange(defaultRangeForReport(reportId));
+  if (!changed) return false;
+  cachedData = null;
+  cachedRange = null;
+  return true;
+}
 
 let cachedData = null;
 
@@ -145,15 +178,6 @@ function initReportsAboutAccordion() {
 function initReportsPage() {
   const startInput = document.getElementById("reports-start");
   const endInput = document.getElementById("reports-end");
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  const pad = (n) => String(n).padStart(2, "0");
-  const monthStart = `${y}-${pad(m + 1)}-01`;
-  const monthEnd = `${y}-${pad(m + 1)}-${pad(new Date(y, m + 1, 0).getDate())}`;
-
-  if (startInput) startInput.value = monthStart;
-  if (endInput) endInput.value = monthEnd;
 
   renderReportCatalog();
   setActiveReportTab(activeReport);
@@ -169,12 +193,42 @@ function initReportsPage() {
   });
 
   const params = new URLSearchParams(window.location.search);
-  if (params.get("start") && startInput) startInput.value = params.get("start");
-  if (params.get("end") && endInput) endInput.value = params.get("end");
+  const urlStart = params.get("start");
+  const urlEnd = params.get("end");
+  if (urlStart && urlEnd) reportsDatesChosen = true;
   const tab = params.get("tab");
   if (tab && findReportMeta(tab)) {
     setActiveReportTab(tab);
   }
+  if (urlStart && startInput) startInput.value = urlStart;
+  if (urlEnd && endInput) endInput.value = urlEnd;
+  if (!reportsDatesChosen) writeReportsRange(defaultRangeForReport(activeReport));
+
+  const presetHost = document.getElementById("reports-date-presets");
+  if (presetHost && typeof mountDatePresets === "function") {
+    mountDatePresets(presetHost, (range) => {
+      reportsDatesChosen = true;
+      writeReportsRange(range);
+      cachedData = null;
+      cachedRange = null;
+      void loadAndRenderReports();
+    });
+  }
+  if (typeof syncDatePresetActive === "function") {
+    syncDatePresetActive(presetHost, startInput?.value, endInput?.value);
+  }
+  startInput?.addEventListener("change", () => {
+    reportsDatesChosen = true;
+    if (typeof syncDatePresetActive === "function") {
+      syncDatePresetActive(presetHost, startInput.value, endInput.value);
+    }
+  });
+  endInput?.addEventListener("change", () => {
+    reportsDatesChosen = true;
+    if (typeof syncDatePresetActive === "function") {
+      syncDatePresetActive(presetHost, startInput.value, endInput.value);
+    }
+  });
 
   VaultDocuments.revokePublicLinks().catch((err) => {
     AppError.report(err, { context: "revokeVaultPublicLinks" });
@@ -312,6 +366,7 @@ function setActiveReportTab(reportId) {
   const catalogCurrent = document.querySelector(".reports-catalog-current");
   if (catalogCurrent && label) catalogCurrent.textContent = label.title;
   updateReportsCsvButtonVisibility();
+  applyReportDefaultRange(activeReport);
 }
 
 function reportHeader(title, start, end) {

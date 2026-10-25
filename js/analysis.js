@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion, mountDatePresets, syncDatePresetActive */
 
 let analysisFilterApi = null;
 
@@ -866,9 +866,11 @@ async function initAnalysisPage() {
 
   initDocsAccordion(document.querySelector(".analysis-docs-accordion"));
 
+  const presetHost = document.getElementById("analysis-date-presets");
+
   analysisFilterApi = createDateRangeFilter({
     storageKey: "analysis",
-    ranges: ["this-week", "this-month", "last-3-months", "custom"],
+    ranges: ["today", "yesterday", "this-week", "this-month", "last-month", "last-3-months", "custom"],
     defaultRange: "this-month",
     rangeSelect: "analysis-range",
     startInput: "analysis-start",
@@ -878,10 +880,28 @@ async function initAnalysisPage() {
     applyBtn: "analysis-apply",
     labelEl: "analysis-date-label",
     labelStyle: "compact",
-    trigger: "manual",
-    runOnInit: false,
-    onApply: (range) => loadAndRender(range),
+    trigger: "auto",
+    runOnInit: true,
+    onApply: (range) => {
+      if (typeof syncDatePresetActive === "function") {
+        syncDatePresetActive(presetHost, range?.start, range?.end);
+      }
+      return loadAndRender(range);
+    },
   });
+
+  if (presetHost && typeof mountDatePresets === "function") {
+    mountDatePresets(presetHost, (_range, preset) => {
+      const select = document.getElementById("analysis-range");
+      if (!select) return;
+      select.value = preset;
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const initial = analysisFilterApi?.getRange();
+    if (typeof syncDatePresetActive === "function") {
+      syncDatePresetActive(presetHost, initial?.start, initial?.end);
+    }
+  }
 
   const previewPeriodLabel = () => {
     const range = analysisFilterApi?.getRange();

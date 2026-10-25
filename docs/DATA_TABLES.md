@@ -691,7 +691,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **RLS:** SELECT provisioned staff; INSERT own; UPDATE any provisioned staff; DELETE admin only.
 
-**UI:** `reminders.html` (Tasks: Credit collection + Todo) · Dashboard landing popup · Credit customer “Schedule call” (auto title `Call <name>`). Open tasks support one-tap **+3 days**, **More…** (quick choices + custom date), and Call/WhatsApp. Duplicate open credit calls are blocked at schedule time.
+**UI:** `reminders.html` (Tasks: Credit collection + Todo) · Dashboard landing popup · Credit customer “Schedule call” (auto title `Call <name>`). Open tasks support one-tap **+3 days**, **More…** (quick choices + custom date), and Call/WhatsApp. **Done** sets `status` to `done` and keeps the row; the toast offers **Undo**, which opens it again. **Delete** removes it permanently. Duplicate open credit calls are blocked at schedule time.
 
 Migration: `supabase/migrations/20260801120000_reminders.sql`.
 

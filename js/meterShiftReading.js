@@ -3,11 +3,16 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper */
+/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper, trackUnsavedWork */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
   const PRODUCT_LABEL = { petrol: "MS", diesel: "HSD" };
+  const PRODUCT_PLAIN = { petrol: "Petrol (MS)", diesel: "Diesel (HSD)" };
+
+  function nozzlePlain(pump, nozzle) {
+    return `pump ${pump}, nozzle ${nozzle}`;
+  }
 
   let isAdmin = false;
   let currentUserId = null;
@@ -192,7 +197,7 @@
     const slots = [];
     for (let p = 1; p <= cfg.pumps; p++) {
       for (let n = 1; n <= cfg.nozzlesPerPump; n++) {
-        slots.push({ product, pump_no: p, nozzle_no: n, label: `P${p} · N${n}` });
+        slots.push({ product, pump_no: p, nozzle_no: n, label: `Pump ${p}, nozzle ${n}` });
       }
     }
     return slots;
@@ -603,7 +608,7 @@
         agg.diesel_litres += gross;
         agg.diesel_net += net;
       }
-      agg.meters.push(`P${row.pump_no}·N${row.nozzle_no}`);
+      agg.meters.push(nozzlePlain(row.pump_no, row.nozzle_no));
     }
 
     const petrolRate = rates?.petrol != null ? Number(rates.petrol) : null;
@@ -694,7 +699,7 @@
 
   function renderRateHint(rates) {
     if (rates.petrol == null && rates.diesel == null) {
-      return '<p class="muted shift-rate-hint">Enter MS / HSD rates above to see expected ₹ and short.</p>';
+      return '<p class="muted shift-rate-hint">Enter petrol and diesel rates above to see expected ₹ and short.</p>';
     }
     if (el("shift-meter-reconcile")?.dataset.rateFallback === "1") {
       return '<p class="muted shift-rate-hint">Rates prefilled from the last daily sheet — change if today’s price is different.</p>';
@@ -807,8 +812,8 @@
               </div>
               <p class="muted shift-meter-list">${escapeHtml(s.meters.join(" · "))}</p>
               <div class="shift-coll-meta">
-                <span><span class="muted">MS</span> <strong class="shift-metric-ms">${formatQuantity(s.petrol_litres)}</strong></span>
-                <span><span class="muted">HSD</span> <strong class="shift-metric-hsd">${formatQuantity(s.diesel_litres)}</strong></span>
+                <span><span class="muted" title="Motor spirit (petrol)">Petrol</span> <strong class="shift-metric-ms">${formatQuantity(s.petrol_litres)}</strong></span>
+                <span><span class="muted" title="High speed diesel">Diesel</span> <strong class="shift-metric-hsd">${formatQuantity(s.diesel_litres)}</strong></span>
               </div>
             </div>
           </div>
@@ -1012,8 +1017,8 @@
 
     host.innerHTML = `
       <div class="shift-totals-strip">
-        <span class="shift-strip-item shift-total--petrol">MS <strong>${formatQuantity(sales.petrol)} L</strong></span>
-        <span class="shift-strip-item shift-total--diesel">HSD <strong>${formatQuantity(sales.diesel)} L</strong></span>
+        <span class="shift-strip-item shift-total--petrol" title="Motor spirit (petrol)">Petrol <strong>${formatQuantity(sales.petrol)} L</strong></span>
+        <span class="shift-strip-item shift-total--diesel" title="High speed diesel">Diesel <strong>${formatQuantity(sales.diesel)} L</strong></span>
         <span class="shift-strip-item">Expected <strong>${expected != null ? formatCurrency(expected) : "—"}</strong></span>
         <span class="shift-strip-item">Total <strong>${summary.length ? formatCurrency(totalCash) : "—"}</strong>${
           summary.length ? ` <span class="muted shift-strip-breakdown">${inParts}</span>` : ""
@@ -1024,8 +1029,8 @@
     const saveSummary = el("shift-save-summary");
     if (saveSummary) {
       const bits = [];
-      if (sales.petrol) bits.push(`MS ${formatQuantity(sales.petrol)} L`);
-      if (sales.diesel) bits.push(`HSD ${formatQuantity(sales.diesel)} L`);
+      if (sales.petrol) bits.push(`Petrol ${formatQuantity(sales.petrol)} L`);
+      if (sales.diesel) bits.push(`Diesel ${formatQuantity(sales.diesel)} L`);
       if (hasShort) bits.push(`Short ${formatCurrency(totalShort)}`);
       saveSummary.textContent = bits.length ? bits.join(" · ") : "Enter meters and staff cash, then save";
     }
@@ -1080,7 +1085,7 @@
     parts.push('<div class="shift-sheet-cards">');
     parts.push(
       productSheetLine({
-        label: "MS",
+        label: "Petrol (MS)",
         hash: "petrol",
         hasSheet: hasPetrol,
         dailyLitres: Number.isFinite(dailyPetrol) ? dailyPetrol : 0,
@@ -1090,7 +1095,7 @@
     );
     parts.push(
       productSheetLine({
-        label: "HSD",
+        label: "Diesel (HSD)",
         hash: "diesel",
         hasSheet: hasDiesel,
         dailyLitres: Number.isFinite(dailyDiesel) ? dailyDiesel : 0,
@@ -1147,8 +1152,8 @@
           return `<tr data-product="${product}" data-pump="${slot.pump_no}" data-nozzle="${slot.nozzle_no}">
             <td class="shift-meter-label">${escapeHtml(slot.label)}</td>
             <td><label class="sr-only" for="${staffId}">${escapeHtml(staffLabel)}</label><select id="${staffId}" class="shift-staff">${staffOptionsHtml(empId, saved?.employee_name)}</select></td>
-            <td><label class="sr-only" for="${openingId}">${escapeHtml(openingLabel)}</label><input id="${openingId}" type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" /></td>
-            <td><label class="sr-only" for="${closingId}">${escapeHtml(closingLabel)}</label><input id="${closingId}" type="text" inputmode="numeric" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" /></td>
+            <td><label class="sr-only" for="${openingId}">${escapeHtml(openingLabel)}</label><input id="${openingId}" type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly}${isAdmin ? ' enterkeyhint="next"' : ""} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" /></td>
+            <td><label class="sr-only" for="${closingId}">${escapeHtml(closingLabel)}</label><input id="${closingId}" type="text" inputmode="numeric" enterkeyhint="next" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" /></td>
             <td><label class="sr-only" for="${saleId}">${escapeHtml(saleLabel)}</label><input id="${saleId}" type="text" readonly class="shift-sale calc-field" tabindex="-1" /></td>
           </tr>`;
         })
@@ -1157,7 +1162,7 @@
       return `<div class="shift-product-block shift-product-block--${product}">
         <div class="shift-product-head">
           <span class="fuel-rate-icon${product === "diesel" ? " fuel-rate-icon--diesel" : ""}" aria-hidden="true">${PRODUCT_LABEL[product]}</span>
-          <h3 class="meter-title">${PRODUCT_LABEL[product]}</h3>
+          <h3 class="meter-title" title="${product === "diesel" ? "High speed diesel" : "Motor spirit (petrol)"}">${PRODUCT_PLAIN[product]}</h3>
         </div>
         <div class="table-scroll">
           <table class="dsr-table meter-table compact shift-nozzle-table">
@@ -1177,6 +1182,38 @@
     });
 
     host.innerHTML = blocks.join("");
+    stampMeterEnterHints(host);
+  }
+
+  function meterEntryInputs(root) {
+    const scope = root || document.getElementById("shift-meter-nozzle-tables") || document;
+    return [...scope.querySelectorAll(".shift-opening, .shift-closing")].filter(
+      (input) => !input.readOnly && !input.disabled
+    );
+  }
+
+  function stampMeterEnterHints(root) {
+    const inputs = meterEntryInputs(root);
+    inputs.forEach((input, index) => {
+      input.enterKeyHint = index === inputs.length - 1 ? "done" : "next";
+    });
+  }
+
+  function focusNextMeterInput(current) {
+    const inputs = meterEntryInputs();
+    const index = inputs.indexOf(current);
+    if (index < 0) return;
+    const next = inputs[index + 1];
+    if (!next) {
+      current.blur();
+      return;
+    }
+    next.focus();
+    try {
+      next.select();
+    } catch (_) {
+      /* number-like text fields can reject select */
+    }
   }
 
   /**
@@ -1484,6 +1521,7 @@
         resolvedLock.locked ? null : resolved.openings
       );
       displayedShift = { date, shift };
+      meterDraftDirty = false;
       const restoredDraft = !resolvedLock.locked && restoreMeterDraft(date, shift);
       lastStaffStructureKey = "";
       updateDerivedUi({ forceStaffRender: true });
@@ -1562,7 +1600,7 @@
     for (const r of nozzles) {
       if (r.closing_meter < r.opening_meter) {
         showMsg(
-          `Closing must be ≥ opening for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no}.`,
+          `Closing must be ≥ opening for ${PRODUCT_PLAIN[r.product]} ${nozzlePlain(r.pump_no, r.nozzle_no)}.`,
           true
         );
         return;
@@ -1578,7 +1616,7 @@
           if (morning[key] == null) continue;
           if (Math.abs(r.opening_meter - Number(morning[key])) > 0.001) {
             showMsg(
-              `Afternoon opening for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no} (${r.opening_meter}) must match morning closing (${morning[key]}). Use “Copy openings”.`,
+              `Afternoon opening for ${PRODUCT_PLAIN[r.product]} ${nozzlePlain(r.pump_no, r.nozzle_no)} (${r.opening_meter}) must match morning closing (${morning[key]}). Use “Copy openings”.`,
               true
             );
             return;
@@ -1611,7 +1649,7 @@
             const aftClose = afternoonByKey.get(key);
             if (aftClose < r.closing_meter - 0.001) {
               showMsg(
-                `Cannot update morning: afternoon closing for ${PRODUCT_LABEL[r.product]} P${r.pump_no}·N${r.nozzle_no} (${aftClose}) is below the new morning closing (${r.closing_meter}). Fix afternoon first.`,
+                `Cannot update morning: afternoon closing for ${PRODUCT_PLAIN[r.product]} ${nozzlePlain(r.pump_no, r.nozzle_no)} (${aftClose}) is below the new morning closing (${r.closing_meter}). Fix afternoon first.`,
                 true
               );
               return;
@@ -1664,11 +1702,11 @@
           : [];
         if (dsrUpdated.length) {
           refreshNote = `Updated meters on ${dsrUpdated
-            .map((p) => (p === "petrol" ? "MS" : "HSD"))
+            .map((p) => (p === "petrol" ? "Petrol" : "Diesel"))
             .join(" · ")} sheet(s).`;
         } else if (touched.length) {
           refreshNote = `Meters prefilled on ${touched
-            .map((p) => (p === "petrol" ? "MS" : "HSD"))
+            .map((p) => (p === "petrol" ? "Petrol" : "Diesel"))
             .join(" · ")} — enter dip, stock & rate there.`;
         }
         if (typeof CacheInvalidation !== "undefined") {
@@ -1937,11 +1975,11 @@
     const kpi = `
       <div class="shift-view-kpis">
         <div class="shift-view-kpi shift-total--petrol">
-          <span>MS sold</span>
+          <span title="Motor spirit (petrol)">Petrol sold</span>
           <strong>${formatQuantity(sales.petrol)} L</strong>
         </div>
         <div class="shift-view-kpi shift-total--diesel">
-          <span>HSD sold</span>
+          <span title="High speed diesel">Diesel sold</span>
           <strong>${formatQuantity(sales.diesel)} L</strong>
         </div>
         <div class="shift-view-kpi">
@@ -1960,8 +1998,8 @@
       </div>
       <p class="muted shift-view-rates">
         Rates:
-        MS ${rates.petrol != null ? formatCurrency(rates.petrol) + "/L" : "—"}
-        · HSD ${rates.diesel != null ? formatCurrency(rates.diesel) + "/L" : "—"}
+        Petrol (MS) ${rates.petrol != null ? formatCurrency(rates.petrol) + "/L" : "—"}
+        · Diesel (HSD) ${rates.diesel != null ? formatCurrency(rates.diesel) + "/L" : "—"}
       </p>`;
 
     const nozzleBlocks = PRODUCTS.map((product) => {
@@ -1970,7 +2008,7 @@
         .sort((a, b) => a.pump_no - b.pump_no || a.nozzle_no - b.nozzle_no);
       if (!rows.length) {
         return `<div class="shift-view-block shift-view-block--${product}">
-          <h3>${PRODUCT_LABEL[product]} nozzles</h3>
+          <h3>${PRODUCT_PLAIN[product]} nozzles</h3>
           <p class="muted">No assignments.</p>
         </div>`;
       }
@@ -1978,7 +2016,7 @@
         .map((r) => {
           const sale = Math.max(r.closing_meter - r.opening_meter, 0);
           return `<tr>
-            <td class="shift-meter-label">P${r.pump_no} · N${r.nozzle_no}</td>
+            <td class="shift-meter-label" title="Pump ${r.pump_no}, nozzle ${r.nozzle_no}">${escapeHtml(nozzlePlain(r.pump_no, r.nozzle_no))}</td>
             <td class="shift-view-staff">${escapeHtml(r.employee_name || staffNameById(r.employee_id))}</td>
             <td class="num">${formatQuantity(r.opening_meter)}</td>
             <td class="num">${formatQuantity(r.closing_meter)}</td>
@@ -1987,7 +2025,7 @@
         })
         .join("");
       return `<div class="shift-view-block shift-view-block--${product}">
-        <h3>${PRODUCT_LABEL[product]} nozzles</h3>
+        <h3>${PRODUCT_PLAIN[product]} nozzles</h3>
         <div class="table-scroll">
           <table class="dsr-table meter-table compact shift-view-table">
             <thead>
@@ -2019,8 +2057,8 @@
                 <span class="muted">${escapeHtml(s.meters.join(" · "))}</span>
               </header>
               <div class="shift-view-staff-grid">
-                <div><span class="muted">MS</span><strong>${formatQuantity(s.petrol_litres)} L</strong></div>
-                <div><span class="muted">HSD</span><strong>${formatQuantity(s.diesel_litres)} L</strong></div>
+                <div><span class="muted" title="Motor spirit (petrol)">Petrol</span><strong>${formatQuantity(s.petrol_litres)} L</strong></div>
+                <div><span class="muted" title="High speed diesel">Diesel</span><strong>${formatQuantity(s.diesel_litres)} L</strong></div>
                 <div><span class="muted">Expected</span><strong>${s.expected == null ? "—" : formatCurrency(s.expected)}</strong></div>
                 <div><span class="muted">Cash</span><strong>${formatCurrency(s.cash || 0)}</strong></div>
                 <div><span class="muted">Phone pay</span><strong>${formatCurrency(s.phone_pay || 0)}</strong></div>
@@ -2236,8 +2274,8 @@
         head.innerHTML = `
           <th>Date</th>
           <th>Shift</th>
-          <th>MS (L)</th>
-          <th>HSD (L)</th>
+          <th title="Petrol (motor spirit)">Petrol (L)</th>
+          <th title="Diesel (high speed diesel)">Diesel (L)</th>
           <th>Staff</th>
           <th>Total ₹</th>
           <th>View</th>
@@ -2293,6 +2331,8 @@
     }
   }
 
+  let meterDraftDirty = false;
+
   const LEGACY_DRAFT_PREFIX = "bpf.meterDraft.";
   const DRAFT_PREFIX = "bpf.meterDraft.v2.";
 
@@ -2309,6 +2349,9 @@
   }
 
   function forgetMeterDraft(date, shift) {
+    if (!displayedShift?.date || (displayedShift.date === date && displayedShift.shift === shift)) {
+      meterDraftDirty = false;
+    }
     try {
       localStorage.removeItem(meterDraftKey(date, shift));
       localStorage.removeItem(`${LEGACY_DRAFT_PREFIX}${date || ""}.${shift || ""}`);
@@ -2346,6 +2389,7 @@
     if (remarks) fields[remarks.id] = remarks.value;
     try {
       localStorage.setItem(key, JSON.stringify({ v: 2, at: Date.now(), fields }));
+      meterDraftDirty = true;
     } catch (_) {
       /* ignore quota */
     }
@@ -2380,6 +2424,7 @@
       field.value = fields[id];
       applied = true;
     });
+    if (applied) meterDraftDirty = true;
     return applied;
   }
 
@@ -2403,6 +2448,15 @@
     );
 
     const panel = el("shift-readings") || document.querySelector('[data-panel="shift-readings"]');
+    panel?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.altKey || e.metaKey || e.ctrlKey) return;
+      const input = e.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      if (!input.matches(".shift-opening, .shift-closing")) return;
+      if (input.readOnly || input.disabled) return;
+      e.preventDefault();
+      focusNextMeterInput(input);
+    });
     panel?.addEventListener("input", (e) => {
       captureMeterDraft(e.target);
       if (supervisorReadonly && !isAdmin) return;
@@ -2439,11 +2493,30 @@
     });
   }
 
+  function clockToMinutes(hhmm) {
+    const match = String(hhmm || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+  }
+
+  /** Afternoon once the clock reaches that shift's start; morning before then. */
+  function shiftForNow() {
+    const cfg = getShiftConfig();
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const afternoonStart = clockToMinutes(cfg.afternoonStart);
+    const split = afternoonStart == null ? 14 * 60 : afternoonStart;
+    return minutes >= split ? "afternoon" : "morning";
+  }
+
   function fillShiftSelect() {
     const select = el("shift-meter-shift");
     if (!select) return;
     const cfg = getShiftConfig();
-    const current = select.value || "morning";
+    const current = select.value || shiftForNow();
     select.innerHTML = `
       <option value="morning">${escapeHtml(cfg.morningName || "Morning shift")}</option>
       <option value="afternoon">${escapeHtml(cfg.afternoonName || "Afternoon shift")}</option>`;
@@ -2454,6 +2527,7 @@
 
   async function bootstrapShiftRegister(opts = {}) {
     clearLegacyMeterDrafts();
+    if (typeof trackUnsavedWork === "function") trackUnsavedWork(() => meterDraftDirty);
     isAdmin = opts.isAdmin === true;
     currentUserId = opts.userId || null;
     const clearBtn = el("shift-meter-clear");

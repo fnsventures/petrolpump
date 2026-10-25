@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -596,13 +596,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const paymentDateInput = document.getElementById("payment-date");
   const paymentAmountInput = document.getElementById("payment-amount");
   const paymentFillRemainingBtn = document.getElementById("payment-fill-remaining");
-  const paymentSalaryMonthSelect = document.getElementById("payment-salary-month-month");
-  const paymentSalaryYearSelect = document.getElementById("payment-salary-month-year");
   const paymentMonthHint = document.getElementById("payment-month-hint");
   const salaryMonthSelect = document.getElementById("salary-month-month");
   const salaryYearSelect = document.getElementById("salary-month-year");
-  const historyMonthSelect = document.getElementById("salary-history-month-month");
-  const historyYearSelect = document.getElementById("salary-history-month-year");
+  const recordFormSlot = document.getElementById("salary-record-form-slot");
+  const detailPayHost = document.getElementById("salary-detail-pay-host");
 
   const detailOverlay = document.getElementById("salary-detail-overlay");
   const detailBackdrop = document.getElementById("salary-detail-backdrop");
@@ -618,15 +616,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   populateMonthYearSelects(salaryMonthSelect, salaryYearSelect);
-  populateMonthYearSelects(historyMonthSelect, historyYearSelect);
-  populateMonthYearSelects(paymentSalaryMonthSelect, paymentSalaryYearSelect);
   writeMonthYearValue(salaryMonthSelect, salaryYearSelect, currentMonth);
-  writeMonthYearValue(historyMonthSelect, historyYearSelect, currentMonth);
-  writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, currentMonth);
+  syncSharedMonthLabel();
   if (typeof mountMonthStepper === "function") {
     const monthMax = () => (typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth);
     mountMonthStepper(salaryMonthSelect, salaryYearSelect, { max: monthMax });
-    mountMonthStepper(historyMonthSelect, historyYearSelect, { max: monthMax });
   }
 
   let staffList = [];
@@ -863,20 +857,32 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getPaymentSalaryMonth() {
-    return readMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect) || getSelectedMonth();
+    return getSelectedMonth();
   }
 
   function getHistoryMonth() {
-    return readMonthYearValue(historyMonthSelect, historyYearSelect) || getSelectedMonth();
+    return getSelectedMonth();
   }
 
-  function syncHistoryMonth() {
-    writeMonthYearValue(historyMonthSelect, historyYearSelect, getSelectedMonth());
-    historyMonthSelect?._monthStepper?.sync();
+  function syncSharedMonthLabel() {
+    const label = formatMonthLabel(getSelectedMonth());
+    const history = document.getElementById("salary-history-month");
+    if (history) history.textContent = label;
+    const pay = document.getElementById("payment-month-value");
+    if (pay) pay.textContent = `Salary for ${label}`;
+  }
+
+  function placePaymentForm(inDialog) {
+    const slot = inDialog ? detailPayHost : recordFormSlot;
+    if (!slot || !paymentForm) return;
+    if (paymentForm.parentElement !== slot) slot.appendChild(paymentForm);
+    paymentForm.classList.toggle("salary-pay-in-dialog", inDialog);
+    if (detailPayHost) detailPayHost.hidden = !inDialog;
   }
 
   function openDetailModal(staffId) {
     if (!detailOverlay) return;
+    placePaymentForm(false);
     detailStaffId = staffId;
     renderDetailModal(staffId, getSelectedMonth());
     AppDialog.show(detailOverlay, {
@@ -887,6 +893,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function closeDetailModal() {
     if (!detailOverlay || detailOverlay.getAttribute("aria-hidden") === "true") return;
+    placePaymentForm(false);
     AppDialog.hide(detailOverlay);
     detailStaffId = null;
     document.querySelectorAll(".salary-summary-table tbody tr.is-selected").forEach((tr) => {
@@ -1383,16 +1390,25 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function prefillPayment(staffId, options = {}) {
     const salaryMonth = options.salaryMonth || getSelectedMonth();
+    const alreadyOpen =
+      detailOverlay &&
+      detailOverlay.getAttribute("aria-hidden") === "false" &&
+      detailStaffId === staffId;
+    if (!alreadyOpen) openDetailModal(staffId);
     if (paymentStaffSelect) paymentStaffSelect.value = staffId;
-    writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, salaryMonth);
-    if (paymentDateInput) {
-      paymentDateInput.value = suggestPaymentDate(salaryMonth);
-    }
+    if (paymentDateInput) paymentDateInput.value = suggestPaymentDate(salaryMonth);
     if (paymentAmountInput) paymentAmountInput.value = "";
+    const noteInput = document.getElementById("payment-note");
+    if (noteInput) noteInput.value = "";
+    paymentSuccess?.classList.add("hidden");
+    paymentError?.classList.add("hidden");
+    placePaymentForm(true);
+    syncSharedMonthLabel();
     updatePaymentMonthHint().then(() => fillPaymentRemaining());
-    const recordNav = document.querySelector('.settings-nav-item[data-section="record"]');
-    recordNav?.click();
-    paymentForm?.scrollIntoView({ behavior: "smooth" });
+    requestAnimationFrame(() => {
+      paymentAmountInput?.focus();
+      paymentForm?.scrollIntoView({ block: "nearest" });
+    });
   }
 
   async function loadPaymentHistory(monthValue) {
@@ -1486,34 +1502,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       };
 
-      if (!staffId) {
+      const showPaymentError = (message, field) => {
         resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) paymentError.textContent = "Select a staff member.";
+        AppError.showSaveError(message, { target: paymentError, field, form: paymentForm });
+      };
+      if (!staffId) {
+        showPaymentError("Select a staff member.", paymentStaffSelect);
         return;
       }
       if (!date) {
-        resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) paymentError.textContent = "Payment date is required.";
+        showPaymentError("Payment date is required.", paymentDateInput);
         return;
       }
       if (date > getLocalDateString()) {
-        resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) paymentError.textContent = "Payment date cannot be in the future.";
+        showPaymentError("Payment date cannot be in the future.", paymentDateInput);
         return;
       }
       if (amount <= 0) {
-        resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) paymentError.textContent = "Amount must be greater than 0.";
+        showPaymentError("Amount must be greater than 0.", paymentAmountInput);
         return;
       }
       if (!salaryMonth) {
-        resetSubmitBtn();
-        paymentError?.classList.remove("hidden");
-        if (paymentError) paymentError.textContent = "Select the salary month this payment applies to.";
+        showPaymentError("Select the salary month this payment applies to.", document.getElementById("payment-month-value"));
         return;
       }
 
@@ -1546,13 +1556,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           date = today;
           if (paymentDateInput) paymentDateInput.value = today;
         } else {
-          resetSubmitBtn();
-          paymentError?.classList.remove("hidden");
-          if (paymentError) {
-            paymentError.textContent = unpaid
+          showPaymentError(
+            unpaid
               ? `${paymentDateLockMessage(dateLock, date)} Today is locked too, so record this salary on the next open day.`
-              : `${paymentDateLockMessage(dateLock, date)} Remaining salary can be recorded on an open day. This day stays locked.`;
-          }
+              : `${paymentDateLockMessage(dateLock, date)} Remaining salary can be recorded on an open day. This day stays locked.`,
+            paymentDateInput
+          );
           return;
         }
       }
@@ -1562,14 +1571,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       let allowOverpay = false;
       if (balance && balance.salary > 0 && amount > balance.pending + 0.009) {
         if (!isAdmin) {
-          resetSubmitBtn();
-          paymentError?.classList.remove("hidden");
-          if (paymentError) {
-            paymentError.textContent =
-              balance.pending <= 0.009
-                ? `Net salary for ${formatMonthLabel(salaryMonthVal)} is already settled. Only an admin can record more than the remaining salary.`
-                : `Amount exceeds the remaining salary (${formatCurrency(balance.pending)}). Only an admin can record more than that.`;
-          }
+          showPaymentError(
+            balance.pending <= 0.009
+              ? `Net salary for ${formatMonthLabel(salaryMonthVal)} is already settled. Only an admin can record more than the remaining salary.`
+              : `Amount exceeds the remaining salary (${formatCurrency(balance.pending)}). Only an admin can record more than that.`,
+            paymentAmountInput
+          );
           return;
         }
         const overBy = roundMoney(amount - balance.pending);
@@ -1607,13 +1614,12 @@ document.addEventListener("DOMContentLoaded", async () => {
           pending = null;
         }
         if (!isAdmin) {
-          resetSubmitBtn();
-          paymentError?.classList.remove("hidden");
-          if (paymentError) {
-            paymentError.textContent = Number.isFinite(pending)
+          showPaymentError(
+            Number.isFinite(pending)
               ? `Remaining salary for ${formatMonthLabel(salaryMonthVal)} is now ${formatCurrency(pending)} (another payment was recorded). Only an admin can record more than that.`
-              : `This amount exceeds the remaining salary for ${formatMonthLabel(salaryMonthVal)}. Only an admin can record more than that.`;
-          }
+              : `This amount exceeds the remaining salary for ${formatMonthLabel(salaryMonthVal)}. Only an admin can record more than that.`,
+            paymentAmountInput
+          );
           await refreshAll();
           return;
         }
@@ -1630,7 +1636,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (saveError) {
         resetSubmitBtn();
-        AppError.handle(saveError, { target: paymentError });
+        AppError.handle(saveError, { target: paymentError, form: paymentForm });
         return;
       }
       clearFormRequestId(paymentForm);
@@ -1638,7 +1644,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       resetSubmitBtn();
 
       const savedDate = date;
-      const savedSalaryMonth = salaryMonthVal;
       const savedStaffId = staffId;
 
       finishRecordFormSave(
@@ -1646,11 +1651,22 @@ document.addEventListener("DOMContentLoaded", async () => {
         { date: savedDate },
         { date: RECORD_DATE_KEYS.salaryPayment }
       );
-      if (savedSalaryMonth) {
-        writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, savedSalaryMonth);
-      }
+      syncSharedMonthLabel();
 
-      paymentSuccess?.classList.remove("hidden");
+      const staffName = staffList.find((s) => s.id === savedStaffId)?.name || "staff";
+      const remaining = balance ? roundMoney((balance.pending || 0) - amount) : null;
+      const recorded = formatRecordedBalance({
+        amount,
+        person: staffName,
+        remaining,
+        direction: "for",
+        surplus: "advance",
+      });
+      if (paymentSuccess) {
+        paymentSuccess.textContent = recorded;
+        paymentSuccess.classList.remove("hidden");
+      }
+      AppError.showToast(recorded, "success");
       await refreshAll();
 
       if (paymentStaffSelect && savedStaffId && staffList.some((s) => s.id === savedStaffId)) {
@@ -1679,9 +1695,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     updatePaymentMonthHint();
   }
 
-  paymentSalaryMonthSelect?.addEventListener("change", onPaymentSalaryMonthChange);
-  paymentSalaryYearSelect?.addEventListener("change", onPaymentSalaryMonthChange);
-
   function bindMonthYearFilter(monthSelect, yearSelect, onChange) {
     if (!monthSelect || !yearSelect) return;
     const handler = async () => {
@@ -1693,13 +1706,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   bindMonthYearFilter(salaryMonthSelect, salaryYearSelect, async (val) => {
-    syncHistoryMonth();
-    writeMonthYearValue(paymentSalaryMonthSelect, paymentSalaryYearSelect, val);
+    syncSharedMonthLabel();
+    await onPaymentSalaryMonthChange();
     await renderSummary(val);
-    await loadPaymentHistory(val);
-  });
-
-  bindMonthYearFilter(historyMonthSelect, historyYearSelect, async (val) => {
     await loadPaymentHistory(val);
   });
 
@@ -1765,10 +1774,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   detailDismiss?.addEventListener("click", closeDetailModal);
   detailBackdrop?.addEventListener("click", closeDetailModal);
   detailAddPaymentBtn?.addEventListener("click", () => {
-    if (detailStaffId) {
-      closeDetailModal();
-      prefillPayment(detailStaffId);
-    }
+    if (detailStaffId) prefillPayment(detailStaffId);
   });
 
   bindSalaryDeleteDelegation(document.getElementById("salary-payments-body"));

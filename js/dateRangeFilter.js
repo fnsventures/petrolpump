@@ -35,12 +35,14 @@ function formatDateRangeLabel(range, modeInfo, opts = {}) {
       return `Today · ${startLabel}`;
     case "yesterday":
       return `Yesterday · ${startLabel}`;
-    case "this-month": {
+    case "this-month":
+    case "last-month": {
       const monthLabel = new Date(`${range.start}T00:00:00`).toLocaleDateString("en-IN", {
         month: "long",
         year: "numeric",
       });
-      return `This month · ${monthLabel}`;
+      const prefix = mode === "last-month" ? "Last month" : "This month";
+      return `${prefix} · ${monthLabel}`;
     }
     case "this-year":
       return `This year · ${String(range.start).slice(0, 4)}`;
@@ -429,8 +431,11 @@ const DATE_RANGE_PRESETS = {
     { value: "custom", label: "Custom dates" },
   ],
   analysis: [
+    { value: "today", label: "Today" },
+    { value: "yesterday", label: "Yesterday" },
     { value: "this-week", label: "This week" },
     { value: "this-month", label: "This month" },
+    { value: "last-month", label: "Last month" },
     { value: "last-3-months", label: "Last 3 months" },
     { value: "custom", label: "Custom dates" },
   ],
@@ -459,8 +464,49 @@ const DATE_RANGE_PRESETS = {
   ],
 };
 
+const DATE_QUICK_PRESETS = [
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "this-month", label: "This month" },
+  { id: "last-month", label: "Last month" },
+];
+
+/** Today / Yesterday / This month / Last month buttons. onPick receives the resolved range. */
+function mountDatePresets(host, onPick) {
+  if (!host || host.dataset.presetsMounted === "1") return host;
+  host.dataset.presetsMounted = "1";
+  host.classList.add("date-presets");
+  host.setAttribute("role", "group");
+  if (!host.getAttribute("aria-label")) host.setAttribute("aria-label", "Date presets");
+  host.innerHTML = DATE_QUICK_PRESETS.map(
+    (preset) =>
+      `<button type="button" class="date-preset" data-preset="${preset.id}" aria-pressed="false">${preset.label}</button>`
+  ).join("");
+  host.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-preset]");
+    if (!btn || !host.contains(btn)) return;
+    const range = resolveDateRange(btn.dataset.preset);
+    if (!range) return;
+    syncDatePresetActive(host, range.start, range.end);
+    onPick(range, btn.dataset.preset);
+  });
+  return host;
+}
+
+function syncDatePresetActive(host, start, end) {
+  if (!host) return;
+  host.querySelectorAll(".date-preset").forEach((btn) => {
+    const range = resolveDateRange(btn.dataset.preset);
+    const on = Boolean(range && start && end && range.start === start && range.end === end);
+    btn.classList.toggle("is-active", on);
+    btn.setAttribute("aria-pressed", String(on));
+  });
+}
+
 window.DATE_RANGE_PRESETS = DATE_RANGE_PRESETS;
 window.filterEl = filterEl;
 window.readDateRangeFromControls = readDateRangeFromControls;
 window.formatDateRangeLabel = formatDateRangeLabel;
 window.createDateRangeFilter = createDateRangeFilter;
+window.mountDatePresets = mountDatePresets;
+window.syncDatePresetActive = syncDatePresetActive;

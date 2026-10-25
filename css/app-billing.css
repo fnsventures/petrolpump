@@ -119,17 +119,9 @@
   white-space: nowrap;
 }
 
-.billing-items-table input.billing-line-control[type="number"] {
+.billing-items-table input.billing-line-control[inputmode="decimal"] {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.billing-items-table input.billing-line-control[type="number"]::-webkit-outer-spin-button,
-.billing-items-table input.billing-line-control[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
 }
 
 .item-cell-fields {

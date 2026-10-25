@@ -37,6 +37,56 @@ function writeStoredSession(url, session) {
   localStorage.setItem(storageKey(url), JSON.stringify(session));
 }
 
+function userFromAccessToken(token) {
+  try {
+    const part = String(token || "").split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const bytes = Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0));
+    const json = JSON.parse(new TextDecoder().decode(bytes));
+    if (!json || typeof json !== "object") return null;
+    return {
+      id: json.sub || "",
+      email: json.email || null,
+      role: json.role || null,
+      aud: json.aud || null,
+      user_metadata: json.user_metadata || {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Recovery links land on login.html with the session in the URL hash. Keep it for getSession. */
+function adoptRecoveryHash(url) {
+  if (typeof window === "undefined") return;
+  let hash;
+  try {
+    hash = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
+  } catch {
+    return;
+  }
+  if (hash.get("type") === "recovery") window.__passwordRecovery = true;
+  const accessToken = hash.get("access_token");
+  if (hash.get("type") !== "recovery" || !accessToken) return;
+  const expiresAt = Number(hash.get("expires_at"));
+  const expiresIn = Number(hash.get("expires_in"));
+  writeStoredSession(url, {
+    access_token: accessToken,
+    refresh_token: hash.get("refresh_token") || "",
+    expires_at: Number.isFinite(expiresAt) ? expiresAt : undefined,
+    expires_in: Number.isFinite(expiresIn) ? expiresIn : undefined,
+    token_type: hash.get("token_type") || "bearer",
+    user: userFromAccessToken(accessToken) || { id: "recovery" },
+  });
+  try {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search || ""}`);
+  } catch {
+    /* ignore */
+  }
+}
+
 function authHeaders(key, token) {
   const bearer = token || key;
   return {
@@ -87,6 +137,7 @@ function createQueryBuilder(url, key, table, token) {
 function createAuthClient(url, key) {
   const auth = {
     async getSession() {
+      adoptRecoveryHash(url);
       const stored = readStoredSession(url);
       if (!stored) return { data: { session: null }, error: null };
       return {
@@ -143,6 +194,45 @@ function createAuthClient(url, key) {
       } catch (err) {
         return { data: null, error: { message: err.message || "Network error" } };
       }
+    },
+
+    async updateUser({ password } = {}) {
+      const stored = readStoredSession(url);
+      if (!stored?.access_token) {
+        return {
+          data: { user: null },
+          error: { message: "This reset link is invalid or has expired. Request a new one from the sign-in page." },
+        };
+      }
+      try {
+        const res = await fetch(`${url}/auth/v1/user`, {
+          method: "PUT",
+          headers: authHeaders(key, stored.access_token),
+          body: JSON.stringify({ password }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          return {
+            data: { user: null },
+            error: {
+              message: body.error_description || body.msg || body.message || body.error || "Could not set the new password.",
+            },
+          };
+        }
+        if (body?.id) writeStoredSession(url, { ...stored, user: body });
+        return { data: { user: body }, error: null };
+      } catch (err) {
+        return { data: { user: null }, error: { message: err.message || "Network error" } };
+      }
+    },
+
+    onAuthStateChange(callback) {
+      try {
+        if (window.__passwordRecovery && typeof callback === "function") callback("PASSWORD_RECOVERY", null);
+      } catch {
+        /* a listener must not break sign-in */
+      }
+      return { data: { subscription: { unsubscribe() {} } } };
     },
 
     async signOut() {

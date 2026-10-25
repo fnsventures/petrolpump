@@ -15,12 +15,12 @@
         </button>
         <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="petrol">
           <span class="fuel-rate-icon" aria-hidden="true">MS</span>
-          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-label" title="Motor spirit (petrol)">Petrol</span>
           <span class="settings-nav-item-meta">Petrol · 15 KL</span>
         </button>
         <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="diesel">
           <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
-          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-label" title="High speed diesel">Diesel</span>
           <span class="settings-nav-item-meta">Diesel · 20 KL</span>
         </button>
         <button type="button" class="settings-nav-item" data-section="purchase-cost" data-role="admin-only">
@@ -34,7 +34,7 @@
           <div class="dsr-fuel-head">
             <span class="fuel-rate-icon" aria-hidden="true">MS</span>
             <div>
-              <h2 class="dashboard-section-title">MS (Petrol) · 15KL Tank</h2>
+              <h2 class="dashboard-section-title" title="MS means motor spirit (petrol)">Petrol (MS) · 15KL Tank</h2>
               <p class="muted panel-lead">
                 Fill the reading sheet exactly like the physical DSR register.
               </p>
@@ -66,10 +66,10 @@
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>P1 · N1</th>
-                    <th>P1 · N2</th>
-                    <th>P2 · N1</th>
-                    <th>P2 · N2</th>
+                    <th title="Pump 1, nozzle 1">P1 · N1</th>
+                    <th title="Pump 1, nozzle 2">P1 · N2</th>
+                    <th title="Pump 2, nozzle 1">P2 · N1</th>
+                    <th title="Pump 2, nozzle 2">P2 · N2</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -150,10 +150,10 @@
                 <thead>
                   <tr>
                     <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
-                    <th>P1 · N1</th>
-                    <th>P1 · N2</th>
-                    <th>P2 · N1</th>
-                    <th>P2 · N2</th>
+                    <th title="Pump 1, nozzle 1">P1 · N1</th>
+                    <th title="Pump 1, nozzle 2">P1 · N2</th>
+                    <th title="Pump 2, nozzle 1">P2 · N1</th>
+                    <th title="Pump 2, nozzle 2">P2 · N2</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -451,7 +451,7 @@
               </thead>
               <tbody id="dsr-table-petrol">
                 <tr>
-                  <td colspan="9" class="muted">Loading…</td>
+                  <td colspan="10" class="muted">Loading…</td>
                 </tr>
               </tbody>
             </table>
@@ -465,7 +465,7 @@
           <div class="dsr-fuel-head">
             <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
             <div>
-              <h2 class="dashboard-section-title">HSD (Diesel) · 20KL Tank</h2>
+              <h2 class="dashboard-section-title" title="HSD means high speed diesel">Diesel (HSD) · 20KL Tank</h2>
               <p class="muted panel-lead">
                 Fill the reading sheet exactly like the physical DSR register.
               </p>
@@ -497,10 +497,10 @@
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>P1 · N1</th>
-                    <th>P1 · N2</th>
-                    <th>P2 · N1</th>
-                    <th>P2 · N2</th>
+                    <th title="Pump 1, nozzle 1">P1 · N1</th>
+                    <th title="Pump 1, nozzle 2">P1 · N2</th>
+                    <th title="Pump 2, nozzle 1">P2 · N1</th>
+                    <th title="Pump 2, nozzle 2">P2 · N2</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -581,10 +581,10 @@
                 <thead>
                   <tr>
                     <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
-                    <th>P1 · N1</th>
-                    <th>P1 · N2</th>
-                    <th>P2 · N1</th>
-                    <th>P2 · N2</th>
+                    <th title="Pump 1, nozzle 1">P1 · N1</th>
+                    <th title="Pump 1, nozzle 2">P1 · N2</th>
+                    <th title="Pump 2, nozzle 1">P2 · N1</th>
+                    <th title="Pump 2, nozzle 2">P2 · N2</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -882,7 +882,7 @@
           </thead>
               <tbody id="dsr-table-diesel">
                 <tr>
-                  <td colspan="9" class="muted">Loading…</td>
+                  <td colspan="10" class="muted">Loading…</td>
                 </tr>
               </tbody>
             </table>
@@ -916,11 +916,11 @@
               <select id="shift-meter-shift"></select>
             </div>
             <div class="form-field form-field--fuel-petrol">
-              <label for="shift-meter-rate-petrol">MS ₹/L</label>
+              <label for="shift-meter-rate-petrol" title="Motor spirit (petrol)">Petrol ₹/L</label>
               <input id="shift-meter-rate-petrol" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
             </div>
             <div class="form-field form-field--fuel-diesel">
-              <label for="shift-meter-rate-diesel">HSD ₹/L</label>
+              <label for="shift-meter-rate-diesel" title="High speed diesel">Diesel ₹/L</label>
               <input id="shift-meter-rate-diesel" type="text" inputmode="decimal" class="meter-reading" placeholder="0.00" />
             </div>
             <div class="shift-control-actions">
