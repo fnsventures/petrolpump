@@ -43,7 +43,7 @@
     return AdminDelete.buttonHtml({
       selector: extraClass || "credit-delete-btn",
       data: { [idKey]: entry.id, amount, date },
-      title: entry.status === "cancelled" ? "Cancelled" : "Cancel (admin)",
+      title: "Delete (admin)",
     });
   }
 
@@ -59,7 +59,7 @@
           const open = Number(e.amount || 0) - settled;
           const recorder = e.created_by_name ? ` <span class="muted">${escapeHtml(e.created_by_name)}</span>` : "";
           const cancelled = e.status === "cancelled" ? " Cancelled" : "";
-          const canDelete = showAdminActions && e.id && e.status !== "cancelled";
+          const canDelete = showAdminActions && e.id;
           const actions = canDelete
             ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-entry")}</td>`
             : showAdminActions
@@ -82,7 +82,7 @@
           const recorder = e.created_by_name ? ` <span class="muted">${escapeHtml(e.created_by_name)}</span>` : "";
           const cancelled = e.status === "cancelled" ? " Cancelled" : "";
           const actions = showAdminActions
-            ? e.id && e.status !== "cancelled"
+            ? e.id
               ? `<td class="table-actions">${adminDeleteButtonHtml(e, "credit-delete-payment", { idKey: "paymentId" })}</td>`
               : `<td class="table-actions muted">—</td>`
             : "";
@@ -91,7 +91,7 @@
               <td>${formatCurrency(e.amount)}</td>
               <td>${escapeHtml(e.payment_mode || "—")}${
                 e.same_day_settlement
-                  ? ' <span class="dc-same-day-tag">Same day settlement</span>'
+                  ? ' <span class="dc-same-day-tag" title="Paid on the day of the credit sale. Counted in Night cash or Phone pay, not Collection.">Paid on the sale day</span>'
                   : ""
               }</td>
               <td>${escapeHtml(e.note || "—")}</td>

@@ -172,7 +172,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (formLocked) return;
       const btn = e.target.closest("[data-remove-water]");
       if (!btn) return;
-      btn.closest("tr")?.remove();
+      const row = btn.closest("tr");
+      if (!row || !row.parentNode) return;
+      const parent = row.parentNode;
+      const next = row.nextSibling;
+      row.remove();
+      AppError.showToast("Row removed", "info", 8000, {
+        actionLabel: "Undo",
+        onAction: () => {
+          if (next && next.parentNode === parent) parent.insertBefore(row, next);
+          else parent.appendChild(row);
+        },
+      });
     });
     dom.waterBody?.addEventListener("change", (e) => {
       if (formLocked) return;
@@ -587,7 +598,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     dipInput.value = next;
     dipInput.dataset.autoDip = next;
     dipInput.title = next
-      ? `From today's ${product === "diesel" ? "HSD" : "MS"} meter dip`
+      ? `From today's ${product === "diesel" ? "diesel (HSD)" : "petrol (MS)"} meter dip`
       : "";
   }
 
@@ -693,8 +704,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `<tr>
       <td><input type="time" name="check_time" value="${escapeHtml(timeInputValue(row.check_time) || "06:00")}" /></td>
       <td>${tankSelectHtml(row.tank_no)}</td>
-      <td><input type="number" name="opening_dip_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.opening_dip_mm)}" /></td>
-      <td><input type="number" name="water_finding_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.water_finding_mm)}" /></td>
+      <td><input type="text" name="opening_dip_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.opening_dip_mm)}" /></td>
+      <td><input type="text" name="water_finding_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.water_finding_mm)}" /></td>
       <td>${yesNoSelect("water_present", row.water_present)}</td>
       <td><input type="text" name="corrective_action" maxlength="500" value="${escapeHtml(row.corrective_action || "")}" /></td>
       <td>${testedByField(row.tested_by)}</td>
@@ -758,10 +769,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderQualityRows([]);
   }
 
-  function setFeedback(ok, message) {
+  function setFeedback(ok, message, field) {
     if (dom.success) {
       dom.success.textContent = ok ? message : "";
       dom.success.classList.toggle("hidden", !ok || !message);
+    }
+    if (field && !ok && message) {
+      AppError.showFieldError(field, message);
+      if (dom.error) {
+        dom.error.textContent = "";
+        dom.error.classList.add("hidden");
+      }
+      return;
     }
     if (dom.error) {
       dom.error.textContent = ok ? "" : message;
@@ -1104,20 +1123,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const dateStr = dom.dateInput?.value?.trim();
     if (!dateStr) {
-      setFeedback(false, "Pick a date.");
+      setFeedback(false, "Pick a date.", dom.dateInput);
       return;
     }
 
     const water = collectWaterChecks().filter((r) => r.tank_no);
     if (!water.length) {
-      setFeedback(false, "Add at least one tank row in Part A.");
+      setFeedback(false, "Add at least one tank row in Part A.", dom.addTankBtn);
       return;
     }
 
     const certified = !!dom.certified?.checked;
     if (certified && !(dom.dealer?.value?.trim())) {
-      setFeedback(false, "Enter the RO dealer name before certifying.");
-      dom.dealer?.focus();
+      setFeedback(false, "Enter the RO dealer name before certifying.", dom.dealer);
       return;
     }
 

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils, computeDayClosingShort */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
@@ -998,7 +998,7 @@ function renderDayClosingCreditBreakdown({
   if (same > 0.005) {
     lines.push(
       `<div class="dc-channel-line dc-channel-line--part">
-        <span class="dc-channel-line-label"><span class="dc-channel-op" aria-hidden="true">−</span> Same day</span>
+        <span class="dc-channel-line-label" title="Credit sales paid on the same day. Counted in Night cash or Phone pay, not Collection."><span class="dc-channel-op" aria-hidden="true">−</span> Paid on the sale day</span>
         <span>${formatCurrency(same)}</span>
       </div>`
     );
@@ -1054,7 +1054,7 @@ function renderDayClosingChannelBreakdown({
     { label: morningLabel, amount: morning },
     { label: afternoonLabel, amount: afternoon },
     { label: "Collection", amount: coll },
-    { label: "Same day", amount: same },
+    { label: "Paid on the sale day", amount: same },
   ].filter((row) => row.amount > 0.005);
 
   if (!rows.length && total <= 0.005) {
@@ -1796,10 +1796,7 @@ async function initializeDayClosing() {
     const remarks = dcDom.remarksInput?.value?.trim() || null;
     if (!dateStr) {
       syncDayClosingSaveButton(submitBtn);
-      if (dcDom.errorEl) {
-        dcDom.errorEl.textContent = "Please select a date.";
-        dcDom.errorEl.classList.remove("hidden");
-      }
+      AppError.showSaveError("Please select a date.", { target: dcDom.errorEl, field: dateInput });
       return;
     }
     if (dayClosingBreakdown?.already_saved && !canOverwriteDayClosing(dayClosingBreakdown)) {
@@ -1816,10 +1813,10 @@ async function initializeDayClosing() {
     }
     if (nightCash < 0 || phonePay < 0) {
       syncDayClosingSaveButton(submitBtn);
-      if (dcDom.errorEl) {
-        dcDom.errorEl.textContent = "Night cash and Phone pay must be ≥ 0.";
-        dcDom.errorEl.classList.remove("hidden");
-      }
+      AppError.showSaveError("Night cash and Phone pay must be ≥ 0.", {
+        target: dcDom.errorEl,
+        field: nightCash < 0 ? nightCashInput : phonePayInput,
+      });
       return;
     }
 
@@ -1827,6 +1824,26 @@ async function initializeDayClosing() {
     // new DC-YYYY-NNNNN reference, later saves overwrite the same row, keep the reference, and
     // recascade short_previous/short_today for later uncertified days. Server recomputes all
     // left-hand figures; only night cash, phone pay and remarks are taken from the form.
+    if (dayClosingBreakdown?.already_saved) {
+      const oldShort = Number(dayClosingBreakdown.short_today ?? 0);
+      const newShort = computeDayClosingShort({
+        totalSale: Number(dayClosingBreakdown.total_sale ?? 0),
+        collection: Number(dayClosingBreakdown.collection ?? 0),
+        shortPrevious: Number(dayClosingBreakdown.short_previous ?? 0),
+        nightCash,
+        phonePay,
+        creditToday: Number(dayClosingBreakdown.credit_today ?? 0),
+        expensesToday: Number(dayClosingBreakdown.expenses_today ?? 0),
+      });
+      const overwrite = await AppDialog.confirm(
+        `Saving again overwrites this day closing. Short was ${formatCurrency(oldShort)}. It will become ${formatCurrency(newShort)}, and that short carries forward to later days.`,
+        { title: "Overwrite day closing", confirmLabel: "Overwrite", danger: true }
+      );
+      if (!overwrite) {
+        syncDayClosingSaveButton(submitBtn);
+        return;
+      }
+    }
     try {
       const { data, error } = await window.supabaseClient.rpc("save_day_closing", {
         p_date: dateStr,
@@ -1880,8 +1897,7 @@ async function initializeDayClosing() {
         dcDom.errorEl?.classList.add("hidden");
         await loadDayClosingBreakdown(dateStr);
       } else if (dcDom.errorEl) {
-        dcDom.errorEl.textContent = err?.message || "Failed to save day closing.";
-        dcDom.errorEl.classList.remove("hidden");
+        AppError.showSaveError(AppError.getUserMessage(err), { target: dcDom.errorEl, form });
       }
     } finally {
       if (submitBtn && !alreadySavedHandled) syncDayClosingSaveButton(submitBtn);
@@ -2242,18 +2258,18 @@ async function previewNightCashCollection() {
   if (collectBtn) collectBtn.disabled = true;
 
   if (!from || !to) {
-    if (errorEl) {
-      errorEl.textContent = "Select both from and to dates.";
-      errorEl.classList.remove("hidden");
-    }
+    AppError.showSaveError("Select both from and to dates.", {
+      target: errorEl,
+      field: from ? toInput : fromInput,
+    });
     panel?.classList.add("hidden");
     return;
   }
   if (from > to) {
-    if (errorEl) {
-      errorEl.textContent = "From date must be on or before to date.";
-      errorEl.classList.remove("hidden");
-    }
+    AppError.showSaveError("From date must be on or before to date.", {
+      target: errorEl,
+      field: fromInput,
+    });
     panel?.classList.add("hidden");
     return;
   }

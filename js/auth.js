@@ -32,6 +32,38 @@ function resolveLanding(role) {
   return LANDING_BY_ROLE[role] ?? "dashboard.html";
 }
 
+/** Reset links must stay on this deploy, including /staging/. */
+function passwordResetRedirectUrl() {
+  try {
+    return new URL("login.html", window.location.href).href;
+  } catch (_) {
+    return "login.html";
+  }
+}
+
+function currentPageTarget() {
+  const file = (window.location.pathname || "").split("/").pop() || "";
+  const page = !file || file === "index.html" ? "dashboard.html" : file;
+  return `${page}${window.location.search || ""}${window.location.hash || ""}`;
+}
+
+function loginUrlWithNext(redirectTo = "login.html") {
+  const base = redirectTo || "login.html";
+  if (!/^login\.html(?:\?|$)/i.test(base)) return base;
+  const next = typeof safeAppReturnPath === "function" ? safeAppReturnPath(currentPageTarget()) : "";
+  if (!next) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}next=${encodeURIComponent(next)}`;
+}
+
+function resolvePostLogin(role) {
+  const next =
+    typeof safeAppReturnPath === "function"
+      ? safeAppReturnPath(new URLSearchParams(window.location.search).get("next") || "")
+      : "";
+  if (next && role) return next;
+  return resolveLanding(role);
+}
+
 function centerTopbarSubtitle() {
   if (typeof window.AppNav?.syncPageLayer === "function") {
     window.AppNav.syncPageLayer();
@@ -1136,6 +1168,69 @@ async function initTopbarUserProfile() {
   await updateTopbarUserProfile(session);
 }
 
+function showSetPasswordForm() {
+  loginForm?.classList.add("hidden");
+  document.querySelector(".login-intro")?.classList.add("hidden");
+  document.getElementById("reset-password-form")?.classList.remove("hidden");
+  document.getElementById("new-password")?.focus();
+}
+
+function showSetPasswordError(message) {
+  const el = document.getElementById("reset-password-error");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("hidden");
+}
+
+function bindSetPasswordForm() {
+  const form = document.getElementById("reset-password-form");
+  if (!form || form.dataset.bound === "1") return;
+  form.dataset.bound = "1";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = String(document.getElementById("new-password")?.value || "");
+    const confirm = String(document.getElementById("confirm-password")?.value || "");
+    const button = document.getElementById("reset-password-button");
+    document.getElementById("reset-password-error")?.classList.add("hidden");
+    if (password.length < 6) {
+      showSetPasswordError("Use at least 6 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      showSetPasswordError("The two passwords do not match.");
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Saving…";
+    }
+    const { error } = await window.supabaseClient.auth.updateUser({ password });
+    if (error) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "Set new password";
+      }
+      showSetPasswordError(error.message || "Could not set the new password.");
+      return;
+    }
+    window.AppLoader?.startBoot();
+    const {
+      data: { session },
+    } = await window.supabaseClient.auth.getSession();
+    const role = await resolveRoleForSession(session);
+    window.location.href = resolvePostLogin(role);
+  });
+  document.getElementById("reset-password-back")?.addEventListener("click", async (event) => {
+    event.preventDefault();
+    await window.supabaseClient.auth.signOut();
+    window.__passwordRecovery = false;
+    form.classList.add("hidden");
+    loginForm?.classList.remove("hidden");
+    document.querySelector(".login-intro")?.classList.remove("hidden");
+    history.replaceState(null, "", "login.html");
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.configPromise) await window.configPromise;
   const path = window.location.pathname || "";
@@ -1146,12 +1241,34 @@ document.addEventListener("DOMContentLoaded", async () => {
         "Your account is not set up yet. Ask an administrator to add you in Settings → Users & roles.";
       loginError.classList.remove("hidden");
     }
+    const hashParams = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
+    const hashError = hashParams.get("error_description") || hashParams.get("error");
+    if (hashError && loginError) {
+      let text = hashError.replace(/\+/g, " ");
+      try {
+        text = decodeURIComponent(text);
+      } catch (_) {
+        /* keep the raw description */
+      }
+      loginError.textContent = text;
+      loginError.classList.remove("hidden");
+    }
+    bindSetPasswordForm();
     const { data: { session } } = await window.supabaseClient.auth.getSession();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (window.__passwordRecovery) {
+      showSetPasswordForm();
+      window.AppLoader?.endBoot();
+      if (!session) {
+        showSetPasswordError("This reset link is invalid or has expired. Request a new one from the sign-in page.");
+      }
+      return;
+    }
     if (session) {
       window.AppLoader?.startBoot();
       const role = await resolveRoleForSession(session);
       if (role) {
-        window.location.href = resolveLanding(role);
+        window.location.href = resolvePostLogin(role);
         return;
       }
       await window.supabaseClient.auth.signOut();
@@ -1228,7 +1345,7 @@ if (loginForm) {
     // Keep "Signing in…" and show the brand loader until the redirect lands.
     window.AppLoader?.startBoot();
     const role = await resolveRoleForSession(data?.session);
-    window.location.href = resolveLanding(role);
+    window.location.href = resolvePostLogin(role);
   });
 }
 
@@ -1248,7 +1365,7 @@ if (forgotPasswordLink) {
     forgotPasswordLink.textContent = "Sending…";
     if (window.configPromise) await window.configPromise;
     const { error } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + "/login.html",
+      redirectTo: passwordResetRedirectUrl(),
     });
     if (loginError) loginError.classList.add("hidden");
     if (error) {
@@ -1401,6 +1518,31 @@ async function requireAuth(options = {}) {
   }
 }
 
+function showAccessRetry() {
+  window.AppLoader?.endBoot();
+  if (document.getElementById("access-check-retry-panel")) return;
+  const panel = document.createElement("div");
+  panel.id = "access-check-retry-panel";
+  panel.className = "access-check-panel";
+  panel.setAttribute("role", "alert");
+  const card = document.createElement("div");
+  card.className = "access-check-card card";
+  const title = document.createElement("h2");
+  title.textContent = "Couldn't verify access";
+  const copy = document.createElement("p");
+  copy.textContent = "The connection failed, so this page was not opened.";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "access-check-retry";
+  button.textContent = "Retry";
+  button.addEventListener("click", () => {
+    window.location.reload();
+  });
+  card.append(title, copy, button);
+  panel.appendChild(card);
+  document.body.appendChild(panel);
+}
+
 async function resolveRequiredAuth(options = {}) {
   const {
     allowedRoles = null,
@@ -1412,7 +1554,7 @@ async function resolveRequiredAuth(options = {}) {
   if (window.configPromise) await window.configPromise;
 
   if (typeof window.isAppConfigValid === "function" && !window.isAppConfigValid()) {
-    window.location.href = redirectTo;
+    window.location.href = loginUrlWithNext(redirectTo);
     return null;
   }
 
@@ -1421,7 +1563,7 @@ async function resolveRequiredAuth(options = {}) {
   } = await window.supabaseClient.auth.getSession();
 
   if (!session) {
-    window.location.href = redirectTo;
+    window.location.href = loginUrlWithNext(redirectTo);
     return null;
   }
 
@@ -1443,7 +1585,7 @@ async function resolveRequiredAuth(options = {}) {
         context: "requireAuth",
         pageName,
       });
-      window.location.href = onDenied;
+      showAccessRetry();
       return null;
     } else if (!accessCheck.allowed) {
       console.warn(`Access denied to ${pageName} for role: ${accessCheck.role ?? role}`);
@@ -1509,6 +1651,7 @@ function applyRoleVisibility(role) {
   });
 }
 
+window.passwordResetRedirectUrl = passwordResetRedirectUrl;
 window.requireAuth = requireAuth;
 window.resolveLandingByRole = resolveLanding;
 window.applyRoleVisibility = applyRoleVisibility;

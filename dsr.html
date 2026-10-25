@@ -11,16 +11,16 @@
         <p class="settings-nav-title">Daily register</p>
         <button type="button" class="settings-nav-item is-active" data-section="filters">
           <span class="settings-nav-item-label">Total</span>
-          <span class="settings-nav-item-meta">MS + HSD period</span>
+          <span class="settings-nav-item-meta">Petrol + diesel period</span>
         </button>
         <button type="button" class="settings-nav-item settings-nav-item--petrol" data-section="dsr-petrol">
           <span class="fuel-rate-icon" aria-hidden="true">MS</span>
-          <span class="settings-nav-item-label">MS</span>
+          <span class="settings-nav-item-label" title="Motor spirit (petrol)">Petrol</span>
           <span class="settings-nav-item-meta">Petrol · 15 KL</span>
         </button>
         <button type="button" class="settings-nav-item settings-nav-item--diesel" data-section="dsr-diesel">
           <span class="fuel-rate-icon fuel-rate-icon--diesel" aria-hidden="true">HSD</span>
-          <span class="settings-nav-item-label">HSD</span>
+          <span class="settings-nav-item-label" title="High speed diesel">Diesel</span>
           <span class="settings-nav-item-meta">Diesel · 20 KL</span>
         </button>
         <button type="button" class="settings-nav-item" data-section="sales-detail">
@@ -41,6 +41,7 @@
               </p>
             </div>
             <div class="snapshot-controls">
+              <div id="dsr-date-presets" class="date-presets" aria-label="Date presets"></div>
               <div class="form-field">
                 <label for="dsr-daily-start-date">From</label>
                 <input id="dsr-daily-start-date" type="date" />

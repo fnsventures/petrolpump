@@ -345,6 +345,54 @@
     global.AppError?.showToast(message, "success", 2800);
   }
 
+  /** Mark an open reminder done. The row stays so Undo can reopen it. */
+  async function markTaskDone(client, { id, userId } = {}) {
+    if (!client || !id) return { data: null, error: new Error("Missing task") };
+    const { data, error } = await client
+      .from("reminders")
+      .update({
+        status: "done",
+        completed_at: new Date().toISOString(),
+        completed_by: userId || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("status", "open")
+      .select("id")
+      .maybeSingle();
+    return { data, error };
+  }
+
+  /** Put a done reminder back on the open board. */
+  async function reopenTask(client, id) {
+    if (!client || !id) return { error: new Error("Missing task") };
+    const { error } = await client
+      .from("reminders")
+      .update({
+        status: "open",
+        completed_at: null,
+        completed_by: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("status", "done");
+    return { error };
+  }
+
+  /** Success toast with Undo. The action runs when the button is tapped. */
+  function showUndoToast(message, onUndo) {
+    global.AppError?.showToast(message, "success", 8000, {
+      actionLabel: "Undo",
+      onAction: () => {
+        Promise.resolve()
+          .then(() => onUndo?.())
+          .catch((err) => {
+            global.AppError?.handle?.(err, { context: { source: "undoToast" } });
+          });
+      },
+    });
+  }
+
   global.TaskUtils = {
     isCreditTask,
     creditTitle,
@@ -368,6 +416,9 @@
     laterPanelHtml,
     wrapMoreCollapse,
     showTaskToast,
+    markTaskDone,
+    reopenTask,
+    showUndoToast,
     CREDIT_TYPES,
   };
 })(typeof window !== "undefined" ? window : globalThis);

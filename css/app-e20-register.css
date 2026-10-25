@@ -335,7 +335,7 @@ body.e20-register-page .e20-part-note {
 body.e20-register-page .button-sm {
   padding: 0.35rem 0.75rem;
   font-size: var(--text-sm);
-  min-height: 2.25rem;
+  min-height: 2.75rem;
 }
 
 body.e20-register-page .e20-grid {
@@ -424,8 +424,9 @@ body.e20-register-page .e20-table select {
 body.e20-register-page .e20-table input:not([type="checkbox"]):focus,
 body.e20-register-page .e20-table select:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px var(--fuel-petrol-bg-strong);
-  outline: none;
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 body.e20-register-page .e20-table select {
@@ -442,7 +443,7 @@ body.e20-register-page .e20-form-locked .e20-table select {
   cursor: default;
 }
 
-body.e20-register-page .e20-table input[type="number"],
+body.e20-register-page .e20-table input[inputmode="decimal"],
 body.e20-register-page .e20-table input[type="time"] {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -469,16 +470,8 @@ body.e20-register-page .e20-table--water input[type="time"]::-webkit-calendar-pi
   padding: 0;
 }
 
-body.e20-register-page .e20-table--water input[type="number"] {
+body.e20-register-page .e20-table--water input[inputmode="decimal"] {
   text-align: left;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-body.e20-register-page .e20-table--water input[type="number"]::-webkit-outer-spin-button,
-body.e20-register-page .e20-table--water input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
 }
 
 body.e20-register-page .e20-table--water .e20-cell-check {
@@ -531,13 +524,19 @@ body.e20-register-page .e20-col-actions {
 }
 
 body.e20-register-page .e20-row-remove {
-  border: 0;
-  background: transparent;
-  color: var(--muted, #64748b);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 0.25rem;
+  padding: 0;
   line-height: 1;
-  font-size: 1.1rem;
+  font-size: 1.35rem;
 }
 
 body.e20-register-page .e20-row-remove:hover {
@@ -684,6 +683,22 @@ body.e20-register-page .sr-only {
 
   body.e20-register-page .e20-table--quality {
     min-width: 44rem;
+  }
+}
+
+@media (max-width: 720px) {
+  body.e20-register-page .e20-grid:has(> table.table-cards) {
+    overflow: visible;
+  }
+
+  body.e20-register-page .e20-table--water.table-cards,
+  body.e20-register-page .e20-table--quality.table-cards {
+    min-width: 0;
+  }
+
+  body.e20-register-page .e20-table--water.table-cards th,
+  body.e20-register-page .e20-table--water.table-cards td {
+    overflow: visible;
   }
 }
 

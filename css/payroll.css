@@ -147,15 +147,15 @@
   cursor: not-allowed;
 }
 
-.attendance-mark-table:not(.show-month-effect) .att-col-month,
-.attendance-pay-table:not(.show-lop) .att-col-lop,
-.attendance-pay-table:not(.show-od) .att-col-od,
-.salary-summary-table:not(.show-lop) .salary-col-lop,
-.salary-summary-table:not(.show-od) .salary-col-od {
+table.attendance-mark-table:not(.show-month-effect) :is(th, td).att-col-month,
+table.attendance-pay-table:not(.show-lop) :is(th, td).att-col-lop,
+table.attendance-pay-table:not(.show-od) :is(th, td).att-col-od,
+table.salary-summary-table:not(.show-lop) :is(th, td).salary-col-lop,
+table.salary-summary-table:not(.show-od) :is(th, td).salary-col-od {
   display: none;
 }
 
-.attendance-mark-table:not(.show-od) .att-col-od {
+table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
   display: none;
 }
 
@@ -165,7 +165,7 @@
 
 .attendance-matrix td.att-cell .att-cell-od {
   font-weight: 800;
-  font-size: 0.52rem;
+  font-size: 0.7rem;
   line-height: 1;
   letter-spacing: 0.04em;
   color: var(--color-warning);

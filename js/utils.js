@@ -654,6 +654,12 @@ function resolveDateRange(selection, opts = {}) {
       modeInfo: { mode: "this-month" },
     };
   }
+  if (selection === "last-month") {
+    return {
+      ...getMonthRange(currentYear, today.getMonth() - 1),
+      modeInfo: { mode: "last-month" },
+    };
+  }
   if (selection === "this-year") {
     return { ...getYearRange(currentYear), modeInfo: { mode: "this-year" } };
   }
@@ -752,15 +758,23 @@ const RECORD_DATE_KEYS = {
   meterShift: "record_meter_shift_date",
 };
 
-/** Credit sale and payment dates reset to today on the next Indian morning. */
-const CREDIT_RECORD_DATE_KEYS = new Set([
-  RECORD_DATE_KEYS.creditTransaction,
-  RECORD_DATE_KEYS.creditQuickSettle,
-  RECORD_DATE_KEYS.creditSettle,
-]);
+/**
+ * A stored entry date is kept only for the Indian day it was chosen.
+ * The next morning every entry form opens on today, so a leftover date cannot be saved.
+ * @param {{ start?: string, savedOn?: string }|null|undefined} storedState
+ * @param {string} today - YYYY-MM-DD
+ * @returns {string|null}
+ */
+function persistedDateIfCurrent(storedState, today) {
+  if (!storedState || storedState.savedOn !== today) return null;
+  const stored = storedState.start;
+  if (stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) return stored;
+  return null;
+}
 
 /**
  * Read a persisted single-date value (dashboard snapshot, record forms, etc.).
+ * Dates chosen on an earlier day are ignored.
  * @param {string} storageKey
  * @param {string} [fallback]
  * @returns {string}
@@ -770,19 +784,23 @@ function getPersistedDate(storageKey, fallback) {
     typeof getValidFilterState === "function"
       ? getValidFilterState(storageKey, SINGLE_DATE_FILTER_RANGE)
       : null;
-  return stored?.start || fallback || getLocalDateString();
+  const today = getLocalDateString();
+  return persistedDateIfCurrent(stored, today) || fallback || today;
 }
 
 /**
  * Persist a single-date value using the shared filter-state format.
+ * `savedOn` is today, so the value expires on the next Indian morning.
  * @param {string} storageKey
  * @param {string} dateStr - YYYY-MM-DD
  */
 function savePersistedDate(storageKey, dateStr) {
   if (dateStr && typeof setFilterState === "function") {
-    const state = { range: "date", start: dateStr };
-    if (CREDIT_RECORD_DATE_KEYS.has(storageKey)) state.savedOn = getLocalDateString();
-    setFilterState(storageKey, state);
+    setFilterState(storageKey, {
+      range: "date",
+      start: dateStr,
+      savedOn: getLocalDateString(),
+    });
   }
 }
 
@@ -811,10 +829,8 @@ function initPersistedDateInput(inputRef, storageKey, opts = {}) {
         ? getValidFilterState(storageKey, SINGLE_DATE_FILTER_RANGE)
         : null;
     const today = getLocalDateString();
-    const stored = storedState?.start;
-    const creditDate = CREDIT_RECORD_DATE_KEYS.has(storageKey);
-    const stillToday = !creditDate || storedState?.savedOn === today;
-    if (stillToday && stored && /^\d{4}-\d{2}-\d{2}$/.test(stored)) dateStr = stored;
+    const current = persistedDateIfCurrent(storedState, today);
+    if (current) dateStr = current;
   }
   if (!dateStr) {
     dateStr =
@@ -894,6 +910,303 @@ function finishRecordFormSave(form, fieldValues, dateStorageKeys = {}) {
   }
 }
 
+/** Same-origin page to return to after login. Rejects anything that is not an app html file. */
+function safeAppReturnPath(raw) {
+  const value = String(raw || "").trim();
+  if (!value || value.length > 300) return "";
+  if (
+    !/^[a-z0-9][a-z0-9.-]*\.html(?:\?[A-Za-z0-9._~%=&+-]*)?(?:#[A-Za-z0-9._~%=&+-]*)?$/i.test(
+      value
+    )
+  ) {
+    return "";
+  }
+  if (/^login\.html(?:[?#]|$)/i.test(value)) return "";
+  if (value.includes("..") || value.includes("//") || value.includes("\\")) return "";
+  return value;
+}
+
+/**
+ * Confirm when a credit payment is larger than the outstanding balance.
+ * @param {number} amount
+ * @param {number} outstanding - amount still owed; zero or negative means the whole payment is an advance
+ * @returns {Promise<boolean>}
+ */
+async function confirmCreditOverpayment(amount, outstanding) {
+  const pay = Number(amount);
+  const owed = Math.max(0, Number(outstanding) || 0);
+  if (!Number.isFinite(pay) || pay <= 0) return true;
+  const payCents = Math.round(pay * 100);
+  const owedCents = Math.round(owed * 100);
+  if (payCents <= owedCents) return true;
+  const advance = (payCents - owedCents) / 100;
+  if (typeof AppDialog === "undefined" || typeof AppDialog.confirm !== "function") return false;
+  return AppDialog.confirm(`This creates an advance of ${formatCurrency(advance)}.`, {
+    title: "Payment is more than the balance",
+    confirmLabel: "Record payment",
+  });
+}
+
+const UNSAVED_DRAFT_PREFIX = "bpf.draft.v1.";
+const unsavedGuards = [];
+let unsavedLeaveBound = false;
+let bypassUnsavedLeave = false;
+
+function stableDraftString(value) {
+  if (Array.isArray(value)) return JSON.stringify(value.map((item) => JSON.parse(stableDraftString(item))));
+  if (value && typeof value === "object") {
+    const sorted = {};
+    Object.keys(value)
+      .sort()
+      .forEach((key) => {
+        sorted[key] = JSON.parse(stableDraftString(value[key]));
+      });
+    return JSON.stringify(sorted);
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function unsavedWorkPending() {
+  if (bypassUnsavedLeave) return false;
+  return unsavedGuards.some((isDirty) => {
+    try {
+      return Boolean(isDirty());
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+/** Register a leave warning. Shift register uses this around its own meter draft. */
+function trackUnsavedWork(isDirty) {
+  if (typeof isDirty !== "function") return;
+  unsavedGuards.push(isDirty);
+  if (unsavedLeaveBound || typeof document === "undefined" || typeof window === "undefined") return;
+  unsavedLeaveBound = true;
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!unsavedWorkPending()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  });
+
+  document.addEventListener(
+    "click",
+    (event) => {
+      const link = event.target?.closest?.("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+      const href = link.getAttribute("href") || "";
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+      let url;
+      try {
+        url = new URL(link.href, window.location.href);
+      } catch (_) {
+        return;
+      }
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
+      if (!unsavedWorkPending()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const leave = () => {
+        bypassUnsavedLeave = true;
+        window.location.href = url.href;
+      };
+      const ask = window.AppDialog?.confirm;
+      if (typeof ask !== "function") {
+        leave();
+        return;
+      }
+      ask("You have unsaved changes on this page. Leave without saving?", {
+        title: "Unsaved changes",
+        confirmLabel: "Leave",
+        danger: true,
+      }).then((ok) => {
+        if (ok) leave();
+      });
+    },
+    true
+  );
+}
+
+function unsavedDraftStorageKey(key) {
+  const name = typeof key === "function" ? key() : key;
+  if (!name) return null;
+  return `${UNSAVED_DRAFT_PREFIX}${name}`;
+}
+
+function resolveUnsavedRoot(root) {
+  if (!root) return null;
+  if (typeof root === "string") return document.getElementById(root) || document.querySelector(root);
+  return root;
+}
+
+function captureDomDraftFields(root) {
+  if (!root) return null;
+  const fields = {};
+  root.querySelectorAll("input, textarea, select").forEach((field) => {
+    if (field.disabled || field.type === "hidden" || field.type === "button" || field.type === "submit") return;
+    const id = field.name || field.id;
+    if (!id) return;
+    fields[id] = field.type === "checkbox" || field.type === "radio" ? (field.checked ? "1" : "0") : field.value;
+  });
+  return fields;
+}
+
+function applyDomDraftFields(root, fields) {
+  if (!root || !fields) return false;
+  let applied = false;
+  root.querySelectorAll("input, textarea, select").forEach((field) => {
+    if (field.disabled) return;
+    const id = field.name || field.id;
+    if (!id || !Object.prototype.hasOwnProperty.call(fields, id)) return;
+    const next = String(fields[id] ?? "");
+    if (field.type === "checkbox" || field.type === "radio") {
+      const checked = next === "1";
+      if (field.checked !== checked) {
+        field.checked = checked;
+        applied = true;
+      }
+      return;
+    }
+    if (String(field.value || "") !== next) {
+      field.value = next;
+      applied = true;
+    }
+  });
+  return applied;
+}
+
+/**
+ * Keep a local draft of typed fields and warn before leaving the page.
+ * Storage matches the shift-register draft: `{ v, at, fields }` under a dated key.
+ *
+ * @param {{
+ *   key: string | (() => string|null),
+ *   root: Element | string,
+ *   capture?: () => unknown,
+ *   restore?: (fields: unknown) => boolean,
+ *   skipTarget?: (target: EventTarget) => boolean,
+ * }} opts
+ */
+function bindUnsavedDraft(opts) {
+  let cleanSnapshot = "";
+  let paused = false;
+
+  function storageKey() {
+    return unsavedDraftStorageKey(opts.key);
+  }
+
+  function readFields() {
+    if (typeof opts.capture === "function") return opts.capture();
+    return captureDomDraftFields(resolveUnsavedRoot(opts.root));
+  }
+
+  function snapshot() {
+    const fields = readFields();
+    return fields == null ? "" : stableDraftString(fields);
+  }
+
+  function persist() {
+    if (paused) return;
+    const key = storageKey();
+    const fields = readFields();
+    if (!key || fields == null) return;
+    const next = stableDraftString(fields);
+    try {
+      if (next === cleanSnapshot) localStorage.removeItem(key);
+      else localStorage.setItem(key, JSON.stringify({ v: 1, at: Date.now(), fields }));
+    } catch (_) {
+      /* private mode or quota */
+    }
+  }
+
+  function adoptServerState() {
+    cleanSnapshot = snapshot();
+  }
+
+  function markClean() {
+    const key = storageKey();
+    cleanSnapshot = snapshot();
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch (_) {
+      /* private mode */
+    }
+  }
+
+  function restore() {
+    const key = storageKey();
+    if (!key) return false;
+    let raw;
+    try {
+      raw = localStorage.getItem(key);
+    } catch (_) {
+      return false;
+    }
+    if (!raw) return false;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {}
+      return false;
+    }
+    if (parsed?.v !== 1 || parsed.fields == null) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {}
+      return false;
+    }
+    if (stableDraftString(parsed.fields) === cleanSnapshot) {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {}
+      return false;
+    }
+    paused = true;
+    let applied = false;
+    try {
+      if (typeof opts.restore === "function") applied = opts.restore(parsed.fields) !== false;
+      else applied = applyDomDraftFields(resolveUnsavedRoot(opts.root), parsed.fields);
+    } finally {
+      paused = false;
+    }
+    return applied;
+  }
+
+  function isDirty() {
+    return snapshot() !== cleanSnapshot;
+  }
+
+  const zone = resolveUnsavedRoot(opts.root);
+  const onEdit = (event) => {
+    if (opts.skipTarget?.(event.target)) return;
+    persist();
+  };
+  zone?.addEventListener("input", onEdit);
+  zone?.addEventListener("change", onEdit);
+  trackUnsavedWork(isDirty);
+
+  return {
+    persist,
+    restore,
+    adoptServerState,
+    markClean,
+    isDirty,
+    pause() {
+      paused = true;
+    },
+    resume() {
+      paused = false;
+    },
+  };
+}
+
 /**
  * Station calendar date as YYYY-MM-DD (Asia/Kolkata), matching meter_station_today().
  * @param {Date} [date]
@@ -940,7 +1253,30 @@ function formatCurrency(value) {
 }
 
 /**
- * Amount for `<input type="number" step="0.01">`.
+ * Success copy that names the amount, the person, and the balance left.
+ * A negative remaining is money now held for them (customer credit or salary advance).
+ * @param {{ amount: number, person?: string, remaining: number|null, direction?: "from"|"for", surplus?: "credit"|"advance" }} details
+ * @returns {string}
+ */
+function formatRecordedBalance(details) {
+  const amount = formatCurrency(details && details.amount);
+  const person = String((details && details.person) || "").trim() || "them";
+  const direction = details && details.direction === "for" ? "for" : "from";
+  const remaining = details ? Number(details.remaining) : NaN;
+  let balance = "Remaining —.";
+  if (Number.isFinite(remaining)) {
+    if (remaining < -0.004) {
+      const label = details.surplus === "advance" ? "Remaining advance" : "Remaining credit balance";
+      balance = `${label} ${formatCurrency(-remaining)}.`;
+    } else {
+      balance = `Remaining ${formatCurrency(Math.max(0, remaining))}.`;
+    }
+  }
+  return `Recorded ${amount} ${direction} ${person}. ${balance}`;
+}
+
+/**
+ * Amount for a decimal text field (`inputmode="decimal"`).
  * A raw sum such as 1234.5600000001 fails the step check and blocks submit.
  * @param {number} value
  * @returns {string}
@@ -1357,10 +1693,15 @@ window.setFilterState = setFilterState;
 window.SINGLE_DATE_FILTER_RANGE = SINGLE_DATE_FILTER_RANGE;
 window.RECORD_DATE_KEYS = RECORD_DATE_KEYS;
 window.getPersistedDate = getPersistedDate;
+window.persistedDateIfCurrent = persistedDateIfCurrent;
 window.savePersistedDate = savePersistedDate;
 window.initPersistedDateInput = initPersistedDateInput;
 window.resetFormKeepingFields = resetFormKeepingFields;
 window.finishRecordFormSave = finishRecordFormSave;
+window.safeAppReturnPath = safeAppReturnPath;
+window.confirmCreditOverpayment = confirmCreditOverpayment;
+window.bindUnsavedDraft = bindUnsavedDraft;
+window.trackUnsavedWork = trackUnsavedWork;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
 window.ActionProgress = ActionProgress;
@@ -2358,7 +2699,8 @@ function tableHeaderLabels(table) {
   for (const cell of row.children) {
     const span = Number(cell.getAttribute("colspan") || 1);
     const count = Number.isFinite(span) && span > 0 ? span : 1;
-    const label = (cell.innerText || cell.textContent || "").replace(/\s+/g, " ").trim();
+    const visible = (cell.innerText || cell.textContent || "").replace(/\s+/g, " ").trim();
+    const label = (cell.getAttribute("data-card-label") || cell.getAttribute("title") || visible).trim();
     for (let i = 0; i < count; i += 1) {
       labels[index] = label;
       index += 1;
@@ -2370,7 +2712,7 @@ function tableHeaderLabels(table) {
 function annotateWideTable(table) {
   if (!(table instanceof HTMLTableElement)) return;
   if (table.classList.contains("attendance-matrix")) return;
-  if (!table.closest(".table-wrap, .table-scroll")) return;
+  if (!table.closest(".table-wrap, .table-scroll, .e20-grid")) return;
   const labels = tableHeaderLabels(table);
   if (!labels || labels.filter(Boolean).length < 2) {
     table.classList.remove("table-cards");
@@ -2394,7 +2736,7 @@ function annotateWideTable(table) {
 function annotateWideTables(root) {
   const scope = root instanceof Element ? root : document;
   if (scope instanceof HTMLTableElement) annotateWideTable(scope);
-  scope.querySelectorAll?.(".table-wrap table, .table-scroll table").forEach(annotateWideTable);
+  scope.querySelectorAll?.(".table-wrap table, .table-scroll table, .e20-grid table").forEach(annotateWideTable);
 }
 
 function installResponsiveTables() {

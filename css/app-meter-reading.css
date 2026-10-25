@@ -372,8 +372,16 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
   }
 
   body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
-    font-size: max(16px, var(--text-sm, 0.8125rem));
-    min-height: 2.25rem;
+    font-size: max(16px, var(--text-base));
+    min-height: 2.75rem;
+  }
+
+  body.meter-reading-page .page-layout-wide .meter-table-scroll:has(> table.table-cards) {
+    overflow-x: visible;
+  }
+
+  body.meter-reading-page .page-layout-wide .meter-block-wide .meter-table-scroll .meter-table.table-cards {
+    min-width: 0 !important;
   }
 
   body.meter-reading-page .page-layout-wide .sheet-rate-row {
@@ -1116,7 +1124,7 @@ body.meter-reading-page .shift-staff-card input.shift-phone-pay:focus-visible {
   outline-offset: 2px;
   border-color: var(--color-primary);
   background: var(--surface);
-  box-shadow: var(--focus-ring);
+  box-shadow: none;
 }
 
 body.meter-reading-page .shift-staff-short.shift-short--shortage {
@@ -1200,7 +1208,7 @@ body.meter-reading-page .shift-history-table {
 }
 
 body.meter-reading-page .shift-history-table .shift-history-view {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0.25rem 0.6rem;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -1360,20 +1368,20 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
     z-index: 6;
     left: max(0.75rem, var(--safe-left));
     right: max(0.75rem, var(--safe-right));
-    bottom: max(0.5rem, var(--safe-bottom));
+    bottom: calc(max(0.5rem, var(--safe-bottom)) + var(--app-tabbar-offset, 0px));
     width: auto;
   }
 
   body:has(.app-network-status:not(.hidden)) .shift-save-row .shift-save-btn {
-    bottom: calc(2.75rem + var(--safe-bottom) + 0.5rem);
+    bottom: calc(2.75rem + var(--safe-bottom) + 0.5rem + var(--app-tabbar-offset, 0px));
   }
 
   body.meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
-    padding-bottom: calc(4.5rem + var(--safe-bottom));
+    padding-bottom: calc(4.5rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
   }
 
   body:has(.app-network-status:not(.hidden)).meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
-    padding-bottom: calc(7.25rem + var(--safe-bottom));
+    padding-bottom: calc(7.25rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
   }
 
   body.meter-reading-page .shift-coll-add-btn {
@@ -1663,7 +1671,7 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
 }
 
 body.meter-reading-page .shift-history-table .shift-history-view {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0.3rem 0.7rem;
   font-size: var(--text-sm);
   font-weight: 600;

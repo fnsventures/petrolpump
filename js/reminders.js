@@ -880,24 +880,38 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function completeTask(id, btn, inFlight) {
     inFlight?.add(id);
     btn.disabled = true;
-    const { data: deleted, error } = await window.supabaseClient
-      .from("reminders")
-      .delete()
-      .eq("id", id)
-      .eq("status", "open")
-      .select("id");
+    const { data, error } =
+      typeof TaskUtils?.markTaskDone === "function"
+        ? await TaskUtils.markTaskDone(window.supabaseClient, {
+            id,
+            userId: currentAuth?.session?.user?.id || null,
+          })
+        : { data: null, error: new Error("Task helper unavailable") };
 
-    if (error || !deleted?.length) {
+    if (error || !data?.id) {
       inFlight?.delete(id);
       btn.disabled = false;
-      AppError.handle(error || new Error("Could not remove this reminder."), {
+      AppError.handle(error || new Error("Could not mark this reminder done."), {
         context: { source: "completeTask" },
       });
       return;
     }
 
     removeCard(id);
-    toast("Reminder removed");
+    if (typeof TaskUtils?.showUndoToast === "function") {
+      TaskUtils.showUndoToast("Marked done", async () => {
+        const { error: undoError } = await TaskUtils.reopenTask(window.supabaseClient, id);
+        if (undoError) {
+          AppError.handle(undoError, { context: { source: "undoCompleteTask" } });
+          return;
+        }
+        toast("Restored");
+        TaskUtils.notifyTasksUpdated();
+        await loadOpenBoard();
+      });
+    } else {
+      toast("Marked done");
+    }
     TaskUtils.notifyTasksUpdated();
     await loadOpenBoard();
     inFlight?.delete(id);

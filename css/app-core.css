@@ -24,6 +24,40 @@ tbody tr:hover {
   margin-top: 1rem;
 }
 
+.date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+}
+
+.snapshot-controls .date-presets,
+.filter-form .date-presets,
+.filter-card .date-presets {
+  flex: 1 0 100%;
+  margin-bottom: 0.15rem;
+}
+
+.date-preset {
+  margin: 0;
+  padding: 0.28rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.date-preset.is-active {
+  border-color: var(--bpcl-blue);
+  background: var(--bpcl-blue);
+  color: #fff;
+}
+
 .margin-bottom {
   margin-bottom: 1rem;
 }
@@ -989,6 +1023,23 @@ tr.is-editing .expense-cat-drag-handle {
 
 .app-toast-close:hover {
   opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-toast-action {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.app-toast-action:hover {
   background: rgba(255, 255, 255, 0.12);
 }
 

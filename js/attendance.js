@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel, mountDateStepper, mountMonthStepper */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel, mountDateStepper, mountMonthStepper, bindUnsavedDraft */
 
 const STATUS_LABELS = {
   present: "Present",
@@ -83,7 +83,7 @@ function matrixCellContents(record) {
   const shiftAbbr = record && letter !== "—" ? matrixShiftAbbrev(record.shift) : "";
   const showOd = Boolean(matrixOverDutySuffix(record));
   const parts = [`<span class="att-cell-main">${main}</span>`];
-  if (showOd) parts.push(`<span class="att-cell-od">OD</span>`);
+  if (showOd) parts.push(`<span class="att-cell-od" title="Over duty — extra day’s pay">OD</span>`);
   else if (shiftAbbr) parts.push(`<span class="att-cell-shift">${escapeHtml(shiftAbbr)}</span>`);
   return `<div class="att-cell-stack">${parts.join("")}</div>`;
 }
@@ -116,6 +116,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const attendanceMessage = document.getElementById("attendance-message");
   const attendanceError = document.getElementById("attendance-error");
   const saveAllBtn = document.getElementById("attendance-save-all");
+  const markAllPresentBtn = document.getElementById("attendance-mark-all-present");
   const historyMatrixWrap = document.getElementById("attendance-matrix-wrap");
   if (historyMatrixWrap && window.matchMedia("(hover: none)").matches) {
     historyMatrixWrap.addEventListener("click", (event) => {
@@ -137,7 +138,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   function syncMarkRowClass(row) {
     if (!row) return;
     row.classList.remove("att-row-absent", "att-row-half", "att-row-leave", "att-row-overduty");
-    const st = displayStatus(row.querySelector(".att-status")?.value ?? "present");
+    const rawStatus = row.querySelector(".att-status")?.value || "";
+    const st = rawStatus ? displayStatus(rawStatus) : "";
     if (st === "half_day") row.classList.add("att-row-half");
     else if (st === "leave") row.classList.add("att-row-leave");
     const od = row.querySelector(".att-over-duty");
@@ -194,6 +196,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   let staffList = [];
   let attendanceByDate = new Map();
+  let attendanceDraft = null;
   let monthBundle = { byEmployee: new Map(), rows: [], overDutyColumnReady: true, monthValue: "" };
   let lopExcludedIds = new Set();
   let lopExcludedMonth = "";
@@ -247,6 +250,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function previewRecords(staffId, date, status, overDuty) {
     const kept = (monthBundle.byEmployee.get(staffId) || []).filter((row) => row.date !== date);
+    if (!status) return kept;
     kept.push({
       employee_id: staffId,
       date,
@@ -261,13 +265,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     const pay = payWithExclusion(staff, records, monthValue);
     const lines = [`<span>Leave ${escapeHtml(PayrollRules.leaveUsageLabel(pay))}</span>`];
     if (pay.lossOfPayEnabled && pay.lopExcluded) {
-      lines.push(`<span class="salary-lop-excluded">LOP excluded</span>`);
+      lines.push(`<span class="salary-lop-excluded" title="Loss of pay is left out of this month’s salary">Loss of pay excluded</span>`);
     } else if (pay.lossOfPayEnabled && pay.lopAmount > 0) {
-      lines.push(`<span class="is-deduct">LOP ${escapeHtml(formatCurrency(pay.lopAmount))}</span>`);
+      lines.push(`<span class="is-deduct" title="Loss of pay">Loss of pay ${escapeHtml(formatCurrency(pay.lopAmount))}</span>`);
     }
     if (pay.overDutyEnabled) {
       lines.push(
-        `<span class="${pay.overDutyAmount > 0 ? "is-earn" : ""}">OD ${escapeHtml(formatCurrency(pay.overDutyAmount))}</span>`
+        `<span class="${pay.overDutyAmount > 0 ? "is-earn" : ""}" title="Over duty — extra day’s pay">Over duty ${escapeHtml(formatCurrency(pay.overDutyAmount))}</span>`
       );
     }
     return `<div class="att-month-effect">${lines.join("")}</div>`;
@@ -280,7 +284,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!cell || !staffId || !date) return;
     const staff = staffList.find((s) => s.id === staffId);
     if (!staff) return;
-    const status = row.querySelector(".att-status")?.value ?? "present";
+    const rawStatus = row.querySelector(".att-status")?.value || "";
+    const status = rawStatus ? displayStatus(rawStatus) : "";
     const overDuty = Boolean(row.querySelector(".att-over-duty")?.checked);
     cell.innerHTML = monthEffectHtml(staff, previewRecords(staffId, date, status, overDuty), date.slice(0, 7));
   }
@@ -400,16 +405,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       .map((s) => {
         const r = attendanceByDate.get(s.id);
         const id = r?.id ?? "";
-        const status = displayStatus(r?.status ?? "present");
+        const status = r ? displayStatus(r.status) : "";
         const shift = r?.shift ?? "";
         const note = escapeHtml((r?.note ?? "").toString());
         const name = escapeHtml(s.name);
         const role = s.role_display ? ` (${escapeHtml(s.role_display)})` : "";
         const odOn = Boolean(r && typeof PayrollRules !== "undefined" && PayrollRules.isMarkedOverDuty(r));
         const monthCell = monthEffectHtml(s, previewRecords(s.id, date, status, odOn), String(date || "").slice(0, 7));
-        const options = MARK_STATUSES
-          .map((st) => `<option value="${st}" ${st === status ? "selected" : ""}>${STATUS_LABELS[st]}</option>`)
-          .join("");
+        const blankOption = r
+          ? ""
+          : `<option value="" ${status === "" ? "selected" : ""}>— Not marked —</option>`;
+        const options =
+          blankOption +
+          MARK_STATUSES.map(
+            (st) => `<option value="${st}" ${st === status ? "selected" : ""}>${STATUS_LABELS[st]}</option>`
+          ).join("");
         const shiftSelectOptions = shiftOptions
           .map((opt) => `<option value="${escapeHtml(opt.value)}" ${opt.value === shift ? "selected" : ""}>${escapeHtml(opt.label)}</option>`)
           .join("");
@@ -441,7 +451,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <td class="att-col-od">
               <label class="att-od-label">
                 <input type="checkbox" class="att-over-duty" data-staff-id="${escapeHtml(s.id)}" ${odOn ? "checked" : ""} aria-label="Over duty for ${name}" />
-                OD
+                <span title="Extra day’s pay when this person also worked another shift">Over duty</span>
               </label>
             </td>
             <td><input type="text" class="att-note" value="${note}" maxlength="200" placeholder="Note" data-staff-id="${escapeHtml(s.id)}" /></td>
@@ -452,6 +462,90 @@ document.addEventListener("DOMContentLoaded", async () => {
       .join("");
 
     attendanceBody.querySelectorAll("tr[data-staff-id]").forEach(syncMarkRowClass);
+    attendanceDraft?.adoptServerState();
+    if (attendanceDraft?.restore()) {
+      attendanceBody.querySelectorAll("tr[data-staff-id]").forEach(syncMarkRowClass);
+      AppError.showToast("Restored unsaved attendance from this device.", "info");
+    }
+  }
+
+  function captureAttendanceDraft() {
+    const rows = {};
+    attendanceBody?.querySelectorAll("tr[data-staff-id]").forEach((row) => {
+      const id = row.getAttribute("data-staff-id");
+      if (!id) return;
+      rows[id] = {
+        status: row.querySelector(".att-status")?.value || "",
+        shift: row.querySelector(".att-shift")?.value || "",
+        note: row.querySelector(".att-note")?.value || "",
+        overDuty: row.querySelector(".att-over-duty")?.checked ? "1" : "0",
+      };
+    });
+    return { rows };
+  }
+
+  function restoreAttendanceDraft(fields) {
+    const saved = fields?.rows;
+    if (!saved || typeof saved !== "object") return false;
+    let applied = false;
+    Object.entries(saved).forEach(([id, vals]) => {
+      const row = attendanceBody.querySelector(`tr[data-staff-id="${CSS.escape(id)}"]`);
+      if (!row || !vals) return;
+      const statusEl = row.querySelector(".att-status");
+      const shiftEl = row.querySelector(".att-shift");
+      const noteEl = row.querySelector(".att-note");
+      const odEl = row.querySelector(".att-over-duty");
+      if (statusEl && [...statusEl.options].some((opt) => opt.value === (vals.status || "")) && statusEl.value !== (vals.status || "")) {
+        statusEl.value = vals.status || "";
+        applied = true;
+      }
+      if (shiftEl && shiftEl.value !== (vals.shift || "")) {
+        shiftEl.value = vals.shift || "";
+        applied = true;
+      }
+      if (noteEl && noteEl.value !== (vals.note || "")) {
+        noteEl.value = vals.note || "";
+        applied = true;
+      }
+      syncMarkRowClass(row);
+      if (odEl && vals.overDuty === "1" && !odEl.disabled && !odEl.checked) {
+        odEl.checked = true;
+        applied = true;
+        syncMarkRowClass(row);
+      }
+    });
+    return applied;
+  }
+
+  function bindAttendanceDraft() {
+    if (attendanceDraft || typeof bindUnsavedDraft !== "function" || !attendanceBody) return;
+    attendanceDraft = bindUnsavedDraft({
+      key: () => {
+        const date = attendanceDateInput?.value;
+        return date ? `attendance.${date}` : null;
+      },
+      root: attendanceBody,
+      capture: captureAttendanceDraft,
+      restore: restoreAttendanceDraft,
+    });
+  }
+
+  async function markAllPresent() {
+    const rows = [...(attendanceBody?.querySelectorAll("tr[data-staff-id]") || [])];
+    if (!rows.length) return;
+    const confirmed = await AppDialog.confirm(
+      `Set all ${rows.length} staff to Present? This does not save until you choose Save all.`,
+      { title: "Mark all present", confirmLabel: "Mark present" }
+    );
+    if (!confirmed) return;
+    rows.forEach((row) => {
+      const statusEl = row.querySelector(".att-status");
+      if (!statusEl) return;
+      statusEl.value = "present";
+      syncMarkRowClass(row);
+    });
+    attendanceDraft?.persist();
+    showMessage(`Marked ${rows.length} staff present. Save all to keep it.`);
   }
 
   async function deleteRow(btn, date) {
@@ -507,7 +601,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const shiftEl = row.querySelector(".att-shift");
     const noteEl = row.querySelector(".att-note");
 
-    const status = displayStatus(statusEl?.value ?? "present");
+    const rawStatus = statusEl?.value || "";
+    if (!MARK_STATUSES.includes(rawStatus)) {
+      showMessage("Choose Present, Half-day, or Leave before saving.", true);
+      return;
+    }
+    const status = displayStatus(rawStatus);
     const shift = (shiftEl?.value || "").trim() || null;
     const note = noteEl?.value?.trim() || null;
 
@@ -561,7 +660,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       const shiftEl = row.querySelector(".att-shift");
       const noteEl = row.querySelector(".att-note");
 
-      const status = displayStatus(statusEl?.value ?? "present");
+      const rawStatus = statusEl?.value || "";
+      if (!MARK_STATUSES.includes(rawStatus)) continue;
+      const status = displayStatus(rawStatus);
       rows.push({
         employee_id: s.id,
         status,
@@ -572,9 +673,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     if (!rows.length) {
-      showMessage("No changes to save.");
+      showMessage("Nothing to save. Choose a status, or use Mark all present.", true);
       return;
     }
+
+    const unmarked = staffList.length - rows.length;
+    const recordLabel = rows.length === 1 ? "record" : "records";
+    const unmarkedNote = unmarked
+      ? ` ${unmarked} not marked will stay unmarked.`
+      : "";
+    const confirmed = await AppDialog.confirm(
+      `Save ${rows.length} attendance ${recordLabel}?${unmarkedNote}`,
+      { title: "Save attendance", confirmLabel: "Save" }
+    );
+    if (!confirmed) return;
 
     const { data, error } = await window.supabaseClient.rpc("save_employee_attendance_batch", {
       p_date: date,
@@ -800,6 +912,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   await loadStaffMembers();
+  bindAttendanceDraft();
   const initialDate = attendanceDateInput?.value ?? getLocalDateString();
   await loadAttendanceForDate(initialDate);
   renderAttendanceTable(initialDate);
@@ -814,6 +927,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   saveAllBtn?.addEventListener("click", () => {
     const date = attendanceDateInput?.value;
     if (date) saveAll(date);
+  });
+
+  markAllPresentBtn?.addEventListener("click", () => {
+    markAllPresent();
   });
 
   function onHistoryMonthChange() {

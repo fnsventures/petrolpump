@@ -709,8 +709,9 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-view:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .customer-activity-count[hidden] {

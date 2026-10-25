@@ -552,18 +552,10 @@
       if (!id || inFlight.has(id)) return;
       inFlight.add(id);
       btn.disabled = true;
-      const { data: doneRow, error } = await global.supabaseClient
-        .from("reminders")
-        .update({
-          status: "done",
-          completed_at: new Date().toISOString(),
-          completed_by: userId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .eq("status", "open")
-        .select("id")
-        .maybeSingle();
+      const { data: doneRow, error } =
+        typeof TaskUtils?.markTaskDone === "function"
+          ? await TaskUtils.markTaskDone(global.supabaseClient, { id, userId })
+          : { data: null, error: new Error("Task helper unavailable") };
       if (error || !doneRow?.id) {
         inFlight.delete(id);
         btn.disabled = false;
@@ -572,26 +564,9 @@
         });
         return;
       }
-      if (global.AppError?.showToast) global.AppError.showToast("Marked done", "success", 8000);
-      else TaskUtils.showTaskToast?.("Marked done");
-      const toast = document.querySelector("#app-toast-container .app-toast:last-child");
-      if (toast) {
-        const undo = document.createElement("button");
-        undo.type = "button";
-        undo.className = "button-secondary button-small";
-        undo.textContent = "Undo";
-        undo.addEventListener("click", async () => {
-          undo.disabled = true;
-          const { error: undoError } = await global.supabaseClient
-            .from("reminders")
-            .update({
-              status: "open",
-              completed_at: null,
-              completed_by: null,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", id)
-            .eq("status", "done");
+      if (typeof TaskUtils?.showUndoToast === "function") {
+        TaskUtils.showUndoToast("Marked done", async () => {
+          const { error: undoError } = await TaskUtils.reopenTask(global.supabaseClient, id);
           if (undoError) {
             AppError.handle(undoError, { context: { source: "notificationsUndoReminder" } });
             return;
@@ -600,7 +575,8 @@
           TaskUtils.notifyTasksUpdated?.();
           await refreshReminders();
         });
-        toast.append(undo);
+      } else if (global.AppError?.showToast) {
+        global.AppError.showToast("Marked done", "success", 8000);
       }
       TaskUtils.notifyTasksUpdated?.();
       await refreshReminders();

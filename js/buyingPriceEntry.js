@@ -321,15 +321,15 @@
               <div class="pl-field-grid">
                 <label class="pl-field">
                   <span>Rate per Unit (₹/KL) <abbr title="required">*</abbr></span>
-                  <input id="pl-buying-${rowId}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
+                  <input id="pl-buying-${rowId}" type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <label class="pl-field">
                   <span>DLY/TAXABLE CHARGE (₹) <abbr title="required">*</abbr></span>
-                  <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
+                  <input type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <label class="pl-field">
                   <span>Quantity (KL) <abbr title="required">*</abbr></span>
-                  <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
+                  <input type="text" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
                 </label>
                 <div class="pl-field pl-computed">
                   <span>Delivery ₹/KL</span>
@@ -365,11 +365,11 @@
             <div class="pl-field-grid">
               <label class="pl-field">
                 <span>TAXABLE AMT (₹) <abbr title="required">*</abbr></span>
-                <input type="number" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" required aria-required="true" />
+                <input type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" required aria-required="true" />
               </label>
               <label class="pl-field">
                 <span>Total quantity (KL) <abbr title="required">*</abbr></span>
-                <input type="number" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" required aria-required="true" />
+                <input type="text" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" required aria-required="true" />
               </label>
               <div class="pl-field pl-computed">
                 <span>LFR ₹/KL (incl. GST)</span>

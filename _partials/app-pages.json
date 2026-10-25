@@ -75,7 +75,7 @@
       "bodyClass": "dsr-page",
       "earlyScripts": ["js/dsrLegacyRedirect.js", "js/dsrSections.js"],
       "css": ["css/app-dsr.css"],
-      "beforeAuth": ["js/printUtils.js", "js/dsrFuelNav.js", "js/pageSections.js"],
+      "beforeAuth": ["js/dateRangeFilter.js", "js/printUtils.js", "js/dsrFuelNav.js", "js/pageSections.js"],
       "afterAuth": ["js/dsrSummary.js", "js/dsrSalesBreakdown.js"],
       "page": "js/dsr.js"
     },
@@ -197,6 +197,7 @@
       "css": ["css/app-reports.css", "css/report-watermark.css"],
       "beforeAuth": [
         "js/purchaseTaxUtils.js",
+        "js/dateRangeFilter.js",
         "js/pageSections.js",
         "js/printUtils.js",
         "js/reportsGst.js",

@@ -571,6 +571,17 @@
     }
 
     const saveSelector = 'button[type="submit"], button.shift-save-btn, button.button-primary, #day-closing-save';
+    let offlineHintSeq = 0;
+    const offlineHintFor = (btn) => {
+      const next = btn.nextElementSibling;
+      if (next && next.classList.contains("offline-save-hint")) return next;
+      const hint = document.createElement("p");
+      hint.className = "offline-save-hint";
+      hint.id = `offline-save-hint-${++offlineHintSeq}`;
+      hint.textContent = "Reconnect to save";
+      btn.insertAdjacentElement("afterend", hint);
+      return hint;
+    };
     const setSavesEnabled = (online) => {
       document.querySelectorAll(saveSelector).forEach((btn) => {
         if (!(btn instanceof HTMLButtonElement)) return;
@@ -579,11 +590,24 @@
           btn.dataset.offlineDisabled = "1";
           btn.disabled = true;
           btn.title = "Reconnect to save";
+          const hint = offlineHintFor(btn);
+          if (!("offlineDescribedby" in btn.dataset)) {
+            btn.dataset.offlineDescribedby = btn.getAttribute("aria-describedby") || "";
+          }
+          const prev = btn.dataset.offlineDescribedby;
+          btn.setAttribute("aria-describedby", prev ? `${prev} ${hint.id}` : hint.id);
           return;
         }
         if (btn.dataset.offlineDisabled === "1") {
           btn.disabled = false;
           btn.title = "";
+          if ("offlineDescribedby" in btn.dataset) {
+            if (btn.dataset.offlineDescribedby) btn.setAttribute("aria-describedby", btn.dataset.offlineDescribedby);
+            else btn.removeAttribute("aria-describedby");
+            delete btn.dataset.offlineDescribedby;
+          }
+          const hint = btn.nextElementSibling;
+          if (hint && hint.classList.contains("offline-save-hint")) hint.remove();
           delete btn.dataset.offlineDisabled;
         }
       });

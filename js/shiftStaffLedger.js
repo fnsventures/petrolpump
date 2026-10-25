@@ -252,13 +252,13 @@
             <div class="shift-ledger-field">
               <label for="shift-ledger-fuel">Fuel</label>
               <select id="shift-ledger-fuel" name="fuel_type">
-                <option value="HSD">HSD</option>
-                <option value="MS">MS</option>
+                <option value="HSD">Diesel (HSD)</option>
+                <option value="MS">Petrol (MS)</option>
               </select>
             </div>
             <div class="shift-ledger-field">
               <label for="shift-ledger-credit-amount">Amount</label>
-              <input id="shift-ledger-credit-amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
+              <input id="shift-ledger-credit-amount" name="amount" type="text" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
             </div>
             <div class="shift-ledger-field shift-ledger-field--action">
               <label class="sr-only" for="shift-ledger-credit-submit">Save</label>
@@ -280,7 +280,7 @@
             </div>
             <div class="shift-ledger-field">
               <label for="shift-ledger-expense-amount">Amount</label>
-              <input id="shift-ledger-expense-amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
+              <input id="shift-ledger-expense-amount" name="amount" type="text" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00" required />
             </div>
             <div class="shift-ledger-field shift-ledger-field--full">
               <label for="shift-ledger-expense-desc">Description</label>

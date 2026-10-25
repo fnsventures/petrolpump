@@ -173,8 +173,8 @@ Batch settle (multiple customers)
    → batch_record_credit_settlements(...)
 
 Admin corrections (admin only)
-   → delete_credit_entry(id) — only if amount_settled = 0
-   → delete_credit_payment(id) — re-allocates remaining payments LIFO
+   → delete_credit_entry(id) — removes the sale and reallocates remaining payments
+   → delete_credit_payment(id) — removes the payment and reallocates remaining payments LIFO
 ```
 
 - **Net balance:** `amount_due − prepaid_balance`.

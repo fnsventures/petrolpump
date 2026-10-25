@@ -738,7 +738,9 @@ function initUsersForm() {
     }
     if (password && existingUser) {
       const { error: resetError } = await window.supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + "/login.html",
+        redirectTo: typeof passwordResetRedirectUrl === "function"
+          ? passwordResetRedirectUrl()
+          : new URL("login.html", window.location.href).href,
       });
       if (resetError) {
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Save role"; }
@@ -1187,10 +1189,10 @@ function initStaffSalaries() {
         <td>${escapeHtml(s.name)}</td>
         <td>${escapeHtml(s.role_display ?? "—")}</td>
         <td>
-          <input inputmode="decimal" type="number" class="emp-salary-input" min="0" step="0.01" value="${escapeHtml(String(s.monthly_salary ?? 0))}" aria-label="Monthly salary for ${escapeHtml(s.name)}" />
+          <input inputmode="decimal" type="text" class="emp-salary-input" min="0" step="0.01" value="${escapeHtml(String(s.monthly_salary ?? 0))}" aria-label="Monthly salary for ${escapeHtml(s.name)}" />
         </td>
         <td>
-          <input inputmode="numeric" type="number" class="emp-pf-input" min="0" step="1" placeholder="e.g. 200 or 150" value="${escapeHtml(formatPfContributionValue(s.pf_contribution))}" aria-label="PF contribution for ${escapeHtml(s.name)}" />
+          <input inputmode="numeric" type="text" class="emp-pf-input" min="0" step="1" placeholder="e.g. 200 or 150" value="${escapeHtml(formatPfContributionValue(s.pf_contribution))}" aria-label="PF contribution for ${escapeHtml(s.name)}" />
         </td>
         <td>
           <button type="button" class="save-emp-salary-btn button-secondary" data-id="${escapeHtml(s.id)}">Save</button>

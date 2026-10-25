@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById */
+/* global window.supabaseClient, formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment */
 
 (function () {
   const page = () => window.CreditPage;
@@ -1511,7 +1511,10 @@ async function handleSettle() {
 
   const settleIds = page().state.customerIds.length > 0 ? [...page().state.customerIds] : page().state.customerId ? [page().state.customerId] : [];
   if (settleIds.length === 0) {
-    if (msg) msg.textContent = "No customer record to settle.";
+    if (msg) {
+      msg.textContent = "No customer record to settle.";
+      msg.classList.remove("hidden");
+    }
     return;
   }
 
@@ -1523,10 +1526,15 @@ async function handleSettle() {
   const todayStr = getLocalDateString();
 
   if (!amount || amount <= 0) {
-    if (msg) msg.textContent = "Enter a valid amount.";
+    AppError.showSaveError("Enter a valid amount.", {
+      target: msg,
+      field: document.getElementById("settle-amount"),
+    });
     return;
   }
-  if (amount >= 10000) {
+  if (!(await confirmCreditOverpayment(amount, page().state.customerNetBalance))) return;
+
+  if (amount >= 10000 && Math.round(amount * 100) <= Math.round(Math.max(0, page().state.customerNetBalance) * 100)) {
     const ok = await AppDialog.confirm(`Record a payment of ${formatCurrency(amount)}?`, {
       title: "Confirm payment",
       confirmLabel: "Record payment",
@@ -1534,7 +1542,10 @@ async function handleSettle() {
     if (!ok) return;
   }
   if (settlementDate > todayStr) {
-    if (msg) msg.textContent = "Settlement date cannot be in the future.";
+    AppError.showSaveError("Settlement date cannot be in the future.", {
+      target: msg,
+      field: document.getElementById("settle-date"),
+    });
     return;
   }
 
@@ -1576,7 +1587,7 @@ async function handleSettle() {
       });
 
       if (error) {
-        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.showSaveError(AppError.getUserMessage(error), { target: msg, form: settleForm });
         AppError.report(error, { context: "creditCustomerSettle", customerId: settleIds[0] });
         page().invalidateCreditCaches();
         await resolveCustomerIds();
@@ -1597,7 +1608,7 @@ async function handleSettle() {
       });
 
       if (error) {
-        if (msg) msg.textContent = AppError.getUserMessage(error);
+        AppError.showSaveError(AppError.getUserMessage(error), { target: msg, form: settleForm });
         AppError.report(error, { context: "creditCustomerSettleBatch", customerIds: settleIds });
         page().invalidateCreditCaches();
         await resolveCustomerIds();
@@ -1620,16 +1631,20 @@ async function handleSettle() {
 
     if (msg) {
       msg.classList.add("success");
-      if (page().state.customerPrepaidBalance > 0 && page().state.customerNetBalance <= 0) {
-        msg.textContent = `Payment recorded · credit balance +${formatCurrency(page().state.customerPrepaidBalance)}`;
-      } else if (page().state.customerNetBalance === 0) {
-        msg.textContent = "Fully settled.";
-      } else {
-        msg.textContent = `Settled · remaining ${formatCurrency(page().state.customerNetBalance)}`;
-      }
+      msg.classList.remove("hidden");
+      msg.textContent = formatRecordedBalance({
+        amount,
+        person: page().state.customerName,
+        remaining: page().state.customerNetBalance,
+        direction: "from",
+      });
     }
+    AppError.showToast(msg?.textContent || "", "success");
   } catch (err) {
-    if (msg) msg.textContent = AppError.getUserMessage(err);
+    AppError.showSaveError(AppError.getUserMessage(err), {
+      target: msg,
+      form: document.getElementById("settle-form"),
+    });
     AppError.report(err, { context: "creditCustomerSettle" });
   } finally {
     finishSettleSubmit();
@@ -1681,8 +1696,8 @@ async function deleteCreditEntry(entryId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Cancel the credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
-      { title: "Cancel credit entry", confirmLabel: "Cancel entry", danger: true }
+      `Delete the credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from the statement, and the balance is recalculated. This cannot be undone.`,
+      { title: "Delete credit entry", confirmLabel: "Delete entry", danger: true }
     );
     if (!confirmed) return;
 
@@ -1717,8 +1732,8 @@ async function deleteCreditPayment(paymentId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Cancel the settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
-      { title: "Cancel settlement", confirmLabel: "Cancel settlement", danger: true }
+      `Delete the settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from the statement, and the balance is recalculated. This cannot be undone.`,
+      { title: "Delete settlement", confirmLabel: "Delete settlement", danger: true }
     );
     if (!confirmed) return;
 

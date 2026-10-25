@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact */
+/* global window.supabaseClient, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatRecordedBalance, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact, confirmCreditOverpayment */
 
 (function () {
   const page = () => window.CreditPage;
@@ -9,6 +9,7 @@
   let quickPaymentCustomerId = null;
   let quickPaymentCustomerIds = [];
   let quickPaymentNetBalance = 0;
+  let quickPaymentSignedBalance = 0;
 
 function initRecordSalePanel() {
   initPersistedDateInput("quick-settle-date", RECORD_DATE_KEYS.creditQuickSettle);
@@ -66,12 +67,16 @@ function syncQuickPaymentPanel(nameInput) {
     quickPaymentCustomerId = null;
     quickPaymentCustomerIds = [];
     quickPaymentNetBalance = 0;
+    quickPaymentSignedBalance = 0;
     return;
   }
 
   quickPaymentCustomerId = suggestion.primaryId;
   quickPaymentCustomerIds = (suggestion.customerIds || []).filter(Boolean);
   quickPaymentNetBalance = suggestion.netBalance;
+  quickPaymentSignedBalance = Number.isFinite(suggestion.signedBalance)
+    ? suggestion.signedBalance
+    : suggestion.netBalance;
 
   if (customerEl) customerEl.textContent = suggestion.name;
   if (balanceEl) balanceEl.textContent = formatCurrency(suggestion.netBalance);
@@ -98,10 +103,10 @@ async function handleQuickPayment() {
       ? [quickPaymentCustomerId]
       : [];
   if (settleIds.length === 0) {
-    if (msg) {
-      msg.textContent = "Select an existing customer with outstanding balance.";
-      msg.classList.remove("hidden");
-    }
+    AppError.showSaveError("Select an existing customer with outstanding balance.", {
+      target: msg,
+      field: document.getElementById("customer"),
+    });
     return;
   }
 
@@ -114,21 +119,23 @@ async function handleQuickPayment() {
   const submitBtn = document.querySelector("#credit-quick-payment-form button[type='submit']");
 
   if (!amount || amount <= 0) {
-    if (msg) {
-      msg.textContent = "Enter a valid amount.";
-      msg.classList.remove("hidden");
-    }
+    AppError.showSaveError("Enter a valid amount.", {
+      target: msg,
+      field: document.getElementById("quick-settle-amount"),
+    });
     return;
   }
   if (settlementDate > todayStr) {
-    if (msg) {
-      msg.textContent = "Settlement date cannot be in the future.";
-      msg.classList.remove("hidden");
-    }
+    AppError.showSaveError("Settlement date cannot be in the future.", {
+      target: msg,
+      field: document.getElementById("quick-settle-date"),
+    });
     return;
   }
 
-  if (amount >= 10000) {
+  if (!(await confirmCreditOverpayment(amount, quickPaymentNetBalance))) return;
+
+  if (amount >= 10000 && Math.round(amount * 100) <= Math.round(Math.max(0, quickPaymentNetBalance) * 100)) {
     const ok = await AppDialog.confirm(`Record a payment of ${formatCurrency(amount)}?`, {
       title: "Confirm payment",
       confirmLabel: "Record payment",
@@ -188,6 +195,14 @@ async function handleQuickPayment() {
 
     restoreSubmit();
 
+    const person = document.getElementById("credit-quick-payment-customer")?.textContent?.trim() || "customer";
+    const recorded = formatRecordedBalance({
+      amount,
+      person,
+      remaining: quickPaymentSignedBalance - amount,
+      direction: "from",
+    });
+
     const amountInput = document.getElementById("quick-settle-amount");
     if (amountInput) amountInput.value = "";
     const sameDayInput = document.getElementById("quick-settle-same-day");
@@ -200,22 +215,31 @@ async function handleQuickPayment() {
     if (msg) {
       msg.classList.remove("hidden", "error");
       msg.classList.add("success");
-      msg.textContent = "Payment recorded.";
+      msg.textContent = recorded;
     }
-    AppError.showToast("Payment recorded successfully", "success");
+    AppError.showToast(recorded, "success");
   } catch (err) {
     restoreSubmit();
     if (err?.name === "DuplicateMutationError") return;
 
+    const message = AppError.getUserMessage(err);
+    const onField = AppError.showSaveError(message, {
+      target: msg,
+      form: document.getElementById("credit-quick-payment-form"),
+    });
     if (msg) {
-      msg.textContent = AppError.getUserMessage(err);
-      msg.classList.remove("hidden", "success");
+      msg.classList.remove("success");
       msg.classList.add("error");
     }
     AppError.report(err, { context: "handleQuickPayment", customerId: quickPaymentCustomerId });
     page().invalidateCreditCaches();
     await loadCustomerNames();
     syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+    if (!onField && msg && message) {
+      msg.textContent = message;
+      msg.classList.remove("hidden", "success");
+      msg.classList.add("error");
+    }
   }
 }
 
@@ -240,7 +264,7 @@ function buildCustomerSuggestions(rows) {
     const contact = pickContactFromRows(sorted);
     const totalDue = groupRows.reduce((s, r) => s + Number(r.amount_due || 0), 0);
     const totalPrepaid = groupRows.reduce((s, r) => s + Number(r.prepaid_balance || 0), 0);
-    const netBalance = totalDue - totalPrepaid;
+    const signedBalance = totalDue - totalPrepaid;
     const primary =
       sorted.find((r) => Number(r.amount_due) > 0) || sorted[0];
     return {
@@ -249,7 +273,8 @@ function buildCustomerSuggestions(rows) {
       vehicleNo: contact.vehicleNo,
       mobile: contact.mobile,
       address: contact.address,
-      netBalance: Math.max(0, netBalance),
+      netBalance: Math.max(0, signedBalance),
+      signedBalance,
       creditLimit: groupRows.map((row) => Number(row.credit_limit)).find((value) => Number.isFinite(value) && value > 0) || null,
       primaryId: primary?.id || null,
       customerIds: groupRows.map((row) => row.id).filter(Boolean),
@@ -373,6 +398,56 @@ function highlightComboboxOption(index) {
   options[index]?.scrollIntoView({ block: "nearest" });
 }
 
+const CREDIT_FUEL_MEMORY_KEY = "bpf.credit.fuelByCustomer";
+
+function readFuelMemory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CREDIT_FUEL_MEMORY_KEY) || "{}");
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function fuelMemoryKeys(name, id) {
+  const keys = [];
+  if (id) keys.push(`id:${id}`);
+  const norm = typeof normCustomerName === "function" ? normCustomerName(name) : String(name || "").trim().toLowerCase();
+  if (norm) keys.push(`name:${norm}`);
+  return keys;
+}
+
+function rememberedFuel(name, id) {
+  const map = readFuelMemory();
+  for (const key of fuelMemoryKeys(name, id)) {
+    if (map[key] === "MS" || map[key] === "HSD") return map[key];
+  }
+  return "";
+}
+
+function rememberCustomerFuel(name, id, fuel) {
+  if (fuel !== "MS" && fuel !== "HSD") return;
+  const keys = fuelMemoryKeys(name, id);
+  if (!keys.length) return;
+  const map = readFuelMemory();
+  keys.forEach((key) => {
+    map[key] = fuel;
+  });
+  try {
+    localStorage.setItem(CREDIT_FUEL_MEMORY_KEY, JSON.stringify(map));
+  } catch (_) {
+    /* private mode */
+  }
+}
+
+function applyRememberedFuel(name, id) {
+  const select = document.getElementById("fuel-type");
+  if (!select) return;
+  const fuel = rememberedFuel(name, id);
+  select.value = fuel === "MS" || fuel === "HSD" ? fuel : "HSD";
+  if (typeof syncFuelSelectStyle === "function") syncFuelSelectStyle(select);
+}
+
 function selectCustomerSuggestion(item) {
   if (!item) return;
   const input = document.getElementById("customer");
@@ -388,6 +463,7 @@ function selectCustomerSuggestion(item) {
   }
 
   setComboboxOpen(false);
+  applyRememberedFuel(item.name, item.primaryId);
   syncQuickPaymentPanel(item.name);
   document.getElementById("amount")?.focus();
 }
@@ -490,7 +566,10 @@ async function handleCreditSubmit(event) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save sale";
     }
-    AppError.handle(new Error("Customer and amount are required."), { target: errorEl });
+    AppError.showSaveError("Customer and amount are required.", {
+      target: errorEl,
+      field: !customerNameInput ? form.querySelector("#customer") : form.querySelector("#amount"),
+    });
     return;
   }
 
@@ -500,7 +579,10 @@ async function handleCreditSubmit(event) {
       submitBtn.disabled = false;
       submitBtn.textContent = "Save sale";
     }
-    AppError.handle(new Error("Credit date cannot be in the future."), { target: errorEl });
+    AppError.showSaveError("Credit date cannot be in the future.", {
+      target: errorEl,
+      field: form.querySelector("#credit-date"),
+    });
     return;
   }
 
@@ -565,26 +647,39 @@ async function handleCreditSubmit(event) {
 
     restoreSubmit();
 
+    rememberCustomerFuel(customerNameInput, existing?.primaryId, savedFuel || fuelType);
     finishRecordFormSave(form, { credit_date: transactionDate }, {
       credit_date: RECORD_DATE_KEYS.creditTransaction,
     });
     setComboboxOpen(false);
     const fuelTypeSelect = form.querySelector("#fuel-type");
-    if (fuelTypeSelect) fuelTypeSelect.value = savedFuel || "HSD";
+    if (fuelTypeSelect) {
+      fuelTypeSelect.value = savedFuel || "HSD";
+      if (typeof syncFuelSelectStyle === "function") syncFuelSelectStyle(fuelTypeSelect);
+    }
 
-    successEl?.classList.remove("hidden");
+    const recorded = formatRecordedBalance({
+      amount,
+      person: customerNameInput,
+      remaining: (existing?.signedBalance || 0) + amount,
+      direction: "for",
+    });
+    if (successEl) {
+      successEl.textContent = recorded;
+      successEl.classList.remove("hidden");
+    }
     page().invalidateAndRefreshCreditPortfolio();
     loadCustomerNames().then(() => {
       syncQuickPaymentPanel(form.querySelector("#customer")?.value || "");
     });
 
     form.querySelector("#customer")?.focus();
-    AppError.showToast("Credit sale recorded", "success");
+    AppError.showToast(recorded, "success");
   } catch (err) {
     restoreSubmit();
     if (err?.name === "DuplicateMutationError") return;
 
-    AppError.handle(err, { target: errorEl });
+    AppError.handle(err, { target: errorEl, form });
   }
 }
 
@@ -592,6 +687,14 @@ async function handleCreditSubmit(event) {
     if (ready) return;
     const form = document.getElementById("credit-form");
     if (form) form.addEventListener("submit", (e) => handleCreditSubmit(e));
+    const fuelTypeSelect = document.getElementById("fuel-type");
+    fuelTypeSelect?.addEventListener("change", () => {
+      if (typeof syncFuelSelectStyle === "function") syncFuelSelectStyle(fuelTypeSelect);
+      const name = document.getElementById("customer")?.value || "";
+      if (!name.trim()) return;
+      const match = findCustomerSuggestionByName(name);
+      rememberCustomerFuel(name, match?.primaryId, fuelTypeSelect.value);
+    });
     const transactionDateInput = document.getElementById("credit-date");
     if (transactionDateInput) initPersistedDateInput(transactionDateInput, RECORD_DATE_KEYS.creditTransaction);
     initRecordSalePanel();

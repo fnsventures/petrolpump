@@ -774,6 +774,70 @@ html.app-chrome-ready body.has-app-sidebar {
   body.has-app-sections .settings-layout.dashboard-page-layout > .dashboard-context-rail {
     grid-column: 1 / -1;
   }
+
+  body.has-app-tabbar {
+    --app-tabbar-offset: 3.45rem;
+    padding-bottom: calc(var(--app-tabbar-offset) + var(--safe-bottom));
+  }
+
+  .app-tabbar {
+    position: fixed;
+    z-index: 280;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    gap: 0.15rem;
+    margin: 0;
+    padding:
+      0.2rem
+      max(0.35rem, var(--safe-right))
+      var(--safe-bottom)
+      max(0.35rem, var(--safe-left));
+    background: linear-gradient(180deg, var(--app-sidebar-bg-2) 0%, var(--app-sidebar-bg) 100%);
+    box-shadow: inset 0 3px 0 var(--app-sidebar-active);
+    color: var(--app-sidebar-text);
+  }
+
+  .app-tabbar-link {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.12rem;
+    min-width: 0;
+    min-height: 3.15rem;
+    padding: 0.25rem 0.15rem 0.35rem;
+    border-radius: 0.65rem;
+    color: inherit;
+    font-size: 0.68rem;
+    font-weight: 700;
+    line-height: 1.1;
+    text-decoration: none;
+  }
+
+  .app-tabbar-link .app-sidebar-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .app-tabbar-link.is-active,
+  .app-tabbar-link[aria-current="page"] {
+    color: var(--app-sidebar-active);
+    background: rgba(255, 204, 0, 0.16);
+  }
+
+  body.has-app-tabbar .app-network-status {
+    bottom: calc(var(--app-tabbar-offset) + var(--safe-bottom));
+    padding-bottom: 0.5rem;
+  }
+
+  body.has-app-tabbar #day-closing-form .form-actions {
+    bottom: calc(var(--app-tabbar-offset) + var(--safe-bottom));
+  }
 }
 
 @media (min-width: 961px) {
@@ -812,10 +876,21 @@ html.app-chrome-ready body.has-app-sidebar {
   }
 }
 
+@media (min-width: 961px) {
+  .app-tabbar {
+    display: none;
+  }
+}
+
 @media print {
   .app-sidebar,
-  .app-sidebar-backdrop {
+  .app-sidebar-backdrop,
+  .app-tabbar {
     display: none !important;
+  }
+
+  body.has-app-tabbar {
+    padding-bottom: 0 !important;
   }
 
   html.has-app-sidebar body,

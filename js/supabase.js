@@ -66,12 +66,31 @@ async function loadAppConfig() {
     );
   }
 
+  try {
+    const hash = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
+    const query = new URLSearchParams(window.location.search);
+    if (hash.get("type") === "recovery" || query.get("type") === "recovery") {
+      window.__passwordRecovery = true;
+    }
+  } catch (_) {
+    /* ignore malformed urls */
+  }
+
   const client = supabase.createClient(
     runtimeConfig.SUPABASE_URL || "https://invalid.local",
     runtimeConfig.SUPABASE_ANON_KEY || "invalid"
   );
 
   setClient(client);
+  if (typeof client.auth?.onAuthStateChange === "function") {
+    try {
+      client.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") window.__passwordRecovery = true;
+      });
+    } catch (_) {
+      /* login.html's small client must still be able to sign in */
+    }
+  }
   window.isAppConfigValid = isAppConfigValid;
 
   return configValid;
