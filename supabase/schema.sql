@@ -3504,6 +3504,8 @@ comment on column public.credit_entries.employee_id is
   'Optional: staff who gave credit during a shift register entry.';
 comment on column public.credit_entries.shift is
   'Optional: morning/afternoon when entered from shift register.';
+comment on column public.credit_entries.status is
+  'posted, or cancelled only for a leftover row from before admin delete removed the record. Cancelled rows stay out of balances until an admin deletes them.';
 
 alter table public.credit_entries enable row level security;
 
@@ -3644,6 +3646,8 @@ comment on table public.credit_payments is 'Payments received from credit custom
 comment on column public.credit_payments.payment_mode is 'Mode of payment received (Settlement Date = date column).';
 comment on column public.credit_payments.same_day_settlement is
   'When true, payment settles same-day credit: excluded from Collection, counted in Night cash / Phone pay.';
+comment on column public.credit_payments.status is
+  'posted, or cancelled only for a leftover row from before admin delete removed the record. Cancelled payments stay out of balances until an admin deletes them.';
 
 alter table public.credit_payments enable row level security;
 
@@ -5845,6 +5849,15 @@ declare
   v_date date;
   v_old_date date;
 begin
+  -- A cancelled sale or payment is already out of balances and day closing.
+  -- Deleting that leftover row must not be blocked by a certified or collected day.
+  if tg_op = 'DELETE'
+     and tg_table_name in ('credit_entries', 'credit_payments')
+     and old.status = 'cancelled'
+  then
+    return null;
+  end if;
+
   if tg_table_name = 'credit_entries' then
     if tg_op = 'UPDATE'
        and old.transaction_date is not distinct from new.transaction_date
@@ -5980,7 +5993,7 @@ declare
   v_last_payment date;
 begin
   if not public.is_admin() then
-    raise exception 'Only an admin can cancel credit settlements';
+    raise exception 'Only an admin can delete credit settlements';
   end if;
 
   select * into v_payment
@@ -5990,11 +6003,10 @@ begin
   if not found then
     raise exception 'Settlement record not found';
   end if;
-  if v_payment.status = 'cancelled' then
-    raise exception 'Settlement is already cancelled';
-  end if;
 
-  perform public.raise_if_day_closing_certified(v_payment.date);
+  if v_payment.status is distinct from 'cancelled' then
+    perform public.raise_if_day_closing_certified(v_payment.date);
+  end if;
 
   perform 1
   from public.credit_customers
@@ -6004,40 +6016,41 @@ begin
   perform set_config('app.skip_day_closing_refresh', 'true', true);
   perform set_config('app.skip_credit_sync', 'true', true);
 
-  update public.credit_payments
-  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  delete from public.credit_payments
   where id = p_payment_id;
 
   perform set_config('app.skip_credit_sync', '', true);
   perform set_config('app.skip_day_closing_refresh', '', true);
 
-  perform public.reallocate_credit_settlements(v_payment.credit_customer_id);
+  if v_payment.status is distinct from 'cancelled' then
+    perform public.reallocate_credit_settlements(v_payment.credit_customer_id);
 
-  select max(date) into v_last_payment
-  from public.credit_payments
-  where credit_customer_id = v_payment.credit_customer_id
-    and status = 'posted';
+    select max(date) into v_last_payment
+    from public.credit_payments
+    where credit_customer_id = v_payment.credit_customer_id
+      and status = 'posted';
 
-  update public.credit_customers
-  set last_payment = v_last_payment
-  where id = v_payment.credit_customer_id;
+    update public.credit_customers
+    set last_payment = v_last_payment
+    where id = v_payment.credit_customer_id;
+
+    perform public.apply_credit_payment_to_day_closing(
+      v_payment.date,
+      coalesce(v_payment.same_day_settlement, false),
+      coalesce(v_payment.payment_mode, 'Cash'),
+      -v_payment.amount
+    );
+  end if;
 
   select amount_due, prepaid_balance into v_new_due, v_prepaid
   from public.credit_customers
   where id = v_payment.credit_customer_id;
 
-  perform public.apply_credit_payment_to_day_closing(
-    v_payment.date,
-    coalesce(v_payment.same_day_settlement, false),
-    coalesce(v_payment.payment_mode, 'Cash'),
-    -v_payment.amount
-  );
-
   return jsonb_build_object(
     'credit_customer_id', v_payment.credit_customer_id,
     'deleted_amount', v_payment.amount,
     'deleted_date', v_payment.date,
-    'cancelled', true,
+    'deleted', true,
     'new_due', v_new_due,
     'prepaid_balance', v_prepaid
   );
@@ -6045,7 +6058,7 @@ end;
 $$;
 
 comment on function public.delete_credit_payment(uuid) is
-  'Admin-only: delete a credit settlement and re-allocate remaining payments FIFO.';
+  'Admin-only: delete a credit settlement and re-allocate remaining payments FIFO. The row is removed.';
 
 create or replace function public.delete_day_closing(p_id uuid)
 returns jsonb
@@ -6104,7 +6117,7 @@ declare
   v_prepaid numeric;
 begin
   if not public.is_admin() then
-    raise exception 'Only an admin can cancel credit entries';
+    raise exception 'Only an admin can delete credit entries';
   end if;
 
   select * into v_entry
@@ -6114,11 +6127,10 @@ begin
   if not found then
     raise exception 'Credit entry not found';
   end if;
-  if v_entry.status = 'cancelled' then
-    raise exception 'Credit entry is already cancelled';
-  end if;
 
-  perform public.raise_if_day_closing_certified(v_entry.transaction_date);
+  if v_entry.status is distinct from 'cancelled' then
+    perform public.raise_if_day_closing_certified(v_entry.transaction_date);
+  end if;
 
   perform 1
   from public.credit_customers
@@ -6128,26 +6140,26 @@ begin
   perform set_config('app.skip_day_closing_refresh', 'true', true);
   perform set_config('app.skip_credit_sync', 'true', true);
 
-  update public.credit_entries
-  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  delete from public.credit_entries
   where id = p_entry_id;
 
   perform set_config('app.skip_credit_sync', '', true);
   perform set_config('app.skip_day_closing_refresh', '', true);
 
-  perform public.reallocate_credit_settlements(v_entry.credit_customer_id);
+  if v_entry.status is distinct from 'cancelled' then
+    perform public.reallocate_credit_settlements(v_entry.credit_customer_id);
+    perform public.sync_saved_day_closing_for_date(v_entry.transaction_date);
+  end if;
 
   select amount_due, prepaid_balance into v_new_due, v_prepaid
   from public.credit_customers
   where id = v_entry.credit_customer_id;
 
-  perform public.sync_saved_day_closing_for_date(v_entry.transaction_date);
-
   return jsonb_build_object(
     'credit_customer_id', v_entry.credit_customer_id,
     'amount', v_entry.amount,
     'transaction_date', v_entry.transaction_date,
-    'cancelled', true,
+    'deleted', true,
     'new_due', v_new_due,
     'prepaid_balance', v_prepaid
   );
@@ -6155,7 +6167,7 @@ end;
 $$;
 
 comment on function public.delete_credit_entry(uuid) is
-  'Admin-only: delete a credit sale entry. Settled entries re-allocate remaining payments FIFO.';
+  'Admin-only: delete a credit sale. The row is removed. Settled entries re-allocate remaining payments FIFO.';
 
 -- Open credit as of date D (entries with transaction_date <= D minus payments with date <= D)
 create or replace function public.get_open_credit_as_of(p_date date)
@@ -7600,12 +7612,11 @@ begin
   if v_row.employee_id is null or v_row.shift is null then
     raise exception 'Only shift-register credit entries can be removed here';
   end if;
-  if v_row.status = 'cancelled' then
-    raise exception 'Credit entry is already cancelled';
-  end if;
 
-  perform public.require_meter_shift_writable(v_row.transaction_date, v_row.shift);
-  perform public.raise_if_day_closing_certified(v_row.transaction_date);
+  if v_row.status is distinct from 'cancelled' then
+    perform public.require_meter_shift_writable(v_row.transaction_date, v_row.shift);
+    perform public.raise_if_day_closing_certified(v_row.transaction_date);
+  end if;
 
   if not public.is_admin() and v_row.created_by is distinct from auth.uid() then
     raise exception 'Only the creator or an admin can remove this credit sale';
@@ -7616,19 +7627,23 @@ begin
   perform set_config('app.skip_day_closing_refresh', 'true', true);
   perform set_config('app.skip_credit_sync', 'true', true);
 
-  update public.credit_entries
-  set status = 'cancelled', cancelled_at = timezone('utc', now()), cancelled_by = auth.uid()
+  delete from public.credit_entries
   where id = p_entry_id;
 
   perform set_config('app.skip_credit_sync', '', true);
   perform set_config('app.skip_day_closing_refresh', '', true);
 
-  perform public.reallocate_credit_settlements(v_row.credit_customer_id);
-  perform public.sync_saved_day_closing_for_date(v_row.transaction_date);
+  if v_row.status is distinct from 'cancelled' then
+    perform public.reallocate_credit_settlements(v_row.credit_customer_id);
+    perform public.sync_saved_day_closing_for_date(v_row.transaction_date);
+  end if;
 
-  return jsonb_build_object('deleted', true, 'cancelled', true, 'id', p_entry_id);
+  return jsonb_build_object('deleted', true, 'id', p_entry_id);
 end;
 $$;
+
+comment on function public.delete_shift_credit_entry(uuid) is
+  'Remove a shift-register credit sale. The row is deleted, not marked cancelled.';
 
 create or replace function public.delete_shift_expense(p_expense_id uuid)
 returns jsonb
@@ -8069,10 +8084,7 @@ begin
       and e.employee_id is not null
       and e.status = 'posted'
   loop
-    update public.credit_entries e
-    set status = 'cancelled',
-        cancelled_at = timezone('utc', now()),
-        cancelled_by = auth.uid()
+    delete from public.credit_entries e
     where e.transaction_date = p_date
       and e.shift = v_shift
       and e.employee_id is not null
@@ -8082,6 +8094,12 @@ begin
     v_credit := v_credit + v_n;
     perform public.reallocate_credit_settlements(v_customer_id);
   end loop;
+
+  delete from public.credit_entries e
+  where e.transaction_date = p_date
+    and e.shift = v_shift
+    and e.employee_id is not null
+    and e.status = 'cancelled';
 
   delete from public.expenses x
   where x.date = p_date
@@ -8112,7 +8130,7 @@ end;
 $$;
 
 comment on function public.delete_meter_shift_readings(date, text) is
-  'Admin-only: remove shift nozzles and cash, cancel posted shift credit (the row stays), delete shift expenses, and refresh dsr_* meters.';
+  'Admin-only: remove shift nozzles and cash, delete shift credit sales, delete shift expenses, and refresh dsr_* meters.';
 
 grant execute on function public.delete_meter_shift_readings(date, text) to authenticated;
 
