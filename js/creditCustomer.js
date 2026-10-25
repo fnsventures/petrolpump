@@ -1696,8 +1696,8 @@ async function deleteCreditEntry(entryId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Cancel the credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
-      { title: "Cancel credit entry", confirmLabel: "Cancel entry", danger: true }
+      `Delete the credit entry of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from the statement, and the balance is recalculated. This cannot be undone.`,
+      { title: "Delete credit entry", confirmLabel: "Delete entry", danger: true }
     );
     if (!confirmed) return;
 
@@ -1732,8 +1732,8 @@ async function deleteCreditPayment(paymentId, btn) {
   const dateLabel = dateStr ? formatDisplayDate(dateStr) : "this date";
   try {
     const confirmed = await AppDialog.confirm(
-      `Cancel the settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt stays on the statement as cancelled, and the balance is recalculated.`,
-      { title: "Cancel settlement", confirmLabel: "Cancel settlement", danger: true }
+      `Delete the settlement of ${formatCurrency(amount)} on ${dateLabel}?\n\nIt will be removed from the statement, and the balance is recalculated. This cannot be undone.`,
+      { title: "Delete settlement", confirmLabel: "Delete settlement", danger: true }
     );
     if (!confirmed) return;
 

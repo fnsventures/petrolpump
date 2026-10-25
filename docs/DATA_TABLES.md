@@ -630,7 +630,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | amount_settled | numeric | Amount already paid. Payments allocate newest-open-first (LIFO). Prepaid is applied oldest-first when a new sale is saved |
 | employee_id | uuid | Optional staff for a shift-register sale |
 | shift | text | `morning` \| `afternoon`, or null. Set together with `employee_id` or leave both null |
-| status | text | `posted` or `cancelled`. Cancelled rows stay for the record and are left out of balances and shift short |
+| status | text | `posted`, or `cancelled` only for a leftover row from before admin delete removed the record. Cancelled rows stay out of balances until an admin deletes them |
 | entry_kind | text | `sale`, or `opening` when a carried-over balance was turned into a normal entry |
 | cancelled_at | timestamptz | Set when status becomes `cancelled` |
 | cancelled_by | uuid | auth.users.id of the person who cancelled |
@@ -639,7 +639,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Constraint:** `amount_settled <= amount`.
 
-**RLS:** SELECT provisioned staff; INSERT, UPDATE, and DELETE denied on the client. `add_credit_entry` writes the sale. Payment RPCs write `amount_settled`. Cancel goes through `delete_credit_entry`, which keeps the row.
+**RLS:** SELECT provisioned staff; INSERT, UPDATE, and DELETE denied on the client. `add_credit_entry` writes the sale. Payment RPCs write `amount_settled`. Admin delete goes through `delete_credit_entry`, which removes the row.
 
 **Trigger:** `credit_entries_sync_amount_due` calls `sync_credit_customer_balances` (`amount_due` and `prepaid_balance`), unless the RPC set `app.skip_credit_sync`. `ledger_guard_certified_day` rejects a certified sale date. An update that only changes `amount_settled` is still allowed inside those RPCs, so a later payment can settle that sale.
 
@@ -658,15 +658,15 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | note | text | Optional |
 | payment_mode | text | `Cash` \| `UPI` \| `Bank` |
 | same_day_settlement | boolean | True when the payment settles same-day credit (excluded from collection) |
-| status | text | `posted` or `cancelled`. Cancelled payments stay for the record and are left out of balances |
+| status | text | `posted`, or `cancelled` only for a leftover row from before admin delete removed the record. Cancelled payments stay out of balances until an admin deletes them |
 | cancelled_at | timestamptz | Set when status becomes `cancelled` |
 | cancelled_by | uuid | auth.users.id of the person who cancelled |
 | created_by | uuid | auth.users.id |
 | created_at | timestamptz | Created at |
 
-**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client — same pattern as `salary_payments`. `record_credit_payment` and `batch_record_credit_settlements` insert the row. Direct DELETE is denied. Cancel goes through `delete_credit_payment`, which keeps the row and sets `status` to `cancelled`.
+**RLS:** SELECT provisioned staff; INSERT and UPDATE denied on client — same pattern as `salary_payments`. `record_credit_payment` and `batch_record_credit_settlements` insert the row. Direct DELETE is denied. Admin delete goes through `delete_credit_payment`, which removes the row.
 
-**Note:** A sale or payment that is not backdated settles only the open rows it touches. A backdated write, and every cancel, runs `reallocate_credit_settlements`: newest open sale on or before the payment date first, then any leftover advance settles the oldest open sale. A payment refreshes day closing once. A certified payment date is rejected. Cancelling a same-day Cash or UPI payment subtracts it from night cash or phone pay.
+**Note:** A sale or payment that is not backdated settles only the open rows it touches. A backdated write, and every admin delete, runs `reallocate_credit_settlements`: newest open sale on or before the payment date first, then any leftover advance settles the oldest open sale. A payment refreshes day closing once. A certified payment date is rejected. Deleting a same-day Cash or UPI payment subtracts it from night cash or phone pay.
 
 ---
 
@@ -938,8 +938,8 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
 | `record_salary_payment(...)` | Salary payment + linked expense; server overpay check (admin-only override); rejects a certified payment date | — |
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
-| `delete_credit_entry(id)` | Cancel a sale (row stays) and reallocate. Locks the customer first | admin |
-| `delete_credit_payment(id)` | Cancel a payment (row stays) and reallocate. Locks the customer first | admin |
+| `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |
+| `delete_credit_payment(id)` | Delete a payment (row is removed) and reallocate. Locks the customer first | admin |
 | `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets | — |
 | `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
