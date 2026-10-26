@@ -3294,6 +3294,8 @@ declare
   v_bad_count int;
   v_status text;
   v_over_duty boolean;
+  v_today date;
+  v_month_end date;
 begin
   if not public.is_supervisor_or_admin() then
     raise exception 'Supervisor or admin access required';
@@ -3302,7 +3304,8 @@ begin
   if p_date is null then
     raise exception 'Date is required';
   end if;
-  if p_date > public.meter_station_today() then
+  v_today := public.meter_station_today();
+  if p_date > v_today then
     raise exception 'Attendance cannot be marked for a future date';
   end if;
   perform public.raise_if_day_closing_certified(p_date);
@@ -3311,16 +3314,25 @@ begin
     return jsonb_build_object('saved', 0);
   end if;
 
-  if exists (
-    select 1
-    from public.salary_payments sp
-    where sp.salary_month = date_trunc('month', p_date)::date
-      and sp.employee_id in (
-        select (t.value->>'employee_id')::uuid
-        from jsonb_array_elements(p_rows) as t(value)
-        where nullif(trim(t.value->>'employee_id'), '') is not null
-      )
-  ) then
+  -- Pay during the month, and yesterday's row the next morning (including the
+  -- morning after the month ends), must still save. For a supervisor, older
+  -- days in a finished month that already has a payment stay locked. An admin
+  -- can always correct those days.
+  v_month_end := (date_trunc('month', p_date) + interval '1 month' - interval '1 day')::date;
+  if not public.is_admin()
+     and p_date < (v_today - 1)
+     and v_today > v_month_end
+     and exists (
+       select 1
+       from public.salary_payments sp
+       where sp.salary_month = date_trunc('month', p_date)::date
+         and sp.employee_id in (
+           select (t.value->>'employee_id')::uuid
+           from jsonb_array_elements(p_rows) as t(value)
+           where nullif(trim(t.value->>'employee_id'), '') is not null
+         )
+     )
+  then
     raise exception 'Attendance is locked because salary for this month has been paid';
   end if;
 
@@ -3382,7 +3394,7 @@ end;
 $$;
 
 comment on function public.save_employee_attendance_batch(date, jsonb) is
-  'Upsert attendance for one date. Blocks future and certified dates, a month that already has salary paid, and rows another user created.';
+  'Upsert attendance for one date. Blocks future and certified dates, and rows another user created. For a supervisor, a salary payment locks days before yesterday in a month that has already ended. An admin is not blocked by a salary payment.';
 
 grant execute on function public.save_employee_attendance_batch(date, jsonb) to authenticated;
 
