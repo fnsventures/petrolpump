@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils, computeDayClosingShort */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils, computeDayClosingShort, bindUnsavedDraft */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
@@ -36,6 +36,8 @@ let dcStepTarget = null;
 let dcCommittingDate = false;
 let expenseCategoryLabels = null;
 let dcDom = null;
+/** Typed night cash / phone pay / remarks for the loaded date, kept on this device. */
+let dcDraft = null;
 let dcRegisterPrintRows = [];
 let dcRegisterPrintRange = null;
 const dcBreakdownEls = {};
@@ -683,6 +685,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false, quiet
   }
   dcCloseLoadedDate = dateStr;
   invalidateDcCloseCaches(dateStr);
+  dcDraft?.pause();
 
   const requestId = ++dcBreakdownRequestId;
 
@@ -704,6 +707,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false, quiet
     if (requestId !== dcBreakdownRequestId) return;
     AppError.report(err, { context: "loadDayClosingBreakdown" });
     dayClosingBreakdown = null;
+    dcDraft?.resume();
     setBreakdownAmounts(DC_EMPTY);
     syncDayClosingCertifyPanel(null);
     if (dcDom.errorEl) {
@@ -725,6 +729,7 @@ async function loadDayClosingBreakdown(dateStr, { preserveSuccess = false, quiet
   if (requestId !== dcBreakdownRequestId) return;
 
   applyDayClosingBreakdownUi(b, { preserveSuccess });
+  settleDayClosingDraft();
 
   await refreshDayClosingDetailsState(dateStr).catch((err) => {
     AppError.report(err, { context: "refreshDayClosingDetailsState" });
@@ -797,6 +802,46 @@ function applyDayClosingBreakdownUi(b, { preserveSuccess = false } = {}) {
   } else {
     updateDayClosingShortLive();
   }
+}
+
+function captureDayClosingDraft() {
+  const fields = [dcDom?.nightCashInput, dcDom?.phonePayInput, dcDom?.remarksInput];
+  if (fields.some((el) => !el || el.disabled)) return null;
+  return {
+    night_cash: dcDom.nightCashInput.value,
+    phone_pay: dcDom.phonePayInput.value,
+    remarks: dcDom.remarksInput.value,
+  };
+}
+
+function restoreDayClosingDraft(fields) {
+  if (!fields || captureDayClosingDraft() == null) return false;
+  dcDom.nightCashInput.value = sanitizeDayClosingMoneyTyping(fields.night_cash);
+  dcDom.phonePayInput.value = sanitizeDayClosingMoneyTyping(fields.phone_pay);
+  dcDom.remarksInput.value = String(fields.remarks ?? "");
+  return true;
+}
+
+function bindDayClosingDraft() {
+  if (dcDraft || !dcDom?.form || typeof bindUnsavedDraft !== "function") return;
+  dcDraft = bindUnsavedDraft({
+    key: () => (dcCloseLoadedDate && !dcStepPendingDate ? `day-closing.${dcCloseLoadedDate}` : null),
+    root: dcDom.form,
+    capture: captureDayClosingDraft,
+    restore: restoreDayClosingDraft,
+    skipTarget: () => Boolean(dcStepPendingDate),
+  });
+}
+
+/** After the breakdown fills the inputs: they become the saved state, then any local draft goes on top. */
+function settleDayClosingDraft() {
+  if (!dcDraft) return;
+  dcDraft.resume();
+  dcDraft.adoptServerState();
+  if (!dcDraft.restore()) return;
+  updateDayClosingShortLive();
+  syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
+  AppError.showToast("Restored unsaved day closing entries from this device.", "info");
 }
 
 function canOverwriteDayClosing(breakdown) {
@@ -1392,11 +1437,11 @@ function formatRegisterCashStatusText(row) {
 function renderCertifiedStatus(isCertified, certifiedAt) {
   if (isCertified) {
     const when = formatCertifiedWhen(certifiedAt);
-    return `<span class="dc-status-stack"><span class="dc-status-badge dc-status-badge--certified">Certified</span>${
+    return `<span class="dc-status-stack"><span class="badge badge--success">Certified</span>${
       when ? `<span class="dc-status-ref">${escapeHtml(when)}</span>` : ""
     }</span>`;
   }
-  return '<span class="dc-status-badge dc-status-badge--pending">Awaiting</span>';
+  return '<span class="badge badge--warning">Awaiting</span>';
 }
 
 function buildDayClosingStatementHtml() {
@@ -1705,6 +1750,7 @@ async function stepDayClosingDate(days) {
   ) {
     return;
   }
+  dcDraft?.markClean();
   // Show the new date immediately; drop any in-flight load for an intermediate day.
   // Hold the target so a certified day's focused weekday segment cannot revert the input
   // and cancel this navigation.
@@ -1771,6 +1817,7 @@ async function initializeDayClosing() {
   };
   bindMoneyInput(nightCashInput);
   bindMoneyInput(phonePayInput);
+  bindDayClosingDraft();
   dcDom.remarksInput?.addEventListener("input", () => {
     syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
   });
@@ -1852,6 +1899,7 @@ async function initializeDayClosing() {
         p_remarks: remarks,
       });
       if (error) throw error;
+      dcDraft?.markClean();
       dayClosingBreakdown = {
         ...data,
         already_saved: true,
@@ -2085,10 +2133,10 @@ function amtCell(value, extraClass = "") {
 
 function renderNightCashStatus(isCollected, collectedRef) {
   if (!isCollected) {
-    return '<span class="dc-status-badge dc-status-badge--pending">At pump</span>';
+    return '<span class="badge badge--warning">At pump</span>';
   }
   const ref = collectedRef ? escapeHtml(collectedRef) : "";
-  return `<span class="dc-status-badge dc-status-badge--collected">Collected</span>${ref ? `<span class="dc-status-ref">${ref}</span>` : ""}`;
+  return `<span class="badge badge--info">Collected</span>${ref ? `<span class="dc-status-ref">${ref}</span>` : ""}`;
 }
 
 function formatNightCashMeta(pendingNightCash, collectedNightCash, pendingCount, collectedCount) {

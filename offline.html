@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
         <script>
       if (window.top !== window.self) {
         try { window.top.location = window.location.href; } catch (err) {}
@@ -15,101 +15,8 @@
     <meta name="theme-color" content="#0070c0" />
     <meta name="robots" content="noindex" />
     <script src="js/theme.js"></script>
-    <style>
-      :root {
-        --bpcl-blue: #0070c0;
-        --bpcl-blue-dark: #005a9c;
-        --text: #0f172a;
-        --muted: #64748b;
-        --surface: #ffffff;
-        --bg: #f8fafc;
-        --border: #e2e8f0;
-      }
-      html[data-theme="dark"] {
-        color-scheme: dark;
-        --text: #f8fafc;
-        --muted: #94a3b8;
-        --surface: #111827;
-        --bg: #0b1220;
-        --border: #334155;
-        --bpcl-blue: #38bdf8;
-        --bpcl-blue-dark: #7dd3fc;
-      }
-      * {
-        box-sizing: border-box;
-      }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        min-height: 100dvh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 1.5rem;
-        font-family: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-        background: var(--bg);
-        color: var(--text);
-      }
-      .card {
-        width: min(26rem, 100%);
-        padding: 1.75rem 1.5rem;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-      }
-      .card::before {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, var(--bpcl-blue) 0%, var(--bpcl-blue) 38%, #ffcc00 38%, #ffcc00 100%);
-      }
-      h1 {
-        margin: 0 0 0.5rem;
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: var(--bpcl-blue);
-      }
-      p {
-        margin: 0 0 1.25rem;
-        font-size: 0.9375rem;
-        line-height: 1.5;
-        color: var(--muted);
-      }
-      button {
-        appearance: none;
-        border: none;
-        border-radius: 8px;
-        padding: 0.65rem 1.25rem;
-        font: inherit;
-        font-weight: 600;
-        font-size: 0.9375rem;
-        color: #fff;
-        background: var(--bpcl-blue);
-        cursor: pointer;
-      }
-      button:hover {
-        background: var(--bpcl-blue-dark);
-      }
-      .links {
-        margin-top: 1rem;
-        font-size: 0.8125rem;
-      }
-      .links a {
-        color: var(--bpcl-blue);
-        text-decoration: none;
-        font-weight: 600;
-      }
-      .links a:hover {
-        text-decoration: underline;
-      }
-    </style>
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/offline.css" />
   </head>
   <body>
     <main class="card" role="main">

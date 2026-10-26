@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment */
+/* global window.supabaseClient, formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
 
 (function () {
   const page = () => window.CreditPage;
@@ -18,6 +18,7 @@
   let customerDetailReady = false;
   let detailLoadSeq = 0;
   let settleInFlight = false;
+  let settleDraft = null;
   const deleteInFlight = new Set();
 
 function applyCustomerPeriodFromUrl(params) {
@@ -66,9 +67,8 @@ function applyCustomerPeriodFromUrl(params) {
 
 async function initCustomerView() {
   PrintUtils.preloadCreditSummaryPrintCss?.();
-  if (typeof loadPumpSettings === "function") {
-    await loadPumpSettings();
-  }
+  // Only the print sheet reads pump settings; load them alongside the account instead of before it.
+  if (typeof loadPumpSettings === "function") void Promise.resolve(loadPumpSettings()).catch(() => {});
 
   page().setSidebarMode("customer");
   page().setCustomerToolbarVisible(true);
@@ -122,8 +122,6 @@ async function initCustomerView() {
   if (paymentActionsHead) paymentActionsHead.hidden = !page().isAdmin;
 
   initCreditDeleteHandlers();
-
-  await resolveCustomerIds();
   initCustomerInfoEdit();
 
   if (typeof initPageSections === "function") {
@@ -157,6 +155,26 @@ async function initCustomerView() {
 
   customerDetailReady = true;
   await loadCustomerDetail();
+  bindSettleDraft();
+}
+
+/** One draft per customer; the payment date is remembered separately. */
+function bindSettleDraft() {
+  const form = document.getElementById("settle-form");
+  if (!form || settleDraft || typeof bindUnsavedDraft !== "function") return;
+  settleDraft = bindUnsavedDraft({
+    key: () => {
+      const who = page().state.customerId || normCustomerName(page().state.customerName);
+      return who ? `credit.settle.${who}` : null;
+    },
+    root: form,
+    capture: () => omitDraftFields(captureDomDraftFields(form), ["settle-date"]),
+    skipTarget: (target) => target?.id === "settle-date",
+  });
+  settleDraft.adoptServerState();
+  if (settleDraft.restore()) {
+    AppError.showToast("Restored an unsaved payment from this device.", "info");
+  }
 }
 
 function getCustomerViewFilter() {
@@ -522,7 +540,6 @@ async function saveCustomerContact() {
   page().state.creditLimit = Number.isFinite(creditLimit) ? creditLimit : null;
   if (nameChanged) applyCustomerDisplayName(newName);
   page().invalidateCreditCaches();
-  await resolveCustomerIds();
   await loadCustomerDetail();
   closeCustomerEditModal();
 }
@@ -719,7 +736,7 @@ function creditSummaryPartyHtml(name, mobile, vehicleLine, address) {
           <dt>Vehicle no.</dt>
           <dd>${escapeHtml(vehicleLine)}</dd>
         </div>
-        <div style="grid-column:1/-1">
+        <div class="credit-summary-party-wide">
           <dt>Address</dt>
           <dd>${escapeHtml(address)}</dd>
         </div>
@@ -784,7 +801,7 @@ function collectDayActivityDisplay(rows, options) {
 function buildDayTableHtml(rows, emptyLabel, options) {
   if (!rows.length) {
     return {
-      body: `<tr><td colspan="3" class="muted" style="text-align:center">${escapeHtml(emptyLabel)}</td></tr>`,
+      body: `<tr><td colspan="3" class="muted report-empty-cell">${escapeHtml(emptyLabel)}</td></tr>`,
       creditTotal: 0,
       settledTotal: 0,
     };
@@ -840,7 +857,7 @@ function buildActivitySectionsHtml(summary, context) {
     return `
     <section class="credit-summary-block credit-summary-block--flow">
       <table class="report-table credit-summary-table--months">
-        <tbody><tr><td class="muted" style="text-align:center">No credit or settlement in this period.</td></tr></tbody>
+        <tbody><tr><td class="muted report-empty-cell">No credit or settlement in this period.</td></tr></tbody>
       </table>
     </section>`;
   }
@@ -893,7 +910,7 @@ function buildOutstandingLinesHtml() {
   const lines = openCreditLines(periodCreditEntries());
   if (!lines.length) {
     return {
-      rows: `<tr><td colspan="4" class="muted" style="text-align:center">No unpaid bills.</td></tr>`,
+      rows: `<tr><td colspan="4" class="muted report-empty-cell">No unpaid bills.</td></tr>`,
       openTotal: 0,
       count: 0,
     };
@@ -1074,6 +1091,7 @@ async function runCreditSummaryPrint() {
     return;
   }
 
+  if (typeof loadPumpSettings === "function") await loadPumpSettings();
   const mode = creditPrintMode();
   const ctx = page().state.lastCustomerSummaryContext;
   // Period-scoped summary already on screen, so the sheet matches the selected view.
@@ -1390,15 +1408,19 @@ async function loadCustomerDetail() {
   const stillCurrent = () => seq === detailLoadSeq;
 
   try {
-    await resolveCustomerIds(stillCurrent);
-    if (!stillCurrent()) return;
+    // Opened by id only: the name has to come first, since both requests below key on it.
+    if (!page().state.customerName && page().state.customerId) {
+      const row = await fetchCreditCustomerById(page().state.customerId);
+      if (!stillCurrent()) return;
+      if (row?.customer_name) applyCustomerDisplayName(String(row.customer_name).trim());
+    }
 
     const detailArgs = { p_customer_name: page().state.customerName, p_date: asOfDate };
     if (from) detailArgs.p_from = from;
-    const { data: summaryData, error: summaryErr } = await window.supabaseClient.rpc(
-      "get_customer_credit_detail_as_of",
-      detailArgs
-    );
+    const [, { data: summaryData, error: summaryErr }] = await Promise.all([
+      resolveCustomerIds(stillCurrent),
+      window.supabaseClient.rpc("get_customer_credit_detail_as_of", detailArgs),
+    ]);
     if (!stillCurrent()) return;
     if (summaryErr) throw summaryErr;
 
@@ -1590,7 +1612,6 @@ async function handleSettle() {
         AppError.showSaveError(AppError.getUserMessage(error), { target: msg, form: settleForm });
         AppError.report(error, { context: "creditCustomerSettle", customerId: settleIds[0] });
         page().invalidateCreditCaches();
-        await resolveCustomerIds();
         await loadCustomerDetail();
         return;
       }
@@ -1611,7 +1632,6 @@ async function handleSettle() {
         AppError.showSaveError(AppError.getUserMessage(error), { target: msg, form: settleForm });
         AppError.report(error, { context: "creditCustomerSettleBatch", customerIds: settleIds });
         page().invalidateCreditCaches();
-        await resolveCustomerIds();
         await loadCustomerDetail();
         return;
       }
@@ -1624,8 +1644,8 @@ async function handleSettle() {
     const sameDayInput = document.getElementById("settle-same-day");
     if (sameDayInput) sameDayInput.checked = false;
     savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
+    settleDraft?.markClean();
     page().invalidateCreditCaches();
-    await resolveCustomerIds();
     await loadCustomerDetail();
     document.getElementById("settle-amount")?.focus();
 
@@ -1709,7 +1729,6 @@ async function deleteCreditEntry(entryId, btn) {
         const { error } = await window.supabaseClient.rpc("delete_credit_entry", { p_entry_id: entryId });
         if (error) throw error;
         page().invalidateCreditCaches();
-        await resolveCustomerIds();
         await loadCustomerDetail();
         showCustomerDetailMessage(`Credit entry of ${formatCurrency(amount)} deleted.`);
         page().refreshCreditPortfolioViews();
@@ -1745,7 +1764,6 @@ async function deleteCreditPayment(paymentId, btn) {
         const { error } = await window.supabaseClient.rpc("delete_credit_payment", { p_payment_id: paymentId });
         if (error) throw error;
         page().invalidateCreditCaches();
-        await resolveCustomerIds();
         await loadCustomerDetail();
         showCustomerDetailMessage(`Settlement of ${formatCurrency(amount)} deleted.`);
         page().refreshCreditPortfolioViews();

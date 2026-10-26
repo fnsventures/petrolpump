@@ -74,13 +74,13 @@
 .app-layout .settings-sidebar .settings-nav,
 .settings-layout .settings-sidebar .settings-nav {
   position: sticky;
-  top: calc(var(--topbar-offset, 3.75rem) + 0.75rem);
+  top: calc(var(--topbar-offset) + 0.75rem);
 }
 
 .app-sections,
 .settings-nav {
   position: sticky;
-  top: calc(var(--topbar-offset, 3.75rem) + 0.75rem);
+  top: calc(var(--topbar-offset) + 0.75rem);
   padding: 0.75rem;
   display: flex;
   flex-direction: column;
@@ -94,11 +94,11 @@
   margin-bottom: 0;
 }
 .settings-nav-title {
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--muted, #64748b);
+  color: var(--muted);
   margin: 0 0 0.35rem 0.5rem;
 }
 
@@ -259,7 +259,7 @@
 
   .app-section-item,
   .settings-nav-item {
-    font-size: var(--text-sm, 0.8125rem);
+    font-size: var(--text-sm);
     padding: 0.55rem 0.65rem;
   }
 }

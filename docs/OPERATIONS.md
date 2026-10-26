@@ -62,6 +62,8 @@ Or open both configs and confirm they are real, not placeholders:
 
 **Check DNS siblings** runs hourly from this repo and calls `scripts/check-dns-siblings.sh`. `fns-cashline` is manual only and reuses the same workflow. If a CNAME is missing or wrong, the job rewrites it to `fnsventures.github.io`, waits up to about 12 minutes, rechecks, and opens a GitHub issue when it restored records. Without `GODADDY_*` it still checks and fails.
 
+**Keep Supabase awake** (`.github/workflows/keep-supabase-awake.yml`) runs every 3 days and sends one anonymous REST read to prod and staging so neither free project pauses after an idle week. It uses each environment's `SUPABASE_URL` / `SUPABASE_ANON_KEY`. A red run means the project did not answer; restore it in the Supabase dashboard.
+
 Auto-fix covers DNS only. If `/js/env.js` is wrong after DNS is healthy, redeploy that app (Actions → **Deploy** → `prod`) so CI regenerates `env.js`.
 
 A new `*.fnsventures.in` Pages app is added to **this** repo’s `scripts/check-dns-siblings.sh` only (cashline wraps that file), and to the table above.
@@ -163,7 +165,7 @@ A backup is a read-only copy of production. It does not change data or deploy th
 
 The commands are in [Which command](#which-command).
 
-The scheduled run uploads the finished month, then deletes production audit rows older than 6 months. On 1 January it also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+The scheduled run uploads the finished month. A separate weekly workflow, **Purge audit log**, deletes production audit rows older than 6 months. On 1 January it also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 `migrate --apply` writes a local backup before it changes schema. It does not upload to Drive.
 

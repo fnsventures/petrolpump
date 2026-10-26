@@ -238,11 +238,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     const cfg = PayrollRules.getPayrollConfig();
     const summary = PayrollRules.policySummary(cfg);
     const lopChip = cfg.lossOfPayEnabled
-      ? `<span class="payroll-chip is-deduct">${cfg.paidLeaveDaysPerMonth} paid leave / month</span>`
-      : `<span class="payroll-chip is-off">Loss of pay off</span>`;
+      ? `<span class="badge badge--danger">${cfg.paidLeaveDaysPerMonth} paid leave / month</span>`
+      : `<span class="badge badge--neutral">Loss of pay off</span>`;
     const odChip = cfg.overDutyEnabled
-      ? `<span class="payroll-chip is-earn">Over duty adds a day</span>`
-      : `<span class="payroll-chip is-off">Over duty off</span>`;
+      ? `<span class="badge badge--success">Over duty adds a day</span>`
+      : `<span class="badge badge--neutral">Over duty off</span>`;
     const settingsLink = isAdmin ? ` <a href="settings.html#attendance">Change in Settings</a>` : "";
     el.hidden = false;
     el.innerHTML = `<span class="payroll-policy-chips">${lopChip}${odChip}</span><p>${escapeHtml(summary.lossOfPay)} ${escapeHtml(summary.overDuty)} ${escapeHtml(summary.rate)}${settingsLink}</p>`;

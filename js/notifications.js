@@ -57,11 +57,15 @@
   let loadPromise = null;
   let lastRefreshAt = 0;
   const STALE_MS = 45 * 1000;
+  /** Rendered feed reused across page loads in this tab, so each page doesn't refire ~15 queries. */
+  const SNAPSHOT_KEY = "bpf_notif_snapshot";
+  const SNAPSHOT_TTL_MS = 90 * 1000;
   let remindersLoadGen = 0;
   let creditTotalRupees = null;
   let petrolVariation = null;
   let dieselVariation = null;
   let userId = null;
+  let lastReminderRows = [];
 
   function esc(value) {
     return escapeHtml(value);
@@ -443,7 +447,62 @@
     renderReminders(rows, todayStr);
     emitReminders(rows, todayStr);
     updateBadge();
+    lastReminderRows = rows;
+    if (lastRefreshAt) saveSnapshot(rows);
     return rows;
+  }
+
+  function readSnapshot() {
+    try {
+      const snap = JSON.parse(sessionStorage.getItem(SNAPSHOT_KEY) || "null");
+      if (!snap || snap.userId !== userId || snap.todayStr !== getLocalDateString()) return null;
+      if (!(Date.now() - snap.at < SNAPSHOT_TTL_MS)) return null;
+      return snap;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveSnapshot(reminderRows) {
+    const panel = document.querySelector("#topbar-notifications-body .notifications-panel");
+    if (!panel || !userId) return;
+    try {
+      sessionStorage.setItem(
+        SNAPSHOT_KEY,
+        JSON.stringify({
+          userId,
+          todayStr: getLocalDateString(),
+          at: lastRefreshAt || Date.now(),
+          html: panel.innerHTML,
+          reminders: reminderRows || [],
+        })
+      );
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  function clearSnapshot() {
+    try {
+      sessionStorage.removeItem(SNAPSHOT_KEY);
+    } catch {
+      /* storage blocked */
+    }
+  }
+
+  function restoreSnapshot(panel) {
+    const snap = readSnapshot();
+    if (!snap || !panel) return false;
+    panel.innerHTML = snap.html;
+    const reminders = document.getElementById("reminders-banners");
+    if (reminders) {
+      delete reminders.dataset.reminderDoneBound;
+      bindReminderActions(reminders);
+    }
+    lastRefreshAt = snap.at;
+    updateAlertsVisibility();
+    emitReminders(snap.reminders, snap.todayStr);
+    return true;
   }
 
   function bindReminderActions(container) {
@@ -1188,6 +1247,7 @@
     });
     updateAlertsVisibility();
     lastRefreshAt = Date.now();
+    saveSnapshot(lastReminderRows);
   }
 
   function showFallbackError(message) {
@@ -1244,6 +1304,10 @@
         data: { session },
       } = await client.auth.getSession();
       userId = session?.user?.id || null;
+      if (!options.force && !stale && restoreSnapshot(panel)) {
+        loadPromise = Promise.resolve();
+        return loadPromise;
+      }
       loadPromise = refresh();
       await loadPromise;
     } catch (error) {
@@ -1266,6 +1330,11 @@
   };
 
   window.addEventListener("storage", (e) => {
-    if (e.key === "reminders-updated" || e.key === "credit-updated") void refresh();
+    if (e.key === "reminders-updated" || e.key === "credit-updated") {
+      clearSnapshot();
+      void refresh();
+    }
   });
+  // Any data write (this tab or another) makes the cached feed suspect.
+  window.addEventListener("bpf:cache-invalidate", clearSnapshot);
 })(typeof window !== "undefined" ? window : globalThis);

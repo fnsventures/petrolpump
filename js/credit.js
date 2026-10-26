@@ -538,11 +538,11 @@ function renderLedgerBalanceCell(net, prepaid, isAdvance) {
 
 function renderLedgerCustomerCell(row, detailHref, isAdvance, isFullyCleared) {
   const advanceTag = isAdvance
-    ? '<span class="credit-advance-tag">Advance</span>'
+    ? '<span class="badge badge--success credit-tag">Advance</span>'
     : "";
   const settledTag =
     isFullyCleared && isAdmin
-      ? '<span class="credit-settled-tag">Settled</span>'
+      ? '<span class="badge badge--neutral credit-tag">Settled</span>'
       : "";
   return `<td data-label="Customer"><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${advanceTag}${settledTag}</td>`;
 }

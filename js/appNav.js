@@ -120,6 +120,7 @@
 
   /** One tap on a phone. Same destinations as the sidebar, only the pages used every shift. */
   const DAILY_NAV = [
+    { href: "dashboard.html", file: "dashboard.html", label: "Home", icon: "dashboard" },
     { href: "meter-reading.html#shift-readings", file: "meter-reading.html", label: "Meters", icon: "meter" },
     { href: "credit.html", file: "credit.html", label: "Credit", icon: "credit" },
     { href: "expenses.html", file: "expenses.html", label: "Expenses", icon: "expenses" },
@@ -616,6 +617,7 @@
     const sidebar = document.getElementById("app-sidebar");
     if (!sidebar) return;
     if (topbar.classList.contains("no-print")) sidebar.classList.add("no-print");
+    topbar.querySelector(".nav-toggle")?.setAttribute("aria-controls", sidebar.id);
 
     bindSidebar(sidebar);
     bindShell();

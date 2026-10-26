@@ -138,7 +138,7 @@ function renderOverviewCustomerRows(tbody, rows, periodFilter) {
       const rowClass = isOverpaid ? ' class="credit-overview-row--overpaid"' : "";
       return `<tr${rowClass}>
         <td><a class="customer-link" href="${detailHref}">${escapeHtml(row.customer_name)}</a>${
-          isOverpaid ? ' <span class="credit-advance-tag">Advance</span>' : ""
+          isOverpaid ? ' <span class="badge badge--success credit-tag">Advance</span>' : ""
         }</td>
         <td class="num">${formatCurrency(row.credit_taken)}</td>
         <td class="num${isOverpaid ? " credit-overview-settled" : ""}">${formatCurrency(row.settled)}</td>
@@ -244,7 +244,7 @@ function overviewReportHeader(title, subtitleLines) {
 
 function buildOverviewCustomerPrintRows(customers) {
   if (!customers.length) {
-    return `<tr><td colspan="5" class="muted" style="text-align:center">No credit activity for this period</td></tr>`;
+    return `<tr><td colspan="5" class="muted report-empty-cell">No credit activity for this period</td></tr>`;
   }
   return customers
     .map((row, i) => {
@@ -318,7 +318,7 @@ function buildOverviewPrintHtml(data, periodLabel) {
         <table class="report-table credit-overview-print-table">
           <thead>
             <tr>
-              <th style="width:6%">#</th>
+              <th>#</th>
               <th>Customer</th>
               <th class="num">Credit taken (₹)</th>
               <th class="num">Settled (₹)</th>

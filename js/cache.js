@@ -42,6 +42,8 @@ const AppCache = (function () {
     // Settings & auth — longer TTL, revalidated on save
     pump_settings: { ttl: 10 * 60 * 1000, staleTtl: 60 * 60 * 1000 },
     user_role: { ttl: 30 * 60 * 1000, staleTtl: 2 * 60 * 60 * 1000 },
+    // get_page_session: reused for a minute; the stale copy only opens pages while offline.
+    page_session: { ttl: 60 * 1000, staleTtl: 12 * 60 * 60 * 1000 },
 
     reports_data: { ttl: 30 * 1000, staleTtl: 60 * 1000 },
   };

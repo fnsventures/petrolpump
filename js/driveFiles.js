@@ -235,17 +235,8 @@
     }
   }
 
-  function paintPreviewShell(preview) {
-    if (!preview || preview.closed) return false;
-    const logo = previewLogoUrl().replace(/"/g, "");
-    const logoHtml = logo ? `<img class="logo" alt="" src="${logo}">` : "";
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Opening document</title>
-<style>
+  /** Loading-card styles for the preview tab (adopted, not inline: CSP). */
+  const PREVIEW_SHELL_CSS = `
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
     background: #f8fafc; color: #1a2332; font-family: system-ui, sans-serif; }
   .card { width: min(18rem, calc(100vw - 2rem)); text-align: center; }
@@ -269,7 +260,35 @@
     .ring { animation: none; }
     .fill { transition: none; }
   }
-</style>
+`;
+
+  /**
+   * The preview tab is about:blank opened by this page, so it inherits our CSP
+   * (style-src without 'unsafe-inline'): <style> is blocked there. Apply CSS as
+   * a constructed stylesheet built with the tab's own CSSStyleSheet.
+   */
+  function setPreviewSheet(doc, cssText) {
+    try {
+      const Ctor = doc.defaultView?.CSSStyleSheet;
+      if (!Ctor || !("adoptedStyleSheets" in doc)) return;
+      const sheet = new Ctor();
+      sheet.replaceSync(cssText);
+      doc.adoptedStyleSheets = [sheet];
+    } catch {
+      /* Unstyled preview is still usable. */
+    }
+  }
+
+  function paintPreviewShell(preview) {
+    if (!preview || preview.closed) return false;
+    const logo = previewLogoUrl().replace(/"/g, "");
+    const logoHtml = logo ? `<img class="logo" alt="" src="${logo}">` : "";
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opening document</title>
 </head>
 <body>
   <div class="card" id="load-card">
@@ -286,6 +305,7 @@
       doc.open();
       doc.write(html);
       doc.close();
+      setPreviewSheet(doc, PREVIEW_SHELL_CSS);
       return true;
     } catch {
       return false;
@@ -448,14 +468,7 @@
   function applyPreviewDocument(preview, { title, background, body }) {
     const doc = preview.document;
     doc.title = title;
-    const style = doc.querySelector("style");
-    const css = previewViewerCss(background);
-    if (style) style.textContent = css;
-    else {
-      const el = doc.createElement("style");
-      el.textContent = css;
-      doc.head.appendChild(el);
-    }
+    setPreviewSheet(doc, previewViewerCss(background));
     doc.body.innerHTML = body;
   }
 

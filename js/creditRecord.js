@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatRecordedBalance, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact, confirmCreditOverpayment */
+/* global window.supabaseClient, AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatRecordedBalance, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
 
 (function () {
   const page = () => window.CreditPage;
@@ -10,6 +10,8 @@
   let quickPaymentCustomerIds = [];
   let quickPaymentNetBalance = 0;
   let quickPaymentSignedBalance = 0;
+  /** Sale form and quick payment share one draft: both sit in the Record panel. */
+  let recordDraft = null;
 
 function initRecordSalePanel() {
   initPersistedDateInput("quick-settle-date", RECORD_DATE_KEYS.creditQuickSettle);
@@ -208,6 +210,7 @@ async function handleQuickPayment() {
     const sameDayInput = document.getElementById("quick-settle-same-day");
     if (sameDayInput) sameDayInput.checked = false;
     savePersistedDate(RECORD_DATE_KEYS.creditQuickSettle, settlementDate);
+    recordDraft?.markClean();
     await loadCustomerNames();
     page().invalidateAndRefreshCreditPortfolio();
     syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
@@ -657,6 +660,7 @@ async function handleCreditSubmit(event) {
       fuelTypeSelect.value = savedFuel || "HSD";
       if (typeof syncFuelSelectStyle === "function") syncFuelSelectStyle(fuelTypeSelect);
     }
+    recordDraft?.markClean();
 
     const recorded = formatRecordedBalance({
       amount,
@@ -699,8 +703,29 @@ async function handleCreditSubmit(event) {
     if (transactionDateInput) initPersistedDateInput(transactionDateInput, RECORD_DATE_KEYS.creditTransaction);
     initRecordSalePanel();
     initCustomerCombobox();
+    bindRecordDraft();
     void loadCustomerNames();
     ready = true;
+  }
+
+  function bindRecordDraft() {
+    const panel = document.getElementById("credit-panel-record");
+    if (!panel || recordDraft || typeof bindUnsavedDraft !== "function") return;
+    // Dates are remembered separately; an old draft must not bring back yesterday.
+    const dateFields = ["credit_date", "credit-date", "quick-settle-date"];
+    recordDraft = bindUnsavedDraft({
+      key: "credit.record",
+      root: panel,
+      capture: () => omitDraftFields(captureDomDraftFields(panel), dateFields),
+      skipTarget: (target) => dateFields.includes(target?.name) || dateFields.includes(target?.id),
+    });
+    recordDraft.adoptServerState();
+    if (recordDraft.restore()) {
+      const fuelTypeSelect = document.getElementById("fuel-type");
+      if (fuelTypeSelect && typeof syncFuelSelectStyle === "function") syncFuelSelectStyle(fuelTypeSelect);
+      syncQuickPaymentPanel(document.getElementById("customer")?.value || "");
+      AppError.showToast("Restored an unsaved credit entry from this device.", "info");
+    }
   }
 
   window.CreditRecord = { init, isReady: () => ready };

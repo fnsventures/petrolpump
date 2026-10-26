@@ -75,9 +75,13 @@ petrolPump/
 ```
 css/
 ├── fonts.css                # Self-hosted @font-face (DM Sans, Source Serif 4, Caveat)
-├── base.css                 # Tokens, reset, forms, tables, topbar (imports fonts.css + app-sidebar.css)
 ├── app-sidebar.css          # Layer 1–2 nav (injected by js/appNav.js)
+├── tokens.css               # Colour, type scale, spacing, radius, shadow tokens + breakpoint list
+├── reset.css                # Element defaults, app shell background
+├── components.css           # Topbar, filters, forms, buttons, tables, dialogs, loaders
+├── utilities.css            # .hidden, .text-sm, … (loaded last of the shared set)
 ├── app-layout.css           # Page shell: app-layout / section nav / panels
+├── app-notifications.css    # Topbar notifications popup
 ├── app-core.css             # Shared components (panel-head, fuel badges, toasts, …)
 ├── app-{route}.css          # Per-page styles (dashboard, dsr, credit, reports, …)
 ├── login.css                # Login page
@@ -89,8 +93,18 @@ css/
 _partials/
 ├── app-pages.json           # Source of truth for each app page’s CSS/JS
 ├── app-head.njk             # Shared <head> (expanded at build)
+├── base-css.njk             # Shared stylesheet <link>s (also used by login, landing, 404)
 └── app-topbar.njk           # Shared topbar (expanded at build)
 ```
+
+**Style rules:** stylesheets load as separate `<link>` tags (no `@import` chains except inside print CSS, which `js/printUtils.js` inlines). Use tokens from `css/tokens.css` for every colour and font size; `npm run lint:css` (also in PR checks) fails when a file gains a hardcoded colour versus `scripts/css-color-baseline.json`. After removing colours, run `node scripts/check-css-colors.mjs --update` to lower the baseline. Breakpoints are 480px, 768px, 960px and 1200px (`max-width: N` / `min-width: N+1`). Print CSS keeps its own tokens because it renders without `tokens.css`.
+
+**Shared UI pieces** (all in `css/components.css`):
+- **Badges:** `<span class="badge badge--success">`. Variants: `neutral`, `primary`, `info`, `success`, `warning`, `danger`, `accent`, `brand`, `petrol`, `diesel`. Add `badge--sm` for a small uppercase label and `badge--square` for tight corners. Keep a page class only for position and margins.
+- **Page dialogs:** `<dialog class="app-modal app-modal-shell">` > `.app-modal-backdrop` + `.card.app-modal-panel` > `.app-modal-head` (h2 + `.app-modal-close`). Open and close with `AppDialog.show/hide`. Page CSS sets only the panel width. `app-modal-shell--floating` keeps the card floating on phones instead of a bottom sheet. Confirm and prompt dialogs use `AppDialog.confirm/prompt` (`.app-dialog`).
+- **Buttons:** a plain `<button>` is primary. Modifiers follow `button-<variant>`: `button-primary`, `button-secondary`, `button-delete`, `button-small`, `button-icon`. Page-specific looks use `<scope>-button-<variant>`, e.g. `topbar-button-icon`. Classes like `shift-save-btn` are JS and layout hooks, not styles.
+
+**Dark mode:** `js/theme.js` (loaded in `<head>`) sets `data-theme` on `<html>` from the saved choice (Light / Dark / Auto in the account menu, default Auto = system setting). The dark palette is `:root[data-theme="dark"]` in `css/tokens.css`, screen only, so print stays light. Paper previews (letterhead, ID card, report sheets) and the landing page keep the light palette. Colours set from JS (charts) read tokens with `getComputedStyle` and redraw on the `bpf:themechange` event.
 
 **Page convention:** Authenticated HTML keeps unique body markup only. Chrome is:
 
@@ -216,7 +230,6 @@ supabase/
 │   ├── 20260619100000_security_loophole_mitigation.sql
 │   └── …
 └── functions/
-    ├── get-dashboard-data/   # Edge: batched dashboard DSR summary payload
     ├── get-reports-data/     # Edge: batched reports page data
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
@@ -238,7 +251,7 @@ supabase/
 │  • js/env.js → window.__APP_CONFIG__ (Supabase URL, anon key)             │
 │  • js/supabase.js (client + SW register), js/auth.js, js/*.js per page   │
 │  • sw.js — static + API cache; AppCache in js/cache.js (localStorage)     │
-│  • css/base.css, css/fonts.css, css/app-core.css + route CSS per page          │
+│  • css/tokens|reset|components|utilities.css, app-core.css + route CSS  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     │  Supabase JS client (anon key)
@@ -247,9 +260,8 @@ supabase/
 │  Supabase                                                                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐  │
 │  │  Auth           │  │  PostgreSQL     │  │  Edge Functions (opt)   │  │
-│  │  Email/Password  │  │  Tables + RLS   │  │  get-dashboard-data,    │  │
-│  │  JWT → role     │  │  RPCs, Triggers │  │  get-reports-data,      │  │
-│  │                 │  │                 │  │  get-pl-data,           │  │
+│  │  Email/Password  │  │  Tables + RLS   │  │  get-reports-data,      │  │
+│  │  JWT → role     │  │  RPCs, Triggers │  │  get-pl-data,           │  │
 │  │                 │  │                 │  │  invoice-documents      │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -274,10 +286,11 @@ supabase/
 ### 5.2 Authentication and session
 
 - **Auth:** `js/auth.js` handles session guard, role resolution from `public.users` (never from JWT metadata), redirect to login when unauthenticated, and role-based nav.
-- **`requireAuth({ pageName })`** calls RPC `check_page_access` for defense-in-depth. Role is cached via `AppCache`.
+- **`requireAuth({ pageName })`** calls RPC `get_page_session`, which returns the role, profile and the `check_page_access` verdict in one round trip. An allowed result is cached for 60 s per user and page (`AppCache` type `page_session`). When the server cannot be reached, a cached result up to 12 h old opens the page so it can be viewed offline; writes still need the network. Until the migration is applied, it falls back to the role lookup plus `check_page_access`.
+- **Form drafts:** money and register forms (billing, attendance, letterhead, meter reading, expenses, credit sale and payment, salary payment, day closing, E-20) keep typed input in `localStorage` through `bindUnsavedDraft` (`js/utils.js`) and restore it on the next visit. The update banner's Reload calls `saveDraftsForReload()` first, so an app update does not lose typed input.
 - **Unprovisioned users** (Auth account without `public.users` row) are redirected to `login.html?error=unprovisioned`.
 - **Forgot password:** Login page uses Supabase `resetPasswordForEmail`.
-- **Profile avatar:** Topbar user menu supports upload/remove of operator photo (max 2 MB JPG/PNG/WebP) → Storage bucket `user-avatars`, RPC `update_my_avatar`, column `users.avatar_url`.
+- **Profile avatar:** Topbar user menu supports upload/remove of operator photo (JPG/PNG/WebP up to 10 MB, resized in the browser to a 256 px square WebP before upload; signed link cached per tab until near expiry) → Storage bucket `user-avatars`, RPC `update_my_avatar`, column `users.avatar_url`.
 - **Topbar UX:** BPCL logo lockup, centered page subtitle, collapsible mobile nav with accordion groups.
 
 ### 5.3 Feature pages (summary)
@@ -311,7 +324,7 @@ supabase/
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
 - **`scripts/stamp-assets.mjs` (build time only):** Rewrites every local JS/CSS reference in the deploy output (HTML `src`/`href`, CSS `@import`, JS string literals like `"css/invoice-print.css"`) to `?v=<content hash>`, and generates `sw.js` `CACHE_VERSION` + `STATIC_ASSET_PATHS`. Source files never carry `?v=`; nothing is bumped by hand.
 - **`sw.js`:** Lean app-shell precache + runtime LRU caches. Strategies:
-  - HTML navigations: **network-first** while online; cached page or `offline.html` only when offline
+  - HTML navigations: **network-first**; if the network has not answered in 4 s and a cached copy exists, serve that (the late response still refreshes the cache). `offline.html` when offline with nothing cached
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
   - Updates: branded reload popup as soon as a new build is waiting, including on a tab left open. Reload applies it. Only the tab that asked is reloaded; other open tabs get the same popup so an in-progress entry is not wiped
@@ -336,7 +349,7 @@ supabase/
 - **Engine:** PostgreSQL (Supabase).
 - **Schema:** Defined in `supabase/schema.sql`; changes are applied via migrations under `supabase/migrations/`.
 - **Security:** RLS is enabled on all application tables. Policies use helper functions `get_user_role()`, `is_admin()`, `is_supervisor_or_admin()`, and `require_staff_access()` (security definer). Only users provisioned in `public.users` (admin or supervisor) can read or write operational data.
-- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. Production deletes rows older than 6 months after the monthly Drive backup. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
+- **Audit:** Audit triggers on sensitive tables write to `audit_log` (table_name, record_id, action, old_data, new_data, performed_by, performed_at). Only admins can read `audit_log`. UPDATE rows hold only the changed columns. Production deletes rows older than 6 months in a weekly job. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing and sync leaves `audit_log` empty. Cache-only refreshes of `meter_shift_cash.credit_amount` / `expense_amount` are not audited.
 
 ### 6.3 Key server-side constructs
 
@@ -364,7 +377,6 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 
 | Function | Purpose | Deploy |
 |----------|---------|--------|
-| `get-dashboard-data` | Batched dashboard DSR summary (DSR, stock, expenses, credit) | GitHub Actions or Supabase CLI |
 | `get-reports-data` | Batched reports page payload | GitHub Actions or Supabase CLI |
 | `get-pl-data` | Batched P&amp;L (DSR + receipt history, expenses, lube sales) | GitHub Actions or Supabase CLI |
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
@@ -376,7 +388,6 @@ The client falls back to direct queries if a read function is missing. Deploy th
 
 ```bash
 supabase login
-supabase functions deploy get-dashboard-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy get-reports-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy get-pl-data --project-ref YOUR_PROJECT_REF
 supabase functions deploy invoice-documents --project-ref YOUR_PROJECT_REF
@@ -394,7 +405,7 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 - **Enforcement:** RLS and security-definer RPC guards are the primary authorization layer. Client-side checks only affect the UI.
 - **Provisioned staff:** A user must exist in both Supabase Auth **and** `public.users` with role `admin` or `supervisor`. `get_user_role()` matches `users.auth_user_id` to `auth.uid()`. A signed-in user without that link gets `is_admin()` / `is_supervisor_or_admin()` = false, and `require_staff_access()` rejects them. A session with no login (restore, SQL editor) is unchanged.
 - **Public sign-up:** Turn off **Allow new users to sign up** in the Supabase dashboard (prod and staging). The browser cannot change that setting. Settings saves a role only after the Auth user already exists.
-- **Browser policy:** Pages send a Content-Security-Policy (`_partials/app-head.njk` and the standalone HTML files). Scripts are same-origin, plus Chart.js from `cdn.jsdelivr.net`. Styles allow inline CSS because print and a few pages set style attributes.
+- **Browser policy:** Pages send a Content-Security-Policy (`_partials/app-head.njk` and the standalone HTML files). Scripts are same-origin (`script-src 'self'`; Chart.js is vendored in `js/vendor/`). Styles are `style-src 'self'` with no `'unsafe-inline'`: no `style="…"` attributes in HTML or template strings, no `<style>` elements, no `setAttribute("style", …)` — use a class in a CSS file. CSSOM writes (`el.style.x = …`) and constructed stylesheets are allowed, so `js/printUtils.js` applies print CSS to the print iframe (and, on mobile, the in-page print host) with `adoptedStyleSheets`, and `js/driveFiles.js` does the same for the document preview tab (`about:blank` windows and iframes inherit this page's CSP). The service worker's synthetic offline response uses `default-src 'none'` and is unstyled.
 - **Logout:** Clears every `bpf_cache_` entry, including employee Aadhaar, PAN, phone, and address (`clearAllCaches`).
 - **Roles:**
 

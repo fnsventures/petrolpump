@@ -439,6 +439,10 @@ body.report-print-body {
   color: var(--report-muted);
 }
 
+.report-table td.report-empty-cell {
+  text-align: center;
+}
+
 .report-print-foot {
   margin-top: 8pt;
   padding-top: 4pt;

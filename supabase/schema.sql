@@ -340,7 +340,6 @@ create table if not exists public.audit_log (
 );
 
 create index if not exists audit_log_table_idx on public.audit_log (table_name, performed_at desc);
-create index if not exists audit_log_record_idx on public.audit_log (record_id);
 create index if not exists audit_log_performed_at_idx on public.audit_log (performed_at);
 
 comment on table public.audit_log is
@@ -353,7 +352,7 @@ drop policy if exists "audit_log_select_admin" on public.audit_log;
 create policy "audit_log_select_admin" on public.audit_log
   for select
   to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 -- No direct inserts/updates/deletes - only via triggers
 drop policy if exists "audit_log_no_direct_write" on public.audit_log;
@@ -522,6 +521,40 @@ $$;
 
 comment on function public.check_page_access(text) is 'Server-side page access validation. Returns allowed status and user role.';
 
+create or replace function public.get_page_session(p_page text default null)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_user record;
+  v_access jsonb;
+begin
+  select u.role, nullif(trim(u.display_name), '') as display_name, nullif(trim(u.avatar_url), '') as avatar_url
+  into v_user
+  from public.users u
+  where u.auth_user_id = auth.uid()
+  limit 1;
+
+  if p_page is not null then
+    v_access := public.check_page_access(p_page);
+  end if;
+
+  return jsonb_build_object(
+    'role', v_user.role,
+    'display_name', v_user.display_name,
+    'avatar_url', v_user.avatar_url,
+    'page', p_page,
+    'allowed', case when p_page is null then null else coalesce((v_access->>'allowed')::boolean, false) end
+  );
+end;
+$$;
+
+comment on function public.get_page_session(text) is
+  'Page start: role, display_name and avatar_url from public.users for auth.uid(), and check_page_access(p_page).allowed. UX and defense-in-depth only; RLS and RPC guards enforce access.';
+
 -- ============================================================================
 -- DSR TABLES: Separate tables for petrol (MS) and diesel (HSD) meter readings
 -- ============================================================================
@@ -595,11 +628,11 @@ alter table public.dsr_petrol enable row level security;
 
 drop policy if exists "dsr_petrol_select_authenticated" on public.dsr_petrol;
 create policy "dsr_petrol_select_authenticated" on public.dsr_petrol
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "dsr_petrol_delete_admin" on public.dsr_petrol;
 create policy "dsr_petrol_delete_admin" on public.dsr_petrol
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 -- DIESEL (HSD) meter readings
 create table if not exists public.dsr_diesel (
@@ -699,11 +732,11 @@ alter table public.dsr_diesel enable row level security;
 
 drop policy if exists "dsr_diesel_select_authenticated" on public.dsr_diesel;
 create policy "dsr_diesel_select_authenticated" on public.dsr_diesel
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "dsr_diesel_delete_admin" on public.dsr_diesel;
 create policy "dsr_diesel_delete_admin" on public.dsr_diesel
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 -- buying_price_per_litre stays admin-only. Table-level select would include it.
 revoke select, insert, update on table public.dsr_petrol from public, anon, authenticated;
@@ -976,24 +1009,7 @@ with (security_invoker = true) as
     purchase_delivery_per_kl, purchase_lfr_per_kl,
     purchase_delivery_total, purchase_delivery_qty_kl,
     purchase_lfr_total, purchase_lfr_qty_kl
-  from (
-    select distinct on (date)
-      id, date, tank_capacity,
-      opening_pump1_nozzle1, opening_pump1_nozzle2,
-      opening_pump2_nozzle1, opening_pump2_nozzle2,
-      closing_pump1_nozzle1, closing_pump1_nozzle2,
-      closing_pump2_nozzle1, closing_pump2_nozzle2,
-      sales_pump1, sales_pump2, total_sales, testing,
-      dip_reading, stock, receipts,
-      petrol_rate, diesel_rate,
-      supplier_invoice_no, supplier_gstin, invoice_document_id,
-      remarks, created_by, created_at,
-      purchase_delivery_per_kl, purchase_lfr_per_kl,
-      purchase_delivery_total, purchase_delivery_qty_kl,
-      purchase_lfr_total, purchase_lfr_qty_kl
-    from public.dsr_petrol
-    order by date, created_at desc nulls last, id desc
-  ) p
+  from public.dsr_petrol
   union all
   select id, date, 'diesel'::text as product, tank_capacity,
     opening_pump1_nozzle1, opening_pump1_nozzle2,
@@ -1008,27 +1024,10 @@ with (security_invoker = true) as
     purchase_delivery_per_kl, purchase_lfr_per_kl,
     purchase_delivery_total, purchase_delivery_qty_kl,
     purchase_lfr_total, purchase_lfr_qty_kl
-  from (
-    select distinct on (date)
-      id, date, tank_capacity,
-      opening_pump1_nozzle1, opening_pump1_nozzle2,
-      opening_pump2_nozzle1, opening_pump2_nozzle2,
-      closing_pump1_nozzle1, closing_pump1_nozzle2,
-      closing_pump2_nozzle1, closing_pump2_nozzle2,
-      sales_pump1, sales_pump2, total_sales, testing,
-      dip_reading, stock, receipts,
-      petrol_rate, diesel_rate,
-      supplier_invoice_no, supplier_gstin, invoice_document_id,
-      remarks, created_by, created_at,
-      purchase_delivery_per_kl, purchase_lfr_per_kl,
-      purchase_delivery_total, purchase_delivery_qty_kl,
-      purchase_lfr_total, purchase_lfr_qty_kl
-    from public.dsr_diesel
-    order by date, created_at desc nulls last, id desc
-  ) d;
+  from public.dsr_diesel;
 
 comment on view public.dsr is
-  'Staff union of dsr_petrol and dsr_diesel. One row per product per date. Does not include buying_price_per_litre.';
+  'Staff union of dsr_petrol and dsr_diesel. One row per product per date (unique date constraint). Does not include buying_price_per_litre.';
 
 grant select on public.dsr to authenticated;
 
@@ -1049,11 +1048,7 @@ from (
     purchase_delivery_per_kl, purchase_lfr_per_kl,
     purchase_delivery_total, purchase_delivery_qty_kl,
     purchase_lfr_total, purchase_lfr_qty_kl
-  from (
-    select distinct on (date) *
-    from public.dsr_petrol
-    order by date, created_at desc nulls last, id desc
-  ) p
+  from public.dsr_petrol
   union all
   select id, date, 'diesel'::text as product, tank_capacity,
     opening_pump1_nozzle1, opening_pump1_nozzle2,
@@ -1068,13 +1063,9 @@ from (
     purchase_delivery_per_kl, purchase_lfr_per_kl,
     purchase_delivery_total, purchase_delivery_qty_kl,
     purchase_lfr_total, purchase_lfr_qty_kl
-  from (
-    select distinct on (date) *
-    from public.dsr_diesel
-    order by date, created_at desc nulls last, id desc
-  ) d
+  from public.dsr_diesel
 ) rows
-where public.is_admin();
+where (select public.is_admin());
 
 comment on view public.dsr_cost is
   'Admin-only DSR union, including buying_price_per_litre. Supervisors get no rows.';
@@ -1332,19 +1323,19 @@ alter table public.expense_categories enable row level security;
 
 drop policy if exists "expense_categories_select_authenticated" on public.expense_categories;
 create policy "expense_categories_select_authenticated" on public.expense_categories
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "expense_categories_insert_admin" on public.expense_categories;
 create policy "expense_categories_insert_admin" on public.expense_categories
-  for insert to authenticated with check (public.is_admin());
+  for insert to authenticated with check ((select public.is_admin()));
 
 drop policy if exists "expense_categories_update_admin" on public.expense_categories;
 create policy "expense_categories_update_admin" on public.expense_categories
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists "expense_categories_delete_admin" on public.expense_categories;
 create policy "expense_categories_delete_admin" on public.expense_categories
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 -- ============================================================================
 -- BILLING: Products, Invoices, Invoice Items
@@ -1372,19 +1363,19 @@ alter table public.products enable row level security;
 
 drop policy if exists "products_select_authenticated" on public.products;
 create policy "products_select_authenticated" on public.products
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "products_insert_admin" on public.products;
 create policy "products_insert_admin" on public.products
-  for insert to authenticated with check (public.is_admin());
+  for insert to authenticated with check ((select public.is_admin()));
 
 drop policy if exists "products_update_admin" on public.products;
 create policy "products_update_admin" on public.products
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists "products_delete_admin" on public.products;
 create policy "products_delete_admin" on public.products
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 
 -- Invoice number sequence
@@ -1436,7 +1427,7 @@ alter table public.invoices enable row level security;
 
 drop policy if exists "invoices_select_authenticated" on public.invoices;
 create policy "invoices_select_authenticated" on public.invoices
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "invoices_insert_own" on public.invoices;
 create policy "invoices_insert_own" on public.invoices
@@ -1448,7 +1439,7 @@ create policy "invoices_update_by_role" on public.invoices
 
 drop policy if exists "invoices_delete_admin" on public.invoices;
 create policy "invoices_delete_admin" on public.invoices
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 
 -- Typed letterhead history (blank stationery is not stored)
@@ -1494,32 +1485,32 @@ alter table public.letterhead_letters enable row level security;
 drop policy if exists "letterhead_letters_select" on public.letterhead_letters;
 create policy "letterhead_letters_select" on public.letterhead_letters
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "letterhead_letters_insert_own" on public.letterhead_letters;
 create policy "letterhead_letters_insert_own" on public.letterhead_letters
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "letterhead_letters_update_by_role" on public.letterhead_letters;
 create policy "letterhead_letters_update_by_role" on public.letterhead_letters
   for update to authenticated
   using (
-    public.is_supervisor_or_admin()
-    and (created_by = auth.uid() or public.is_admin())
+    (select public.is_supervisor_or_admin())
+    and (created_by = (select auth.uid()) or (select public.is_admin()))
   )
   with check (
-    public.is_supervisor_or_admin()
-    and (created_by = auth.uid() or public.is_admin())
+    (select public.is_supervisor_or_admin())
+    and (created_by = (select auth.uid()) or (select public.is_admin()))
   );
 
 drop policy if exists "letterhead_letters_delete_admin" on public.letterhead_letters;
 create policy "letterhead_letters_delete_admin" on public.letterhead_letters
   for delete to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 
 create table if not exists public.drive_folder_cache (
@@ -1678,19 +1669,19 @@ alter table public.document_categories enable row level security;
 
 drop policy if exists "document_categories_select_authenticated" on public.document_categories;
 create policy "document_categories_select_authenticated" on public.document_categories
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "document_categories_insert_admin" on public.document_categories;
 create policy "document_categories_insert_admin" on public.document_categories
-  for insert to authenticated with check (public.is_admin());
+  for insert to authenticated with check ((select public.is_admin()));
 
 drop policy if exists "document_categories_update_admin" on public.document_categories;
 create policy "document_categories_update_admin" on public.document_categories
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists "document_categories_delete_admin" on public.document_categories;
 create policy "document_categories_delete_admin" on public.document_categories
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 insert into public.document_categories (name, label, folder_layout, sort_order)
 values
@@ -1762,22 +1753,44 @@ alter table public.dsr_diesel
   add constraint dsr_diesel_invoice_document_id_fkey
   foreign key (invoice_document_id) references public.invoice_documents (id) on delete set null;
 
+create or replace function public.get_invoice_document_category_counts(
+  p_start date default null,
+  p_end date default null
+)
+returns table (category text, doc_count bigint, latest_date date)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select d.category, count(*)::bigint, max(d.invoice_date)
+  from public.invoice_documents d
+  where (p_start is null or d.invoice_date >= p_start)
+    and (p_end is null or d.invoice_date <= p_end)
+  group by d.category;
+$$;
+
+comment on function public.get_invoice_document_category_counts(date, date) is
+  'Invoice vault outline: document count and latest invoice_date per category in an optional date range. Runs as the caller, so invoice_documents RLS applies.';
+
+grant execute on function public.get_invoice_document_category_counts(date, date) to authenticated;
+
 alter table public.invoice_documents enable row level security;
 
 drop policy if exists "invoice_documents_select" on public.invoice_documents;
 create policy "invoice_documents_select" on public.invoice_documents
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "invoice_documents_insert" on public.invoice_documents;
 create policy "invoice_documents_insert" on public.invoice_documents
   for insert to authenticated
-  with check (public.is_supervisor_or_admin());
+  with check ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "invoice_documents_delete_admin" on public.invoice_documents;
 create policy "invoice_documents_delete_admin" on public.invoice_documents
   for delete to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 
 -- Invoice line items
@@ -1802,6 +1815,9 @@ alter table public.invoice_items
   add column if not exists created_by uuid references auth.users(id) on delete set null;
 
 create index if not exists invoice_items_invoice_idx on public.invoice_items (invoice_id);
+create index if not exists invoice_items_product_idx
+  on public.invoice_items (product_id)
+  where product_id is not null;
 
 comment on table public.invoice_items is 'Line items for each invoice — product, qty, rate, GST.';
 comment on column public.invoice_items.created_by is
@@ -1811,7 +1827,7 @@ alter table public.invoice_items enable row level security;
 
 drop policy if exists "invoice_items_select_authenticated" on public.invoice_items;
 create policy "invoice_items_select_authenticated" on public.invoice_items
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "invoice_items_insert_own" on public.invoice_items;
 create policy "invoice_items_insert_own" on public.invoice_items
@@ -1824,7 +1840,7 @@ create policy "invoice_items_update_by_role" on public.invoice_items
 drop policy if exists "invoice_items_delete_authenticated" on public.invoice_items;
 drop policy if exists "invoice_items_delete_admin" on public.invoice_items;
 create policy "invoice_items_delete_admin" on public.invoice_items
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 
 -- Generate next invoice number (CRI/NNNN). Provisioned staff only.
@@ -2086,28 +2102,28 @@ alter table public.users enable row level security;
 
 drop policy if exists "users_select_authenticated" on public.users;
 create policy "users_select_authenticated" on public.users
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "users_insert_admin" on public.users;
 create policy "users_insert_admin" on public.users
   for insert to authenticated
   with check (
-    public.is_admin()
+    (select public.is_admin())
     or (
       coalesce(current_setting('app.allow_first_admin', true), '') = 'on'
       and not exists (select 1 from public.users u where u.role = 'admin')
-      and lower(trim(email)) = lower(trim(coalesce(auth.jwt() ->> 'email', '')))
+      and lower(trim(email)) = lower(trim(coalesce((select auth.jwt()) ->> 'email', '')))
       and role = 'admin'
     )
   );
 
 drop policy if exists "users_update_admin" on public.users;
 create policy "users_update_admin" on public.users
-  for update to authenticated using (public.is_admin()) with check (public.is_admin());
+  for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 
 drop policy if exists "users_delete_admin" on public.users;
 create policy "users_delete_admin" on public.users
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 create or replace function public.set_app_user_auth_id()
 returns trigger
@@ -2448,25 +2464,25 @@ alter table public.employees enable row level security;
 drop policy if exists "employees_select_admin" on public.employees;
 drop policy if exists "employees_select_staff" on public.employees;
 create policy "employees_select_staff" on public.employees
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "employees_insert_own_or_admin" on public.employees;
 drop policy if exists "employees_insert_admin" on public.employees;
 drop policy if exists "employees_insert_staff" on public.employees;
 create policy "employees_insert_staff" on public.employees
-  for insert to authenticated with check (public.is_supervisor_or_admin());
+  for insert to authenticated with check ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "employees_update_by_role" on public.employees;
 drop policy if exists "employees_update_admin" on public.employees;
 drop policy if exists "employees_update_staff" on public.employees;
 create policy "employees_update_staff" on public.employees
   for update to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()))
+  with check ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "employees_delete_admin" on public.employees;
 create policy "employees_delete_admin" on public.employees
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 create or replace function public.employees_guard_salary_columns()
 returns trigger
@@ -2542,7 +2558,7 @@ alter table public.salary_payments enable row level security;
 
 drop policy if exists "salary_payments_select_authenticated" on public.salary_payments;
 create policy "salary_payments_select_authenticated" on public.salary_payments
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "salary_payments_insert_own" on public.salary_payments;
 create policy "salary_payments_insert_own" on public.salary_payments
@@ -2554,7 +2570,7 @@ create policy "salary_payments_update_by_role" on public.salary_payments
 
 drop policy if exists "salary_payments_delete_admin" on public.salary_payments;
 create policy "salary_payments_delete_admin" on public.salary_payments
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 -- Operating expenses
 create table if not exists public.expenses (
@@ -2583,6 +2599,9 @@ comment on column public.expenses.client_request_id is
 create index if not exists expenses_date_idx on public.expenses (date desc);
 create index if not exists expenses_created_at_idx on public.expenses (created_at desc);
 create index if not exists expenses_category_idx on public.expenses (category);
+create index if not exists expenses_employee_date_idx
+  on public.expenses (employee_id, date)
+  where employee_id is not null;
 create index if not exists expenses_shift_staff_idx
   on public.expenses (date, shift, employee_id)
   where employee_id is not null;
@@ -2605,7 +2624,7 @@ drop policy if exists "expenses_select_by_role" on public.expenses;
 create policy "expenses_select_authenticated" on public.expenses
   for select
   to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 -- INSERT: Users can only insert records owned by themselves
 drop policy if exists "expenses_insert_authenticated" on public.expenses;
@@ -2613,8 +2632,8 @@ drop policy if exists "expenses_insert_own" on public.expenses;
 create policy "expenses_insert_own" on public.expenses
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
     and salary_payment_id is null
     and lower(coalesce(category, '')) <> 'salary'
   );
@@ -2624,13 +2643,13 @@ drop policy if exists "expenses_update_by_role" on public.expenses;
 create policy "expenses_update_by_role" on public.expenses
   for update to authenticated
   using (
-    public.is_supervisor_or_admin()
-    and (created_by = auth.uid() or public.is_admin())
+    (select public.is_supervisor_or_admin())
+    and (created_by = (select auth.uid()) or (select public.is_admin()))
     and salary_payment_id is null
   )
   with check (
-    public.is_supervisor_or_admin()
-    and (created_by = auth.uid() or public.is_admin())
+    (select public.is_supervisor_or_admin())
+    and (created_by = (select auth.uid()) or (select public.is_admin()))
     and salary_payment_id is null
     and lower(coalesce(category, '')) <> 'salary'
   );
@@ -2640,10 +2659,10 @@ drop policy if exists "expenses_delete_admin" on public.expenses;
 create policy "expenses_delete_admin" on public.expenses
   for delete to authenticated
   using (
-    (public.is_admin() and salary_payment_id is null)
+    ((select public.is_admin()) and salary_payment_id is null)
     or (
-      public.is_supervisor_or_admin()
-      and created_by = auth.uid()
+      (select public.is_supervisor_or_admin())
+      and created_by = (select auth.uid())
       and employee_id is not null
       and shift is not null
     )
@@ -2939,16 +2958,16 @@ alter table public.salary_lop_exclusions enable row level security;
 
 drop policy if exists "salary_lop_exclusions_select" on public.salary_lop_exclusions;
 create policy "salary_lop_exclusions_select" on public.salary_lop_exclusions
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "salary_lop_exclusions_insert_admin" on public.salary_lop_exclusions;
 create policy "salary_lop_exclusions_insert_admin" on public.salary_lop_exclusions
   for insert to authenticated
-  with check (public.is_admin() and created_by = auth.uid());
+  with check ((select public.is_admin()) and created_by = (select auth.uid()));
 
 drop policy if exists "salary_lop_exclusions_delete_admin" on public.salary_lop_exclusions;
 create policy "salary_lop_exclusions_delete_admin" on public.salary_lop_exclusions
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 -- Salary payment + linked expense in one transaction; server-side overpay check.
 -- Take-home for one employee and salary month. Mirrors js/payrollRules.js
@@ -3262,21 +3281,21 @@ alter table public.employee_attendance enable row level security;
 
 drop policy if exists "employee_attendance_select_authenticated" on public.employee_attendance;
 create policy "employee_attendance_select_authenticated" on public.employee_attendance
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "employee_attendance_insert_own" on public.employee_attendance;
 create policy "employee_attendance_insert_own" on public.employee_attendance
-  for insert to authenticated with check (public.is_supervisor_or_admin() and created_by = auth.uid());
+  for insert to authenticated with check ((select public.is_supervisor_or_admin()) and created_by = (select auth.uid()));
 
 drop policy if exists "employee_attendance_update_own" on public.employee_attendance;
 create policy "employee_attendance_update_own" on public.employee_attendance
   for update to authenticated
-  using (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()))
-  with check (public.is_supervisor_or_admin() and (created_by = auth.uid() or public.is_admin()));
+  using ((select public.is_supervisor_or_admin()) and (created_by = (select auth.uid()) or (select public.is_admin())))
+  with check ((select public.is_supervisor_or_admin()) and (created_by = (select auth.uid()) or (select public.is_admin())));
 
 drop policy if exists "employee_attendance_delete_admin" on public.employee_attendance;
 create policy "employee_attendance_delete_admin" on public.employee_attendance
-  for delete to authenticated using (public.is_admin());
+  for delete to authenticated using ((select public.is_admin()));
 
 create or replace function public.save_employee_attendance_batch(
   p_date date,
@@ -3445,7 +3464,7 @@ drop policy if exists "credit_select_by_role" on public.credit_customers;
 create policy "credit_select_authenticated" on public.credit_customers
   for select
   to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 -- INSERT: Users can only insert records owned by themselves
 drop policy if exists "credit_insert_authenticated" on public.credit_customers;
@@ -3454,7 +3473,7 @@ create policy "credit_insert_own" on public.credit_customers
   for insert
   to authenticated
   with check (
-    public.is_supervisor_or_admin() and created_by = auth.uid()
+    (select public.is_supervisor_or_admin()) and created_by = (select auth.uid())
   );
 
 -- UPDATE: Supervisors and admins may edit contact fields. amount_due and
@@ -3464,8 +3483,8 @@ drop policy if exists "credit_update_by_role" on public.credit_customers;
 create policy "credit_update_by_role" on public.credit_customers
   for update
   to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()))
+  with check ((select public.is_supervisor_or_admin()));
 
 -- DELETE: Only admins can delete credit records (audit trail protection)
 drop policy if exists "credit_delete_authenticated" on public.credit_customers;
@@ -3474,7 +3493,7 @@ create policy "credit_delete_admin" on public.credit_customers
   for delete
   to authenticated
   using (
-    public.is_admin()
+    (select public.is_admin())
   );
 
 -- ============================================================================
@@ -3501,6 +3520,9 @@ create table if not exists public.credit_entries (
 
 create index if not exists credit_entries_customer_date_idx on public.credit_entries (credit_customer_id, transaction_date);
 create index if not exists credit_entries_transaction_date_idx on public.credit_entries (transaction_date desc);
+create index if not exists credit_entries_employee_date_idx
+  on public.credit_entries (employee_id, transaction_date)
+  where employee_id is not null;
 create index if not exists credit_entries_open_fifo_idx
   on public.credit_entries (credit_customer_id, transaction_date, id)
   where amount_settled < amount;
@@ -3523,7 +3545,7 @@ alter table public.credit_entries enable row level security;
 
 drop policy if exists "credit_entries_select_authenticated" on public.credit_entries;
 create policy "credit_entries_select_authenticated" on public.credit_entries
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "credit_entries_insert_own" on public.credit_entries;
 create policy "credit_entries_insert_own" on public.credit_entries
@@ -3665,7 +3687,7 @@ alter table public.credit_payments enable row level security;
 
 drop policy if exists "credit_payments_select_authenticated" on public.credit_payments;
 create policy "credit_payments_select_authenticated" on public.credit_payments
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "credit_payments_insert_own" on public.credit_payments;
 create policy "credit_payments_insert_own" on public.credit_payments
@@ -3736,27 +3758,27 @@ alter table public.reminders enable row level security;
 drop policy if exists "reminders_select" on public.reminders;
 create policy "reminders_select" on public.reminders
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "reminders_insert_own" on public.reminders;
 create policy "reminders_insert_own" on public.reminders
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "reminders_update_staff" on public.reminders;
 create policy "reminders_update_staff" on public.reminders
   for update to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()))
+  with check ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "reminders_delete_admin" on public.reminders;
 drop policy if exists "reminders_delete_staff" on public.reminders;
 create policy "reminders_delete_staff" on public.reminders
   for delete to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 -- ============================================================================
 -- E-20 TESTING REGISTER (daily quality monitoring — Part A water dip + Part B 2-hourly)
@@ -3844,26 +3866,26 @@ alter table public.e20_quality_checks enable row level security;
 drop policy if exists "e20_registers_select" on public.e20_testing_registers;
 create policy "e20_registers_select" on public.e20_testing_registers
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "e20_registers_insert_own" on public.e20_testing_registers;
 create policy "e20_registers_insert_own" on public.e20_testing_registers
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
   );
 
 drop policy if exists "e20_registers_update_staff" on public.e20_testing_registers;
 create policy "e20_registers_update_staff" on public.e20_testing_registers
   for update to authenticated
-  using (public.is_supervisor_or_admin())
-  with check (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()))
+  with check ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "e20_registers_delete_admin" on public.e20_testing_registers;
 create policy "e20_registers_delete_admin" on public.e20_testing_registers
   for delete to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 drop policy if exists "e20_water_select" on public.e20_water_checks;
 drop policy if exists "e20_water_insert" on public.e20_water_checks;
@@ -3872,11 +3894,11 @@ drop policy if exists "e20_water_delete" on public.e20_water_checks;
 drop policy if exists "e20_water_delete_admin" on public.e20_water_checks;
 create policy "e20_water_select" on public.e20_water_checks
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 -- DELETE needed so admin parent-row cascade is not blocked by RLS.
 create policy "e20_water_delete_admin" on public.e20_water_checks
   for delete to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 drop policy if exists "e20_quality_select" on public.e20_quality_checks;
 drop policy if exists "e20_quality_insert" on public.e20_quality_checks;
@@ -3885,10 +3907,10 @@ drop policy if exists "e20_quality_delete" on public.e20_quality_checks;
 drop policy if exists "e20_quality_delete_admin" on public.e20_quality_checks;
 create policy "e20_quality_select" on public.e20_quality_checks
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 create policy "e20_quality_delete_admin" on public.e20_quality_checks
   for delete to authenticated
-  using (public.is_admin());
+  using ((select public.is_admin()));
 
 -- Parse Yes/No/boolean text from JSON payloads.
 create or replace function public.e20_parse_yes_no(p_val text)
@@ -4106,7 +4128,7 @@ alter table public.day_closing enable row level security;
 
 drop policy if exists "day_closing_select_authenticated" on public.day_closing;
 create policy "day_closing_select_authenticated" on public.day_closing
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "day_closing_insert_own" on public.day_closing;
 create policy "day_closing_insert_own" on public.day_closing
@@ -4158,7 +4180,7 @@ alter table public.night_cash_collections enable row level security;
 
 drop policy if exists "night_cash_collections_select_authenticated" on public.night_cash_collections;
 create policy "night_cash_collections_select_authenticated" on public.night_cash_collections
-  for select to authenticated using (public.is_supervisor_or_admin());
+  for select to authenticated using ((select public.is_supervisor_or_admin()));
 
 alter table public.day_closing drop constraint if exists day_closing_night_cash_collection_id_fkey;
 alter table public.day_closing
@@ -4447,10 +4469,16 @@ as $$
 declare
   v_row record;
   v_components jsonb;
+  v_total_sale numeric;
+  v_collection numeric;
+  v_short_previous numeric;
+  v_credit_today numeric;
+  v_expenses_today numeric;
   v_short_today numeric;
 begin
   for v_row in
-    select date, night_cash, phone_pay, certified
+    select date, night_cash, phone_pay, certified,
+           total_sale, collection, short_previous, credit_today, expenses_today, short_today
     from public.day_closing
     where date > p_from_date
     order by date asc
@@ -4460,22 +4488,31 @@ begin
     end if;
 
     v_components := public.compute_day_closing_components(v_row.date);
-    v_short_today := (
-      coalesce((v_components->>'total_sale')::numeric, 0)
-      + coalesce((v_components->>'collection')::numeric, 0)
-      + coalesce((v_components->>'short_previous')::numeric, 0)
-    ) - (
-      v_row.night_cash + v_row.phone_pay
-      + coalesce((v_components->>'credit_today')::numeric, 0)
-      + coalesce((v_components->>'expenses_today')::numeric, 0)
-    );
+    v_total_sale := coalesce((v_components->>'total_sale')::numeric, 0);
+    v_collection := coalesce((v_components->>'collection')::numeric, 0);
+    v_short_previous := coalesce((v_components->>'short_previous')::numeric, 0);
+    v_credit_today := coalesce((v_components->>'credit_today')::numeric, 0);
+    v_expenses_today := coalesce((v_components->>'expenses_today')::numeric, 0);
+    v_short_today := (v_total_sale + v_collection + v_short_previous)
+      - (v_row.night_cash + v_row.phone_pay + v_credit_today + v_expenses_today);
+
+    -- Columns are numeric(14,2) and round on store; compare at that scale.
+    if v_row.total_sale is not distinct from round(v_total_sale, 2)
+       and v_row.collection is not distinct from round(v_collection, 2)
+       and v_row.short_previous is not distinct from round(v_short_previous, 2)
+       and v_row.credit_today is not distinct from round(v_credit_today, 2)
+       and v_row.expenses_today is not distinct from round(v_expenses_today, 2)
+       and v_row.short_today is not distinct from round(v_short_today, 2)
+    then
+      continue;
+    end if;
 
     update public.day_closing set
-      total_sale = coalesce((v_components->>'total_sale')::numeric, 0),
-      collection = coalesce((v_components->>'collection')::numeric, 0),
-      short_previous = coalesce((v_components->>'short_previous')::numeric, 0),
-      credit_today = coalesce((v_components->>'credit_today')::numeric, 0),
-      expenses_today = coalesce((v_components->>'expenses_today')::numeric, 0),
+      total_sale = v_total_sale,
+      collection = v_collection,
+      short_previous = v_short_previous,
+      credit_today = v_credit_today,
+      expenses_today = v_expenses_today,
       short_today = v_short_today
     where date = v_row.date;
   end loop;
@@ -4483,7 +4520,7 @@ end;
 $$;
 
 comment on function public.recascade_day_closing_short_from(date) is
-  'After a day closing overwrite, recalculate short chain for later uncertified dates. Certified later days stay frozen.';
+  'After a day closing overwrite, recalculate short chain for later uncertified dates. Certified later days stay frozen. Days whose totals are unchanged are not rewritten.';
 
 grant execute on function public.recascade_day_closing_short_from(date) to service_role;
 revoke all on function public.recascade_day_closing_short_from(date) from public;
@@ -6942,6 +6979,9 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_old jsonb;
+  v_new jsonb;
 begin
   if coalesce(current_setting('app.force_audit', true), '') is distinct from 'true' then
     if coalesce(current_setting('app.skip_credit_audit', true), '') = 'true' then
@@ -6965,8 +7005,21 @@ begin
     values (tg_table_name, old.id, tg_op, to_jsonb(old), auth.uid(), auth.jwt() ->> 'email');
     return old;
   elsif tg_op = 'UPDATE' then
+    select
+      jsonb_object_agg(n.key, o.value),
+      jsonb_object_agg(n.key, n.value)
+    into v_old, v_new
+    from jsonb_each(to_jsonb(new)) n
+    left join jsonb_each(to_jsonb(old)) o on o.key = n.key
+    where n.key <> 'updated_at'
+      and o.value is distinct from n.value;
+
+    if v_new is null then
+      return new;
+    end if;
+
     insert into public.audit_log (table_name, record_id, action, old_data, new_data, performed_by, performed_by_email)
-    values (tg_table_name, new.id, tg_op, to_jsonb(old), to_jsonb(new), auth.uid(), auth.jwt() ->> 'email');
+    values (tg_table_name, new.id, tg_op, v_old, v_new, auth.uid(), auth.jwt() ->> 'email');
     return new;
   elsif tg_op = 'INSERT' then
     insert into public.audit_log (table_name, record_id, action, new_data, performed_by, performed_by_email)
@@ -6978,7 +7031,7 @@ end;
 $$;
 
 comment on function public.audit_trigger_fn() is
-  'Writes audit_log unless runtime_flags.audit is off (staging).';
+  'Writes audit_log unless runtime_flags.audit is off (staging). UPDATE rows hold only changed columns; an update that changes nothing but updated_at is not logged.';
 
 -- One batch per call so the maintenance script can commit between deletes.
 create or replace function public.purge_audit_log_batch(
@@ -7126,13 +7179,13 @@ alter table public.pump_settings enable row level security;
 drop policy if exists pump_settings_select_authenticated on public.pump_settings;
 create policy pump_settings_select_authenticated
   on public.pump_settings for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists pump_settings_upsert_admin on public.pump_settings;
 create policy pump_settings_upsert_admin
   on public.pump_settings for all to authenticated
-  using (public.is_admin())
-  with check (public.is_admin());
+  using ((select public.is_admin()))
+  with check ((select public.is_admin()));
 
 grant select on public.pump_settings to authenticated;
 grant insert, update on public.pump_settings to authenticated;
@@ -7140,6 +7193,8 @@ grant insert, update on public.pump_settings to authenticated;
 -- RPC execute grants for authenticated clients
 grant execute on function public.require_staff_access() to authenticated;
 grant execute on function public.check_page_access(text) to authenticated;
+revoke all on function public.get_page_session(text) from public, anon;
+grant execute on function public.get_page_session(text) to authenticated;
 grant execute on function public.update_dsr_buying_price(uuid, numeric, text, text, uuid, numeric, numeric, numeric, numeric, numeric, numeric) to authenticated;
 grant execute on function public.get_day_closing_breakdown(date) to authenticated;
 grant execute on function public.get_night_cash_available() to authenticated;
@@ -7253,6 +7308,9 @@ create table if not exists public.meter_shift_cash (
 create index if not exists meter_shift_cash_date_shift_idx
   on public.meter_shift_cash (reading_date desc, shift);
 
+create index if not exists meter_shift_cash_employee_date_idx
+  on public.meter_shift_cash (employee_id, reading_date desc);
+
 comment on table public.meter_shift_cash is
   'Staff handover per shift: cash + phone pay + cached credit + expenses. Total = sum of four. Short = expected − total.';
 
@@ -7275,7 +7333,7 @@ alter table public.meter_shift_cash enable row level security;
 drop policy if exists "meter_shift_readings_select" on public.meter_shift_readings;
 create policy "meter_shift_readings_select" on public.meter_shift_readings
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "meter_shift_readings_insert" on public.meter_shift_readings;
 drop policy if exists "meter_shift_readings_update" on public.meter_shift_readings;
@@ -7286,7 +7344,7 @@ drop policy if exists "meter_shift_readings_delete_staff" on public.meter_shift_
 drop policy if exists "meter_shift_cash_select" on public.meter_shift_cash;
 create policy "meter_shift_cash_select" on public.meter_shift_cash
   for select to authenticated
-  using (public.is_supervisor_or_admin());
+  using ((select public.is_supervisor_or_admin()));
 
 drop policy if exists "meter_shift_cash_insert" on public.meter_shift_cash;
 drop policy if exists "meter_shift_cash_update" on public.meter_shift_cash;
@@ -7383,12 +7441,14 @@ begin
   do update set
     credit_amount = excluded.credit_amount,
     expense_amount = excluded.expense_amount,
-    updated_at = timezone('utc'::text, now());
+    updated_at = timezone('utc'::text, now())
+  where meter_shift_cash.credit_amount is distinct from excluded.credit_amount
+     or meter_shift_cash.expense_amount is distinct from excluded.expense_amount;
 end;
 $$;
 
 comment on function public.sync_meter_shift_cash_ledger_totals(date, text, uuid) is
-  'Refresh meter_shift_cash credit_amount/expense_amount from attributed ledger rows. Provisioned staff only.';
+  'Refresh meter_shift_cash credit_amount/expense_amount from attributed ledger rows. Provisioned staff only. Unchanged totals are not rewritten.';
 
 create or replace function public.trg_sync_shift_cash_from_credit_entries()
 returns trigger
@@ -7895,7 +7955,16 @@ begin
       closing_meter = excluded.closing_meter,
       testing_litres = excluded.testing_litres,
       remarks = excluded.remarks,
-      updated_at = timezone('utc'::text, now());
+      updated_at = timezone('utc'::text, now())
+    where (
+      meter_shift_readings.employee_id, meter_shift_readings.opening_meter,
+      meter_shift_readings.closing_meter, meter_shift_readings.testing_litres,
+      meter_shift_readings.remarks
+    ) is distinct from (
+      excluded.employee_id, excluded.opening_meter,
+      excluded.closing_meter, excluded.testing_litres,
+      excluded.remarks
+    );
 
     v_keys := array_append(v_keys, v_product || ':' || v_pump::text || ':' || v_nozzle::text);
     v_kept_nozzles := v_kept_nozzles + 1;
@@ -7994,7 +8063,12 @@ begin
       cash_collected = excluded.cash_collected,
       phone_pay = excluded.phone_pay,
       remarks = excluded.remarks,
-      updated_at = timezone('utc'::text, now());
+      updated_at = timezone('utc'::text, now())
+    where (
+      meter_shift_cash.cash_collected, meter_shift_cash.phone_pay, meter_shift_cash.remarks
+    ) is distinct from (
+      excluded.cash_collected, excluded.phone_pay, excluded.remarks
+    );
 
     v_emp_ids := array_append(v_emp_ids, v_employee);
     v_kept_cash := v_kept_cash + 1;
@@ -8040,7 +8114,7 @@ end;
 $$;
 
 comment on function public.save_meter_shift_readings(date, text, jsonb, jsonb) is
-  'Upsert shift nozzle + cash/phone; credit/expense cached from ledger. Push meters into dsr_*.';
+  'Upsert shift nozzle + cash/phone; credit/expense cached from ledger. Push meters into dsr_*. Rows whose values are unchanged are not rewritten.';
 
 
 -- ─── delete_meter_shift_readings ────────────────────────────────────────────
@@ -8268,18 +8342,18 @@ drop policy if exists "dsr_petrol_insert_own" on public.dsr_petrol;
 create policy "dsr_petrol_insert_own" on public.dsr_petrol
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
-    and (public.is_admin() or not public.meter_day_is_locked(date))
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
+    and ((select public.is_admin()) or not public.meter_day_is_locked(date))
   );
 
 drop policy if exists "dsr_petrol_update_by_role" on public.dsr_petrol;
 create policy "dsr_petrol_update_by_role" on public.dsr_petrol
   for update to authenticated
   using (
-    public.is_admin()
+    (select public.is_admin())
     or (
-      public.is_supervisor_or_admin()
+      (select public.is_supervisor_or_admin())
       and not public.meter_day_is_locked(date)
       and not public.dsr_meter_row_is_complete(
         petrol_rate, dip_reading, stock, receipts
@@ -8287,9 +8361,9 @@ create policy "dsr_petrol_update_by_role" on public.dsr_petrol
     )
   )
   with check (
-    public.is_admin()
+    (select public.is_admin())
     or (
-      public.is_supervisor_or_admin()
+      (select public.is_supervisor_or_admin())
       and not public.meter_day_is_locked(date)
     )
   );
@@ -8298,18 +8372,18 @@ drop policy if exists "dsr_diesel_insert_own" on public.dsr_diesel;
 create policy "dsr_diesel_insert_own" on public.dsr_diesel
   for insert to authenticated
   with check (
-    public.is_supervisor_or_admin()
-    and created_by = auth.uid()
-    and (public.is_admin() or not public.meter_day_is_locked(date))
+    (select public.is_supervisor_or_admin())
+    and created_by = (select auth.uid())
+    and ((select public.is_admin()) or not public.meter_day_is_locked(date))
   );
 
 drop policy if exists "dsr_diesel_update_by_role" on public.dsr_diesel;
 create policy "dsr_diesel_update_by_role" on public.dsr_diesel
   for update to authenticated
   using (
-    public.is_admin()
+    (select public.is_admin())
     or (
-      public.is_supervisor_or_admin()
+      (select public.is_supervisor_or_admin())
       and not public.meter_day_is_locked(date)
       and not public.dsr_meter_row_is_complete(
         diesel_rate, dip_reading, stock, receipts
@@ -8317,9 +8391,9 @@ create policy "dsr_diesel_update_by_role" on public.dsr_diesel
     )
   )
   with check (
-    public.is_admin()
+    (select public.is_admin())
     or (
-      public.is_supervisor_or_admin()
+      (select public.is_supervisor_or_admin())
       and not public.meter_day_is_locked(date)
     )
   );
@@ -8687,6 +8761,7 @@ begin
 
   v_agg := public.get_shift_aggregated_daily_meters(p_date);
 
+  -- 'updated' lists sheets that now match the shift rollup, written or already in sync.
   v_block := v_agg->'petrol';
   if coalesce((v_block->>'has_shifts')::boolean, false) then
     select p.id into v_id
@@ -8697,19 +8772,45 @@ begin
 
     if v_id is not null then
       update public.dsr_petrol p set
-        opening_pump1_nozzle1 = coalesce((v_block->>'opening_pump1_nozzle1')::numeric, p.opening_pump1_nozzle1),
-        opening_pump1_nozzle2 = coalesce((v_block->>'opening_pump1_nozzle2')::numeric, p.opening_pump1_nozzle2),
-        opening_pump2_nozzle1 = coalesce((v_block->>'opening_pump2_nozzle1')::numeric, p.opening_pump2_nozzle1),
-        opening_pump2_nozzle2 = coalesce((v_block->>'opening_pump2_nozzle2')::numeric, p.opening_pump2_nozzle2),
-        closing_pump1_nozzle1 = coalesce((v_block->>'closing_pump1_nozzle1')::numeric, p.closing_pump1_nozzle1),
-        closing_pump1_nozzle2 = coalesce((v_block->>'closing_pump1_nozzle2')::numeric, p.closing_pump1_nozzle2),
-        closing_pump2_nozzle1 = coalesce((v_block->>'closing_pump2_nozzle1')::numeric, p.closing_pump2_nozzle1),
-        closing_pump2_nozzle2 = coalesce((v_block->>'closing_pump2_nozzle2')::numeric, p.closing_pump2_nozzle2),
-        sales_pump1 = coalesce((v_block->>'sales_pump1')::numeric, 0),
-        sales_pump2 = coalesce((v_block->>'sales_pump2')::numeric, 0),
-        total_sales = coalesce((v_block->>'total_sales')::numeric, 0),
-        testing = coalesce((v_block->>'testing')::numeric, 0)
-      where p.id = v_id;
+        opening_pump1_nozzle1 = s.opening_pump1_nozzle1,
+        opening_pump1_nozzle2 = s.opening_pump1_nozzle2,
+        opening_pump2_nozzle1 = s.opening_pump2_nozzle1,
+        opening_pump2_nozzle2 = s.opening_pump2_nozzle2,
+        closing_pump1_nozzle1 = s.closing_pump1_nozzle1,
+        closing_pump1_nozzle2 = s.closing_pump1_nozzle2,
+        closing_pump2_nozzle1 = s.closing_pump2_nozzle1,
+        closing_pump2_nozzle2 = s.closing_pump2_nozzle2,
+        sales_pump1 = s.sales_pump1,
+        sales_pump2 = s.sales_pump2,
+        total_sales = s.total_sales,
+        testing = s.testing
+      from (
+        select
+          coalesce((v_block->>'opening_pump1_nozzle1')::numeric, x.opening_pump1_nozzle1) as opening_pump1_nozzle1,
+          coalesce((v_block->>'opening_pump1_nozzle2')::numeric, x.opening_pump1_nozzle2) as opening_pump1_nozzle2,
+          coalesce((v_block->>'opening_pump2_nozzle1')::numeric, x.opening_pump2_nozzle1) as opening_pump2_nozzle1,
+          coalesce((v_block->>'opening_pump2_nozzle2')::numeric, x.opening_pump2_nozzle2) as opening_pump2_nozzle2,
+          coalesce((v_block->>'closing_pump1_nozzle1')::numeric, x.closing_pump1_nozzle1) as closing_pump1_nozzle1,
+          coalesce((v_block->>'closing_pump1_nozzle2')::numeric, x.closing_pump1_nozzle2) as closing_pump1_nozzle2,
+          coalesce((v_block->>'closing_pump2_nozzle1')::numeric, x.closing_pump2_nozzle1) as closing_pump2_nozzle1,
+          coalesce((v_block->>'closing_pump2_nozzle2')::numeric, x.closing_pump2_nozzle2) as closing_pump2_nozzle2,
+          coalesce((v_block->>'sales_pump1')::numeric, 0) as sales_pump1,
+          coalesce((v_block->>'sales_pump2')::numeric, 0) as sales_pump2,
+          coalesce((v_block->>'total_sales')::numeric, 0) as total_sales,
+          coalesce((v_block->>'testing')::numeric, 0) as testing
+        from public.dsr_petrol x
+        where x.id = v_id
+      ) s
+      where p.id = v_id
+        and (
+          p.opening_pump1_nozzle1, p.opening_pump1_nozzle2, p.opening_pump2_nozzle1, p.opening_pump2_nozzle2,
+          p.closing_pump1_nozzle1, p.closing_pump1_nozzle2, p.closing_pump2_nozzle1, p.closing_pump2_nozzle2,
+          p.sales_pump1, p.sales_pump2, p.total_sales, p.testing
+        ) is distinct from (
+          s.opening_pump1_nozzle1, s.opening_pump1_nozzle2, s.opening_pump2_nozzle1, s.opening_pump2_nozzle2,
+          s.closing_pump1_nozzle1, s.closing_pump1_nozzle2, s.closing_pump2_nozzle1, s.closing_pump2_nozzle2,
+          s.sales_pump1, s.sales_pump2, s.total_sales, s.testing
+        );
       v_updated := array_append(v_updated, 'petrol');
     end if;
   end if;
@@ -8724,19 +8825,45 @@ begin
 
     if v_id is not null then
       update public.dsr_diesel d set
-        opening_pump1_nozzle1 = coalesce((v_block->>'opening_pump1_nozzle1')::numeric, d.opening_pump1_nozzle1),
-        opening_pump1_nozzle2 = coalesce((v_block->>'opening_pump1_nozzle2')::numeric, d.opening_pump1_nozzle2),
-        opening_pump2_nozzle1 = coalesce((v_block->>'opening_pump2_nozzle1')::numeric, d.opening_pump2_nozzle1),
-        opening_pump2_nozzle2 = coalesce((v_block->>'opening_pump2_nozzle2')::numeric, d.opening_pump2_nozzle2),
-        closing_pump1_nozzle1 = coalesce((v_block->>'closing_pump1_nozzle1')::numeric, d.closing_pump1_nozzle1),
-        closing_pump1_nozzle2 = coalesce((v_block->>'closing_pump1_nozzle2')::numeric, d.closing_pump1_nozzle2),
-        closing_pump2_nozzle1 = coalesce((v_block->>'closing_pump2_nozzle1')::numeric, d.closing_pump2_nozzle1),
-        closing_pump2_nozzle2 = coalesce((v_block->>'closing_pump2_nozzle2')::numeric, d.closing_pump2_nozzle2),
-        sales_pump1 = coalesce((v_block->>'sales_pump1')::numeric, 0),
-        sales_pump2 = coalesce((v_block->>'sales_pump2')::numeric, 0),
-        total_sales = coalesce((v_block->>'total_sales')::numeric, 0),
-        testing = coalesce((v_block->>'testing')::numeric, 0)
-      where d.id = v_id;
+        opening_pump1_nozzle1 = s.opening_pump1_nozzle1,
+        opening_pump1_nozzle2 = s.opening_pump1_nozzle2,
+        opening_pump2_nozzle1 = s.opening_pump2_nozzle1,
+        opening_pump2_nozzle2 = s.opening_pump2_nozzle2,
+        closing_pump1_nozzle1 = s.closing_pump1_nozzle1,
+        closing_pump1_nozzle2 = s.closing_pump1_nozzle2,
+        closing_pump2_nozzle1 = s.closing_pump2_nozzle1,
+        closing_pump2_nozzle2 = s.closing_pump2_nozzle2,
+        sales_pump1 = s.sales_pump1,
+        sales_pump2 = s.sales_pump2,
+        total_sales = s.total_sales,
+        testing = s.testing
+      from (
+        select
+          coalesce((v_block->>'opening_pump1_nozzle1')::numeric, x.opening_pump1_nozzle1) as opening_pump1_nozzle1,
+          coalesce((v_block->>'opening_pump1_nozzle2')::numeric, x.opening_pump1_nozzle2) as opening_pump1_nozzle2,
+          coalesce((v_block->>'opening_pump2_nozzle1')::numeric, x.opening_pump2_nozzle1) as opening_pump2_nozzle1,
+          coalesce((v_block->>'opening_pump2_nozzle2')::numeric, x.opening_pump2_nozzle2) as opening_pump2_nozzle2,
+          coalesce((v_block->>'closing_pump1_nozzle1')::numeric, x.closing_pump1_nozzle1) as closing_pump1_nozzle1,
+          coalesce((v_block->>'closing_pump1_nozzle2')::numeric, x.closing_pump1_nozzle2) as closing_pump1_nozzle2,
+          coalesce((v_block->>'closing_pump2_nozzle1')::numeric, x.closing_pump2_nozzle1) as closing_pump2_nozzle1,
+          coalesce((v_block->>'closing_pump2_nozzle2')::numeric, x.closing_pump2_nozzle2) as closing_pump2_nozzle2,
+          coalesce((v_block->>'sales_pump1')::numeric, 0) as sales_pump1,
+          coalesce((v_block->>'sales_pump2')::numeric, 0) as sales_pump2,
+          coalesce((v_block->>'total_sales')::numeric, 0) as total_sales,
+          coalesce((v_block->>'testing')::numeric, 0) as testing
+        from public.dsr_diesel x
+        where x.id = v_id
+      ) s
+      where d.id = v_id
+        and (
+          d.opening_pump1_nozzle1, d.opening_pump1_nozzle2, d.opening_pump2_nozzle1, d.opening_pump2_nozzle2,
+          d.closing_pump1_nozzle1, d.closing_pump1_nozzle2, d.closing_pump2_nozzle1, d.closing_pump2_nozzle2,
+          d.sales_pump1, d.sales_pump2, d.total_sales, d.testing
+        ) is distinct from (
+          s.opening_pump1_nozzle1, s.opening_pump1_nozzle2, s.opening_pump2_nozzle1, s.opening_pump2_nozzle2,
+          s.closing_pump1_nozzle1, s.closing_pump1_nozzle2, s.closing_pump2_nozzle1, s.closing_pump2_nozzle2,
+          s.sales_pump1, s.sales_pump2, s.total_sales, s.testing
+        );
       v_updated := array_append(v_updated, 'diesel');
     end if;
   end if;
@@ -8750,7 +8877,7 @@ end;
 $$;
 
 comment on function public.apply_shift_aggregate_to_dsr(date) is
-  'Update meter columns on existing dsr_* rows from shift rollup. Never inserts stubs; leaves dip/stock/rate/remarks alone.';
+  'Update meter columns on existing dsr_* rows from shift rollup. Never inserts stubs; leaves dip/stock/rate/remarks alone. Rows already in sync are not rewritten.';
 
 grant execute on function public.apply_shift_aggregate_to_dsr(date) to authenticated;
 
@@ -9384,18 +9511,18 @@ create policy "staff_photos_select" on storage.objects
 drop policy if exists "staff_photos_insert_staff" on storage.objects;
 create policy "staff_photos_insert_staff" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
+  with check (bucket_id = 'staff-photos' and (select public.is_supervisor_or_admin()));
 
 drop policy if exists "staff_photos_update_staff" on storage.objects;
 create policy "staff_photos_update_staff" on storage.objects
   for update to authenticated
-  using (bucket_id = 'staff-photos' and public.is_supervisor_or_admin())
-  with check (bucket_id = 'staff-photos' and public.is_supervisor_or_admin());
+  using (bucket_id = 'staff-photos' and (select public.is_supervisor_or_admin()))
+  with check (bucket_id = 'staff-photos' and (select public.is_supervisor_or_admin()));
 
 drop policy if exists "staff_photos_delete_staff" on storage.objects;
 create policy "staff_photos_delete_staff" on storage.objects
   for delete to authenticated
-  using (bucket_id = 'staff-photos' and public.is_admin());
+  using (bucket_id = 'staff-photos' and (select public.is_admin()));
 
 -- Anon / PUBLIC may not execute app functions (20261013092142_revoke_anon_function_execute).
 do $$

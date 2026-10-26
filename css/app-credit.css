@@ -9,7 +9,7 @@ payments {
 
 .optional-label {
   font-weight: normal;
-  color: var(--muted, #64748b);
+  color: var(--muted);
 }
 .credit-ledger-summary {
   margin: 0;
@@ -75,68 +75,6 @@ payments {
 }
 
 /* Credit overdue: customer detail modal */
-.overdue-detail-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-.overdue-detail-overlay[aria-hidden="false"] {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-}
-.overdue-detail-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(var(--shadow-rgb), 0.55);
-}
-.overdue-detail-card {
-  position: relative;
-  z-index: 1;
-  max-width: 420px;
-  width: 100%;
-  overflow-y: auto;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-.overdue-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-.overdue-detail-head h2 {
-  margin: 0;
-  font-size: var(--heading-lg);
-}
-.overdue-detail-close {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--surface-elevated, #f1f5f9);
-  color: var(--text-muted);
-  font-size: 1.35rem;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.overdue-detail-close:hover {
-  background: var(--border);
-  color: var(--color-primary);
-}
 .overdue-detail-table {
   width: 100%;
   font-size: var(--text-sm);
@@ -161,7 +99,6 @@ payments {
   text-decoration: none;
   cursor: pointer;
 }
-
 
 /* Credit quick entry — record sale form */
 .credit-quick-form {
@@ -238,7 +175,7 @@ payments {
   padding: 0.65rem 0.85rem;
   border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface-muted, #f8fafc);
+  background: var(--surface-muted);
 }
 
 .credit-form-details summary {
@@ -277,7 +214,7 @@ payments {
 
 .credit-quick-payment-title {
   margin: 0 0 0.35rem;
-  font-size: var(--heading-sm, 1rem);
+  font-size: var(--heading-sm);
 }
 
 .credit-quick-payment-lead {
@@ -321,12 +258,12 @@ payments {
 
 .credit-overview-title {
   margin: 0;
-  font-size: var(--heading-sm, 1.05rem);
+  font-size: var(--heading-sm);
 }
 
 .credit-overview-subtitle {
   margin: 1.25rem 0 0.35rem;
-  font-size: var(--text-sm, 0.9375rem);
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
@@ -340,15 +277,15 @@ payments {
 }
 
 .table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid > td {
-  background-color: #f0fdf4;
+  background-color: var(--success-soft);
 }
 
 .table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid:hover > td {
-  background-color: #dcfce7;
+  background-color: var(--success-soft);
 }
 
 .table-wrap .credit-overview-table tbody tr.credit-overview-row--overpaid :is(.credit-overview-settled, .credit-overview-outstanding) {
-  color: #15803d;
+  color: var(--success-text);
   font-weight: 600;
 }
 
@@ -362,20 +299,20 @@ payments {
   padding: 0.85rem 1rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--fuel-petrol-border);
-  background: linear-gradient(145deg, var(--surface) 0%, var(--info-soft) 55%, #e0f2fe 100%);
+  background: linear-gradient(145deg, var(--surface) 0%, var(--info-soft) 55%, var(--info-soft) 100%);
 }
 
 .credit-settle-balance-label {
   display: block;
   font-size: var(--text-xs);
-  color: var(--muted, #64748b);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .credit-settle-balance-value {
-  font-size: 1.35rem;
-  color: var(--bpcl-blue-dark, #004a7c);
+  font-size: var(--heading-xl);
+  color: var(--bpcl-blue-dark);
 }
 .credit-settle-form button[type="submit"] {
   margin-top: 0.65rem;
@@ -393,7 +330,6 @@ payments {
 .credit-quick-payment-form .credit-same-day-field {
   grid-column: 1 / -1;
 }
-
 
 /* Credit page: show only the sidebar that matches list vs customer view */
 body.credit-list-view #credit-customer-nav,
@@ -430,7 +366,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 .customer-balance-hero {
   padding: var(--space-5);
   border-color: var(--fuel-petrol-border);
-  background: linear-gradient(145deg, var(--surface) 0%, var(--info-soft) 55%, #e0f2fe 100%);
+  background: linear-gradient(145deg, var(--surface) 0%, var(--info-soft) 55%, var(--info-soft) 100%);
   box-shadow: var(--shadow-sm);
 }
 
@@ -451,7 +387,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   font-size: clamp(1.35rem, 3vw, 1.75rem);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #0c4a6e;
+  color: var(--info-text);
   overflow-wrap: anywhere;
   transition: color 0.15s ease;
 }
@@ -525,7 +461,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-edit-card {
-  max-width: 480px;
+  width: min(100%, 30rem);
 }
 
 .customer-edit-actions {
@@ -536,11 +472,11 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-edit-form #customer-info-msg.success {
-  color: var(--color-success, #0a7a3e);
+  color: var(--color-success);
 }
 
 .customer-edit-form #customer-info-msg.error {
-  color: var(--color-danger, #b91c1c);
+  color: var(--color-danger);
 }
 
 .customer-balance-meta {
@@ -574,25 +510,25 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-balance-hero-amount.is-cleared .customer-balance-value {
-  color: #15803d;
+  color: var(--success-text);
 }
 
 .customer-balance-hero-amount.is-cleared .customer-balance-label::after {
   content: " · Cleared";
   font-weight: 600;
-  color: #15803d;
+  color: var(--success-text);
   text-transform: none;
   letter-spacing: 0;
 }
 
 .customer-balance-hero-amount.has-credit .customer-balance-value {
-  color: #15803d;
+  color: var(--success-text);
 }
 
 .customer-balance-hero-amount.has-credit .customer-balance-label::after {
   content: " · Advance";
   font-weight: 600;
-  color: #15803d;
+  color: var(--success-text);
   text-transform: none;
   letter-spacing: 0;
 }
@@ -631,7 +567,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .stat-card-compact .stat-value {
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
 }
 
 .credit-aging-groups {
@@ -702,7 +638,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .credit-aging-group .stat-value {
-  font-size: 1.15rem;
+  font-size: var(--text-lg);
 }
 
 .credit-aging-empty {
@@ -741,7 +677,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   font-size: var(--heading-lg);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #0c4a6e;
+  color: var(--info-text);
 }
 
 .customer-activity-summary {
@@ -766,7 +702,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   gap: 0.15rem;
   padding: 0.2rem;
   border-radius: 999px;
-  background: #e8eef5;
+  background: var(--surface-sunken);
 }
 
 .customer-activity-view {
@@ -787,7 +723,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-view:hover {
-  color: #0c4a6e;
+  color: var(--info-text);
 }
 
 .customer-activity-view.is-active {
@@ -814,9 +750,9 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   margin-left: 0.4rem;
   padding: 0 0.35rem;
   border-radius: 999px;
-  background: #fee2e2;
+  background: var(--danger-soft);
   color: var(--color-danger-hover);
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   line-height: 1.15rem;
 }
@@ -859,7 +795,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-kpi-value {
-  font-size: 1.25rem;
+  font-size: var(--text-lg);
   font-weight: 800;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
@@ -878,12 +814,12 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-kpi--outstanding.is-cleared {
-  border-color: #86efac;
-  background: linear-gradient(160deg, #f0fdf4 0%, var(--surface) 72%);
+  border-color: var(--success-border);
+  background: linear-gradient(160deg, var(--success-soft) 0%, var(--surface) 72%);
 }
 
 .customer-activity-kpi--outstanding.is-cleared .customer-activity-kpi-value {
-  color: #15803d;
+  color: var(--success-text);
 }
 
 .customer-activity-kpi--outstanding.is-advance {
@@ -892,7 +828,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-kpi--outstanding.is-advance .customer-activity-kpi-value {
-  color: #0f766e;
+  color: var(--accent-text);
 }
 
 .customer-activity-equation {
@@ -958,7 +894,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-table th {
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -974,7 +910,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 }
 
 .customer-activity-table td.is-open {
-  color: #0369a1;
+  color: var(--info-text);
   font-weight: 800;
 }
 
@@ -1020,7 +956,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   white-space: pre-wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .credit-ledger-table thead {
     display: none;
   }
@@ -1130,7 +1066,7 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   }
 }
 
-@media (min-width: 1200px) {
+@media (min-width: 1201px) {
   .page-layout-wide .dsr-card .meter-block:not(.meter-block-wide) .meter-table {
     min-width: 100%;
   }

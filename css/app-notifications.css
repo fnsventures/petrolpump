@@ -26,7 +26,7 @@
 
 .notifications-panel-head .dashboard-section-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 
 .notifications-panel-lead {
@@ -42,9 +42,9 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #9a3412;
-  background: #ffedd5;
-  border: 1px solid #fdba74;
+  color: var(--warning-text);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -56,11 +56,11 @@
   min-width: 1.05rem;
   height: 1.05rem;
   padding: 0 0.28rem;
-  font-size: 0.62rem;
+  font-size: var(--text-2xs);
   font-weight: 700;
   line-height: 1;
   color: var(--text-on-accent);
-  background: var(--bpcl-red, #e60012);
+  background: var(--bpcl-red);
   border-radius: 999px;
 }
 
@@ -79,8 +79,8 @@
 .notifications-empty {
   padding: var(--space-5) var(--space-4);
   text-align: center;
-  background: linear-gradient(165deg, var(--surface-muted) 0%, #f0fdf4 100%);
-  border: 1px dashed #bbf7d0;
+  background: linear-gradient(165deg, var(--surface-muted) 0%, var(--success-soft) 100%);
+  border: 1px dashed var(--success-border);
   border-radius: var(--radius-md);
 }
 
@@ -88,7 +88,7 @@
   margin: 0 0 0.35rem;
   font-size: var(--heading-sm);
   font-weight: 700;
-  color: #166534;
+  color: var(--success-text);
 }
 
 .notifications-empty-copy {
@@ -204,7 +204,7 @@
 .notif-item--success {
   border-left-color: var(--color-success);
   background: linear-gradient(90deg, var(--success-soft) 0%, var(--surface) 48%);
-  border-color: #a7f3d0;
+  border-color: var(--success-border);
 }
 
 .notif-item-body {
@@ -325,7 +325,7 @@
   margin: 0;
   padding: 0.75rem;
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--bpcl-blue, #1d4ed8) 18%, var(--border, #e2e8f0));
+  border: 1px solid color-mix(in srgb, var(--bpcl-blue) 18%, var(--border));
   background: var(--surface-muted);
 }
 
@@ -357,7 +357,7 @@ button.task-later-choice {
   min-height: 3.4rem;
   margin: 0;
   padding: 0.55rem 0.4rem;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
@@ -386,7 +386,7 @@ button.task-later-choice {
   width: 100%;
   box-sizing: border-box;
   padding: 0.45rem 0.6rem;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font: inherit;
   font-size: var(--text-sm);
@@ -433,7 +433,7 @@ button.task-later-choice {
   cursor: pointer;
   font-size: var(--text-sm);
   font-weight: 650;
-  color: var(--bpcl-blue-dark, #1e3a8a);
+  color: var(--bpcl-blue-dark);
   list-style: none;
 }
 
@@ -470,7 +470,7 @@ body.role-admin #pl-todo-banner.hidden {
   display: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .pl-todo-banner,
   .notif-item {
     flex-direction: column;

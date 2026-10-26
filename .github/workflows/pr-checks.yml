@@ -31,6 +31,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: CSS colours (no new hardcoded colours)
+        run: npm run lint:css
+
       - name: JS syntax
         run: |
           set -euo pipefail

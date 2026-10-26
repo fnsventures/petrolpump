@@ -523,7 +523,18 @@ function destroyCharts() {
   if (chartRevenueMix) { chartRevenueMix.destroy(); chartRevenueMix = null; }
 }
 
+/** Chart colours come from css/tokens.css so charts follow the light/dark theme. */
+function chartToken(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+let lastChartArgs = null;
+document.addEventListener("bpf:themechange", () => {
+  if (lastChartArgs) renderCharts(...lastChartArgs);
+});
+
 function renderCharts(series, totals) {
+  lastChartArgs = [series, totals];
   destroyCharts();
 
   const labels = series.map((d) => {
@@ -536,16 +547,24 @@ function renderCharts(series, totals) {
   const petrolRevenueData = series.map((d) => d.petrolRupees ?? 0);
   const dieselRevenueData = series.map((d) => d.dieselRupees ?? 0);
 
-  const grid = { color: "rgba(15, 23, 42, 0.06)" };
+  const grid = { color: chartToken("--border") };
   const fontFamily = "inherit";
   const rupeeTick = (value) => "₹" + (value >= 1000 ? value / 1000 + "k" : value);
-  const legendLabels = { color: "#334155", font: { family: fontFamily, size: 12 } };
-  const scaleTicks = { color: "#64748b", font: { family: fontFamily, size: 11 } };
-  const bpclBlue = "#0070c0";
-  const bpclBlueSoft = "rgba(0, 112, 192, 0.12)";
-  const bpclYellow = "#ffcc00";
-  const bpclGreen = "#007a33";
-  const bpclRed = "#e60012";
+  const legendLabels = { color: chartToken("--text-heading"), font: { family: fontFamily, size: 12 } };
+  const scaleTicks = { color: chartToken("--text-muted"), font: { family: fontFamily, size: 11 } };
+  const bpclBlue = chartToken("--bpcl-blue");
+  const bpclBlueSoft = chartToken("--bpcl-blue-soft");
+  const bpclYellow = chartToken("--bpcl-yellow");
+  const bpclYellowDark = chartToken("--bpcl-yellow-dark");
+  const bpclGreen = chartToken("--bpcl-green");
+  const bpclRed = chartToken("--bpcl-red");
+  const surface = chartToken("--surface");
+  // Chart.js parses colours itself (for hover shades), so build plain rgba() from the hex tokens.
+  const tint = (hex, pct) => {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!m) return hex;
+    return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${pct / 100})`;
+  };
 
   const salesCtx = document.getElementById("chart-sales")?.getContext("2d");
   if (salesCtx) {
@@ -585,8 +604,8 @@ function renderCharts(series, totals) {
       data: {
         labels,
         datasets: [
-          { label: "Petrol (₹)", data: petrolRevenueData, backgroundColor: "rgba(0, 112, 192, 0.85)", borderColor: bpclBlue, borderWidth: 1, borderRadius: 4 },
-          { label: "Diesel (₹)", data: dieselRevenueData, backgroundColor: "rgba(255, 204, 0, 0.9)", borderColor: "#e6b800", borderWidth: 1, borderRadius: 4 },
+          { label: "Petrol (₹)", data: petrolRevenueData, backgroundColor: tint(bpclBlue, 85), borderColor: bpclBlue, borderWidth: 1, borderRadius: 4 },
+          { label: "Diesel (₹)", data: dieselRevenueData, backgroundColor: tint(bpclYellow, 90), borderColor: bpclYellowDark, borderWidth: 1, borderRadius: 4 },
         ],
       },
       options: {
@@ -608,8 +627,8 @@ function renderCharts(series, totals) {
       data: {
         labels,
         datasets: [
-          { label: "Profit (₹)", data: profitData, backgroundColor: "rgba(0, 122, 51, 0.65)", borderColor: bpclGreen, borderWidth: 1, borderRadius: 4 },
-          { label: "Expenses (₹)", data: expenseData, backgroundColor: "rgba(230, 0, 18, 0.55)", borderColor: bpclRed, borderWidth: 1, borderRadius: 4 },
+          { label: "Profit (₹)", data: profitData, backgroundColor: tint(bpclGreen, 65), borderColor: bpclGreen, borderWidth: 1, borderRadius: 4 },
+          { label: "Expenses (₹)", data: expenseData, backgroundColor: tint(bpclRed, 55), borderColor: bpclRed, borderWidth: 1, borderRadius: 4 },
         ],
       },
       options: {
@@ -637,7 +656,7 @@ function renderCharts(series, totals) {
             data: [petrolL, dieselL],
             backgroundColor: [bpclBlue, bpclYellow],
             borderWidth: 2,
-            borderColor: "#fff",
+            borderColor: surface,
           },
         ],
       },
