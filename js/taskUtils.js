@@ -237,12 +237,12 @@
       <span class="contact-line-actions">
         ${
           tel
-            ? `<a class="contact-line-btn contact-line-btn--call" href="${esc(tel)}" aria-label="Call ${esc(shown)}">${CONTACT_CALL_ICON}</a>`
+            ? `<a class="button-icon contact-button contact-button--call" href="${esc(tel)}" aria-label="Call ${esc(shown)}">${CONTACT_CALL_ICON}</a>`
             : ""
         }
         ${
           wa
-            ? `<a class="contact-line-btn contact-line-btn--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
+            ? `<a class="button-icon contact-button contact-button--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
             : ""
         }
       </span>

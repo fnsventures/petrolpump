@@ -1,5 +1,5 @@
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <script>
       if (window.top !== window.self) {
         try { window.top.location = window.location.href; } catch (err) { /* cross-origin frame */ }
@@ -17,13 +17,14 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <script src="js/theme.js"></script>
-    <link rel="stylesheet" href="{{ baseCss }}" />
+{% include "base-css.njk" %}
 {%- for src in earlyScripts %}
     <script src="{{ src }}"></script>
 {%- endfor %}
     <script src="{{ roleBootstrap }}"></script>
     <script src="{{ appNav }}"></script>
     <link rel="stylesheet" href="{{ layoutCss }}" />
+    <link rel="stylesheet" href="css/app-notifications.css" />
     <link rel="stylesheet" href="{{ coreCss }}" />
 {%- for href in css %}
     <link rel="stylesheet" href="{{ href }}" />

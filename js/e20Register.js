@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees, mountDateStepper */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees, mountDateStepper, bindUnsavedDraft */
 
 (function () {
   /** Part B checks every 2 hours, from morning-shift start through afternoon-shift end. */
@@ -52,6 +52,9 @@
   let historyFilterKey = "";
   let historySeq = 0;
   let reportSeq = 0;
+  /** Typed register for the loaded date, kept on this device until saved. */
+  let draft = null;
+  let loadedDate = "";
 
   const dom = {};
 
@@ -68,6 +71,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     cacheDom();
     bindEvents();
+    bindDraft();
     initPageSections({
       defaultSection: "record",
       validSections: ["record", "history"],
@@ -182,6 +186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         onAction: () => {
           if (next && next.parentNode === parent) parent.insertBefore(row, next);
           else parent.appendChild(row);
+          draft?.persist();
         },
       });
     });
@@ -895,6 +900,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     adminUnlocked = true;
     refreshLockUi();
     applyMeterDips();
+    draft?.adoptServerState();
     setFeedback(true, "Unlocked. Make corrections, then save.");
   }
 
@@ -1073,8 +1079,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (dom.remarks) dom.remarks.value = header.remarks || "";
   }
 
+  function captureDraft() {
+    if (formLocked || !loadedDate) return null;
+    const { id: _id, ...fields } = snapshotFromForm();
+    return fields;
+  }
+
+  function restoreDraft(fields) {
+    if (formLocked || !fields || fields.register_date !== loadedDate) return false;
+    applyHeader(fields);
+    renderWaterRows(fields.water);
+    renderQualityRows(fields.quality);
+    return true;
+  }
+
+  function bindDraft() {
+    if (draft || !dom.form || typeof bindUnsavedDraft !== "function") return;
+    draft = bindUnsavedDraft({
+      key: () => (loadedDate ? `e20.${loadedDate}` : null),
+      root: dom.form,
+      capture: captureDraft,
+      restore: restoreDraft,
+    });
+    // Add tank / remove row / fill slots change the tables without an input event.
+    dom.form.addEventListener("click", (e) => {
+      if (e.target.closest("#e20-add-tank, #e20-fill-slots, [data-remove-water]")) {
+        setTimeout(() => draft?.persist(), 0);
+      }
+    });
+  }
+
+  /** The loaded register is the saved state; a local draft for this date goes on top. */
+  function settleDraft(dateStr, seq) {
+    if (!draft || seq !== loadSeq) return;
+    loadedDate = dateStr;
+    draft.resume();
+    draft.adoptServerState();
+    if (draft.restore()) {
+      refreshLockUi();
+      AppError.showToast("Restored an unsaved E-20 register from this device.", "info");
+    }
+  }
+
   async function loadRegister(dateStr) {
     const seq = ++loadSeq;
+    draft?.pause();
+    loadedDate = "";
     setFeedback(true, "");
     setStatus("Loading…");
     currentRegisterId = null;
@@ -1090,6 +1140,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         setStatus(`New register · ${formatDisplayDate(dateStr)} · fields auto-filled`);
         refreshLockUi();
         applyMeterDips();
+        settleDraft(dateStr, seq);
         return;
       }
 
@@ -1104,8 +1155,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
       refreshLockUi();
       applyMeterDips();
+      settleDraft(dateStr, seq);
     } catch (err) {
       if (seq !== loadSeq) return;
+      draft?.resume();
       AppError.handle(err, { target: dom.error });
       setStatus("Could not load register.");
       refreshLockUi();
@@ -1159,6 +1212,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (error) throw error;
 
       currentRegisterId = data;
+      draft?.markClean();
       currentSnapshot = snapshotFromForm();
       currentSnapshot.id = data;
       currentSnapshot.certified = certified;
@@ -1334,8 +1388,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td>${escapeHtml(row.cc_code || "—")}</td>
           <td>${escapeHtml(row.dealer_sign_name || "—")}</td>
           <td class="table-actions e20-hist-actions">
-            <button type="button" class="button-secondary button-sm" data-open-date="${escapeHtml(row.register_date)}"${row.certified ? ' data-open-report="1"' : ""}>${row.certified ? "View" : "Open"}</button>
-            <button type="button" class="button-secondary button-sm" data-print-date="${escapeHtml(row.register_date)}">Print</button>
+            <button type="button" class="button-secondary button-small" data-open-date="${escapeHtml(row.register_date)}"${row.certified ? ' data-open-report="1"' : ""}>${row.certified ? "View" : "Open"}</button>
+            <button type="button" class="button-secondary button-small" data-print-date="${escapeHtml(row.register_date)}">Print</button>
           </td>
         </tr>`;
       })
@@ -1439,33 +1493,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
 
         <h2 class="e20-part-heading">Part A: Morning Water Check Through Tank Dip</h2>
-        <table class="e20-print-table">
+        <table class="e20-print-table e20-print-table--water">
           <thead>
             <tr>
-              <th style="width:8%">Time</th>
-              <th style="width:14%">Product<br>Tank No.</th>
-              <th style="width:12%">Opening<br>Dip (mm)</th>
-              <th style="width:12%">Water<br>Finding (mm)</th>
-              <th style="width:11%">Water<br>Present</th>
-              <th style="width:18%">Corrective<br>Action</th>
-              <th style="width:13%">Tested By</th>
-              <th style="width:12%">Manager<br>Signature</th>
+              <th>Time</th>
+              <th>Product<br>Tank No.</th>
+              <th>Opening<br>Dip (mm)</th>
+              <th>Water<br>Finding (mm)</th>
+              <th>Water<br>Present</th>
+              <th>Corrective<br>Action</th>
+              <th>Tested By</th>
+              <th>Manager<br>Signature</th>
             </tr>
           </thead>
           <tbody>${waterRows.join("")}</tbody>
         </table>
 
         <h2 class="e20-part-heading">Part B: E-20 Petrol Quality Monitoring (Every 2 Hours)</h2>
-        <table class="e20-print-table">
+        <table class="e20-print-table e20-print-table--quality">
           <thead>
             <tr>
-              <th style="width:7%">Sl.<br>No.</th>
-              <th style="width:8%">Time</th>
-              <th style="width:20%">Visual<br>Appearance</th>
-              <th style="width:14%">Water<br>Separation</th>
-              <th style="width:22%">Action Taken<br>if Abnormal</th>
-              <th style="width:15%">Tested By</th>
-              <th style="width:14%">Signature</th>
+              <th>Sl.<br>No.</th>
+              <th>Time</th>
+              <th>Visual<br>Appearance</th>
+              <th>Water<br>Separation</th>
+              <th>Action Taken<br>if Abnormal</th>
+              <th>Tested By</th>
+              <th>Signature</th>
             </tr>
           </thead>
           <tbody>${qualityRows.join("")}</tbody>

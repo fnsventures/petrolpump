@@ -177,7 +177,7 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
 }
 
 .app-sidebar-brand-name {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -185,7 +185,7 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
 
 .app-sidebar-brand-meta {
   margin-top: 0.12rem;
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -257,7 +257,7 @@ body.has-app-sidebar:not(.app-sidebar-pinned) .app-sidebar.is-expanded {
 }
 
 .app-sidebar-group-toggle .app-sidebar-label {
-  font-size: 0.68rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -320,7 +320,7 @@ body.app-sidebar-pinned .app-sidebar .app-sidebar-group:not(:hover):not(:focus-w
 }
 
 .app-sidebar-link {
-  font-size: 0.86rem;
+  font-size: var(--heading-sm);
   font-weight: 600;
   min-height: 2.2rem;
   padding: 0.3rem 0.55rem 0.3rem 0.45rem;
@@ -350,7 +350,7 @@ body.app-sidebar-pinned .app-sidebar .app-sidebar-group:not(:hover):not(:focus-w
 }
 
 .app-sidebar-pin {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--app-sidebar-muted);
 }
@@ -411,7 +411,7 @@ body.has-app-sidebar .topbar .page-subtitle {
   text-overflow: ellipsis;
   pointer-events: auto;
   text-align: left;
-  font-size: 0.98rem;
+  font-size: var(--text-md);
   font-weight: 700;
   line-height: 1.15;
   opacity: 1;
@@ -445,8 +445,8 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
   width: calc(var(--app-sections-units) * 1rem);
   overflow: clip;
   contain: layout paint;
-  background: #f4f8fc;
-  border-right: 1px solid rgba(0, 112, 192, 0.16);
+  background: var(--surface-elevated);
+  border-right: 1px solid var(--border);
   box-shadow: 6px 0 18px rgba(0, 90, 156, 0.06);
 }
 
@@ -467,7 +467,7 @@ html.role-admin .app-sidebar .app-sidebar-group-toggle[data-role="admin-only"] {
   margin: 0;
   overflow: hidden;
   color: var(--text-on-accent);
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   font-weight: 800;
   letter-spacing: 0.1em;
   white-space: nowrap;
@@ -626,7 +626,7 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
   grid-column: 1;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1200px) {
   body.has-app-sections:not(.app-sections-collapsed) .settings-layout.dashboard-page-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -636,7 +636,7 @@ body.has-app-sections.credit-customer-view .settings-layout > .settings-panels {
   }
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1200px) {
   body.has-app-sections .settings-layout.dashboard-page-layout {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -813,7 +813,7 @@ html.app-chrome-ready body.has-app-sidebar {
     padding: 0.25rem 0.15rem 0.35rem;
     border-radius: 0.65rem;
     color: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     line-height: 1.1;
     text-decoration: none;

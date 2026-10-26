@@ -122,6 +122,67 @@ body.e20-print-body {
   height: 16pt;
 }
 
+/* Column widths (was inline style; CSP has no 'unsafe-inline'). */
+.e20-print-table--water th:nth-child(1) {
+  width: 8%;
+}
+
+.e20-print-table--water th:nth-child(2) {
+  width: 14%;
+}
+
+.e20-print-table--water th:nth-child(3) {
+  width: 12%;
+}
+
+.e20-print-table--water th:nth-child(4) {
+  width: 12%;
+}
+
+.e20-print-table--water th:nth-child(5) {
+  width: 11%;
+}
+
+.e20-print-table--water th:nth-child(6) {
+  width: 18%;
+}
+
+.e20-print-table--water th:nth-child(7) {
+  width: 13%;
+}
+
+.e20-print-table--water th:nth-child(8) {
+  width: 12%;
+}
+
+.e20-print-table--quality th:nth-child(1) {
+  width: 7%;
+}
+
+.e20-print-table--quality th:nth-child(2) {
+  width: 8%;
+}
+
+.e20-print-table--quality th:nth-child(3) {
+  width: 20%;
+}
+
+.e20-print-table--quality th:nth-child(4) {
+  width: 14%;
+}
+
+.e20-print-table--quality th:nth-child(5) {
+  width: 22%;
+}
+
+.e20-print-table--quality th:nth-child(6) {
+  width: 15%;
+}
+
+.e20-print-table--quality th:nth-child(7) {
+  width: 14%;
+}
+
 .e20-print-table .ctr {
   text-align: center;
 }

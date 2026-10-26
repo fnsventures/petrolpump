@@ -211,15 +211,15 @@
       </div>
     </main>
 
-    <dialog id="staff-id-modal" class="staff-id-modal app-modal hidden" hidden aria-labelledby="staff-id-modal-title">
-      <div class="staff-id-modal-backdrop" data-staff-id-close tabindex="-1" aria-hidden="true"></div>
-      <div class="staff-id-modal-panel card">
-        <div class="card-head snapshot-head staff-id-modal-head">
+    <dialog id="staff-id-modal" class="app-modal app-modal-shell staff-id-modal hidden" hidden aria-labelledby="staff-id-modal-title">
+      <div class="app-modal-backdrop" data-staff-id-close tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel staff-id-modal-panel">
+        <div class="card-head snapshot-head app-modal-head">
           <div>
             <h2 id="staff-id-modal-title">ID card preview</h2>
             <p class="muted staff-id-modal-subtitle">Front · back · portrait PVC size</p>
           </div>
-          <button type="button" id="staff-id-modal-close" class="staff-id-modal-close" aria-label="Close preview">×</button>
+          <button type="button" id="staff-id-modal-close" class="app-modal-close" aria-label="Close preview">×</button>
         </div>
         <div id="id-card-preview-wrap" class="staff-id-preview-wrap">
           <div id="id-card-preview" class="staff-id-preview-mount" role="group" aria-label="Staff ID card preview"></div>
@@ -230,15 +230,15 @@
       </div>
     </dialog>
 
-    <dialog id="staff-aadhaar-modal" class="staff-id-modal app-modal hidden" hidden aria-labelledby="staff-aadhaar-modal-title">
-      <div class="staff-id-modal-backdrop" data-aadhaar-close tabindex="-1" aria-hidden="true"></div>
-      <div class="staff-id-modal-panel card staff-aadhaar-modal-panel">
-        <div class="card-head snapshot-head staff-id-modal-head">
+    <dialog id="staff-aadhaar-modal" class="app-modal app-modal-shell staff-id-modal hidden" hidden aria-labelledby="staff-aadhaar-modal-title">
+      <div class="app-modal-backdrop" data-aadhaar-close tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel staff-id-modal-panel staff-aadhaar-modal-panel">
+        <div class="card-head snapshot-head app-modal-head">
           <div>
             <h2 id="staff-aadhaar-modal-title">Aadhaar card</h2>
             <p id="staff-aadhaar-modal-subtitle" class="muted staff-id-modal-subtitle"></p>
           </div>
-          <button type="button" id="staff-aadhaar-modal-close" class="staff-id-modal-close" aria-label="Close">×</button>
+          <button type="button" id="staff-aadhaar-modal-close" class="app-modal-close" aria-label="Close">×</button>
         </div>
         <div id="staff-aadhaar-modal-body" class="staff-aadhaar-preview">
           <p class="staff-id-modal-loading">Opening…</p>

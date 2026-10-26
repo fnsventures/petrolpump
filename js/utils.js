@@ -948,7 +948,10 @@ async function confirmCreditOverpayment(amount, outstanding) {
 }
 
 const UNSAVED_DRAFT_PREFIX = "bpf.draft.v1.";
+/** @type {{ isDirty: () => boolean, drafted: boolean, root: Element|null }[]} */
 const unsavedGuards = [];
+/** persist() of every bound draft, so a reload can write them first. */
+const unsavedDraftSavers = [];
 let unsavedLeaveBound = false;
 let bypassUnsavedLeave = false;
 
@@ -966,21 +969,27 @@ function stableDraftString(value) {
   return JSON.stringify(value ?? null);
 }
 
-function unsavedWorkPending() {
+function unsavedWorkPending({ undraftedOnly = false } = {}) {
   if (bypassUnsavedLeave) return false;
-  return unsavedGuards.some((isDirty) => {
+  return unsavedGuards.some((guard) => {
+    if (undraftedOnly && guard.drafted) return false;
     try {
-      return Boolean(isDirty());
+      return Boolean(guard.isDirty());
     } catch (_) {
       return false;
     }
   });
 }
 
-/** Register a leave warning. Shift register uses this around its own meter draft. */
-function trackUnsavedWork(isDirty) {
+/**
+ * Register a leave warning. Shift register uses this around its own meter draft.
+ * `drafted` means the edits are already kept on this device, so a reload does not lose them.
+ * @param {() => boolean} isDirty
+ * @param {{ drafted?: boolean, root?: Element|null }} [opts]
+ */
+function trackUnsavedWork(isDirty, opts = {}) {
   if (typeof isDirty !== "function") return;
-  unsavedGuards.push(isDirty);
+  unsavedGuards.push({ isDirty, drafted: opts.drafted === true, root: opts.root || null });
   if (unsavedLeaveBound || typeof document === "undefined" || typeof window === "undefined") return;
   unsavedLeaveBound = true;
 
@@ -1028,6 +1037,38 @@ function trackUnsavedWork(isDirty) {
     },
     true
   );
+}
+
+/** True when a reload would lose typed input: dirty edits, or a focused entry, with no local draft. */
+function unsavedWorkWouldBeLost() {
+  if (unsavedWorkPending({ undraftedOnly: true })) return true;
+  const el = typeof document !== "undefined" ? document.activeElement : null;
+  if (!el || !el.matches?.("input, textarea, select")) return false;
+  if (!String(el.value || "").trim()) return false;
+  return !unsavedGuards.some((guard) => guard.drafted && guard.root?.contains(el));
+}
+
+/**
+ * Write every bound draft now. When nothing would be lost, the next reload skips the
+ * leave prompt (update banner → Reload), and the drafts restore on the new page.
+ */
+function saveDraftsForReload() {
+  unsavedDraftSavers.forEach((save) => {
+    try {
+      save();
+    } catch (_) {
+      /* storage blocked */
+    }
+  });
+  if (!unsavedWorkPending({ undraftedOnly: true })) bypassUnsavedLeave = true;
+}
+
+/** Field values from captureDomDraftFields without the named ones (e.g. a remembered date). */
+function omitDraftFields(fields, names) {
+  if (!fields) return fields;
+  const rest = { ...fields };
+  (names || []).forEach((name) => delete rest[name]);
+  return rest;
 }
 
 function unsavedDraftStorageKey(key) {
@@ -1190,7 +1231,8 @@ function bindUnsavedDraft(opts) {
   };
   zone?.addEventListener("input", onEdit);
   zone?.addEventListener("change", onEdit);
-  trackUnsavedWork(isDirty);
+  trackUnsavedWork(isDirty, { drafted: true, root: zone });
+  unsavedDraftSavers.push(persist);
 
   return {
     persist,
@@ -1701,6 +1743,10 @@ window.finishRecordFormSave = finishRecordFormSave;
 window.safeAppReturnPath = safeAppReturnPath;
 window.confirmCreditOverpayment = confirmCreditOverpayment;
 window.bindUnsavedDraft = bindUnsavedDraft;
+window.captureDomDraftFields = captureDomDraftFields;
+window.omitDraftFields = omitDraftFields;
+window.saveDraftsForReload = saveDraftsForReload;
+window.unsavedWorkWouldBeLost = unsavedWorkWouldBeLost;
 window.trackUnsavedWork = trackUnsavedWork;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
@@ -2187,7 +2233,9 @@ function fuelProductModifier(value) {
 
 function fuelBadgeClass(value) {
   const mod = fuelProductModifier(value);
-  return mod ? `fuel-badge fuel-badge--${mod}` : "fuel-badge";
+  return mod
+    ? `badge badge--square fuel-badge badge--${mod} fuel-badge--${mod}`
+    : "badge badge--square fuel-badge badge--neutral";
 }
 
 function formatFuelBadge(value) {
@@ -2691,6 +2739,53 @@ function installFieldValidation() {
   document.addEventListener("change", clearIfValid, true);
 }
 
+const ENTER_NEXT_FIELD =
+  'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]), select, textarea';
+
+function enterNextFields(form) {
+  return [...form.querySelectorAll(ENTER_NEXT_FIELD)].filter(
+    (el) => !el.disabled && !el.readOnly && el.tabIndex >= 0 && el.offsetParent !== null
+  );
+}
+
+/**
+ * Forms marked data-enter-next: phone keyboards show "Next", and Enter moves to the
+ * next field instead of submitting. Enter on the last field submits as usual.
+ */
+function installEnterMovesToNextField() {
+  if (document.documentElement.dataset.bpfEnterNext === "1") return;
+  document.documentElement.dataset.bpfEnterNext = "1";
+
+  document.addEventListener("focusin", (event) => {
+    const el = event.target;
+    const form = el?.closest?.("form[data-enter-next]");
+    if (!form || !el.matches(ENTER_NEXT_FIELD) || el.tagName === "TEXTAREA" || el.hasAttribute("enterkeyhint")) return;
+    const fields = enterNextFields(form);
+    el.setAttribute("enterkeyhint", fields[fields.length - 1] === el ? "done" : "next");
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.defaultPrevented || event.isComposing) return;
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+    const el = event.target;
+    if (!el?.matches?.("input") || !el.matches(ENTER_NEXT_FIELD)) return;
+    const form = el.closest("form[data-enter-next]");
+    if (!form) return;
+    const fields = enterNextFields(form);
+    const next = fields[fields.indexOf(el) + 1];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    if (next.tagName === "INPUT") {
+      try {
+        next.select();
+      } catch {
+        /* date and number fields can reject select */
+      }
+    }
+  });
+}
+
 function tableHeaderLabels(table) {
   const row = table.querySelector("thead tr:last-child");
   if (!row) return null;
@@ -2713,6 +2808,11 @@ function annotateWideTable(table) {
   if (!(table instanceof HTMLTableElement)) return;
   if (table.classList.contains("attendance-matrix")) return;
   if (!table.closest(".table-wrap, .table-scroll, .e20-grid")) return;
+  // Number grids read across a row, so they keep columns and scroll sideways instead.
+  if (table.dataset.tableLayout === "scroll") {
+    table.classList.remove("table-cards");
+    return;
+  }
   const labels = tableHeaderLabels(table);
   if (!labels || labels.filter(Boolean).length < 2) {
     table.classList.remove("table-cards");
@@ -2797,6 +2897,7 @@ if (typeof document !== "undefined") {
   const startUiHelpers = () => {
     installNumericInputScrollGuard();
     installFieldValidation();
+    installEnterMovesToNextField();
     installResponsiveTables();
   };
   if (document.readyState === "loading") {

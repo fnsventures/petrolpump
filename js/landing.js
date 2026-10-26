@@ -96,7 +96,7 @@ function probeImage(src) {
 }
 
 function prefersNarrowSlides() {
-  return window.matchMedia("(max-width: 900px)").matches;
+  return window.matchMedia("(max-width: 960px)").matches;
 }
 
 async function resolveSlideSrc(set) {
@@ -184,7 +184,7 @@ function initAboutPopupA11y() {
 
 function createFooterIconLink({ href, label, tooltip, icon, external }) {
   const link = document.createElement("a");
-  link.className = "footer-icon-btn";
+  link.className = "footer-button-icon";
   link.href = href;
   link.setAttribute("aria-label", label);
   link.dataset.tooltip = tooltip;

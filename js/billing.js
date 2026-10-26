@@ -415,8 +415,8 @@ function recalcTotals() {
 
   const nonGstRow = document.getElementById("row-non-gst");
   const nilRateRow = document.getElementById("row-nil-rate");
-  if (nonGstRow) nonGstRow.style.display = nonGst > 0 ? "" : "none";
-  if (nilRateRow) nilRateRow.style.display = nilRate > 0 ? "" : "none";
+  if (nonGstRow) nonGstRow.hidden = !(nonGst > 0);
+  if (nilRateRow) nilRateRow.hidden = !(nilRate > 0);
   document.getElementById("summary-nongst").textContent = formatCurrency(nonGst);
   document.getElementById("summary-nilrate").textContent = formatCurrency(nilRate);
 }

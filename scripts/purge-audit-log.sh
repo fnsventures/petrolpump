@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Delete production audit_log rows older than 6 months.
 # Dry-run unless CONFIRM_PURGE_AUDIT=yes. Does not touch operational tables.
-# Used by .github/workflows/backup-prod-db.yml after a successful Drive backup.
+# Used weekly by .github/workflows/purge-audit-log.yml.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

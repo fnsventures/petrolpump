@@ -965,10 +965,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           : formatDisplayDate(row.due_date);
 
     const dueChipClass = isOverdue
-      ? "reminder-chip reminder-chip--due-overdue"
+      ? "badge badge--danger"
       : isToday || isUrgent
-        ? "reminder-chip reminder-chip--due-today"
-        : "reminder-chip";
+        ? "badge badge--warning"
+        : "badge badge--primary";
 
     const customerName =
       TaskUtils.customerNameOf(row) || customersById.get(row.credit_customer_id)?.customer_name || "";
@@ -987,7 +987,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const amountChip =
       credit && amountDue != null && amountDue > 0
-        ? `<span class="reminder-chip reminder-chip--amount">${escapeHtml(formatCurrency(amountDue))}</span>`
+        ? `<span class="badge badge--warning">${escapeHtml(formatCurrency(amountDue))}</span>`
         : "";
 
     const customerHtml =
@@ -1004,12 +1004,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       `<span class="${dueChipClass}">${escapeHtml(dueLabel)}</span>`,
       amountChip,
       row.priority === "high"
-        ? `<span class="reminder-chip reminder-chip--priority-high">High</span>`
+        ? `<span class="badge badge--danger">High</span>`
         : row.priority === "low"
-          ? `<span class="reminder-chip reminder-chip--priority-low">Low</span>`
+          ? `<span class="badge badge--neutral">Low</span>`
           : "",
       mode === "done" && row.completed_at
-        ? `<span class="reminder-chip">Done ${escapeHtml(formatDisplayDate(row.completed_at.slice(0, 10)))}</span>`
+        ? `<span class="badge badge--primary">Done ${escapeHtml(formatDisplayDate(row.completed_at.slice(0, 10)))}</span>`
         : "",
     ].filter(Boolean);
 

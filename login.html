@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
         <script>
       if (window.top !== window.self) {
         try { window.top.location = window.location.href; } catch (err) {}
@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
     <meta name="mobile-web-app-capable" content="yes" />
     <script src="js/theme.js"></script>
-    <link rel="stylesheet" href="css/base.css" />
+    <!-- @partial base-css -->
     <link rel="stylesheet" href="css/login.css" />
     <script defer src="js/vendor/supabase-login.min.js"></script>
     <script defer src="js/env.js"></script>

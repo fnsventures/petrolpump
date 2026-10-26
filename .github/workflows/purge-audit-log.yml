@@ -1,0 +1,35 @@
+name: Purge audit log
+
+# Weekly: delete production audit_log rows older than 6 months.
+# The monthly backup archives each finished month's audit rows to Drive long
+# before they reach that age. Operational tables are not touched.
+
+on:
+  schedule:
+    # Sundays 03:30 UTC (09:00 IST)
+    - cron: "30 3 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: prod-db-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Purge audit log older than 6 months
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          CONFIRM_PURGE_AUDIT: yes
+        run: bash scripts/purge-audit-log.sh

@@ -10,6 +10,7 @@ Docs index: [docs/README.md](docs/README.md). Task recipes: [docs/CHECKLISTS.md]
 npm ci
 npm test                             # tax, GSTR, payroll, day-closing, and query paging
 npm run dev                          # build:site + serve http://localhost:3000 (needs js/env.js)
+npm run lint:css                     # no new hardcoded colours (use css/tokens.css)
 node scripts/check-doc-links.mjs     # Markdown links/anchors
 ./scripts/check-migration-order.sh   # new migrations sort after origin/staging's newest
 ./scripts/check-schema-drift.sh      # migrations vs supabase/schema.sql (Docker)

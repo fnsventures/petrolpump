@@ -4,7 +4,7 @@ This is the plan for staying inside the Supabase free database (500 MB) for the 
 
 The free limit counts the live database only: tables, indexes, and `audit_log`. It does not count Google Drive, and it does not count the separate staging project. Invoice PDFs already live on Drive. Avatars live in Supabase Storage, which has its own quota.
 
-Business rows (meter readings, credit, salary, expenses, invoices, day closing, customers, staff, settings) stay in Postgres. They are not deleted to save space. A restore drill on 2026-10-06 measured about 16 MB of data. The part that grows without a cap is `audit_log`, because every audited edit stores a full copy of the old row and the new row. That diary is kept for 6 months and then deleted.
+Business rows (meter readings, credit, salary, expenses, invoices, day closing, customers, staff, settings) stay in Postgres. They are not deleted to save space. A restore drill on 2026-10-06 measured about 16 MB of data. The part that grows without a cap is `audit_log`, because every audited insert or delete stores a full copy of the row. Updates store only the columns that changed, and an update that changes nothing is not logged. That diary is kept for 6 months and then deleted.
 
 Drive is the long-term copy. The calendar year is 1 January through 31 December.
 
@@ -19,7 +19,7 @@ Drive is the long-term copy. The calendar year is 1 January through 31 December.
 ## The seven rules
 
 1. **Stay inside the free database.** Sales, credit, salary, and the other books stay in Supabase. Only the change diary is thrown away, and only after 6 months. Drive holds a full copy at the end of each calendar year, so the live database does not have to be emptied to make room.
-2. **Delete audit logs after 6 months.** On the 1st, after that month’s Drive upload has succeeded, production deletes `audit_log` rows older than 6 months. The sales row itself stays.
+2. **Delete audit logs after 6 months.** Every Sunday, `.github/workflows/purge-audit-log.yml` deletes production `audit_log` rows older than 6 months. Each month's rows were archived to Drive on the 1st of the next month, long before they are deleted. The sales row itself stays.
 3. **On the 1st, back up only last month.** 1 November writes October’s activity and nothing else. Customers, staff, products, and settings are not in that file. They have no month. They remain in Supabase, and they are inside the yearly full copy.
 4. **At year end, one full backup, then remove the monthly files.** 1 January writes a full copy of production into `Yearly/2026` (the year that just ended). Only after that upload succeeds, the twelve month folders for 2026 are moved to Drive trash. Trash can be restored for about 30 days. `Yearly/2026` is kept. The next year’s month folders (`2027-01` onward) are kept until 1 January 2028.
 5. **On-demand scripts.** You can save one month, or the whole database, or close a finished year, without waiting for the 1st. Commands are below.
@@ -90,9 +90,9 @@ Kept for **6 months**, measured from `performed_at`. On the 1st, after the Drive
 
 Shift cash and phone pay are still logged. Updates that only refresh the cached credit and expense totals on `meter_shift_cash` are not, because those totals are copied from the ledger.
 
-Deleting rows makes the space reusable. The number Supabase shows for database size can stay high until a one-time `VACUUM FULL public.audit_log` in a quiet window. That lock also blocks writes to every audited table, so it is not part of the monthly job.
+Deleting rows makes the space reusable. The number Supabase shows for database size can stay high until a one-time `VACUUM FULL public.audit_log` in a quiet window. That lock also blocks writes to every audited table, so it is not part of the weekly job.
 
-Apply migration `20261008150000_audit_log_retention` before the purge can succeed. Until it is on production, the 1st still uploads the month file, and the purge step fails with a clear message.
+Apply migration `20261008150000_audit_log_retention` before the purge can succeed. Until it is on production, the weekly **Purge audit log** run fails with a clear message; the monthly upload is not affected.
 
 Preview without deleting:
 

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager */
+/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -76,6 +76,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     initPersistedDateInput(dateInput, RECORD_DATE_KEYS.expense);
   }
 
+  let draft = null;
+  if (form && typeof bindUnsavedDraft === "function") {
+    // The date is remembered separately; an old draft must not bring back yesterday.
+    draft = bindUnsavedDraft({
+      key: "expense.record",
+      root: form,
+      capture: () => omitDraftFields(captureDomDraftFields(form), ["date"]),
+      skipTarget: (target) => target?.name === "date",
+    });
+    draft.adoptServerState();
+    if (draft.restore()) AppError.showToast("Restored an unsaved expense from this device.", "info");
+  }
+
   if (form) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -143,6 +156,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const savedDate = payload.date;
       rememberExpenseCategory(payload.category);
       finishRecordFormSave(form, { date: savedDate, category: payload.category }, { date: RECORD_DATE_KEYS.expense });
+      draft?.markClean();
       successEl?.classList.remove("hidden");
       loadExpenses(true);
       try {

@@ -23,7 +23,7 @@
             </p>
             <p class="dashboard-page-meta">
               <span id="dashboard-hero-date" class="dashboard-hero-date">—</span>
-              <span id="dashboard-hero-badge" class="dashboard-hero-badge hidden">Today</span>
+              <span id="dashboard-hero-badge" class="badge badge--sm badge--brand hidden">Today</span>
             </p>
           </div>
         </header>
@@ -64,7 +64,7 @@
             <a id="sales-daily-link" class="card-link dashboard-metric-card-body-link" href="dsr.html">
               <div class="dashboard-metric-card-head">
                 <h3>Total sale</h3>
-                <span class="dashboard-metric-pill" id="today-date"></span>
+                <span class="badge badge--primary" id="today-date"></span>
               </div>
               <div class="stat-grid">
                 <article class="stat-tile">
@@ -78,11 +78,11 @@
               </div>
             </a>
             <div class="dashboard-fuel-split" aria-label="Volume by product">
-              <a id="sales-daily-ms-link" class="dashboard-fuel-chip dashboard-fuel-chip--petrol card-link" href="dsr.html#dsr-petrol">
+              <a id="sales-daily-ms-link" class="badge badge--petrol dashboard-fuel-chip card-link" href="dsr.html#dsr-petrol">
                 <span class="dashboard-fuel-chip-label">MS</span>
                 <span id="today-petrol-liters" class="dashboard-fuel-chip-value">—</span>
               </a>
-              <a id="sales-daily-hsd-link" class="dashboard-fuel-chip dashboard-fuel-chip--diesel card-link" href="dsr.html#dsr-diesel">
+              <a id="sales-daily-hsd-link" class="badge badge--diesel dashboard-fuel-chip card-link" href="dsr.html#dsr-diesel">
                 <span class="dashboard-fuel-chip-label">HSD</span>
                 <span id="today-diesel-liters" class="dashboard-fuel-chip-value">—</span>
               </a>
@@ -92,7 +92,7 @@
             <a class="card-link dashboard-metric-card-body-link" href="credit.html#outstanding">
               <div class="dashboard-metric-card-head">
                 <h3>Open credit</h3>
-                <span class="dashboard-metric-pill dashboard-metric-pill--muted">Outstanding</span>
+                <span class="badge badge--neutral">Outstanding</span>
               </div>
             </a>
             <div class="credit-total-wrapper masked">
@@ -371,15 +371,15 @@
 
     <dialog
       id="reminders-landing-overlay"
-      class="reminders-landing-overlay app-modal"
+      class="app-modal app-modal-shell app-modal-shell--floating reminders-landing-overlay"
       aria-labelledby="reminders-landing-title"
       aria-describedby="reminders-landing-lead"
       aria-hidden="true"
       hidden
     >
-      <div class="reminders-landing-backdrop" data-reminders-landing-close tabindex="-1" aria-hidden="true"></div>
-      <div class="reminders-landing-card card">
-        <header class="reminders-landing-head">
+      <div class="app-modal-backdrop" data-reminders-landing-close tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel reminders-landing-card">
+        <header class="app-modal-head reminders-landing-head">
           <div>
             <p class="reminders-landing-eyebrow">Needs attention</p>
             <h2 id="reminders-landing-title" class="reminders-landing-title">Today&rsquo;s tasks</h2>
@@ -387,14 +387,14 @@
               Due reminders and urgent todos — credit calls, collections, and other work before it slips.
             </p>
           </div>
-          <button type="button" id="reminders-landing-close" class="reminders-landing-close" aria-label="Dismiss tasks">
+          <button type="button" id="reminders-landing-close" class="app-modal-close reminders-landing-close" aria-label="Dismiss tasks">
             ×
           </button>
         </header>
         <div id="reminders-landing-list" class="reminders-landing-list" aria-live="polite"></div>
         <footer class="reminders-landing-actions">
           <a href="reminders.html" class="button-secondary">All tasks</a>
-          <button type="button" id="reminders-landing-dismiss" class="reminders-landing-dismiss">Got it</button>
+          <button type="button" id="reminders-landing-dismiss" class="button-primary reminders-landing-dismiss">Got it</button>
         </footer>
       </div>
     </dialog>

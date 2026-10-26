@@ -1,0 +1,215 @@
+/* Design tokens: colours, type scale, spacing, radius, elevation. Loaded first on every page.
+ * Breakpoints (media queries cannot read custom properties): 480px phone, 768px tablet, 960px small desktop, 1200px wide. */
+:root {
+  font-family: "DM Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  color-scheme: light;
+  color: var(--text);
+  background-color: var(--surface-muted);
+  /* BPCL brand (letterhead / official logo) */
+  --bpcl-blue: #0070c0;
+  --bpcl-blue-dark: #005a9c;
+  --bpcl-blue-soft: rgba(0, 112, 192, 0.1);
+  --bpcl-yellow: #ffcc00;
+  --bpcl-yellow-dark: #e6b800;
+  /* Fuel product tints — petrol = light blue, diesel = light yellow */
+  --fuel-petrol-bg: rgba(0, 112, 192, 0.1);
+  --fuel-petrol-bg-strong: rgba(0, 112, 192, 0.12);
+  --fuel-petrol-border: rgba(0, 112, 192, 0.22);
+  --fuel-petrol-text: var(--bpcl-blue-dark);
+  --fuel-diesel-bg: rgba(255, 204, 0, 0.25);
+  --fuel-diesel-bg-strong: rgba(255, 204, 0, 0.18);
+  --fuel-diesel-border: rgba(230, 184, 0, 0.45);
+  --fuel-diesel-text: #854d0e;
+  --bpcl-green: #007a33;
+  --bpcl-red: #e60012;
+  /* Station logo — square sizing; PNG is circular white badge (same as ID card) */
+  --station-logo-size-sm: 2.75rem;
+  --station-logo-size-md: 4rem;
+  --station-logo-size-lg: 5rem;
+  --station-logo-size-xl: 6.5rem;
+  --station-logo-size-print: 16mm;
+  /* Brand & semantic colors */
+  --color-primary: var(--bpcl-blue);
+  --color-primary-hover: var(--bpcl-blue-dark);
+  --color-primary-soft: var(--bpcl-blue-soft);
+  --color-accent: var(--bpcl-blue);
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-success: #047857;
+  --color-warning: #b45309;
+  --surface: #ffffff;
+  --surface-elevated: #f8fafc;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-body: #1e293b;
+  --text-secondary: #475569;
+  --text-heading: #334155;
+  --text-muted: #64748b;
+  --text-on-accent: #ffffff;
+  --inverse: #0f172a;
+  --inverse-text: #f8fafc;
+  --muted: var(--text-muted);
+  /* Elevation */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
+  /* Type scale – uniform across app */
+  --text-2xs: 0.7rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --surface-muted: #f8fafc;
+  --surface-sunken: #f1f5f9;
+  --danger-soft: #fef2f2;
+  --danger-border: #fecaca;
+  --success-soft: #ecfdf5;
+  --warning-soft: #fffbeb;
+  --warning-border: #fde68a;
+  --info-soft: #f0f9ff;
+  --info-border: #bae6fd;
+  /* Status text on a soft background (badges, notes) */
+  --success-text: #166534;
+  --success-border: #bbf7d0;
+  --warning-text: #92400e;
+  --danger-text: var(--color-danger-hover);
+  --info-text: #0369a1;
+  --accent-soft: #ccfbf1;
+  --accent-text: #0f766e;
+  --accent-border: #99f6e4;
+  --shadow-rgb: 15, 23, 42;
+  --heading-sm: 0.875rem;
+  --heading-md: 1rem;
+  --heading-lg: 1.125rem;
+  --heading-xl: 1.375rem;
+  --heading-2xl: 1.625rem;
+  /* Spacing */
+  --space-1: 0.5rem;
+  --space-2: 0.75rem;
+  --space-3: 1rem;
+  --space-4: 1.25rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  /* Controls */
+  --input-height: 2.75rem;
+  --control-padding-x: 0.75rem;
+  /* Solid ring. A translucent shadow on white was about 1.3:1. */
+  --focus-ring: 0 0 0 2px var(--color-primary);
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --topbar-height: 3.75rem;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --topbar-offset: calc(var(--topbar-height) + var(--safe-top));
+  --viewport-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --viewport-height: 100dvh;
+  }
+}
+
+/* Dark theme. js/theme.js sets data-theme from the saved choice or the system setting.
+ * Screen only: printing always uses the light palette above. */
+@media screen {
+  /* The landing page (index, about) is already dark and keeps its own palette. */
+  :root[data-theme="dark"]:not(:has(body.landing-page)) {
+    color-scheme: dark;
+    --bpcl-blue: #3b9be0;
+    --bpcl-blue-dark: #7cc0f2;
+    --bpcl-blue-soft: rgba(59, 155, 224, 0.16);
+    --fuel-petrol-bg: rgba(59, 155, 224, 0.16);
+    --fuel-petrol-bg-strong: rgba(59, 155, 224, 0.2);
+    --fuel-petrol-border: rgba(59, 155, 224, 0.35);
+    --fuel-diesel-bg: rgba(255, 204, 0, 0.16);
+    --fuel-diesel-bg-strong: rgba(255, 204, 0, 0.12);
+    --fuel-diesel-border: rgba(255, 204, 0, 0.35);
+    --fuel-diesel-text: #fcd34d;
+    --bpcl-green: #34c77b;
+    --bpcl-red: #ff5a64;
+    --color-primary: #1f86d0;
+    --color-primary-hover: #3b9be0;
+    --color-danger: #f87171;
+    --color-danger-hover: #fca5a5;
+    --color-success: #34d399;
+    --color-warning: #fbbf24;
+    --surface: #111a27;
+    --surface-elevated: #172233;
+    --surface-muted: #0b121c;
+    --surface-sunken: #1a2638;
+    --border: #263449;
+    --border-strong: #35465f;
+    --text: #e6edf6;
+    --text-body: #d3dce8;
+    --text-secondary: #a9b6c8;
+    --text-heading: #c7d2e1;
+    --text-muted: #8796ab;
+    --text-on-accent: #ffffff;
+    --inverse: #e6edf6;
+    --inverse-text: #0b121c;
+    --danger-soft: rgba(248, 113, 113, 0.12);
+    --danger-border: rgba(248, 113, 113, 0.32);
+    --danger-text: #fca5a5;
+    --success-soft: rgba(52, 211, 153, 0.12);
+    --success-border: rgba(52, 211, 153, 0.3);
+    --success-text: #6ee7b7;
+    --warning-soft: rgba(251, 191, 36, 0.12);
+    --warning-border: rgba(251, 191, 36, 0.32);
+    --warning-text: #fcd34d;
+    --info-soft: rgba(56, 189, 248, 0.12);
+    --info-border: rgba(56, 189, 248, 0.3);
+    --info-text: #7dd3fc;
+    --accent-soft: rgba(45, 212, 191, 0.12);
+    --accent-border: rgba(45, 212, 191, 0.3);
+    --accent-text: #5eead4;
+    --shadow-rgb: 0, 0, 0;
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.5);
+    /* Sidebar stays brand blue, a shade deeper so it does not glare. */
+    --app-sidebar-bg: #0a3d66;
+    --app-sidebar-bg-2: #0d4f84;
+  }
+
+  /* Paper previews (letterhead, ID card, report sheets, invoices) show what will print. */
+  :root[data-theme="dark"] :is(
+    .letterhead-preview-sheet,
+    .report-print-sheet,
+    .staff-id-sheet,
+    .staff-id-card,
+    .salary-slip-sheet,
+    .invoice-sheet,
+    .e20-sheet-preview,
+    .drive-preview-body
+  ) {
+    color-scheme: light;
+    --surface: #ffffff;
+    --surface-elevated: #f8fafc;
+    --surface-muted: #f8fafc;
+    --surface-sunken: #f1f5f9;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text: #0f172a;
+    --text-body: #1e293b;
+    --text-secondary: #475569;
+    --text-heading: #334155;
+    --text-muted: #64748b;
+    --bpcl-blue: #0070c0;
+    --bpcl-blue-dark: #005a9c;
+    background-color: var(--surface);
+    color: var(--text);
+  }
+}

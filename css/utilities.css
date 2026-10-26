@@ -1,0 +1,16 @@
+/* Single-purpose helpers. Loaded after components so they win at equal specificity. */
+
+.text-sm {
+  font-size: var(--text-sm);
+}
+
+/* Replaces style="margin:0"; page CSS loads after utilities, so keep it winning. */
+.m-0 {
+  margin: 0 !important;
+}
+
+/* !important so display:flex/grid utilities cannot override hide */
+.hidden,
+[hidden] {
+  display: none !important;
+}

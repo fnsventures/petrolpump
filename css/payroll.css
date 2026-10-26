@@ -26,36 +26,6 @@
   gap: 0.35rem;
 }
 
-.payroll-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.16rem 0.55rem;
-  border-radius: 999px;
-  font-size: var(--text-xs);
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1.35;
-  white-space: nowrap;
-  background: var(--bpcl-blue-soft);
-  color: var(--bpcl-blue-dark);
-}
-
-.payroll-chip.is-off {
-  background: var(--surface-muted);
-  color: var(--text-muted);
-}
-
-.payroll-chip.is-deduct {
-  background: rgba(220, 38, 38, 0.1);
-  color: var(--color-danger);
-}
-
-.payroll-chip.is-earn {
-  background: rgba(0, 122, 51, 0.1);
-  color: var(--bpcl-green);
-}
-
 .payroll-rule-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
@@ -79,7 +49,7 @@
 .payroll-rule-card .payroll-rule-copy {
   display: block;
   margin-top: 0.15rem;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 450;
   line-height: 1.4;
   color: var(--text-muted);
@@ -110,7 +80,7 @@
   flex-direction: column;
   gap: 0.12rem;
   min-width: 8.5rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
@@ -129,7 +99,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-weight: 650;
   cursor: pointer;
   margin: 0;
@@ -165,7 +135,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .attendance-matrix td.att-cell .att-cell-od {
   font-weight: 800;
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   line-height: 1;
   letter-spacing: 0.04em;
   color: var(--color-warning);
@@ -178,7 +148,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .att-pay-panel h3 {
   margin: 0 0 0.25rem;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 
 .att-pay-kpis {
@@ -197,7 +167,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .att-pay-kpi span {
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -205,7 +175,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 .att-pay-kpi strong {
   display: block;
   margin-top: 0.15rem;
-  font-size: 1.05rem;
+  font-size: var(--text-md);
   font-variant-numeric: tabular-nums;
 }
 
@@ -228,7 +198,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 }
 
 .salary-lop-excluded {
-  color: var(--muted, #64748b);
+  color: var(--muted);
   font-weight: 600;
 }
 
@@ -250,7 +220,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .salary-adjust {
   flex-shrink: 0;
-  margin-bottom: var(--space-3, 0.75rem);
+  margin-bottom: var(--space-3);
   padding: 0.75rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -280,7 +250,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .salary-adjust-grid dt {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -294,7 +264,7 @@ table.attendance-mark-table:not(.show-od) :is(th, td).att-col-od {
 
 .salary-adjust-note {
   margin: 0.55rem 0 0;
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   line-height: 1.4;
   color: var(--text-muted);
 }

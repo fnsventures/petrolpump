@@ -22,7 +22,7 @@
             </div>
           </div>
           <div id="salary-record-form-slot">
-          <form id="salary-payment-form" class="form" autocomplete="off">
+          <form id="salary-payment-form" data-enter-next class="form" autocomplete="off">
             <div class="form-grid">
               <div class="form-field payment-staff-field">
                 <label for="payment-staff">Staff</label>
@@ -48,7 +48,7 @@
                   placeholder="0"
                   required
                 />
-                <button type="button" id="payment-fill-remaining" class="button-secondary button-small" style="margin-top:0.35rem">Fill remaining</button>
+                <button type="button" id="payment-fill-remaining" class="button-secondary button-small payment-fill-remaining">Fill remaining</button>
               </div>
               <div class="form-field">
                 <label for="payment-note">Note</label>
@@ -166,18 +166,18 @@
 
     <dialog
       id="salary-detail-overlay"
-      class="overdue-detail-overlay app-modal"
+      class="app-modal app-modal-shell salary-detail-overlay"
       aria-hidden="true"
       aria-labelledby="salary-detail-title"
     >
-      <div class="overdue-detail-backdrop" id="salary-detail-backdrop"></div>
-      <div class="card overdue-detail-card salary-detail-card">
-        <div class="overdue-detail-head">
+      <div class="app-modal-backdrop" id="salary-detail-backdrop"></div>
+      <div class="card app-modal-panel salary-detail-card">
+        <div class="app-modal-head">
           <div>
             <h2 id="salary-detail-title">Staff salary</h2>
             <p id="salary-detail-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="overdue-detail-close" id="salary-detail-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="salary-detail-close" aria-label="Close">×</button>
         </div>
 
         <dl class="salary-detail-meta" id="salary-detail-stats"></dl>

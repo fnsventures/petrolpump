@@ -409,7 +409,7 @@
     if (!date || !shift) {
       labelEl.textContent = "Select a date and shift";
       statusEl.textContent = "—";
-      statusEl.className = "shift-status-badge shift-status-badge--idle";
+      statusEl.className = "badge badge--sm badge--neutral shift-status-badge";
       return;
     }
 
@@ -422,17 +422,17 @@
 
     if (supervisorReadonly) {
       statusEl.textContent = "Locked";
-      statusEl.className = "shift-status-badge shift-status-badge--locked";
+      statusEl.className = "badge badge--sm badge--danger shift-status-badge";
       statusEl.title = lockReason || MSG_DAY_CLOSING_SAVED;
     } else if (opts.hasSaved ?? shiftHasSavedRows) {
       statusEl.textContent = "Saved · can update";
-      statusEl.className = "shift-status-badge shift-status-badge--saved";
+      statusEl.className = "badge badge--sm badge--success shift-status-badge";
       statusEl.title = isAdmin
         ? ""
         : "You can save again with updated values until day closing is saved";
     } else {
       statusEl.textContent = "Not saved yet";
-      statusEl.className = "shift-status-badge shift-status-badge--draft";
+      statusEl.className = "badge badge--sm badge--warning shift-status-badge";
       statusEl.title = "";
     }
   }
@@ -2527,7 +2527,9 @@
 
   async function bootstrapShiftRegister(opts = {}) {
     clearLegacyMeterDrafts();
-    if (typeof trackUnsavedWork === "function") trackUnsavedWork(() => meterDraftDirty);
+    if (typeof trackUnsavedWork === "function") {
+      trackUnsavedWork(() => meterDraftDirty, { drafted: true, root: el("shift-meter-edit-zone") });
+    }
     isAdmin = opts.isAdmin === true;
     currentUserId = opts.userId || null;
     const clearBtn = el("shift-meter-clear");

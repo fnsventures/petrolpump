@@ -91,7 +91,7 @@
               <td>${formatCurrency(e.amount)}</td>
               <td>${escapeHtml(e.payment_mode || "—")}${
                 e.same_day_settlement
-                  ? ' <span class="dc-same-day-tag" title="Paid on the day of the credit sale. Counted in Night cash or Phone pay, not Collection.">Paid on the sale day</span>'
+                  ? ' <span class="badge badge--sm badge--square badge--accent dc-same-day-tag" title="Paid on the day of the credit sale. Counted in Night cash or Phone pay, not Collection.">Paid on the sale day</span>'
                   : ""
               }</td>
               <td>${escapeHtml(e.note || "—")}</td>

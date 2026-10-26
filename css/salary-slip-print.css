@@ -267,6 +267,12 @@ body {
   border-collapse: collapse;
 }
 
+.salary-slip-employer-note {
+  margin: 3pt 0 0;
+  font-size: 6.8pt;
+  color: var(--slip-muted);
+}
+
 .salary-slip-employer td {
   padding: 2pt 0;
 }
@@ -348,6 +354,23 @@ body {
   font-weight: 700;
   text-align: left;
   font-size: 7.5pt;
+}
+
+.salary-slip-payments--cols th:nth-child(1) {
+  width: 7%;
+}
+
+.salary-slip-payments--cols th:nth-child(2) {
+  width: 24%;
+}
+
+.salary-slip-payments--cols th:nth-child(3) {
+  width: 22%;
+}
+
+.salary-slip-payments td.salary-slip-empty-cell {
+  text-align: center;
+  color: var(--slip-muted);
 }
 
 .salary-slip-payments td.num,

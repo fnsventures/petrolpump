@@ -21,7 +21,7 @@
           </div>
         </div>
         <p id="billing-drive-banner" class="smart-alert smart-alert--warning hidden" hidden></p>
-        <form id="invoice-form" class="form">
+        <form id="invoice-form" data-enter-next class="form">
           <div class="form-grid billing-header-grid">
             <div class="form-field">
               <label for="invoice-date">Date</label>
@@ -57,7 +57,7 @@
             </div>
             <div class="form-field">
               <label for="km-reading">KM <span class="optional-label">(optional)</span></label>
-              <input id="km-reading" name="km_reading" type="text" placeholder="KM reading" maxlength="20" />
+              <input id="km-reading" name="km_reading" type="text" inputmode="decimal" placeholder="KM reading" maxlength="20" />
               <small class="muted">Printed on the cash memo with vehicle no. Round-off is applied automatically.</small>
             </div>
           </div>
@@ -131,10 +131,10 @@
                 <div class="billing-summary-row muted">
                   <span>SGST:</span><span id="summary-sgst">₹0.00</span>
                 </div>
-                <div class="billing-summary-row muted" id="row-non-gst" style="display:none">
+                <div class="billing-summary-row muted" id="row-non-gst" hidden>
                   <span>Non-GST:</span><span id="summary-nongst">₹0.00</span>
                 </div>
-                <div class="billing-summary-row muted" id="row-nil-rate" style="display:none">
+                <div class="billing-summary-row muted" id="row-nil-rate" hidden>
                   <span>NIL Rate:</span><span id="summary-nilrate">₹0.00</span>
                 </div>
               </div>
