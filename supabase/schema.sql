@@ -5863,11 +5863,14 @@ declare
 begin
   -- A cancelled sale or payment is already out of balances and day closing.
   -- Deleting that leftover row must not be blocked by a certified or collected day.
+  -- status is read in a nested IF: expenses has no status column, and a single
+  -- AND expression can evaluate old.status before the table name is checked.
   if tg_op = 'DELETE'
      and tg_table_name in ('credit_entries', 'credit_payments')
-     and old.status = 'cancelled'
   then
-    return null;
+    if old.status = 'cancelled' then
+      return null;
+    end if;
   end if;
 
   if tg_table_name = 'credit_entries' then
@@ -5938,7 +5941,7 @@ end;
 $$;
 
 comment on function public.ledger_guard_certified_day() is
-  'Trigger: reject expenses, credit sales and payments on a certified day, then refresh an uncertified saved closing.';
+  'Trigger: reject expenses, credit sales and payments on a certified day, then refresh an uncertified saved closing. A delete of an already-cancelled credit sale or payment is allowed.';
 
 revoke all on function public.ledger_guard_certified_day() from public, anon;
 grant execute on function public.ledger_guard_certified_day() to authenticated;
