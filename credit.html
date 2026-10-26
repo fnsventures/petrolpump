@@ -133,31 +133,48 @@
           <div class="card-head snapshot-head">
             <div>
               <h2>Aging</h2>
-              <p class="muted">Open bills by the age of the oldest unpaid sale.</p>
+              <p class="muted">Open bills by the age of the oldest unpaid sale. A closed period shows its total; open it to see those customers.</p>
             </div>
             <button type="button" id="credit-aging-refresh" class="button-secondary button-small">Refresh</button>
           </div>
-          <div class="stats-grid credit-aging-stats">
-            <div class="stat-card stat-card-compact"><span class="stat-label">0–30 days</span><strong id="credit-aging-0-30" class="stat-value">—</strong></div>
-            <div class="stat-card stat-card-compact"><span class="stat-label">31–60 days</span><strong id="credit-aging-31-60" class="stat-value">—</strong></div>
-            <div class="stat-card stat-card-compact"><span class="stat-label">61–90 days</span><strong id="credit-aging-61-90" class="stat-value">—</strong></div>
-            <div class="stat-card stat-card-compact"><span class="stat-label">90+ days</span><strong id="credit-aging-90plus" class="stat-value">—</strong></div>
-          </div>
-          <div class="table-wrap">
-            <table class="credit-ledger-table credit-aging-table table-cards">
-              <thead>
-                <tr>
-                  <th>Customer</th>
-                  <th>Oldest bill</th>
-                  <th>Age</th>
-                  <th>Bucket</th>
-                  <th class="num">Open (₹)</th>
-                </tr>
-              </thead>
-              <tbody id="credit-aging-body">
-                <tr><td colspan="5" class="muted">Open this tab to load aging.</td></tr>
-              </tbody>
-            </table>
+          <p id="credit-aging-status" class="muted text-sm">Open this tab to load aging.</p>
+          <div class="credit-aging-groups" id="credit-aging-groups">
+            <details class="credit-aging-group" data-bucket="0-30">
+              <summary>
+                <span class="credit-aging-summary-text">
+                  <span class="stat-label">0–30 days</span>
+                  <strong id="credit-aging-0-30" class="stat-value">—</strong>
+                </span>
+              </summary>
+              <div id="credit-aging-body-0-30" class="credit-aging-body"></div>
+            </details>
+            <details class="credit-aging-group" data-bucket="31-60">
+              <summary>
+                <span class="credit-aging-summary-text">
+                  <span class="stat-label">31–60 days</span>
+                  <strong id="credit-aging-31-60" class="stat-value">—</strong>
+                </span>
+              </summary>
+              <div id="credit-aging-body-31-60" class="credit-aging-body"></div>
+            </details>
+            <details class="credit-aging-group" data-bucket="61-90">
+              <summary>
+                <span class="credit-aging-summary-text">
+                  <span class="stat-label">61–90 days</span>
+                  <strong id="credit-aging-61-90" class="stat-value">—</strong>
+                </span>
+              </summary>
+              <div id="credit-aging-body-61-90" class="credit-aging-body"></div>
+            </details>
+            <details class="credit-aging-group" data-bucket="90+">
+              <summary>
+                <span class="credit-aging-summary-text">
+                  <span class="stat-label">90+ days</span>
+                  <strong id="credit-aging-90plus" class="stat-value">—</strong>
+                </span>
+              </summary>
+              <div id="credit-aging-body-90plus" class="credit-aging-body"></div>
+            </details>
           </div>
         </section>
 

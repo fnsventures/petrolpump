@@ -711,44 +711,94 @@ function exportCreditLedgerCsv() {
   URL.revokeObjectURL(url);
 }
 
+const CREDIT_AGING_BUCKETS = [
+  { key: "0-30", id: "0-30" },
+  { key: "31-60", id: "31-60" },
+  { key: "61-90", id: "61-90" },
+  { key: "90+", id: "90plus" },
+];
+
+function renderCreditAgingRows(rows) {
+  return rows
+    .map((row) => {
+      const href = customerDetailUrl({ id: row.customer_id, customer_name: row.customer_name });
+      return `<tr class="credit-ledger-row" data-href="${href}">
+          <td data-label="Customer"><a class="customer-link" href="${href}">${escapeHtml(row.customer_name)}</a></td>
+          <td data-label="Oldest bill">${escapeHtml(formatDisplayDate(row.oldest_unpaid))}</td>
+          <td data-label="Age">${escapeHtml(String(row.age_days))} days</td>
+          <td class="num" data-label="Open (₹)">${formatCurrency(row.open_amount)}</td>
+        </tr>`;
+    })
+    .join("");
+}
+
+function renderCreditAgingBucket(bucketId, rows) {
+  const el = document.getElementById(`credit-aging-body-${bucketId}`);
+  if (!el) return;
+  if (!rows.length) {
+    el.innerHTML = `<p class="credit-aging-empty">No unpaid bills in this period.</p>`;
+    return;
+  }
+  el.innerHTML = `<div class="table-wrap">
+      <table class="credit-ledger-table credit-aging-table">
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Oldest bill</th>
+            <th>Age</th>
+            <th class="num">Open (₹)</th>
+          </tr>
+        </thead>
+        <tbody>${renderCreditAgingRows(rows)}</tbody>
+      </table>
+    </div>`;
+}
+
 async function loadCreditAging() {
-  const body = document.getElementById("credit-aging-body");
-  if (!body) return;
-  body.innerHTML = `<tr><td colspan="5" class="muted">Loading…</td></tr>`;
+  const status = document.getElementById("credit-aging-status");
+  const groups = document.getElementById("credit-aging-groups");
+  if (!groups) return;
+  if (status) {
+    status.hidden = false;
+    status.classList.remove("error");
+    status.textContent = "Loading…";
+  }
+  groups.setAttribute("aria-busy", "true");
   try {
     const { data, error } = await window.supabaseClient.rpc("get_credit_aging", {
       p_as_of: getLocalDateString(),
     });
     if (error) throw error;
-    const rows = data || [];
+    const grouped = { "0-30": [], "31-60": [], "61-90": [], "90+": [] };
     const totals = { "0-30": 0, "31-60": 0, "61-90": 0, "90+": 0 };
-    rows.forEach((row) => {
+    (data || []).forEach((row) => {
       const bucket = row.bucket;
-      if (totals[bucket] != null) totals[bucket] += Number(row.open_amount) || 0;
+      if (!grouped[bucket]) return;
+      grouped[bucket].push(row);
+      totals[bucket] += Number(row.open_amount) || 0;
     });
-    ["0-30", "31-60", "61-90", "90+"].forEach((bucket) => {
-      const el = document.getElementById(`credit-aging-${bucket.replace("+", "plus")}`);
-      if (el) el.textContent = formatCurrency(totals[bucket]);
+    CREDIT_AGING_BUCKETS.forEach(({ key, id }) => {
+      const el = document.getElementById(`credit-aging-${id}`);
+      if (el) el.textContent = formatCurrency(totals[key]);
+      grouped[key].sort((a, b) => {
+        const byAge = (Number(b.age_days) || 0) - (Number(a.age_days) || 0);
+        if (byAge) return byAge;
+        return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), undefined, {
+          sensitivity: "base",
+        });
+      });
+      renderCreditAgingBucket(id, grouped[key]);
     });
-    if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="5"><div class="empty-state"><p>No unpaid bills.</p></div></td></tr>`;
-      return;
-    }
-    body.innerHTML = rows
-      .map((row) => {
-        const href = customerDetailUrl({ id: row.customer_id, customer_name: row.customer_name });
-        return `<tr class="credit-ledger-row" data-href="${href}">
-          <td data-label="Customer"><a class="customer-link" href="${href}">${escapeHtml(row.customer_name)}</a></td>
-          <td data-label="Oldest bill">${escapeHtml(formatDisplayDate(row.oldest_unpaid))}</td>
-          <td data-label="Age">${escapeHtml(String(row.age_days))} days</td>
-          <td data-label="Bucket">${escapeHtml(row.bucket)}</td>
-          <td class="num" data-label="Open">${formatCurrency(row.open_amount)}</td>
-        </tr>`;
-      })
-      .join("");
+    if (status) status.hidden = true;
   } catch (err) {
-    body.innerHTML = `<tr><td colspan="5" class="error">${escapeHtml(AppError.getUserMessage(err))}</td></tr>`;
+    if (status) {
+      status.hidden = false;
+      status.classList.add("error");
+      status.textContent = AppError.getUserMessage(err);
+    }
     AppError.report(err, { context: "loadCreditAging" });
+  } finally {
+    groups.removeAttribute("aria-busy");
   }
 }
 
@@ -799,6 +849,12 @@ async function ensureListTab(section) {
       if (!listTabReady.aging) {
         document.getElementById("credit-aging-refresh")?.addEventListener("click", () => {
           void loadCreditAging();
+        });
+        document.getElementById("credit-aging-groups")?.addEventListener("click", (event) => {
+          if (event.target.closest("a, button")) return;
+          const row = event.target.closest("tr.credit-ledger-row[data-href]");
+          if (!row?.dataset.href) return;
+          window.location.href = row.dataset.href;
         });
         listTabReady.aging = true;
       }
