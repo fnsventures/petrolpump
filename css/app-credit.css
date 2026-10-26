@@ -634,6 +634,94 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   font-size: 1.1rem;
 }
 
+.credit-aging-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.credit-aging-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: clip;
+}
+
+.credit-aging-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.credit-aging-group > summary::-webkit-details-marker,
+.credit-aging-group > summary::marker {
+  display: none;
+  content: "";
+}
+
+.credit-aging-group > summary::after {
+  content: "";
+  flex-shrink: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-top: -0.15rem;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+}
+
+.credit-aging-group[open] > summary::after {
+  transform: rotate(-135deg);
+  margin-top: 0.15rem;
+}
+
+.credit-aging-group > summary:hover,
+.credit-aging-group[open] > summary {
+  background: rgba(0, 112, 192, 0.04);
+}
+
+.credit-aging-group[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.credit-aging-group > summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.credit-aging-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.credit-aging-group .stat-value {
+  font-size: 1.15rem;
+}
+
+.credit-aging-empty {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.credit-aging-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.credit-aging-group .credit-aging-table tr:last-child td {
+  border-bottom: 0;
+}
+
 .customer-activity {
   border-color: rgba(0, 112, 192, 0.16);
   background:
@@ -975,6 +1063,18 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
 
   .credit-ledger-table td.table-actions {
     justify-content: flex-end;
+  }
+
+  .credit-aging-group .table-wrap {
+    padding: 0.65rem 0.65rem 0.15rem;
+  }
+
+  .credit-aging-group .credit-ledger-table td > a,
+  .credit-aging-group .credit-ledger-table td.num {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    text-align: right;
   }
 
   .customer-balance-hero-body {

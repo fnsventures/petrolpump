@@ -586,6 +586,8 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 **Unique:** `(employee_id, date)`.
 
+**Writes:** `save_employee_attendance_batch`. A salary payment for that month does not lock attendance while the month is still open, and yesterday can still be saved the next morning. Once the month has ended, a payment locks earlier days for a supervisor. An admin is not blocked by a salary payment.
+
 **RLS:** Default operational pattern (see [RLS conventions](#rls-conventions)).
 
 ---
@@ -923,7 +925,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `list_employees_roster()` | Active employees without PII | — |
 | `list_employees_salary()` | Active employees with HR fields | — |
 | `set_employee_photo(id, url)` | Update employee photo URL | admin |
-| `save_employee_attendance_batch(date, jsonb)` | Upsert attendance rows | — |
+| `save_employee_attendance_batch(date, jsonb)` | Upsert attendance rows. For a supervisor, a salary payment locks days before yesterday in a finished month. An admin is not blocked by a salary payment | — |
 | `get_day_closing_breakdown(date)` | Closing components + overwrite / collected / certified flags | — |
 | `save_day_closing(date, night_cash, phone_pay, remarks?)` | Save/overwrite closing (rejects if certified) | overwrite: until certified; after collected, admin only |
 | `set_day_closing_certified(date, certified)` | Certify (lock everyone) or revoke | admin |

@@ -353,6 +353,10 @@ Attendance (attendance.html)
    → status: present | half_day | leave (older absent rows count as leave)
    → optional shift (from pump_settings.config.shifts), check_in/out, note
    → optional over_duty on a present day (extra day's pay when the rule is on)
+   → A salary payment does not lock the open month. Yesterday can still be marked
+     the next morning, including the morning after the month ends. For a supervisor,
+     earlier days in a finished month that already has a payment stay locked.
+     An admin is not blocked by a salary payment.
    → History tab: month grid plus pay-effect table (loss of pay and over duty)
 ```
 
