@@ -193,7 +193,7 @@
   border-radius: 999px;
   background: var(--surface-sunken);
   color: var(--text-muted);
-  font-size: 1.05rem;
+  font-size: var(--text-md);
   font-weight: 500;
   line-height: 1;
   box-shadow: none;
@@ -201,7 +201,7 @@
 }
 
 .billing-items-table .remove-item-btn:hover {
-  background: #fee2e2;
+  background: var(--danger-soft);
   color: var(--color-danger-hover);
   box-shadow: none;
 }
@@ -289,7 +289,7 @@
 /* Invoice print layout lives in css/invoice-print.css (isolated iframe) */
 
 /* ── Responsive billing ── */
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .billing-items-wrap {
     overflow-x: visible;
   }

@@ -10,7 +10,11 @@ const LANDING_BY_ROLE = {
 };
 
 const AVATAR_BUCKET = "user-avatars";
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+/** Original file limit; the upload itself is resized to AVATAR_MAX_PX first. */
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
+const AVATAR_MAX_PX = 256;
+const AVATAR_SIGNED_TTL_S = 3600;
+const AVATAR_SIGNED_CACHE_KEY = "bpf_avatar_signed";
 const AVATAR_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 /**
@@ -318,7 +322,79 @@ async function resolveRoleForSession(session) {
 function invalidateUserRoleCache(userId) {
   if (typeof AppCache === "undefined" || !AppCache) return;
   if (userId) AppCache.remove(getRoleCacheKey(userId));
-  AppCache.invalidateByType?.("user_role");
+  AppCache.invalidateByTypes?.(["user_role", "page_session"]);
+}
+
+function getPageSessionCacheKey(userId, pageName) {
+  return `page_session_${userId || "unknown"}_${pageName}`;
+}
+
+/** No response from the server (offline / DNS / timeout), as opposed to an error it returned. */
+function isNoResponseError(error) {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+  if (!error) return false;
+  if (error.code) return false;
+  return /fetch|network|load failed|timed? ?out/i.test(String(error.message || error));
+}
+
+/** get_page_session not deployed yet (frontend shipped before the migration). */
+function isMissingRpcError(error) {
+  return error?.code === "PGRST202" || error?.code === "42883";
+}
+
+/**
+ * Role, profile and page verdict in one RPC (get_page_session).
+ * A fresh cached result skips the call; when the server cannot be reached, the last allowed
+ * result opens the page read-only-in-practice (no data writes succeed without the network).
+ * @returns {Promise<{role: string|null, display_name: string|null, avatar_url: string|null, allowed: boolean, offline?: boolean}|null|"unsupported">}
+ */
+async function fetchPageSession(userId, pageName) {
+  const hasCache = typeof AppCache !== "undefined" && AppCache;
+  const cacheKey = getPageSessionCacheKey(userId, pageName);
+  const cached = hasCache ? AppCache.get(cacheKey) : { isMiss: true };
+  if (!cached.isMiss && !cached.isExpired && cached.data) return cached.data;
+
+  const useCachedOffline = (error) => {
+    if (!cached.isMiss && cached.data && isNoResponseError(error)) return { ...cached.data, offline: true };
+    return null;
+  };
+
+  let data;
+  try {
+    const result = await supabaseClient.rpc("get_page_session", { p_page: pageName });
+    if (result.error) {
+      if (isMissingRpcError(result.error)) return "unsupported";
+      const fallback = useCachedOffline(result.error);
+      if (fallback) return fallback;
+      AppError.report(result.error, { context: "fetchPageSession", pageName });
+      return null;
+    }
+    data = result.data;
+  } catch (err) {
+    const fallback = useCachedOffline(err);
+    if (fallback) return fallback;
+    AppError.report(err, { context: "fetchPageSession", pageName });
+    return null;
+  }
+
+  const resolved = {
+    role: data?.role ?? null,
+    display_name: data?.display_name?.trim() || null,
+    avatar_url: data?.avatar_url?.trim() || null,
+    allowed: data?.allowed === true,
+  };
+  if (hasCache && resolved.role) {
+    // Only an allowed verdict is reused, so a role change is never stuck on "denied".
+    if (resolved.allowed) AppCache.set(cacheKey, resolved, "page_session");
+    else AppCache.remove(cacheKey);
+    // Same profile fields the role cache holds; keeps topbar and other lookups off the network.
+    AppCache.set(
+      getRoleCacheKey(userId),
+      { role: resolved.role, display_name: resolved.display_name, avatar_url: resolved.avatar_url },
+      "user_role"
+    );
+  }
+  return resolved;
 }
 
 function unwrapLegacyNavUser(topbar) {
@@ -338,7 +414,7 @@ function restoreTopbarStructure(topbar) {
   }
 
   const actions = topbar.querySelector(".topbar-actions");
-  if (actions && !actions.querySelector(".topbar-icon-btn")) {
+  if (actions && !actions.querySelector(".topbar-button-icon")) {
     [...actions.children].forEach((node) => topbar.insertBefore(node, actions));
     actions.remove();
   }
@@ -685,13 +761,69 @@ function storagePathFromPublicUrl(bucket, url) {
   return decodeURIComponent(String(url).slice(i + marker.length).split("?")[0]);
 }
 
+/** Reuse one signed link per path until near expiry, so the browser's HTTP cache serves the photo. */
+function readCachedSignedAvatar(path) {
+  try {
+    const entry = JSON.parse(sessionStorage.getItem(AVATAR_SIGNED_CACHE_KEY) || "null");
+    if (entry?.path === path && entry.expiresAt - Date.now() > 5 * 60 * 1000) return entry.signedUrl;
+  } catch {
+    /* storage blocked */
+  }
+  return "";
+}
+
+function clearSignedAvatarCache() {
+  try {
+    sessionStorage.removeItem(AVATAR_SIGNED_CACHE_KEY);
+  } catch {
+    /* storage blocked */
+  }
+}
+
 async function signedAvatarUrl(url) {
   if (!url || !window.supabaseClient) return url || "";
   const path = String(url).startsWith("http") ? storagePathFromPublicUrl(AVATAR_BUCKET, url) : String(url);
   if (!path) return url;
-  const { data, error } = await window.supabaseClient.storage.from(AVATAR_BUCKET).createSignedUrl(path, 3600);
+  const cached = readCachedSignedAvatar(path);
+  if (cached) return cached;
+  const { data, error } = await window.supabaseClient.storage
+    .from(AVATAR_BUCKET)
+    .createSignedUrl(path, AVATAR_SIGNED_TTL_S);
   if (error || !data?.signedUrl) return String(url).startsWith("http") ? url : "";
+  try {
+    sessionStorage.setItem(
+      AVATAR_SIGNED_CACHE_KEY,
+      JSON.stringify({ path, signedUrl: data.signedUrl, expiresAt: Date.now() + AVATAR_SIGNED_TTL_S * 1000 })
+    );
+  } catch {
+    /* storage blocked */
+  }
   return data.signedUrl;
+}
+
+/** Square-crop and shrink to AVATAR_MAX_PX; WebP where supported, else JPEG. Falls back to the original. */
+async function resizeAvatarFile(file) {
+  if (typeof createImageBitmap !== "function") return file;
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return file;
+  }
+  const side = Math.min(bitmap.width, bitmap.height);
+  const size = Math.min(AVATAR_MAX_PX, side);
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  bitmap.close?.();
+  const toBlob = (type) => new Promise((resolve) => canvas.toBlob(resolve, type, 0.85));
+  let blob = await toBlob("image/webp");
+  if (!blob || blob.type !== "image/webp") blob = await toBlob("image/jpeg");
+  if (!blob || !AVATAR_MIME_TYPES.has(blob.type) || blob.size >= file.size) return file;
+  return blob;
 }
 
 function applyTopbarAvatarDisplay(avatarUrl, labelSource) {
@@ -751,18 +883,25 @@ async function uploadUserAvatar(file, session) {
     throw new Error("Use a JPG, PNG, or WebP image.");
   }
   if (file.size > MAX_AVATAR_BYTES) {
-    throw new Error("Image must be 2 MB or smaller.");
+    throw new Error("Image must be 10 MB or smaller.");
   }
 
+  const image = await resizeAvatarFile(file);
+  if (image.size > 2 * 1024 * 1024) throw new Error("Could not shrink this image. Use one under 2 MB.");
   const folder = avatarStorageFolder(session.user.email);
-  const ext = avatarExtensionFromFile(file);
+  const ext = avatarExtensionFromFile(image);
   const path = `${folder}/avatar.${ext}`;
 
   const { error: uploadError } = await supabaseClient.storage
     .from(AVATAR_BUCKET)
-    .upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+    .upload(path, image, { upsert: true, contentType: image.type, cacheControl: "3600" });
 
   if (uploadError) throw uploadError;
+  clearSignedAvatarCache();
+  // Drop an older photo saved under a different extension.
+  void supabaseClient.storage
+    .from(AVATAR_BUCKET)
+    .remove(["jpg", "png", "webp"].filter((e) => e !== ext).map((e) => `${folder}/avatar.${e}`));
 
   const publicUrl = path;
 
@@ -789,6 +928,7 @@ async function removeUserAvatar(session) {
     p_avatar_url: null,
   });
   if (rpcError) throw rpcError;
+  clearSignedAvatarCache();
 
   invalidateUserRoleCache(session.user.id);
 }
@@ -952,7 +1092,7 @@ function ensureTopbarActions(topbar) {
     wrap.className = "topbar-help";
     wrap.id = "topbar-help-wrap";
     wrap.innerHTML = `
-      <button type="button" class="topbar-icon-btn" id="topbar-help" aria-expanded="false" aria-haspopup="dialog" aria-controls="topbar-help-popup" title="Help" aria-label="Help for this page">
+      <button type="button" class="button-icon topbar-button-icon" id="topbar-help" aria-expanded="false" aria-haspopup="dialog" aria-controls="topbar-help-popup" title="Help" aria-label="Help for this page">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" d="M9.6 9.4a2.5 2.5 0 0 1 4.8.8c0 1.5-2.4 2-2.4 3.4"/><circle cx="12" cy="17" r=".7" fill="currentColor" stroke="none"/></svg>
       </button>
       <div class="topbar-help-popup hidden" id="topbar-help-popup" role="dialog" aria-labelledby="topbar-help-title">
@@ -971,7 +1111,7 @@ function ensureTopbarActions(topbar) {
     wrap.className = "topbar-notifications";
     wrap.id = "topbar-notifications-wrap";
     wrap.innerHTML = `
-      <button type="button" class="topbar-icon-btn" id="topbar-notifications" aria-expanded="false" aria-haspopup="dialog" aria-controls="topbar-notifications-popup" title="Notifications" aria-label="Notifications">
+      <button type="button" class="button-icon topbar-button-icon" id="topbar-notifications" aria-expanded="false" aria-haspopup="dialog" aria-controls="topbar-notifications-popup" title="Notifications" aria-label="Notifications">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M6.2 9.2a5.8 5.8 0 0 1 11.6 0c0 3.6 1.5 5.4 2.2 6.3H4c.7-.9 2.2-2.7 2.2-6.3Z"/><path stroke-linecap="round" d="M10 18.6a2 2 0 0 0 4 0"/></svg>
         <span id="notifications-nav-badge" class="notifications-nav-badge hidden" aria-hidden="true">0</span>
       </button>
@@ -1065,7 +1205,7 @@ function ensureTopbarUserMenu() {
   profilePanel.id = "topbar-profile-panel";
   profilePanel.hidden = true;
   profilePanel.innerHTML = `
-    <p class="topbar-profile-hint">Upload a profile photo (JPG, PNG or WebP, max 2 MB).</p>
+    <p class="topbar-profile-hint">Upload a profile photo (JPG, PNG or WebP, resized to 256 px).</p>
     <label class="topbar-profile-upload">
       <input type="file" id="topbar-avatar-input" accept="image/jpeg,image/png,image/webp" hidden />
       Choose photo
@@ -1073,6 +1213,8 @@ function ensureTopbarUserMenu() {
     <button type="button" class="topbar-profile-remove hidden" id="topbar-avatar-remove">Remove photo</button>
     <p class="topbar-profile-status hidden" id="topbar-avatar-status"></p>
   `;
+
+  const themeRow = buildThemeSwitch();
 
   const logoutBtn = document.createElement("button");
   logoutBtn.type = "button";
@@ -1082,13 +1224,51 @@ function ensureTopbarUserMenu() {
   logoutBtn.setAttribute("role", "menuitem");
   logoutBtn.textContent = "Logout";
 
-  dropdown.append(head, profileBtn, profilePanel, logoutBtn);
+  dropdown.append(head, profileBtn, profilePanel, themeRow, logoutBtn);
   menu.append(toggle, dropdown);
   ensureTopbarActions(topbar);
   placeTopbarUserMenu(topbar, menu);
 
   initTopbarUserMenuHandlers();
   return menu;
+}
+
+/** Light / Dark / System switch for the account menu. Theme state lives in js/theme.js. */
+function buildThemeSwitch() {
+  const row = document.createElement("div");
+  row.className = "topbar-theme-switch";
+  row.setAttribute("role", "radiogroup");
+  row.setAttribute("aria-label", "Theme");
+  const options = [
+    ["light", "Light"],
+    ["dark", "Dark"],
+    ["system", "Auto"],
+  ];
+  const buttons = options.map(([value, label]) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "topbar-theme-option";
+    btn.dataset.themeChoice = value;
+    btn.setAttribute("role", "radio");
+    btn.textContent = label;
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      window.AppTheme?.set(value);
+    });
+    return btn;
+  });
+  const sync = () => {
+    const choice = window.AppTheme?.get().choice || "system";
+    buttons.forEach((btn) => {
+      const on = btn.dataset.themeChoice === choice;
+      btn.setAttribute("aria-checked", on ? "true" : "false");
+      btn.classList.toggle("is-selected", on);
+    });
+  };
+  document.addEventListener("bpf:themechange", sync);
+  sync();
+  row.append(...buttons);
+  return row;
 }
 
 async function handleLogout() {
@@ -1565,6 +1745,32 @@ async function resolveRequiredAuth(options = {}) {
   if (!session) {
     window.location.href = loginUrlWithNext(redirectTo);
     return null;
+  }
+
+  if (pageName) {
+    const pageSession = await fetchPageSession(session.user?.id, pageName);
+    if (pageSession !== "unsupported") {
+      if (pageSession === null) {
+        AppError.report(new Error("Page access check unavailable"), { context: "requireAuth", pageName });
+        showAccessRetry();
+        return null;
+      }
+      if (!pageSession.role) {
+        window.location.href = `${redirectTo}${redirectTo.includes("?") ? "&" : "?"}error=unprovisioned`;
+        return null;
+      }
+      if (!pageSession.allowed) {
+        console.warn(`Access denied to ${pageName} for role: ${pageSession.role}`);
+        window.location.href = onDenied;
+        return null;
+      }
+      const { role, display_name, avatar_url } = pageSession;
+      if (pageSession.offline) {
+        AppError.showToast?.("Offline. Showing this page from the last time it loaded.", "info");
+      }
+      await updateTopbarUserProfile(session, { role, display_name, avatar_url });
+      return { session, role, display_name, avatar_url, offline: pageSession.offline === true };
+    }
   }
 
   const auth = await resolveAuthForSession(session);

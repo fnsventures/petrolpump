@@ -495,19 +495,15 @@ function normalizeReportsPayload(payload) {
  */
 async function fetchReportData(start, end) {
   try {
-    const invoke = () =>
-      window.supabaseClient.functions.invoke("get-reports-data", {
-        body: {
-          startDate: start,
-          endDate: end,
-          receiptHistoryStart: PumpSettings.getReceiptHistoryStart(),
-        },
-      });
-
-    const { data, error } =
-      typeof AppError !== "undefined" && AppError?.withRetry
-        ? await AppError.withRetry(invoke, { maxAttempts: 3 })
-        : await invoke();
+    // One attempt: invoke() resolves { error } rather than throwing, and a
+    // failure already falls back to fetchReportDataDirect.
+    const { data, error } = await window.supabaseClient.functions.invoke("get-reports-data", {
+      body: {
+        startDate: start,
+        endDate: end,
+        receiptHistoryStart: PumpSettings.getReceiptHistoryStart(),
+      },
+    });
 
     if (error) throw error;
 

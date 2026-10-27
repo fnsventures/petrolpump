@@ -95,7 +95,6 @@ function buildHeadContext(page) {
 
   return {
     title: page.title || "Bishnupriya Fuels",
-    baseCss: "css/base.css",
     layoutCss: "css/app-layout.css",
     coreCss: "css/app-core.css",
     roleBootstrap: "js/roleBootstrap.js",

@@ -4,15 +4,15 @@
   --login-logo-size: clamp(5.25rem, 20vw, 6.5rem);
   align-items: center;
   justify-content: center;
-  min-height: var(--viewport-height, 100vh);
+  min-height: var(--viewport-height);
   padding:
-    max(var(--space-4), var(--safe-top, 0px))
-    max(var(--space-3), var(--safe-right, 0px))
-    max(var(--space-3), var(--safe-bottom, 0px))
-    max(var(--space-3), var(--safe-left, 0px));
+    max(var(--space-4), var(--safe-top))
+    max(var(--space-3), var(--safe-right))
+    max(var(--space-3), var(--safe-bottom))
+    max(var(--space-3), var(--safe-left));
   background:
     radial-gradient(ellipse 85% 50% at 50% -5%, var(--fuel-petrol-bg-strong), transparent 58%),
-    linear-gradient(165deg, var(--surface) 0%, #f0f7fc 48%, #fff9e6 100%);
+    linear-gradient(165deg, var(--surface) 0%, var(--info-soft) 48%, var(--warning-soft) 100%);
   color: var(--text);
 }
 
@@ -112,14 +112,14 @@ body.login-page main.login-card {
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--bpcl-blue, #0070c0);
+  color: var(--bpcl-blue);
 }
 
 .login-brand-venture {
   display: block;
   margin-top: 0.15rem;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  font-size: 0.72rem;
+  font-size: var(--text-2xs);
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: none;
@@ -129,7 +129,7 @@ body.login-page main.login-card {
 .login-brand-dealer {
   margin: 0.2rem 0 0;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  font-size: 0.7rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -145,11 +145,11 @@ body.login-page main.login-card {
   display: inline-block;
   padding: 0.28rem 0.75rem;
   font-family: "DM Sans", "Segoe UI", sans-serif;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--bpcl-blue, #0070c0);
+  color: var(--bpcl-blue);
   background: rgba(0, 112, 192, 0.07);
   border: 1px solid rgba(0, 112, 192, 0.14);
   border-radius: 999px;
@@ -295,7 +295,7 @@ body.login-page main.login-card {
   }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 480px) {
   .login-card {
     padding: 1.5rem 1.25rem 1.35rem;
   }

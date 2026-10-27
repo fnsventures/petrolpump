@@ -742,31 +742,28 @@ function searchQuery(signal, raw) {
   return orderedListQuery(filteredListQuery(signal).or(orFilter));
 }
 
-async function fetchCategoryCount(category, signal) {
+async function fetchCategoryCounts(signal) {
   const { start, end } = getVaultDateRange();
-  let query = window.supabaseClient
-    .from("invoice_documents")
-    .select("invoice_date", { count: "exact" })
-    .eq("category", category.value)
-    .order("invoice_date", { ascending: false })
-    .limit(1)
+  const { data, error } = await window.supabaseClient
+    .rpc("get_invoice_document_category_counts", { p_start: start || null, p_end: end || null })
     .abortSignal(signal);
-  if (start) query = query.gte("invoice_date", start);
-  if (end) query = query.lte("invoice_date", end);
-  const { data, error, count } = await query;
   if (error) {
     const err = new Error(error.message || "Could not load documents.");
     err.code = error.code;
     throw err;
   }
-  return {
-    value: category.value,
-    label: category.label,
-    count: count || 0,
-    latest: data?.[0]?.invoice_date || "",
-    rows: null,
-    loading: false,
-    error: "",
+  const byCategory = new Map((data || []).map((row) => [row.category, row]));
+  return (category) => {
+    const row = byCategory.get(category.value);
+    return {
+      value: category.value,
+      label: category.label,
+      count: Number(row?.doc_count) || 0,
+      latest: row?.latest_date || "",
+      rows: null,
+      loading: false,
+      error: "",
+    };
   };
 }
 
@@ -775,9 +772,8 @@ async function loadVaultOutline(seq, controller) {
   const categories = filter === "all"
     ? documentCategories
     : documentCategories.filter((category) => category.value === filter);
-  const summaries = await Promise.all(
-    categories.map((category) => fetchCategoryCount(category, controller.signal))
-  );
+  const summaryFor = await fetchCategoryCounts(controller.signal);
+  const summaries = categories.map(summaryFor);
   if (seq !== vaultSeq || controller.signal.aborted) return;
   vaultGroups = sortVaultGroups(summaries.filter((group) => group.count > 0));
   vaultPeriodCount = vaultGroups.reduce((sum, group) => sum + group.count, 0);

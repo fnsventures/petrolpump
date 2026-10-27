@@ -77,7 +77,7 @@
   const REPORT_WATERMARK_IMG_PX = 384;
 
   /**
-   * Critical print CSS inlined into every print payload (iframe + host).
+   * Critical print CSS adopted into every print payload (iframe + host).
    * Always targets body-level marks so desktop iframe and PWA/mobile host
    * print share identical page-box centering.
    * @returns {string}
@@ -155,7 +155,7 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
   /**
    * Centered station logo watermark for report sheets (screen preview).
    * Print uses layoutPrintWatermarks() — one fixed full-page mark (repeats each page).
-   * Markup relies on report-watermark.css; inline styles are a fallback only.
+   * Styled by css/report-watermark.css (no inline styles: CSP style-src has no 'unsafe-inline').
    * @param {{ fixed?: boolean }} [options]
    * @returns {string}
    */
@@ -165,15 +165,9 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
       // Placeholder removed/replaced by layoutPrintWatermarks (must be mount child).
       return "";
     }
-    const wrapStyle =
-      "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
-      "pointer-events:none;z-index:0;margin:0;padding:0;overflow:hidden;";
-    const imgStyle =
-      `width:min(46%,15rem);height:auto;max-height:min(46%,15rem);object-fit:contain;` +
-      `opacity:${REPORT_WATERMARK_OPACITY};margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
     return (
-      `<div class="report-watermark" aria-hidden="true" style="${wrapStyle}">` +
-      `<img src="${src}" alt="" class="report-watermark-img" width="${REPORT_WATERMARK_IMG_PX}" height="${REPORT_WATERMARK_IMG_PX}" decoding="async" style="${imgStyle}" />` +
+      `<div class="report-watermark" aria-hidden="true">` +
+      `<img src="${src}" alt="" class="report-watermark-img" width="${REPORT_WATERMARK_IMG_PX}" height="${REPORT_WATERMARK_IMG_PX}" decoding="async" />` +
       `</div>`
     );
   }
@@ -224,10 +218,26 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
       return String(bodyHtml || "");
     }
     // Strip preview marks; layoutPrintWatermarks appends a body-level fixed mark.
-    const html = String(bodyHtml || "")
+    // The watermark CSS is adopted separately (see printStyleSheetTexts).
+    return String(bodyHtml || "")
       .replace(/<div class="report-watermark-layer"[^>]*>[\s\S]*?<\/div>/gi, "")
       .replace(/<div class="report-watermark"[^>]*>[\s\S]*?<\/div>/gi, "");
-    return `<style>${buildWatermarkPrintCss()}</style>${html}`;
+  }
+
+  /**
+   * CSS texts to adopt for one print payload, in cascade order.
+   * @param {string} cssText
+   * @param {string} bodyClass
+   * @param {string} containerClass
+   * @returns {string[]}
+   */
+  function printStyleSheetTexts(cssText, bodyClass, containerClass) {
+    const texts = [];
+    if (cssText) texts.push(String(cssText));
+    if (shouldStampReportWatermark(bodyClass, containerClass)) {
+      texts.push(buildWatermarkPrintCss());
+    }
+    return texts;
   }
 
   /**
@@ -286,8 +296,55 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
       );
   }
 
-  function escapeInlineCss(cssText) {
-    return String(cssText || "").replace(/<\/style/gi, "<\\/style");
+  /**
+   * CSP style-src has no 'unsafe-inline', so print CSS cannot go in <style>
+   * elements (the print iframe is about:blank and inherits this page's CSP).
+   * Constructed stylesheets are CSSOM and are allowed.
+   * @param {Document} doc
+   * @returns {boolean}
+   */
+  function supportsConstructedSheets(doc) {
+    const win = doc?.defaultView;
+    return Boolean(
+      win &&
+        "adoptedStyleSheets" in doc &&
+        typeof win.CSSStyleSheet === "function" &&
+        typeof win.CSSStyleSheet.prototype.replaceSync === "function"
+    );
+  }
+
+  /**
+   * Build sheets with the target document's own CSSStyleSheet constructor
+   * (a sheet constructed in one document cannot be adopted by another).
+   * replaceSync ignores @import, so imports must already be inlined.
+   * @param {Document} doc
+   * @param {string[]} cssTexts
+   * @returns {CSSStyleSheet[]}
+   */
+  function createConstructedSheets(doc, cssTexts) {
+    const list = (cssTexts || []).filter(Boolean);
+    if (!list.length) return [];
+    if (!supportsConstructedSheets(doc)) {
+      throw new Error("This browser is too old to print from the app. Update the browser and try again.");
+    }
+    const Ctor = doc.defaultView.CSSStyleSheet;
+    return list.map((text) => {
+      const sheet = new Ctor();
+      sheet.replaceSync(String(text).replace(new RegExp(CSS_IMPORT_RE.source, "gi"), ""));
+      return sheet;
+    });
+  }
+
+  /**
+   * Append constructed sheets to a document.
+   * @param {Document} doc
+   * @param {string[]} cssTexts
+   * @returns {CSSStyleSheet[]} the adopted sheets (for later removal)
+   */
+  function adoptStyleSheets(doc, cssTexts) {
+    const sheets = createConstructedSheets(doc, cssTexts);
+    if (sheets.length) doc.adoptedStyleSheets = [...doc.adoptedStyleSheets, ...sheets];
+    return sheets;
   }
 
   /**
@@ -429,7 +486,13 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
         window.clearTimeout(timeout);
         let cssText = "";
         try {
-          cssText = [...link.sheet.cssRules].map((r) => r.cssText).join("\n");
+          const flatten = (sheet) =>
+            [...sheet.cssRules]
+              .map((r) =>
+                r.type === CSSRule.IMPORT_RULE && r.styleSheet ? flatten(r.styleSheet) : r.cssText
+              )
+              .join("\n");
+          cssText = flatten(link.sheet);
         } catch {
           link.remove();
           reject(new Error("Could not read print styles."));
@@ -651,6 +714,10 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     await waitForPaint(doc);
   }
 
+  /**
+   * Print document markup. `cssText` is not embedded (no inline <style> under
+   * CSP); printInIframe adopts it as a constructed stylesheet after writing.
+   */
   function buildPrintDocumentHtml(options) {
     const {
       title = "Print",
@@ -663,9 +730,8 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     } = options;
 
     const titleSafe = escapeHtml(title);
-    const cssBlock = cssText
-      ? `<style>${escapeInlineCss(cssText)}</style>`
-      : cssHref
+    const cssBlock =
+      !cssText && cssHref
         ? `<link rel="stylesheet" href="${resolveAssetUrl(cssHref)}" />`
         : "";
 
@@ -688,7 +754,18 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
 </html>`;
   }
 
+  /** Constructed sheets adopted into the live page for host print. */
+  let hostAdoptedSheets = [];
+
+  function releaseHostSheets() {
+    if (!hostAdoptedSheets.length) return;
+    const drop = new Set(hostAdoptedSheets);
+    hostAdoptedSheets = [];
+    document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => !drop.has(s));
+  }
+
   function clearPrintHostArtifacts() {
+    releaseHostSheets();
     document.querySelectorAll("[data-print-utils]").forEach((el) => el.remove());
     document.getElementById(PRINT_HOST_ID)?.remove();
     // Host-print mounts the watermark on document.body (sibling of the host).
@@ -809,21 +886,21 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     const prevTitle = document.title;
     document.title = title;
 
-    const shellStyle = document.createElement("style");
-    shellStyle.setAttribute("data-print-utils", "shell");
-    shellStyle.textContent = PRINT_HOST_SHELL_CSS;
-    document.head.appendChild(shellStyle);
-
     const resolvedCss = await resolvePrintCssText(cssText, cssHref);
-    if (resolvedCss) {
-      const contentStyle = document.createElement("style");
-      contentStyle.setAttribute("data-print-utils", "css");
-      // Keep slip/report CSS off the live screen; apply only when printing.
-      // Remap html/body selectors onto the host (iframe CSS assumes a full document).
-      contentStyle.textContent = `@media print {\n${escapeInlineCss(
-        adaptPrintCssForHost(resolvedCss)
-      )}\n}`;
-      document.head.appendChild(contentStyle);
+    try {
+      // Same order as before: shell, content CSS (print-only, html/body remapped
+      // onto the host since iframe CSS assumes a full document), then watermark.
+      hostAdoptedSheets = adoptStyleSheets(document, [
+        PRINT_HOST_SHELL_CSS,
+        ...printStyleSheetTexts(
+          resolvedCss ? `@media print {\n${adaptPrintCssForHost(resolvedCss)}\n}` : "",
+          bodyClass,
+          containerClass
+        ),
+      ]);
+    } catch (err) {
+      document.title = prevTitle;
+      throw err;
     }
 
     await injectHeadExtras(headExtras, { printOnly: true });
@@ -933,6 +1010,13 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     );
     doc.close();
 
+    try {
+      adoptStyleSheets(doc, printStyleSheetTexts(cssText, bodyClass, containerClass));
+    } catch (err) {
+      iframe.remove();
+      throw err;
+    }
+
     // Chrome/Safari Save-as-PDF often uses the top-level document.title, not the
     // iframe <title>. Mirror the host-print path so PDF names match buildPrintFilename.
     const prevTitle = document.title;
@@ -984,7 +1068,6 @@ html body .report-watermark.report-watermark--page .report-watermark-img{
     buildReportPrintFooter,
     buildReportWatermarkHtml,
     ensureReportWatermark,
-    escapeInlineCss,
     getCreditSummaryPrintCssText,
     getReportPrintCssText,
     getStationLogoPrintUrl,

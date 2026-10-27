@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SKIP_DIRS = new Set(["node_modules", ".git", "_site", ".deploy-test", "vendor"]);
+const SKIP_DIRS = new Set(["node_modules", ".git", "_site", "vendor"]);
 
 function listMarkdown(dir) {
   const out = [];

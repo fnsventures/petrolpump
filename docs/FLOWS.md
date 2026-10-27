@@ -31,7 +31,7 @@ User opens app (index.html / login.html)
     → If no public.users row: role unset → login.html?error=unprovisioned
     → Role cached (AppCache), stored in session
     → Redirect: admin/supervisor → dashboard.html
-    → requireAuth({ pageName }) on protected pages → check_page_access RPC
+    → requireAuth({ pageName }) on protected pages → get_page_session RPC (role + check_page_access in one call)
     → Navigation: applyRoleVisibility() — admin sees Staff, Analysis, Reports, Settings
     → Topbar user menu: profile avatar upload (user-avatars bucket), logout
 ```
@@ -411,7 +411,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Reports (`reports.html`):** Printable registers — see §6.
 - **Dashboard Net profit:** Quick glance — see §1b.
 - **Meter Reading → Purchase cost:** Inline buying price — see §1b.
-- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months after the monthly Drive backup. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
+- **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months in a weekly job. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
 
 ---
 

@@ -1,9 +1,14 @@
 name: Purge audit log
 
+# Weekly: delete production audit_log rows older than 6 months.
+# The monthly backup archives each finished month's audit rows to Drive long
+# before they reach that age. Operational tables are not touched.
 # Manual runs delete rows older than 3, 2, or 1 month and do not upload a backup.
-# After the scheduled Backup production database workflow succeeds, this workflow
-# deletes rows older than 6 months. A failed or hand-started backup does not.
+
 on:
+  schedule:
+    # Sundays 03:30 UTC (09:00 IST)
+    - cron: "30 3 * * 0"
   workflow_dispatch:
     inputs:
       keep_months:
@@ -23,19 +28,18 @@ on:
           - dry-run
           - delete
         default: dry-run
-  workflow_run:
-    workflows: ["Backup production database"]
-    types:
-      - completed
 
 concurrency:
-  group: prod-audit-purge
+  group: prod-db-backup
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  purge-after-backup:
+  purge-weekly:
     name: Delete audit rows older than 6 months
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule'
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     environment: prod
     steps:

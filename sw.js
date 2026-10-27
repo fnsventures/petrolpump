@@ -5,7 +5,7 @@
  * - App shell: precache on install (app HTML + shared/page CSS/JS + fonts)
  * - Precache is never LRU-trimmed; other static files use a runtime cache
  * - Static JS/CSS/fonts/images: stale-while-revalidate (fast + fresh)
- * - HTML navigations: network-first (no timeout fallback to stale HTML)
+ * - HTML navigations: network-first; after NAVIGATE_TIMEOUT_MS fall back to a cached copy if one exists
  * - env.js: network-first with last-known cache fallback (generated at deploy)
  * - Supabase REST/Functions: always network-only (ops data must never be stale)
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
@@ -26,6 +26,9 @@ const CACHE_LIMITS = {
 /** Min gap between background revalidations for the same URL (reduces network churn). */
 const REVALIDATE_MS = 30 * 1000;
 const revalidateAt = new Map();
+
+/** Weak signal: serve the cached page after this long instead of a blank screen. */
+const NAVIGATE_TIMEOUT_MS = 4000;
 
 /**
  * True app shell (HTML + hashed JS/CSS + fonts + icons). env.js is never precached.
@@ -179,35 +182,52 @@ function isHtmlPage(url) {
   return url.pathname.endsWith(".html") || url.pathname === "/" || !url.pathname.includes(".");
 }
 
+async function cachedNavigation(request) {
+  const cachedResponse = await caches.match(request);
+  if (cachedResponse) return cachedResponse;
+  // start_url / shortcuts use ?source=pwa — fall back to the precached HTML shell.
+  return caches.match(request, OFFLINE_MATCH_OPTS);
+}
+
 async function networkFirstNavigate(event) {
   const request = event.request;
 
-  try {
-    const preload = await event.preloadResponse;
-    if (preload && preload.ok) {
-      void putAndTrim(DYNAMIC_CACHE, request, preload.clone(), CACHE_LIMITS.dynamic);
-      return preload;
+  // Preload (if any) and fetch share one network attempt; whichever answers is cached.
+  const network = (async () => {
+    try {
+      const preload = await event.preloadResponse;
+      if (preload && preload.ok) return preload;
+    } catch {
+      /* preload unavailable */
     }
-  } catch {
-    /* preload unavailable */
-  }
-
-  // Network-only while online — no timeout fallback to stale HTML (that caused old UI).
-  try {
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok) {
-      void putAndTrim(DYNAMIC_CACHE, request, networkResponse.clone(), CACHE_LIMITS.dynamic);
+    return fetch(request);
+  })().then((response) => {
+    if (response.ok) {
+      void putAndTrim(DYNAMIC_CACHE, request, response.clone(), CACHE_LIMITS.dynamic);
     }
-    return networkResponse;
+    return response;
+  });
+  // Keep the worker alive so a late response still refreshes the cache for next time.
+  event.waitUntil(network.catch(() => null));
+
+  let timer;
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), NAVIGATE_TIMEOUT_MS);
+  });
+
+  try {
+    const first = await Promise.race([network, timedOut]);
+    if (first !== "timeout") return first;
+    // Slow network: show the cached page if there is one, otherwise keep waiting.
+    const cached = await cachedNavigation(request);
+    if (cached) return cached;
+    return await network;
   } catch {
-    const cachedResponse = await caches.match(request);
-    if (cachedResponse) return cachedResponse;
-
-    // start_url / shortcuts use ?source=pwa — fall back to the precached HTML shell.
-    const shell = await caches.match(request, OFFLINE_MATCH_OPTS);
-    if (shell) return shell;
-
+    const cached = await cachedNavigation(request);
+    if (cached) return cached;
     return getOfflineFallback();
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -310,13 +330,13 @@ async function getOfflineFallback() {
   if (offline) return offline;
 
   return new Response(
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body style="font-family:system-ui;padding:2rem;text-align:center"><h1>You are offline</h1><p>Reconnect and try again.</p><a href="">Try again</a></body></html>`,
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline</title></head><body><h1>You are offline</h1><p>Reconnect and try again.</p><a href="">Try again</a></body></html>`,
     {
       status: 503,
       statusText: "Service Unavailable",
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+        "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'none'",
       },
     }
   );

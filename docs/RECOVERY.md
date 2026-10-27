@@ -35,7 +35,7 @@ Zero-byte files are failed attempts. Always pair a schema file and a data file w
 | `./scripts/db.sh backup` | When you run it | Same folder | The whole database |
 | Supabase dashboard backups | Plan-dependent | Supabase | Useless if the project itself is gone |
 
-A month folder cannot rebuild logins, customers, or staff. Use `Yearly/`, `Manual/`, or a laptop `prod-schema` / `prod-data` pair for that. After the 1st-of-the-month upload succeeds, **Purge audit log** deletes production `audit_log` rows older than 6 months. Month folders are trashed only after `Yearly/YYYY` for that year has uploaded. Trash can be restored for about 30 days. The calendar and the file list: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+A month folder cannot rebuild logins, customers, or staff. Use `Yearly/`, `Manual/`, or a laptop `prod-schema` / `prod-data` pair for that. A separate weekly workflow (**Purge audit log**) deletes production `audit_log` rows older than 6 months; each month's rows are already in that month's folder by then. Month folders are trashed only after `Yearly/YYYY` for that year has uploaded. Trash can be restored for about 30 days. The calendar and the file list: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 The real recovery point for the whole station is the **newest whole-database file** (`Yearly/`, `Manual/`, or the laptop pair). Before risky work, run `./scripts/backup-prod-to-drive.sh`.
 
@@ -211,7 +211,7 @@ None of this is in the SQL dump.
 | 2 | Providers, SMTP, templates if you customised them. **Turn off public sign-up.** A restored project may turn it back on | Authentication → Sign In / Up |
 | 3 | Log in with an old password (`encrypted_password` is restored). Old sessions die because the JWT secret is new | One admin login |
 | 4 | Edge secrets: Google OAuth trio and Drive folders | Edge Functions → Secrets |
-| 5 | Deploy `get-dashboard-data`, `get-reports-data`, `get-pl-data`, `invoice-documents`, `drive-files` | Update `SUPABASE_PROJECT_REF`, then Actions → **Deploy Supabase Functions** |
+| 5 | Deploy `get-reports-data`, `get-pl-data`, `invoice-documents`, `drive-files` | Update `SUPABASE_PROJECT_REF`, then Actions → **Deploy Supabase Functions** |
 | 6 | Storage **bytes** are gone. Metadata is restored. Copy files from the old project if it is still reachable, or re-upload | Storage |
 | 7 | Review `pump_settings` row `id = 1`: integrations, Drive folder IDs, VAT | App → Settings |
 | 8 | GitHub **prod**: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_PROJECT_REF`, `PROD_DB_URL` | [SECRETS.md](SECRETS.md#b-github-environments) |
@@ -238,7 +238,7 @@ None of this is in the SQL dump.
 
 Use the smallest fix that works.
 
-**A. `public.audit_log`.** Works for audited tables: `credit_*`, `day_closing`, `dsr_petrol`, `dsr_diesel`, `employee_attendance`, `employees`, `expenses`, `invoices`, `meter_shift_*`, `salary_payments`, `users`. Every DELETE or UPDATE stores `old_data`. Tested on the restored copy:
+**A. `public.audit_log`.** Works for audited tables: `credit_*`, `day_closing`, `dsr_petrol`, `dsr_diesel`, `employee_attendance`, `employees`, `expenses`, `invoices`, `meter_shift_*`, `salary_payments`, `users`. Every DELETE stores the whole row in `old_data`. From migration `20261026143627`, an UPDATE stores only the columns that changed (`old_data` = values before, `new_data` = values after); older UPDATE rows hold full copies. Tested on the restored copy:
 
 ```sql
 begin;
@@ -255,7 +255,7 @@ on conflict (id) do nothing;
 -- check counts, then commit;  or rollback;
 ```
 
-A bad UPDATE is the same pattern: `update … from audit_log` and set columns from `old_data`.
+A bad UPDATE: `update … from audit_log` and set only the keys present in `old_data`, e.g. `set amount = coalesce((a.old_data->>'amount')::numeric, t.amount)`. `jsonb_populate_record` on a partial UPDATE row leaves the missing columns null.
 
 **B. Copy rows from a backup.** For tables without auditing, or losses older than the audit log.
 
@@ -377,7 +377,7 @@ Not problems: object owner (`postgres` exists on Supabase), extensions (`pgcrypt
 | File | Role |
 |------|------|
 | `.github/workflows/backup-prod-db.yml` | 1st: finished month. 1 January: also full copy and removal of that year’s month folders |
-| `.github/workflows/purge-audit-log.yml` | After the scheduled backup succeeds: delete `audit_log` rows older than 6 months. By hand: 3, 2, or 1 month. No Drive upload |
+| `.github/workflows/purge-audit-log.yml` | Weekly: delete `audit_log` rows older than 6 months. By hand: 3, 2, or 1 month. No Drive upload |
 | `scripts/backup-month-to-drive.sh` | One month of activity, gzipped CSV, upload |
 | `scripts/backup-prod-to-drive.sh` | Whole database into `Manual/<timestamp>/` |
 | `scripts/backup-year-to-drive.sh` | Whole database into `Yearly/YYYY/`, then trash that year’s month folders |

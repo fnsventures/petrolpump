@@ -2,8 +2,8 @@
 # Delete production audit_log rows older than AUDIT_KEEP_MONTHS (default 6).
 # Allowed windows: 1, 2, 3, or 6 months. Dry-run unless CONFIRM_PURGE_AUDIT=yes.
 # Does not touch operational tables.
-# .github/workflows/purge-audit-log.yml calls this at 1, 2, or 3 months when started by hand,
-# and at 6 months after the scheduled backup workflow succeeds.
+# .github/workflows/purge-audit-log.yml calls this weekly at 6 months, and at 3, 2, or 1
+# month when started by hand.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,5 +1,9 @@
 /* Salary page */
 /* ── Salary page ── */
+#payment-fill-remaining.payment-fill-remaining {
+  margin-top: 0.35rem;
+}
+
 .month-year-filter {
   min-width: 0;
 }
@@ -38,7 +42,7 @@
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .month-year-filter-controls .month-year-filter-action {
     flex: 1 1 100%;
   }
@@ -91,11 +95,11 @@
 }
 
 .salary-summary-table tbody tr:hover td {
-  background: var(--bpcl-blue-soft, #eff6ff);
+  background: var(--bpcl-blue-soft);
 }
 
 .salary-summary-table tbody tr.is-selected td {
-  background: var(--bpcl-blue-soft, #eff6ff);
+  background: var(--bpcl-blue-soft);
 }
 
 .salary-summary-table .num {
@@ -105,76 +109,10 @@
 }
 
 /* Staff salary detail modal (shared pattern with credit overdue detail) */
-.overdue-detail-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-}
-
-.overdue-detail-overlay[aria-hidden="false"] {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-}
-
-.overdue-detail-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(var(--shadow-rgb), 0.55);
-}
-
-.overdue-detail-card {
-  position: relative;
-  z-index: 1;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
-.overdue-detail-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.overdue-detail-head h2 {
-  margin: 0;
-  font-size: var(--heading-lg);
-}
-
-.overdue-detail-close {
-  flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: var(--surface-elevated, #f1f5f9);
-  color: var(--text-muted);
-  font-size: 1.35rem;
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.overdue-detail-close:hover {
-  background: var(--border);
-  color: var(--color-primary);
-}
 
 .salary-detail-card {
   --salary-detail-pad-x: var(--space-4);
-  max-width: 36rem;
-  width: 100%;
+  width: min(100%, 36rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -182,8 +120,7 @@
   margin-bottom: 0;
 }
 
-.salary-detail-card .overdue-detail-head {
-  flex-shrink: 0;
+.salary-detail-card .app-modal-head {
   margin-bottom: var(--space-2);
 }
 
@@ -194,14 +131,14 @@
   margin-bottom: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--surface-muted, #f8fafc);
+  background: var(--surface-muted);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .salary-detail-meta dt {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   font-weight: 500;
   line-height: 1.2;
@@ -316,34 +253,10 @@
 }
 
 /* Phone: bottom sheet that scrolls — avoids clipped header/actions under browser chrome */
-@media (max-width: 640px) {
-  .overdue-detail-overlay {
-    align-items: flex-end;
-    justify-content: stretch;
-    padding: 0;
-    padding-top: env(safe-area-inset-top, 0px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .overdue-detail-backdrop {
-    position: fixed;
-  }
-
+@media (max-width: 768px) {
   .salary-detail-card {
     --salary-detail-pad-x: var(--space-3);
-    max-width: none;
-    max-height: min(
-      92dvh,
-      calc(100dvh - env(safe-area-inset-top, 0px) - 0.5rem)
-    );
-    margin: 0;
-    border-radius: 1rem 1rem 0 0;
     overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
   }
 
   .salary-detail-meta {
@@ -382,8 +295,8 @@
     min-height: 2.75rem;
   }
 
-  .overdue-detail-head h2 {
-    font-size: var(--heading-md, 1.15rem);
+  .salary-detail-card .app-modal-head h2 {
+    font-size: var(--heading-md);
   }
 
   .salary-summary-table .table-actions {

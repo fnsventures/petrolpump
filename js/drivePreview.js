@@ -22,18 +22,18 @@
     if (dialog) return;
     dialog = document.createElement("dialog");
     dialog.id = "drive-preview-modal";
-    dialog.className = "drive-preview-modal app-modal hidden";
+    dialog.className = "app-modal app-modal-shell drive-preview-modal hidden";
     dialog.hidden = true;
     dialog.setAttribute("aria-labelledby", "drive-preview-title");
     dialog.innerHTML = `
-      <div class="drive-preview-backdrop" data-drive-preview-close tabindex="-1" aria-hidden="true"></div>
-      <div class="drive-preview-panel card">
-        <div class="card-head snapshot-head drive-preview-head">
+      <div class="app-modal-backdrop" data-drive-preview-close tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel drive-preview-panel">
+        <div class="card-head snapshot-head app-modal-head">
           <div>
             <h2 id="drive-preview-title"></h2>
             <p id="drive-preview-subtitle" class="muted drive-preview-subtitle"></p>
           </div>
-          <button type="button" class="drive-preview-close" data-drive-preview-close aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" data-drive-preview-close aria-label="Close">×</button>
         </div>
         <div id="drive-preview-body" class="drive-preview-body"></div>
         <div id="drive-preview-actions" class="drive-preview-actions"></div>
@@ -189,7 +189,7 @@
         if (downloadBtn) downloadBtn.hidden = !visible;
       },
     };
-    AppDialog.show(dialog, { focus: ".drive-preview-close", onDismiss: close });
+    AppDialog.show(dialog, { focus: ".app-modal-close", onDismiss: close });
     Promise.resolve()
       .then(() => options.load(ctx))
       .then(async (result) => {

@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper */
+/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -322,7 +322,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
         </tr>`
         )
         .join("")
-    : `<tr><td colspan="4" style="text-align:center;color:#64748b">No salary disbursements recorded for this month</td></tr>`;
+    : `<tr><td colspan="4" class="salary-slip-empty-cell">No salary disbursements recorded for this month</td></tr>`;
 
   const balanceRow = netAdvance > 0.009
     ? `<tr class="salary-slip-summary-balance"><td>Advance paid (over net salary)</td><td>${formatCurrency(netAdvance)}</td></tr>`
@@ -341,7 +341,7 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
             <td>${formatCurrency(pf.employerPf)}</td>
           </tr>
         </table>
-        <p style="margin:3pt 0 0;font-size:6.8pt;color:#64748b">Employer PF is deposited to EPFO separately and is not deducted from employee take-home pay.</p>
+        <p class="salary-slip-employer-note">Employer PF is deposited to EPFO separately and is not deducted from employee take-home pay.</p>
       </div>`
       : "";
 
@@ -456,12 +456,12 @@ function buildSalarySlipHtml(staff, staffPayments, monthValue, records, options)
       <p class="salary-slip-words"><strong>In words:</strong> ${escapeHtml(amountInWordsINR(netSalary))}</p>
 
       <p class="salary-slip-section-title">Salary disbursements (${escapeHtml(monthLabel)})</p>
-      <table class="salary-slip-payments">
+      <table class="salary-slip-payments salary-slip-payments--cols">
         <thead>
           <tr>
-            <th style="width:7%">#</th>
-            <th style="width:24%">Payment date</th>
-            <th class="num" style="width:22%">Amount (₹)</th>
+            <th>#</th>
+            <th>Payment date</th>
+            <th class="num">Amount (₹)</th>
             <th>Remarks</th>
           </tr>
         </thead>
@@ -624,6 +624,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   let staffList = [];
+  let paymentDraft = null;
   let monthPayments = [];
   let attendanceByEmployee = new Map();
   let attendanceMonthLoaded = "";
@@ -1672,6 +1673,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (paymentStaffSelect && savedStaffId && staffList.some((s) => s.id === savedStaffId)) {
         paymentStaffSelect.value = savedStaffId;
       }
+      paymentDraft?.markClean();
       updatePaymentMonthHint();
       if (typeof AppCache !== "undefined" && AppCache) {
         CacheInvalidation.invalidate("operational");
@@ -1781,4 +1783,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   bindSalaryDeleteDelegation(document.getElementById("salary-detail-payments-body"));
 
   await refreshAll();
+
+  // After refreshAll so the staff list has its options. The date is remembered separately.
+  if (paymentForm && typeof bindUnsavedDraft === "function") {
+    paymentDraft = bindUnsavedDraft({
+      key: "salary.payment",
+      root: paymentForm,
+      capture: () => omitDraftFields(captureDomDraftFields(paymentForm), ["date"]),
+      skipTarget: (target) => target?.name === "date",
+    });
+    paymentDraft.adoptServerState();
+    if (paymentDraft.restore()) {
+      updatePaymentMonthHint();
+      AppError.showToast("Restored an unsaved salary payment from this device.", "info");
+    }
+  }
 });

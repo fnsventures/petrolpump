@@ -434,7 +434,7 @@
         <div class="dsr-history">
           <h3>Recent meter entries</h3>
           <div class="table-scroll">
-            <table class="dsr-table meter-history table-cards">
+            <table class="dsr-table meter-history" data-table-layout="scroll">
               <thead>
                 <tr>
                   <th>Date</th>
@@ -865,7 +865,7 @@
         <div class="dsr-history">
           <h3>Recent meter entries</h3>
           <div class="table-scroll">
-            <table class="dsr-table meter-history table-cards">
+            <table class="dsr-table meter-history" data-table-layout="scroll">
           <thead>
             <tr>
               <th>Date</th>
@@ -902,7 +902,7 @@
             </div>
             <div class="shift-register-meta">
               <p id="shift-meter-context-label" class="muted shift-context-label">Select a date and shift</p>
-              <span id="shift-meter-context-status" class="shift-status-badge shift-status-badge--idle">—</span>
+              <span id="shift-meter-context-status" class="badge badge--sm badge--neutral shift-status-badge">—</span>
             </div>
           </div>
 
@@ -959,7 +959,7 @@
               ></textarea>
               <p id="shift-save-summary" class="shift-save-summary muted"></p>
             </div>
-            <button type="button" id="shift-meter-save" class="shift-save-btn">Save shift</button>
+            <button type="button" id="shift-meter-save" class="button-primary shift-save-btn">Save shift</button>
           </div>
 
           <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>
@@ -973,7 +973,7 @@
           <section class="shift-section shift-section--history" aria-labelledby="shift-history-title">
             <h3 id="shift-history-title" class="shift-section-title">Recent shifts</h3>
             <div class="table-scroll">
-              <table class="dsr-table meter-history compact shift-history-table">
+              <table class="dsr-table meter-history compact shift-history-table" data-table-layout="scroll">
                 <thead>
                   <tr>
                     <th>Date</th>
@@ -1029,18 +1029,18 @@
 
     <dialog
       id="shift-view-overlay"
-      class="shift-view-overlay app-modal"
+      class="app-modal app-modal-shell shift-view-overlay"
       aria-hidden="true"
       aria-labelledby="shift-view-title"
     >
-      <div class="shift-view-backdrop" id="shift-view-backdrop" tabindex="-1" aria-hidden="true"></div>
-      <div class="card shift-view-card">
-        <div class="shift-view-head">
+      <div class="app-modal-backdrop" id="shift-view-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel shift-view-card">
+        <div class="app-modal-head shift-view-head">
           <div>
             <h2 id="shift-view-title">Shift register</h2>
             <p id="shift-view-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="shift-view-close" id="shift-view-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="shift-view-close" aria-label="Close">×</button>
         </div>
         <div id="shift-view-body" class="shift-view-body">
           <p class="muted">Loading…</p>
@@ -1054,18 +1054,18 @@
 
     <dialog
       id="shift-ledger-overlay"
-      class="shift-view-overlay shift-ledger-overlay app-modal"
+      class="app-modal app-modal-shell shift-view-overlay shift-ledger-overlay"
       aria-hidden="true"
       aria-labelledby="shift-ledger-title"
     >
-      <div class="shift-view-backdrop" id="shift-ledger-backdrop" tabindex="-1" aria-hidden="true"></div>
-      <div class="card shift-view-card shift-ledger-card">
-        <div class="shift-view-head">
+      <div class="app-modal-backdrop" id="shift-ledger-backdrop" tabindex="-1" aria-hidden="true"></div>
+      <div class="card app-modal-panel shift-view-card shift-ledger-card">
+        <div class="app-modal-head shift-view-head">
           <div>
             <h2 id="shift-ledger-title">Staff</h2>
             <p id="shift-ledger-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="shift-view-close" id="shift-ledger-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="shift-ledger-close" aria-label="Close">×</button>
         </div>
         <div id="shift-ledger-body" class="shift-view-body shift-ledger-body">
           <p class="muted">Loading…</p>

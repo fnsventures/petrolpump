@@ -90,8 +90,8 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 | table_name | text | Table that was modified |
 | record_id | uuid | Id of the row |
 | action | text | INSERT, UPDATE, DELETE |
-| old_data | jsonb | Snapshot before (UPDATE/DELETE) |
-| new_data | jsonb | Snapshot after (INSERT/UPDATE) |
+| old_data | jsonb | DELETE: whole row. UPDATE: changed columns, values before |
+| new_data | jsonb | INSERT: whole row. UPDATE: changed columns, values after |
 | performed_by | uuid | auth.users.id |
 | performed_by_email | text | Email at time of action |
 | performed_at | timestamptz | When the action occurred |
@@ -100,7 +100,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (insert, delete, and updates of cash, phone pay, remarks, date, shift, or employee — not cache-only refreshes of `credit_amount` / `expense_amount`), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
 
-**Retention:** After the scheduled monthly Drive backup succeeds, **Purge audit log** deletes production rows older than 6 months through `purge_audit_log_batch` (maintenance script only, not granted to app roles). The same workflow, started by hand, can pass a keep of 3, 2, or 1 month. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+**Retention:** Production rows older than 6 months are deleted by `purge_audit_log_batch` (maintenance script only, not granted to app roles), run weekly by `.github/workflows/purge-audit-log.yml`. The same workflow, started by hand, can pass a keep of 3, 2, or 1 month. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 ---
 
@@ -232,7 +232,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 ## dsr (view)
 
-**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables. This view does not include `buying_price_per_litre`, so meter, stock, and day-closing reads work for supervisors. Profit and purchase cost use `dsr_cost`, which returns rows only when `is_admin()`.
+**Purpose:** Backward-compatible **SELECT-only** union of `dsr_petrol` and `dsr_diesel` with a synthetic `product` column (`petrol` \| `diesel`). Writes must go to the underlying tables. This view does not include `buying_price_per_litre`, so meter, stock, and day-closing reads work for supervisors. Profit and purchase cost use `dsr_cost`, which returns rows only when `is_admin()`. Both views read the tables directly (one row per date is enforced by `dsr_*_date_unique`), so a date filter uses the date index.
 
 ```sql
 select ..., 'petrol' as product from dsr_petrol
@@ -908,6 +908,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `is_admin()`, `is_supervisor_or_admin()` | Policy helpers. False for a login that is not provisioned; null when there is no login | — |
 | `require_staff_access()` | Raises if a login is not provisioned staff. No-op when there is no login | internal |
 | `check_page_access(page)` | Returns `{ allowed, role, page }` | — |
+| `get_page_session(page)` | Page start in one call: `{ role, display_name, avatar_url, page, allowed }`. `allowed` comes from `check_page_access` | — |
 | `upsert_staff(email, role, display_name, password?)` | Create/update app user | bootstrap + admin |
 | `delete_staff(email)` | Remove app user | admin |
 | `update_my_avatar(url)` | Set operator profile photo URL | own row |
@@ -918,6 +919,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `sum_credit_given(start, end)` | Sum of credit sale amounts in the range | — |
 | `billing_totals_by_date(start, end)` | Billing invoice totals grouped by date (jsonb) | — |
 | `purchase_totals_by_date(start, end)` | Purchase-document totals grouped by date (jsonb) | — |
+| `get_invoice_document_category_counts(start?, end?)` | Invoice vault outline: `category`, `doc_count`, `latest_date` per category. Security invoker, so `invoice_documents` RLS applies | — |
 | `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
@@ -972,7 +974,7 @@ Triggers and helpers (not a page call). `recascade_day_closing_short_from`, `rea
 | `enqueue_drive_pdf_from_invoice()`, `enqueue_drive_pdf_from_letter()` | After an invoice or letter insert, call `enqueue_drive_pdf_archive` |
 | `set_app_user_auth_id()` | On `users` email insert or update, copy `auth.users.id` when the emails match |
 | `link_app_user_auth_id()` | On a new Auth user, fill `users.auth_user_id` on the matching email if it is still empty |
-| `audit_trigger_fn()` | Writes `audit_log` unless `runtime_flags.audit` is `off` |
+| `audit_trigger_fn()` | Writes `audit_log` unless `runtime_flags.audit` is `off`. UPDATE rows keep only changed columns; an update that changes nothing but `updated_at` is skipped |
 | `sync_meter_shift_cash_ledger_totals(date, shift, employee)` | Rewrites the cached credit and expense totals on `meter_shift_cash` |
 | `trg_sync_shift_cash_from_credit_entries()`, `trg_sync_shift_cash_from_expenses()` | After a shift-attributed credit or expense change, call that refresh |
 

@@ -1220,17 +1220,15 @@ async function fetchProfitLossData(range, onUpdate = null) {
 
   const loadFresh = async () => {
     try {
-      const { data, error } = await AppError.withRetry(
-        () =>
-          window.supabaseClient.functions.invoke("get-pl-data", {
-            body: {
-              startDate: range.start,
-              endDate: range.end,
-              receiptHistoryStart: receiptStart,
-            },
-          }),
-        { maxAttempts: 3 }
-      );
+      // One attempt: invoke() resolves { error } rather than throwing, and a
+      // failure already falls back to direct queries below.
+      const { data, error } = await window.supabaseClient.functions.invoke("get-pl-data", {
+        body: {
+          startDate: range.start,
+          endDate: range.end,
+          receiptHistoryStart: receiptStart,
+        },
+      });
 
       if (error) throw error;
 
@@ -1544,8 +1542,8 @@ function toggleCreditMask() {
 }
 
 /**
- * Fetches dashboard data using Edge Function (single round-trip) with fallback
- * to parallel client-side queries if the Edge Function is unavailable.
+ * Fetches dashboard data with the get_dashboard_snapshot RPC (single round-trip),
+ * falling back to parallel client-side queries if it fails.
  * Uses stale-while-revalidate caching pattern.
  */
 async function fetchDashboardData(startDate, endDate, onUpdate = null) {
@@ -1572,68 +1570,40 @@ async function fetchDashboardData(startDate, endDate, onUpdate = null) {
         };
       }
     } catch {
-      /* older database: fall through to the edge function */
+      /* fall through to direct queries */
     }
-    try {
-      // Edge Function with retry; we retry only on transient errors (via isTransientError)
-      const { data, error } = await AppError.withRetry(
-        () =>
-          window.supabaseClient.functions.invoke("get-dashboard-data", {
-            body: { startDate, endDate },
-          }),
-        { maxAttempts: 3 }
-      );
+    // Fallback: meter rows stay paged; money totals come from SQL.
+    const [dsrResult, stockResult, expenseSum, creditSum] = await Promise.all([
+      fetchAllRows(() =>
+        supabaseClient
+          .from("dsr")
+          .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
+          .gte("date", startDate)
+          .lte("date", endDate)
+          .order("date", { ascending: true })
+          .order("product", { ascending: true })
+      ),
+      window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
+      window.supabaseClient.rpc("sum_expenses", {
+        p_start: startDate,
+        p_end: endDate,
+        p_exclude_salary: false,
+      }),
+      window.supabaseClient.rpc("sum_credit_given", { p_start: startDate, p_end: endDate }),
+    ]);
 
-      if (error) {
-        throw error;
-      }
-
-      return {
-        dsrData: data.dsrData,
-        stockData: data.stockData,
-        expenseData: data.expenseData ?? null,
-        creditData: data.creditData ?? null,
-        expenseTotal: data.expenseTotal ?? null,
-        creditGiven: data.creditGiven ?? null,
-        dsrError: data.errors?.dsr ? new Error(data.errors.dsr) : null,
-        stockError: data.errors?.stock ? new Error(data.errors.stock) : null,
-        expenseError: data.errors?.expense ? new Error(data.errors.expense) : null,
-        creditError: data.errors?.credit ? new Error(data.errors.credit) : null,
-      };
-    } catch {
-      // Fallback: meter rows stay paged; money totals come from SQL.
-      const [dsrResult, stockResult, expenseSum, creditSum] = await Promise.all([
-        fetchAllRows(() =>
-          supabaseClient
-            .from("dsr")
-            .select("date, product, total_sales, testing, stock, petrol_rate, diesel_rate")
-            .gte("date", startDate)
-            .lte("date", endDate)
-            .order("date", { ascending: true })
-            .order("product", { ascending: true })
-        ),
-        window.supabaseClient.rpc("get_dsr_stock_range", { p_start: startDate, p_end: endDate }),
-        window.supabaseClient.rpc("sum_expenses", {
-          p_start: startDate,
-          p_end: endDate,
-          p_exclude_salary: false,
-        }),
-        window.supabaseClient.rpc("sum_credit_given", { p_start: startDate, p_end: endDate }),
-      ]);
-
-      return {
-        dsrData: dsrResult.data,
-        stockData: stockResult.data,
-        expenseData: null,
-        creditData: null,
-        expenseTotal: expenseSum.error ? null : Number(expenseSum.data ?? 0),
-        creditGiven: creditSum.error ? null : Number(creditSum.data ?? 0),
-        dsrError: dsrResult.error,
-        stockError: stockResult.error,
-        expenseError: expenseSum.error,
-        creditError: creditSum.error,
-      };
-    }
+    return {
+      dsrData: dsrResult.data,
+      stockData: stockResult.data,
+      expenseData: null,
+      creditData: null,
+      expenseTotal: expenseSum.error ? null : Number(expenseSum.data ?? 0),
+      creditGiven: creditSum.error ? null : Number(creditSum.data ?? 0),
+      dsrError: dsrResult.error,
+      stockError: stockResult.error,
+      expenseError: expenseSum.error,
+      creditError: creditSum.error,
+    };
   };
 
   // Use stale-while-revalidate pattern

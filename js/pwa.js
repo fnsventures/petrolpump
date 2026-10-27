@@ -118,6 +118,12 @@
     return String(el.value || "").trim().length > 0;
   }
 
+  /** Typed input a reload would lose. Forms with a local draft come back after reload. */
+  function reloadWouldLoseInput() {
+    if (typeof window.unsavedWorkWouldBeLost === "function") return window.unsavedWorkWouldBeLost();
+    return focusedFieldHasEntry();
+  }
+
   function ensureViewportMeta() {
     const desired = "width=device-width, initial-scale=1, viewport-fit=cover";
     let viewport = document.querySelector('meta[name="viewport"]');
@@ -264,7 +270,7 @@
     const message = document.createElement("p");
     message.id = "app-update-sheet-message";
     message.className = "app-update-sheet-message";
-    message.textContent = focusedFieldHasEntry()
+    message.textContent = reloadWouldLoseInput()
       ? "A new version of Bishnupriya Fuels is ready. Reload to use the latest changes. Unsaved entries on this page will be lost."
       : "A new version of Bishnupriya Fuels is ready. Reload to use the latest changes.";
 
@@ -313,6 +319,8 @@
   function reloadThisPage() {
     if (refreshing) return;
     refreshing = true;
+    // Typed input is written to its draft first and restored on the new page.
+    window.saveDraftsForReload?.();
     reloadOnControllerChange = false;
     waitingWorkerRef = null;
     dismissUpdateSheet(false);
@@ -378,7 +386,9 @@
     body.replaceChildren();
     const lead = document.createElement("p");
     if (kind === "native") {
-      lead.textContent = "Install BPFuels on this phone. It opens full screen from your home screen.";
+      lead.textContent = isMobileClient()
+        ? "Install BPFuels on this phone. It opens full screen from your home screen."
+        : "Install BPFuels on this computer. It opens in its own window from the Start menu, Dock or desktop.";
       body.appendChild(lead);
       return;
     }
@@ -519,7 +529,7 @@
   }
 
   function shouldOfferInstall() {
-    if (isStandalone() || !isMobileClient()) return false;
+    if (isStandalone()) return false;
     if (installDismissedRecently()) return false;
     if (readSession(INSTALL_SEEN_KEY) === "1") return false;
     const file = (window.location.pathname.split("/").pop() || "").toLowerCase();
@@ -541,16 +551,20 @@
       if (document.getElementById("app-update-sheet")) dismissUpdateSheet(true);
     });
 
-    if (!shouldOfferInstall()) return;
+    // Desktop browsers without beforeinstallprompt have no install steps worth showing.
+    if (!shouldOfferInstall() || !isMobileClient()) return;
     window.setTimeout(showInstallSheet, 700);
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {
-    if (!isMobileClient() || isStandalone()) return;
+    if (isStandalone()) return;
     event.preventDefault();
     deferredInstallPrompt = event;
     const action = document.querySelector(".app-install-sheet-action");
     if (action) action.hidden = false;
+    if (!isMobileClient() && shouldOfferInstall() && !isPublicLandingPage()) {
+      window.setTimeout(showInstallSheet, 700);
+    }
   });
 
   function dispatchAppResume(detail) {

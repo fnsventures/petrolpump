@@ -1,6 +1,6 @@
 {
   "description": "Authenticated page assets. Expanded by scripts/build-html.mjs from <!-- @partial app-head -->.",
-  "sharedCss": ["css/base.css", "css/app-core.css"],
+  "sharedCss": ["css/tokens.css", "css/reset.css", "css/components.css", "css/utilities.css", "css/app-core.css"],
   "earlyJs": ["js/roleBootstrap.js", "js/appNav.js"],
   "sharedJs": [
     "js/vendor/supabase.min.js",
