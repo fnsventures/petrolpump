@@ -100,7 +100,7 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 
 **Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (insert, delete, and updates of cash, phone pay, remarks, date, shift, or employee — not cache-only refreshes of `credit_amount` / `expense_amount`), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
 
-**Retention:** Production rows older than 6 months are deleted by `purge_audit_log_batch` (maintenance script only, not granted to app roles), run weekly by `.github/workflows/purge-audit-log.yml`. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+**Retention:** Production rows older than 6 months are deleted by `purge_audit_log_batch` (maintenance script only, not granted to app roles), run weekly by `.github/workflows/purge-audit-log.yml`. The same workflow, started by hand, can pass a keep of 3, 2, or 1 month. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
 ---
 

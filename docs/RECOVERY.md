@@ -376,12 +376,13 @@ Not problems: object owner (`postgres` exists on Supabase), extensions (`pgcrypt
 
 | File | Role |
 |------|------|
-| `.github/workflows/backup-prod-db.yml` | 1st: finished month, then audit purge. 1 January: also full copy and removal of that year’s month folders |
+| `.github/workflows/backup-prod-db.yml` | 1st: finished month. 1 January: also full copy and removal of that year’s month folders |
+| `.github/workflows/purge-audit-log.yml` | Weekly: delete `audit_log` rows older than 6 months. By hand: 3, 2, or 1 month. No Drive upload |
 | `scripts/backup-month-to-drive.sh` | One month of activity, gzipped CSV, upload |
 | `scripts/backup-prod-to-drive.sh` | Whole database into `Manual/<timestamp>/` |
 | `scripts/backup-year-to-drive.sh` | Whole database into `Yearly/YYYY/`, then trash that year’s month folders |
 | `scripts/disable-staging-audit.sh` | Staging only: stop audit and empty `audit_log` |
-| `scripts/purge-audit-log.sh` | Delete `audit_log` rows older than 6 months |
+| `scripts/purge-audit-log.sh` | Delete `audit_log` rows older than 6 months, or `AUDIT_KEEP_MONTHS` 1, 2, or 3 |
 | `scripts/prune-drive-backups.sh` | Trash month folders whose year already has `Yearly/YYYY` |
 | `scripts/backup-prod.sh` | Local backup |
 | `scripts/restore-dump.sh` | Local or new-project restore |
