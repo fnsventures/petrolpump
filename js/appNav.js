@@ -340,6 +340,12 @@
       const open = !document.documentElement.classList.contains("app-sections-collapsed");
       setSectionsOpen(!open);
     });
+    // Phone: the whole band header toggles, not only the small arrow.
+    drawer.querySelector(".app-sections-head")?.addEventListener("click", (e) => {
+      if (isDesktop() || e.target.closest(".app-sections-toggle")) return;
+      e.stopPropagation();
+      setSectionsOpen(document.documentElement.classList.contains("app-sections-collapsed"));
+    });
     drawer.addEventListener("click", (e) => {
       if (!drawer.classList.contains("is-collapsed")) return;
       if (e.target.closest("a, button")) return;
