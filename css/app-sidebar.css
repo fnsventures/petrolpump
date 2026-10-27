@@ -664,38 +664,77 @@ html.app-chrome-ready body.has-app-sidebar {
     padding-left: 0;
   }
 
+  /* App-style bar: menu flush at the leading edge, a hairline, then the title; round actions at the end. */
+  html.has-app-sidebar .topbar,
+  body.has-app-sidebar .topbar {
+    padding-left: var(--safe-left);
+  }
+
   html.has-app-sidebar .topbar .nav-toggle,
   body.has-app-sidebar .topbar .nav-toggle {
     display: flex;
-    order: 2;
-    margin-left: auto;
+    order: -1;
+    align-self: stretch;
+    width: 3.25rem;
+    height: auto;
+    min-width: 3.25rem;
+    min-height: 2.75rem;
+    margin: calc(-1 * max(0.5rem, var(--safe-top))) -0.25rem -0.5rem 0;
+    padding: max(0.5rem, var(--safe-top)) 0 0.5rem;
+    border: none;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--bpcl-blue-dark);
+  }
+
+  html.has-app-sidebar .topbar .nav-toggle:is(:hover, :focus-visible, [aria-expanded="true"]),
+  body.has-app-sidebar .topbar .nav-toggle:is(:hover, :focus-visible, [aria-expanded="true"]) {
+    background: var(--bpcl-blue-soft);
+    border: none;
+    border-right: 1px solid var(--border);
+    transform: none;
+  }
+
+  html.has-app-sidebar .topbar .nav-toggle:focus-visible,
+  body.has-app-sidebar .topbar .nav-toggle:focus-visible {
+    outline: 2px solid var(--bpcl-blue);
+    outline-offset: -2px;
+  }
+
+  html.has-app-sidebar .topbar .nav-toggle svg,
+  body.has-app-sidebar .topbar .nav-toggle svg {
+    width: 1.4rem;
+    height: 1.4rem;
   }
 
   body.has-app-sidebar .topbar-actions {
     order: 3;
+    margin-left: auto;
   }
 
-  html.has-app-sidebar .topbar .brand-text,
-  body.has-app-sidebar .topbar .brand-text,
-  html.has-app-sidebar .topbar .brand a,
-  body.has-app-sidebar .topbar .brand a {
+  /* Phone header is menu, page title, help, notifications, profile. The station logo and name
+     stay in the drawer, so the brand box is hidden outright (also before appNav.js runs). */
+  header.topbar .brand,
+  header.topbar .brand-mark,
+  header.topbar .brand-logo,
+  header.topbar .brand-text {
+    display: none !important;
+  }
+
+  /* The blue/yellow strip sits on the blue Sections band and reads as a broken line. */
+  header.topbar.topbar--bpcl::after {
     display: none;
   }
 
-  html.has-app-sidebar .topbar .brand,
-  body.has-app-sidebar .topbar .brand {
-    flex: 0 0 auto;
+  header.topbar .page-title-stack {
+    display: flex;
+    flex: 1 1 auto;
     min-width: 0;
   }
 
-  html.has-app-sidebar .topbar .page-title-stack,
-  body.has-app-sidebar .topbar .page-title-stack {
-    display: flex;
-    flex: 1 1 auto;
-  }
-
-  html.has-app-sidebar .topbar .page-subtitle,
-  body.has-app-sidebar .topbar .page-subtitle {
+  header.topbar .page-subtitle {
     display: block;
   }
 
@@ -730,8 +769,137 @@ html.app-chrome-ready body.has-app-sidebar {
     display: none;
   }
 
+  /* Phone drawer: a sheet from the left with a close button, clear group rows and big targets. */
+  .app-sidebar {
+    width: min(20rem, calc(100vw - 3.5rem)) !important;
+    border-radius: 0 1.1rem 1.1rem 0;
+    box-shadow: none;
+  }
+
+  .app-sidebar-inner {
+    width: 100%;
+  }
+
+  .app-sidebar-brand {
+    min-height: 0;
+    padding: max(0.9rem, var(--safe-top)) 3.5rem 0.9rem max(1rem, var(--safe-left));
+  }
+
+  .app-sidebar-close {
+    position: absolute;
+    top: max(0.85rem, var(--safe-top));
+    right: 0.6rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-on-accent);
+    box-shadow: none;
+    cursor: pointer;
+  }
+
+  .app-sidebar-close:is(:hover, :focus-visible) {
+    background: var(--app-sidebar-hover);
+    color: var(--text-on-accent);
+    transform: none;
+  }
+
+  .app-sidebar-close svg {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .app-sidebar-nav {
+    padding: 0.75rem 0.75rem calc(1rem + var(--safe-bottom));
+  }
+
+  .app-sidebar-group {
+    margin-bottom: 0.25rem;
+  }
+
+  .app-sidebar-group-toggle {
+    min-height: 3rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .app-sidebar-group-toggle .app-sidebar-label {
+    font-size: var(--text-sm);
+    letter-spacing: 0.06em;
+    color: var(--app-sidebar-text);
+  }
+
+  .app-sidebar-group.is-open > .app-sidebar-group-toggle {
+    background: var(--app-sidebar-hover);
+  }
+
+  /* Closed groups keep no indent or guide line, so nothing dangles under the header. */
+  .app-sidebar-group:not(.is-open) .app-sidebar-group-items {
+    margin: 0;
+    padding: 0;
+    border-width: 0;
+  }
+
+  .app-sidebar-group-items {
+    gap: 0.15rem;
+    margin: 0.3rem 0 0.4rem 1.35rem;
+    padding: 0 0 0 0.6rem;
+    border-left: 2px solid var(--app-sidebar-hover);
+  }
+
+  .app-sidebar-link {
+    position: relative;
+    min-height: 2.85rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.65rem;
+    font-size: var(--text-base);
+  }
+
+  .app-sidebar-link .app-sidebar-icon {
+    opacity: 0.85;
+  }
+
+  .app-sidebar-link.is-active,
+  .app-sidebar-group.is-current > .app-sidebar-group-toggle {
+    background: var(--app-sidebar-hover);
+  }
+
+  .app-sidebar-link.is-active {
+    color: var(--app-sidebar-active);
+    font-weight: 700;
+  }
+
+  .app-sidebar-link.is-active::before {
+    content: "";
+    position: absolute;
+    top: 0.55rem;
+    bottom: 0.55rem;
+    left: -0.7rem;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--app-sidebar-active);
+  }
+
+  .app-sidebar-link.is-active .app-sidebar-icon {
+    opacity: 1;
+  }
+
+  .app-sidebar-foot {
+    display: none;
+  }
+
+  /* z-index auto: as a flex child the desktop 240 still applies and covers the header popups. */
   .app-sections-drawer {
     position: static;
+    z-index: auto;
     width: auto;
     height: auto;
     border-right: none;
@@ -748,13 +916,39 @@ html.app-chrome-ready body.has-app-sidebar {
 
   .app-sections-head {
     min-height: 0;
+    padding: 0.3rem 0.5rem 0.3rem 1rem;
+    cursor: pointer;
   }
 
   .app-sections-drawer.is-collapsed .app-sections-head {
     flex-direction: row;
     justify-content: flex-start;
     gap: 0.35rem;
-    padding: 0.45rem 0.75rem;
+    padding: 0.3rem 0.5rem 0.3rem 1rem;
+  }
+
+  /* The band opens downward on a phone, so the arrow points up to close and down to open. */
+  .app-sections-toggle {
+    width: 2.25rem;
+    min-height: 2.25rem;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-on-accent);
+  }
+
+  .app-sections-toggle:hover {
+    background: var(--app-sidebar-hover);
+    color: var(--text-on-accent);
+  }
+
+  .app-sections-toggle svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    transform: rotate(90deg);
+  }
+
+  .app-sections-drawer.is-collapsed .app-sections-toggle svg {
+    transform: rotate(-90deg);
   }
 
   .app-sections-drawer.is-collapsed .app-sections-heading {
@@ -877,7 +1071,8 @@ html.app-chrome-ready body.has-app-sidebar {
 }
 
 @media (min-width: 961px) {
-  .app-tabbar {
+  .app-tabbar,
+  .app-sidebar-close {
     display: none;
   }
 }

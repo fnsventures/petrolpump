@@ -384,6 +384,19 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
     min-width: 0 !important;
   }
 
+  /* Opening/closing nozzles use the same labelled cards as sales, testing & stock. */
+  body.meter-reading-page .dsr-card .meter-block:has(table.table-cards) {
+    overflow-x: visible;
+  }
+
+  body.meter-reading-page .dsr-card .meter-table.table-cards {
+    table-layout: auto;
+  }
+
+  body.meter-reading-page .meter-table--closing.table-cards .meter-col-date--spacer {
+    display: none;
+  }
+
   body.meter-reading-page .page-layout-wide .sheet-rate-row {
     grid-template-columns: 1fr;
   }

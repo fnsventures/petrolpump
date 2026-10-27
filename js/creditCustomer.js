@@ -594,6 +594,7 @@ async function resolveCustomerIds(isCurrent) {
   page().updateCustomerBalanceState(totalDue, totalPrepaid);
   page().applyCustomerBalanceHero(page().state.customerNetBalance, page().state.customerPrepaidBalance);
   updateSettleBalanceBanner();
+  syncCustomerContactActions();
 }
 
 
@@ -667,7 +668,9 @@ function syncCustomerContactActions() {
     }
   }
   if (!waBtn) return;
-  const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
+  // The message needs only the balance, known once the customer rows load. Waiting for the
+  // period summary left the icon disabled whenever that slower request was late or failed.
+  const canShare = page().state.customerIds.length > 0;
   const waHref = tel && canShare ? creditCustomerWaHref(mobile, buildCreditWhatsAppText()) : "";
   if (waHref) {
     waBtn.href = waHref;
@@ -708,7 +711,7 @@ function creditCustomerWaHref(mobile, text) {
 function buildCreditWhatsAppText() {
   const net = Number(page().state.customerNetBalance);
   const unpaid = Number.isFinite(net) ? Math.max(0, net) : 0;
-  const name = page().state.lastCustomerSummaryContext?.customerName || "";
+  const name = page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
   if (typeof TaskUtils?.waMessageForCustomer === "function") {
     return TaskUtils.waMessageForCustomer(name, unpaid);
   }
