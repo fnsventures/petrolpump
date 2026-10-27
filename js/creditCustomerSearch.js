@@ -33,7 +33,11 @@ function creditCustomerSearchFilter(query) {
   return parts.join(",");
 }
 
-/** Contact fields from one name's customer rows. Prefer a chosen id, then a row that still owes money. */
+/**
+ * Contact fields from one name's customer rows. Prefer a chosen id, then a row that still owes money.
+ * A blank mobile or address on that row falls back to another row of the same name, so the
+ * vehicle row a link opens (credit list links by id) still gets the number saved on its sibling.
+ */
 function pickCreditCustomerContact(rows, preferredId) {
   const list = rows || [];
   const primary =
@@ -41,9 +45,15 @@ function pickCreditCustomerContact(rows, preferredId) {
     list.find((row) => Number(row.amount_due) > 0) ||
     list[0];
   if (!primary) return { mobile: "", address: "", vehicleNo: "" };
+  const field = (key) => {
+    const own = String(primary[key] ?? "").trim();
+    if (own) return own;
+    const other = list.find((row) => String(row[key] ?? "").trim());
+    return other ? String(other[key]).trim() : "";
+  };
   return {
-    mobile: String(primary.mobile ?? "").trim(),
-    address: String(primary.address ?? "").trim(),
+    mobile: field("mobile"),
+    address: field("address"),
     vehicleNo: String(primary.vehicle_no ?? "").trim(),
   };
 }
