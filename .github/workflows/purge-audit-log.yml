@@ -3,12 +3,31 @@ name: Purge audit log
 # Weekly: delete production audit_log rows older than 6 months.
 # The monthly backup archives each finished month's audit rows to Drive long
 # before they reach that age. Operational tables are not touched.
+# Manual runs delete rows older than 3, 2, or 1 month and do not upload a backup.
 
 on:
   schedule:
     # Sundays 03:30 UTC (09:00 IST)
     - cron: "30 3 * * 0"
   workflow_dispatch:
+    inputs:
+      keep_months:
+        description: Delete production audit_log rows older than
+        type: choice
+        required: true
+        options:
+          - "3"
+          - "2"
+          - "1"
+        default: "3"
+      confirm:
+        description: Dry run counts rows. Delete removes them on production.
+        type: choice
+        required: true
+        options:
+          - dry-run
+          - delete
+        default: dry-run
 
 concurrency:
   group: prod-db-backup
@@ -18,7 +37,9 @@ permissions:
   contents: read
 
 jobs:
-  purge:
+  purge-weekly:
+    name: Delete audit rows older than 6 months
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     environment: prod
     steps:
@@ -31,5 +52,25 @@ jobs:
       - name: Purge audit log older than 6 months
         env:
           PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          AUDIT_KEEP_MONTHS: "6"
           CONFIRM_PURGE_AUDIT: yes
+        run: bash scripts/purge-audit-log.sh
+
+  purge:
+    name: Purge audit log
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Purge audit log
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          AUDIT_KEEP_MONTHS: ${{ inputs.keep_months }}
+          CONFIRM_PURGE_AUDIT: ${{ inputs.confirm == 'delete' && 'yes' || '' }}
         run: bash scripts/purge-audit-log.sh
