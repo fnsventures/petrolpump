@@ -896,8 +896,10 @@ html.app-chrome-ready body.has-app-sidebar {
     display: none;
   }
 
+  /* z-index auto: as a flex child the desktop 240 still applies and covers the header popups. */
   .app-sections-drawer {
     position: static;
+    z-index: auto;
     width: auto;
     height: auto;
     border-right: none;
