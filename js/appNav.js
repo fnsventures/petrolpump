@@ -386,6 +386,9 @@
             <span class="app-sidebar-brand-meta">Authorized BPCL Dealer</span>
           </span>
         </a>
+        <button type="button" class="app-sidebar-close" aria-label="Close menu" title="Close menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
         <nav class="app-sidebar-nav" data-app-nav>
           ${NAV_GROUPS.map(renderGroup).join("")}
         </nav>
@@ -593,6 +596,10 @@
     });
 
     backdrop?.addEventListener("click", () => setSidebarOpen(false));
+    document.querySelector(".app-sidebar-close")?.addEventListener("click", () => {
+      setSidebarOpen(false);
+      toggle?.focus();
+    });
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && document.body.classList.contains("app-sidebar-open")) {

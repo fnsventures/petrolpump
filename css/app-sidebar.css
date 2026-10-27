@@ -755,6 +755,133 @@ html.app-chrome-ready body.has-app-sidebar {
     display: none;
   }
 
+  /* Phone drawer: a sheet from the left with a close button, clear group rows and big targets. */
+  .app-sidebar {
+    width: min(20rem, calc(100vw - 3.5rem)) !important;
+    border-radius: 0 1.1rem 1.1rem 0;
+    box-shadow: none;
+  }
+
+  .app-sidebar-inner {
+    width: 100%;
+  }
+
+  .app-sidebar-brand {
+    min-height: 0;
+    padding: max(0.9rem, var(--safe-top)) 3.5rem 0.9rem max(1rem, var(--safe-left));
+  }
+
+  .app-sidebar-close {
+    position: absolute;
+    top: max(0.85rem, var(--safe-top));
+    right: 0.6rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-on-accent);
+    box-shadow: none;
+    cursor: pointer;
+  }
+
+  .app-sidebar-close:is(:hover, :focus-visible) {
+    background: var(--app-sidebar-hover);
+    color: var(--text-on-accent);
+    transform: none;
+  }
+
+  .app-sidebar-close svg {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .app-sidebar-nav {
+    padding: 0.75rem 0.75rem calc(1rem + var(--safe-bottom));
+  }
+
+  .app-sidebar-group {
+    margin-bottom: 0.25rem;
+  }
+
+  .app-sidebar-group-toggle {
+    min-height: 3rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.75rem;
+  }
+
+  .app-sidebar-group-toggle .app-sidebar-label {
+    font-size: var(--text-sm);
+    letter-spacing: 0.06em;
+    color: var(--app-sidebar-text);
+  }
+
+  .app-sidebar-group.is-open > .app-sidebar-group-toggle {
+    background: var(--app-sidebar-hover);
+  }
+
+  /* Closed groups keep no indent or guide line, so nothing dangles under the header. */
+  .app-sidebar-group:not(.is-open) .app-sidebar-group-items {
+    margin: 0;
+    padding: 0;
+    border-width: 0;
+  }
+
+  .app-sidebar-group-items {
+    gap: 0.15rem;
+    margin: 0.3rem 0 0.4rem 1.35rem;
+    padding: 0 0 0 0.6rem;
+    border-left: 2px solid var(--app-sidebar-hover);
+  }
+
+  .app-sidebar-link {
+    position: relative;
+    min-height: 2.85rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 0.65rem;
+    font-size: var(--text-base);
+  }
+
+  .app-sidebar-link .app-sidebar-icon {
+    opacity: 0.85;
+  }
+
+  .app-sidebar-link.is-active,
+  .app-sidebar-group.is-current > .app-sidebar-group-toggle {
+    background: var(--app-sidebar-hover);
+  }
+
+  .app-sidebar-link.is-active {
+    color: var(--app-sidebar-active);
+    font-weight: 700;
+  }
+
+  .app-sidebar-link.is-active::before {
+    content: "";
+    position: absolute;
+    top: 0.55rem;
+    bottom: 0.55rem;
+    left: -0.7rem;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--app-sidebar-active);
+  }
+
+  .app-sidebar-link.is-active .app-sidebar-icon {
+    opacity: 1;
+  }
+
+  .app-sidebar-foot {
+    display: none;
+  }
+
   .app-sections-drawer {
     position: static;
     width: auto;
@@ -928,7 +1055,8 @@ html.app-chrome-ready body.has-app-sidebar {
 }
 
 @media (min-width: 961px) {
-  .app-tabbar {
+  .app-tabbar,
+  .app-sidebar-close {
     display: none;
   }
 }
