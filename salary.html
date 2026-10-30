@@ -12,6 +12,7 @@
         <button type="button" class="settings-nav-item is-active" data-section="summary">Monthly summary</button>
         <button type="button" class="settings-nav-item" data-section="record">Record payment</button>
         <button type="button" class="settings-nav-item" data-section="recent">Payment history</button>
+        <button type="button" class="settings-nav-item" data-section="short-excess">Short / excess</button>
       </nav>
       <div class="settings-panels">
         <section class="settings-panel card dashboard-card" data-panel="record" hidden>
@@ -133,6 +134,39 @@
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="short-excess" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Short / excess by attendant</h2>
+              <p class="muted panel-lead">
+                For <strong id="short-excess-month">this month</strong>, per attendant: handed over (cash + UPI + shift credit + shift expenses)
+                minus expected (net shift litres × that day's rate). Negative is short, positive is excess.
+                Shifts without a selling rate are left out. A deduction is optional: an admin records it as a salary payment with a note.
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="salary-summary-table" id="short-excess-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="num">Shifts</th>
+                  <th class="num">Expected (₹)</th>
+                  <th class="num">Handed over (₹)</th>
+                  <th class="num">Short (₹)</th>
+                  <th class="num">Excess (₹)</th>
+                  <th class="num">Net (₹)</th>
+                  <th class="table-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="short-excess-body">
+                <tr><td colspan="8" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="short-excess-detail" class="short-excess-detail" hidden></div>
         </section>
 
         <section class="settings-panel card dashboard-card" data-panel="recent" hidden>

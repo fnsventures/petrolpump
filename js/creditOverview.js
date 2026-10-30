@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, PumpSettings, loadPumpSettings, PrintUtils, loadScript */
+/* global formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, createDateRangeFilter, readDateRangeFromControls, setFilterState, getRangeForSelection, formatDateRangeLabel, PumpSettings, loadPumpSettings, PrintUtils, loadScript, bindLiveRefresh */
 
 (function () {
   const page = () => window.CreditPage;

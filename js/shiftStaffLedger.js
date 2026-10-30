@@ -2,7 +2,7 @@
  * Shift staff ledger: add credit customers & expenses from Staff collections.
  * Persists real credit_entries / expenses rows (day closing picks them up).
  */
-/* global window.supabaseClient, AppError, AppDialog, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName, formRequestId, clearFormRequestId */
+/* global AppError, AppDialog, escapeHtml, formatCurrency, formatDisplayDate, normCustomerName, formRequestId, clearFormRequestId, LOOKUP_ROW_LIMIT, searchCreditCustomers, CREDIT_CUSTOMER_SUGGEST_LIMIT, debounce, ActionProgress */
 
 (function (global) {
   const SALARY_CATEGORY = "salary";

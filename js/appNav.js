@@ -1,3 +1,4 @@
+/* global escapeHtml */
 /**
  * Nested sidebar (layers 1–2). Desktop: hover expands the rail and opens only the section under the pointer.
  *   layer 1 — Operations / Finance / HR / Admin

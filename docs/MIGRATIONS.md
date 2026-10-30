@@ -50,7 +50,7 @@ supabase db push --db-url "$DB_URL" --include-all
    - New RPCs / views / indexes
    - RLS policy updates that do not lock out admins
 4. Avoid destructive drops on prod data unless you have an explicit restore plan and a quiet window.
-5. Update `supabase/schema.sql` and check with `./scripts/check-schema-drift.sh`.
+5. Update `supabase/schema.sql` and check with `./scripts/check-schema-drift.sh`. Run `./scripts/test-db.sh` ([Database tests](#database-tests)).
 6. Update docs if the public model changed: [DATA_TABLES.md](DATA_TABLES.md) (meter and stock model included); day-closing RPCs → [DAY_CLOSING.md](DAY_CLOSING.md).
 7. Test on staging, then ship with the [Operations](OPERATIONS.md#3-release-to-production) release order.
 
@@ -97,7 +97,32 @@ KEEP_DRIFT_CONTAINERS=1 ./scripts/check-schema-drift.sh   # leave both DBs up to
 
 It builds DB A from the `5383acd` baseline + every migration in filename order, DB B from `schema.sql`, and diffs normalized schema dumps. CI runs it on PRs that touch `supabase/`.
 
+Then regenerate the client types from the same `schema.sql` and commit them: `npm run gen:types` (Docker, ~15 s). CI's `db-types` job fails if `types/db.d.ts` is stale. See [TYPECHECK.md](TYPECHECK.md).
+
 **Stale overloads:** when a migration changes a function's signature, `drop function if exists` the old signature in the same file — `create or replace` with new arguments adds an overload and leaves the old one callable. `20261006054630_money_write_integrity.sql` dropped the four that had accumulated (`add_credit_entry` 7-arg, `record_credit_payment(uuid,date,numeric,text)`, `save_day_closing(date,numeric,numeric)`, `upsert_staff(text,text)`). `LEGACY_OVERLOADS` in the drift script is now empty; only add to it as a stopgap.
+
+---
+
+## Database tests
+
+pgTAP tests in `supabase/tests/` run against a throwaway database built the same way as drift DB A (baseline + every migration). Needs Docker, ~20 s:
+
+```bash
+./scripts/test-db.sh                                  # all files; 1 = a check failed, 2 = setup failed
+./scripts/test-db.sh supabase/tests/rls.test.sql      # one file
+KEEP_TEST_CONTAINER=1 ./scripts/test-db.sh            # leave the DB up (prints the psql command)
+```
+
+| File | Pins |
+|------|------|
+| `day_closing.test.sql` | Every `compute_day_closing_components` figure for a two-day fixture (cash, UPI, Bank, same-day settle, prepaid, legacy credit, shift/book/salary expenses), `save_day_closing` short and chain, refresh on a saved day |
+| `certified_lock.test.sql` | A certified day rejects each money RPC, `save_day_closing`, `delete_day_closing`, direct expense writes and meter edits, including for admin; revoke needs a reason |
+| `request_id.test.sql` | A repeated `p_request_id` writes once on all six money RPCs; an id cannot be reused for another action or by another user |
+| `rls.test.sql` | RLS on every table; the exact policy list; no anon EXECUTE; a per-role matrix (anon, unprovisioned login, supervisor, admin); `check_page_access` for every page |
+
+The fixture (`tests.seed_books()` in `helpers.sql`) is written through the same RPCs the app calls, with the expected figures worked out in its comment. CI runs the suite on PRs that touch `supabase/migrations/` or `supabase/tests/`.
+
+**When a test fails on purpose:** a deliberate change to a total, a policy, or a page's roles updates the expected value in the same PR. The policy list in `rls.test.sql` is verbatim `pg_policies` text, so a changed policy shows as one missing and one extra row; paste the extra row in. A new table must be added to the pinned table list and given matrix cases.
 
 ---
 

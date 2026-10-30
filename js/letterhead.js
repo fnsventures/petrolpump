@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, window.supabaseClient, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce, bindUnsavedDraft */
+/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce, bindUnsavedDraft, runAppRequest, renderTableRetryRow, isCancelledRequestError, resetPaginationLoading, bindLiveRefresh, isSettingsPanelActive */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css";

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft */
+/* global requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, isCancelledRequestError, DsrQueries, bindLiveRefresh, isSettingsPanelActive */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;

@@ -33,6 +33,9 @@ const excludes = [
   "_partials",
   "package.json",
   "package-lock.json",
+  "types",
+  "jsconfig.json",
+  "eslint.config.mjs",
 ].map((name) => `--exclude=${name}`);
 
 await run("rsync", ["-a", "--delete", ...excludes, `${REPO_ROOT}/`, `${SITE_DIR}/`]);

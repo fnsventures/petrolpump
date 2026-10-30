@@ -20,7 +20,7 @@ Example: `widgets.html` with script `js/widgets.js`.
   ```
 - [ ] **Assets** — add a `"widgets.html"` entry to `_partials/app-pages.json` (`title`, `pageTitle`, `bodyClass`, `css`, `beforeAuth`, `page`). The build fails if a page uses `@partial app-head` without an entry. Never add `?v=` — hashes are stamped at build.
 - [ ] **CSS** — `css/app-widgets.css` (listed in `css` above).
-- [ ] **Script** — `js/widgets.js` starts with `requireAuth({ allowedRoles: [...], onDenied: "dashboard.html", pageName: "widgets" })`, then `applyRoleVisibility(auth.role)`. See `js/reminders.js`.
+- [ ] **Script** — `js/widgets.js` lists every cross-script global it uses in a `/* global … */` header (`npm run lint:js`). It starts with `requireAuth({ allowedRoles: [...], onDenied: "dashboard.html", pageName: "widgets" })`, then `applyRoleVisibility(auth.role)`. See `js/reminders.js`.
 - [ ] **Server-side access** — new migration redefining `public.check_page_access` with a `when 'widgets' then …` branch. Copy the **latest** definition (`grep -lE "create( or replace)? function public\.check_page_access\b" supabase/migrations/* | sort | tail -1`). Without it the page denies everyone.
 - [ ] **Navigation** — add `{ href: "widgets.html", label: "Widgets", icon: "…" }` to the right group in `NAV_GROUPS` (`js/appNav.js`). Admin-only groups use `adminOnly: true`.
 - [ ] **Help panel** — add a `"widgets.html"` entry to `PAGE_HELP` in `js/auth.js`.
@@ -39,6 +39,8 @@ Example: `widgets.html` with script `js/widgets.js`.
 - [ ] Changing a function's arguments? `drop function if exists public.fn(<old arg types>);` in the same migration, or the old version stays callable.
 - [ ] New table → enable RLS and add policies; grant RPCs to `authenticated` only.
 - [ ] Mirror the change in `supabase/schema.sql`; `./scripts/check-schema-drift.sh` passes (needs Docker).
+- [ ] `npm run gen:types` and commit `types/db.d.ts`; `npm run typecheck` passes ([TYPECHECK.md](TYPECHECK.md)).
+- [ ] `./scripts/test-db.sh` passes. New table, policy, or page → add it to `supabase/tests/rls.test.sql`; changed total → update `day_closing.test.sql` ([MIGRATIONS.md → Database tests](MIGRATIONS.md#database-tests)).
 - [ ] Update [DATA_TABLES.md](DATA_TABLES.md) if tables, RPCs, RLS, or the meter/stock model changed.
 - [ ] Never edit a migration that is already on `staging`/`main`.
 - [ ] PR template: tick **Needs `./scripts/db.sh migrate --apply`**.

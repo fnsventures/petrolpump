@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, mountLoadMorePager, syncLoadMorePager, bindAppResume, bindCacheInvalidate */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, mountLoadMorePager, syncLoadMorePager, bindAppResume, bindCacheInvalidate, resetPaginationLoading, runAppRequest, renderTableRetryRow, normCustomerName, fetchAllRows, isCancelledRequestError, loadScript, searchCreditCustomers */
 
 const PAGE_SIZE = 25;
 

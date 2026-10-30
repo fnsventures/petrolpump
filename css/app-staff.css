@@ -1207,3 +1207,32 @@ body.staff-page button.link:disabled {
   }
 }
 
+
+/* Cash short / excess card (renderShortExcessCard) */
+.staff-short-panel {
+  grid-column: 1 / -1;
+  padding: var(--space-4);
+}
+
+.staff-short-panel .card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.staff-short-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+.staff-short-total strong {
+  font-size: var(--text-lg);
+  padding: 0 var(--space-2);
+}
+
+.attendant-short-shifts {
+  width: 100%;
+}

@@ -90,7 +90,7 @@
                         id="petrol-opening-p1n1"
                         name="opening_pump1_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -103,7 +103,7 @@
                         id="petrol-opening-p1n2"
                         name="opening_pump1_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -116,7 +116,7 @@
                         id="petrol-opening-p2n1"
                         name="opening_pump2_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -129,7 +129,7 @@
                         id="petrol-opening-p2n2"
                         name="opening_pump2_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -168,7 +168,7 @@
                         id="petrol-closing-p1n1"
                         name="closing_pump1_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -181,7 +181,7 @@
                         id="petrol-closing-p1n2"
                         name="closing_pump1_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -194,7 +194,7 @@
                         id="petrol-closing-p2n1"
                         name="closing_pump2_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -207,7 +207,7 @@
                         id="petrol-closing-p2n2"
                         name="closing_pump2_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -525,7 +525,7 @@
                         id="diesel-opening-p1n1"
                         name="opening_pump1_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -538,7 +538,7 @@
                         id="diesel-opening-p1n2"
                         name="opening_pump1_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -551,7 +551,7 @@
                         id="diesel-opening-p2n1"
                         name="opening_pump2_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -564,7 +564,7 @@
                         id="diesel-opening-p2n2"
                         name="opening_pump2_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -603,7 +603,7 @@
                         id="diesel-closing-p1n1"
                         name="closing_pump1_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -616,7 +616,7 @@
                         id="diesel-closing-p1n2"
                         name="closing_pump1_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -629,7 +629,7 @@
                         id="diesel-closing-p2n1"
                         name="closing_pump2_nozzle1"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -642,7 +642,7 @@
                         id="diesel-closing-p2n2"
                         name="closing_pump2_nozzle2"
                         type="text"
-                        inputmode="numeric"
+                        inputmode="decimal"
                         maxlength="15"
                         placeholder="0"
                         required
@@ -967,7 +967,14 @@
               ></textarea>
               <p id="shift-save-summary" class="shift-save-summary muted"></p>
             </div>
-            <button type="button" id="shift-meter-save" class="button-primary shift-save-btn">Save shift</button>
+            <div class="shift-save-bar">
+              <p class="shift-sticky-total" aria-live="polite">
+                <span class="shift-sticky-line">Expected <strong id="shift-sticky-expected">—</strong></span>
+                <span class="shift-sticky-line">Short <strong id="shift-sticky-short">—</strong>
+                  <span id="shift-unsaved-chip" class="unsaved-chip hidden">Not saved</span></span>
+              </p>
+              <button type="button" id="shift-meter-save" class="button-primary shift-save-btn">Save shift</button>
+            </div>
           </div>
 
           <p id="shift-meter-success" class="success hidden" aria-live="polite"></p>

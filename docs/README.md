@@ -18,6 +18,7 @@ One place for each fact. Start with the row that matches the job.
 |-------|-------------|
 | [Checklists](CHECKLISTS.md) | Add a page, migration, edge function, user, or secret |
 | [Migrations](MIGRATIONS.md) | Author a schema change and keep `schema.sql` honest |
+| [Lint and type check](TYPECHECK.md) | ESLint globals, `// @ts-check` against the DB types, Dependabot |
 | [Architecture](ARCHITECTURE.md) | Folders, runtime, security, edge functions |
 | [Flows](FLOWS.md) | How a page writes data |
 | [Data tables](DATA_TABLES.md) | Tables, views, RLS, RPCs. Includes the meter and stock model |

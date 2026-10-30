@@ -1,4 +1,5 @@
-/* global window.supabaseClient, PumpSettings, getLocalDateString, AppCache, AppError, fetchAllRows */
+// @ts-check
+/* global PumpSettings, getLocalDateString, AppCache, AppError, fetchAllRows, supabaseClient */
 
 /**
  * Shared DSR and expense query helpers for dashboard, reports, and analysis.
@@ -256,6 +257,7 @@
     return { total, byDate, error: null };
   }
 
+  /** @type {{ petrol: "petrol_rate", diesel: "diesel_rate" }} */
   const SELLING_RATE_FIELD = { petrol: "petrol_rate", diesel: "diesel_rate" };
 
   /**

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper, fetchAllRows, initPageSections, createRequestGuard, LOOKUP_ROW_LIMIT, supabaseClient, bindLiveRefresh */
 
 /**
  * Generate cache key for dashboard data queries
@@ -1662,6 +1662,7 @@ async function loadDsrSummary(range) {
   }
 
   renderDsrSummary(dashboardData, elements, range);
+  void loadStockVarianceTile(range, loadId);
   const todayStr = getLocalDateString();
   if (range.start === todayStr && range.end === todayStr) {
     const snapshotDate = document.getElementById("snapshot-date")?.value || todayStr;
@@ -1682,6 +1683,47 @@ async function loadDsrSummary(range) {
     updateLowStockAlert(null, null);
     updateSmartAlerts();
   }
+}
+
+/** Dashboard tile: get_stock_variance totals for the range (litres and ₹, over-tolerance days). */
+async function loadStockVarianceTile(range, loadId) {
+  const valueEl = document.getElementById("stock-variance-value");
+  const metaEl = document.getElementById("stock-variance-meta");
+  const tile = document.getElementById("stock-variance-tile");
+  if (!valueEl || !metaEl || !range?.start || !range?.end) return;
+  valueEl.textContent = "Loading…";
+  const { data, error } = await window.supabaseClient.rpc("get_stock_variance", {
+    p_start: range.start,
+    p_end: range.end,
+  });
+  if (!dsrSummaryGuard.isCurrent(loadId)) return;
+  tile?.classList.remove("is-over");
+  if (error) {
+    AppError.report(error, { context: "stockVarianceTile" });
+    valueEl.textContent = "—";
+    metaEl.textContent = "Could not load stock variance";
+    return;
+  }
+  const rows = (data ?? []).filter((r) => r.variance_litres != null);
+  if (!rows.length) {
+    valueEl.textContent = "—";
+    applyVariationTone(valueEl, 0, false);
+    metaEl.textContent = "No dip entered for this range";
+    return;
+  }
+  const litres = (product) =>
+    rows.filter((r) => r.product === product).reduce((a, r) => a + Number(r.variance_litres), 0);
+  const rupees = rows.reduce((a, r) => a + Number(r.variance_value ?? 0), 0);
+  const over = rows.filter((r) => r.over_tolerance).length;
+  const sign = (v) => (v > 0 ? "+" : "");
+  valueEl.textContent = `${sign(rupees)}${formatCurrency(rupees)}`;
+  applyVariationTone(valueEl, rupees, true);
+  const p = litres("petrol");
+  const d = litres("diesel");
+  metaEl.textContent =
+    `MS ${sign(p)}${formatQuantity(p)} L · HSD ${sign(d)}${formatQuantity(d)} L` +
+    (over ? ` · ${over} over ${formatQuantity(rows[0].tolerance_pct)}%` : "");
+  tile?.classList.toggle("is-over", over > 0);
 }
 
 /** Prefer a SQL total. Fall back to adding the raw rows an older payload still carries. */

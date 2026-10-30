@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
+/* global requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote, searchCreditCustomers, fetchCreditCustomerById, bindLiveRefresh */
 
 (function () {
   const OPEN_SELECT =

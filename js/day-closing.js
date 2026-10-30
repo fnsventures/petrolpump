@@ -1,4 +1,5 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils, computeDayClosingShort, bindUnsavedDraft */
+// @ts-check
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, AdminDelete, CacheInvalidation, initPersistedDateInput, savePersistedDate, addDaysToDateString, PumpSettings, loadPumpSettings, formatFuelBadge, formatDisplayDate, PrintUtils, computeDayClosingShort, bindUnsavedDraft, LOOKUP_ROW_LIMIT, fetchAllRows, dcMoney, computeOpenShiftCredit, debounce, initPageSections, bindLiveRefresh, isSettingsPanelActive */
 
 // Day closing & short: (Total sale + Collection + Short previous) − (Night cash + Phone pay + Credit + Expenses) = Today's short
 // Same-day settlements (checkbox on payment) are excluded from Collection/Credit and entered via Night cash / Phone pay.
@@ -27,7 +28,9 @@ let dcBreakdownRequestId = 0;
 let dcCertifyInFlight = false;
 let dcCertifyPromptOpen = false;
 let dcDetailsCache = { date: null, collection: null, credit: null, expenses: null };
+/** @type {{ date: string | null, data: any, promise: Promise<any> | null }} */
 let dcSettleMapsCache = { date: null, data: null, promise: null };
+/** @type {{ date: string | null, data: any, promise: Promise<any> | null }} */
 let dcShiftChannelCache = { date: null, data: null, promise: null };
 let dcCloseLoadedDate = null;
 let dcStepPendingDate = null;
@@ -145,7 +148,8 @@ function cacheDayClosingDom() {
     nccRemarks: document.getElementById("ncc-remarks"),
     nccRegisterBody: document.getElementById("ncc-register-body"),
   };
-  document.querySelectorAll(".dc-breakdown-group").forEach((group) => {
+  document.querySelectorAll(".dc-breakdown-group").forEach((node) => {
+    const group = /** @type {HTMLElement} */ (node);
     const kind = group.dataset.breakdown;
     if (kind) {
       dcBreakdownEls[kind] = {
@@ -158,6 +162,19 @@ function cacheDayClosingDom() {
 
 function getDcDetailElements(kind) {
   return dcBreakdownEls[kind] || { toggle: null, panel: null };
+}
+
+/** Mirror today's short and the draft state into the phone save bar. */
+function syncDayClosingStickyBar() {
+  if (!dcDom?.shortTodayEl) return;
+  const loading = dcDom.shortTodayEl.textContent === DC_LOADING;
+  dcDom.form?.classList.toggle("dc-loading", loading);
+  const sticky = document.getElementById("dc-sticky-short");
+  if (sticky) {
+    sticky.textContent = loading ? DC_EMPTY : dcDom.shortTodayEl.textContent;
+    sticky.className = dcDom.shortTodayEl.className;
+  }
+  document.getElementById("dc-unsaved-chip")?.classList.toggle("hidden", !dcDraft?.isDirty());
 }
 
 function updateShortDisplay(shortToday) {
@@ -203,6 +220,7 @@ function updateShortDisplay(shortToday) {
       alertMsgEl.textContent = "";
     }
   }
+  syncDayClosingStickyBar();
 }
 
 function setBreakdownAmounts(text) {
@@ -214,6 +232,7 @@ function setBreakdownAmounts(text) {
   dcDom.creditTodayEl && (dcDom.creditTodayEl.textContent = text);
   dcDom.expensesTodayEl && (dcDom.expensesTodayEl.textContent = text);
   dcDom.shortTodayEl && (dcDom.shortTodayEl.textContent = text);
+  syncDayClosingStickyBar();
   if (text === DC_LOADING || text === DC_EMPTY) {
     dcDom.shortStatusEl && (dcDom.shortStatusEl.textContent = "");
     dcDom.resultCardEl?.classList.remove("dc-short--shortage", "dc-short--balanced", "dc-short--surplus");
@@ -838,7 +857,9 @@ function settleDayClosingDraft() {
   if (!dcDraft) return;
   dcDraft.resume();
   dcDraft.adoptServerState();
-  if (!dcDraft.restore()) return;
+  const restored = dcDraft.restore();
+  syncDayClosingStickyBar();
+  if (!restored) return;
   updateDayClosingShortLive();
   syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
   AppError.showToast("Restored unsaved day closing entries from this device.", "info");
@@ -1751,6 +1772,7 @@ async function stepDayClosingDate(days) {
     return;
   }
   dcDraft?.markClean();
+  syncDayClosingStickyBar();
   // Show the new date immediately; drop any in-flight load for an intermediate day.
   // Hold the target so a certified day's focused weekday segment cannot revert the input
   // and cancel this navigation.
@@ -1821,6 +1843,8 @@ async function initializeDayClosing() {
   dcDom.remarksInput?.addEventListener("input", () => {
     syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
   });
+  // After the draft binding so its snapshot is current when the chip reads it.
+  dcDom.form?.addEventListener("input", syncDayClosingStickyBar);
   dcDom.certifyAck?.addEventListener("change", () => {
     syncDayClosingCertifyPanel(dayClosingBreakdown, { clearError: false });
   });
@@ -1900,6 +1924,7 @@ async function initializeDayClosing() {
       });
       if (error) throw error;
       dcDraft?.markClean();
+      syncDayClosingStickyBar();
       dayClosingBreakdown = {
         ...data,
         already_saved: true,
@@ -1971,14 +1996,15 @@ async function initializeDayClosing() {
   dcDom.uncertifyBtn?.addEventListener("click", () => setDayClosingCertified(false));
 
   document.querySelector(".day-closing-breakdown")?.addEventListener("click", (event) => {
+    const target = /** @type {Element} */ (event.target);
     // Links / buttons inside details (delete, record payment) must not toggle.
-    if (event.target.closest("a, input, textarea, select, .dc-breakdown-details button, .admin-delete-btn, .dc-delete-payment, .dc-delete-credit")) {
+    if (target.closest("a, input, textarea, select, .dc-breakdown-details button, .admin-delete-btn, .dc-delete-payment, .dc-delete-credit")) {
       return;
     }
-    const group = event.target.closest(".dc-breakdown-group[data-breakdown]");
+    const group = /** @type {HTMLElement | null} */ (target.closest(".dc-breakdown-group[data-breakdown]"));
     if (!group) return;
     // Toggle from the header row (label, chevron, or amount) — not from the open details panel.
-    if (event.target.closest(".dc-breakdown-details")) return;
+    if (target.closest(".dc-breakdown-details")) return;
     const kind = group.dataset.breakdown;
     if (kind && DC_DETAIL_KINDS.includes(kind)) {
       event.preventDefault();
@@ -2020,8 +2046,9 @@ function initDayClosingCreditDeleteHandlers() {
   document.body.dataset.dcCreditDeleteBound = "1";
 
   document.addEventListener("click", async (e) => {
-    const paymentBtn = e.target.closest?.(".dc-delete-payment");
-    const creditBtn = e.target.closest?.(".dc-delete-credit");
+    const target = /** @type {Element | null} */ (e.target);
+    const paymentBtn = /** @type {HTMLButtonElement | null} */ (target?.closest?.(".dc-delete-payment") ?? null);
+    const creditBtn = /** @type {HTMLButtonElement | null} */ (target?.closest?.(".dc-delete-credit") ?? null);
     const btn = paymentBtn || creditBtn;
     if (!btn) return;
 
@@ -2773,7 +2800,8 @@ bindLiveRefresh(
       void onRegisterSectionShown();
       return;
     }
-    const dateStr = document.getElementById("day-closing-date")?.value?.trim();
+    const dateInput = /** @type {HTMLInputElement | null} */ (document.getElementById("day-closing-date"));
+    const dateStr = dateInput?.value?.trim();
     if (dateStr) void loadDayClosingBreakdown(dateStr, { quiet: true, preserveSuccess: true });
   },
   { match: () => Boolean(document.getElementById("day-closing-date") || document.getElementById("dc-register-body")) }

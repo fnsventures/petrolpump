@@ -672,6 +672,12 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   gap: var(--space-3);
 }
 
+.customer-activity-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
 .customer-activity-title {
   margin: 0;
   font-size: var(--heading-lg);
