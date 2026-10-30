@@ -102,6 +102,9 @@ const AppCache = (function () {
 
   /**
    * Store data in cache with metadata
+   * @param {string} key
+   * @param {any} data
+   * @param {string | null} [cacheType]
    */
   function set(key, data, cacheType = null) {
     if (!isStorageAvailable()) return false;

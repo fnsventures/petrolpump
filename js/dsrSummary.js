@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getValidFilterState, setFilterState, mountDatePresets, syncDatePresetActive */
+/* global AppError, escapeHtml, formatQuantity, getDsrNetSaleLitres, getValidFilterState, setFilterState, mountDatePresets, syncDatePresetActive, fetchAllRows, supabaseClient */
 
 /**
  * DSR summary section (filters / MS / HSD tabs) — loaded by dsr.html.

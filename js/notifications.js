@@ -1,3 +1,4 @@
+/* global escapeHtml, PumpSettings, normalizeProduct, DsrQueries, sumByProduct, formatQuantity, addDaysToDateString, TaskUtils, formatCurrency, getLocalDateString, formatDisplayDate, AppError, formatDateInput, getMonthRange, LOOKUP_ROW_LIMIT, fetchAllRows, calculateDsrSaleRupees, loadPumpSettings */
 /**
  * Header notification inbox — same live feed as Dashboard, on every app page.
  */

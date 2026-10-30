@@ -1,4 +1,4 @@
-/* global supabaseClient, AppCache, AppError, AppConfig */
+/* global supabaseClient, AppCache, AppError, AppConfig, safeAppReturnPath, createRequestGuard, getAvatarInitial, clearAllCaches, clearApiCaches, formatEmailLocalLabel */
 
 const loginForm = document.getElementById("login-form");
 const loginError = document.getElementById("login-error");
@@ -505,11 +505,19 @@ const PAGE_HELP = {
   "dsr.html": {
     title: "Daily Sales Report",
     why: "DSR is the official daily sales picture for the outlet. Use it to verify volume, value, and product mix before day closing.",
-    contains: ["Petrol and diesel sales by pump", "Totals for the selected date", "Printable DSR layout"],
+    contains: [
+      "Petrol and diesel sales by pump",
+      "Totals for the selected date",
+      "Printable DSR layout",
+      "Stock variance: dip vs book stock in litres and ₹",
+      "Tanker decantation and short deliveries",
+      "Settlement: bank / UPI statement matching (admin)",
+    ],
     how: [
       "Select the date and review each product block.",
       "Compare litres with meter reading if a figure looks off.",
       "Print only after the day’s readings are complete.",
+      "Record every tanker on Tanker decantation, then check Stock variance; red rows are over the tolerance.",
     ],
   },
   "e20-register.html": {

@@ -1,4 +1,4 @@
-/* global supabase */
+/* global supabase, CacheInvalidation */
 
 const PROD_HOSTS = ["bishnupriyafuels.fnsventures.in"];
 const hostname = window.location.hostname;

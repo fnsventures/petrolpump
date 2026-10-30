@@ -1,7 +1,7 @@
 /**
  * Standard PWA client lifecycle for BPFuels.
  * - Install prompt (Android beforeinstallprompt, iOS Add to Home Screen)
- * - Controlled SW updates (logo popup → user reloads)
+ * - Controlled SW updates (logo popup, or a slim "New version — Reload" strip mid-entry)
  * - Offline / online status with cache invalidation on reconnect
  * - Throttled app-resume for ops pages (desktop focus thrash safe)
  */
@@ -208,6 +208,7 @@
 
   function dismissUpdateSheet(snooze) {
     document.getElementById("app-update-sheet")?.remove();
+    document.getElementById("app-update-toast")?.remove();
     document.body.classList.remove("has-update-sheet");
     if (!snooze) return;
     snoozedWorker = waitingWorkerRef;
@@ -222,10 +223,48 @@
     return Boolean(snoozedWorker || snoozedVersion);
   }
 
+  /** Non-modal strip used while someone is typing, so the sheet does not steal focus mid-entry. */
+  function showAppUpdateToast() {
+    if (document.getElementById("app-update-toast")) return;
+    const root = document.createElement("div");
+    root.id = "app-update-toast";
+    root.className = "app-update-toast";
+    root.setAttribute("role", "status");
+
+    const text = document.createElement("span");
+    text.className = "app-update-toast-text";
+    text.textContent = "New version";
+
+    const reloadBtn = document.createElement("button");
+    reloadBtn.type = "button";
+    reloadBtn.className = "app-update-toast-action";
+    reloadBtn.textContent = "Reload";
+    reloadBtn.addEventListener("click", () => {
+      const action = updateReloadAction;
+      dismissUpdateSheet(false);
+      if (typeof action === "function") action();
+    });
+
+    const later = document.createElement("button");
+    later.type = "button";
+    later.className = "app-update-toast-dismiss";
+    later.setAttribute("aria-label", "Remind me later");
+    later.textContent = "×";
+    later.addEventListener("click", () => dismissUpdateSheet(true));
+
+    root.append(text, reloadBtn, later);
+    document.body.appendChild(root);
+  }
+
   function showAppUpdateBanner(onReload) {
     if (typeof document === "undefined" || !document.body) return;
     updateReloadAction = onReload;
-    if (document.getElementById("app-update-sheet")) return;
+    // Once the strip is up it stays the strip; polling must not swap in the modal mid-shift.
+    if (document.getElementById("app-update-sheet") || document.getElementById("app-update-toast")) return;
+    if (isUserActivelyEditing() || reloadWouldLoseInput() || document.querySelector("dialog[open]")) {
+      showAppUpdateToast();
+      return;
+    }
 
     const root = document.createElement("div");
     root.id = "app-update-sheet";

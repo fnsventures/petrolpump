@@ -1,4 +1,4 @@
-/* global window.supabaseClient, formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
+/* global formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, fetchAllRows, TaskUtils, ActionProgress */
 
 (function () {
   const page = () => window.CreditPage;
@@ -141,6 +141,9 @@ async function initCustomerView() {
   });
   document.getElementById("customer-summary-print-btn")?.addEventListener("click", () => {
     void handleCreditSummaryPrintClick();
+  });
+  document.getElementById("customer-statement-link-btn")?.addEventListener("click", () => {
+    void shareCreditStatementLink();
   });
   document.getElementById("customer-whatsapp-btn")?.addEventListener("click", (event) => {
     if (event.currentTarget.getAttribute("href")) return;
@@ -640,6 +643,8 @@ function entryDateBounds(entries) {
 
 function updateCreditSummaryPrintButton() {
   const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
+  const linkBtn = document.getElementById("customer-statement-link-btn");
+  if (linkBtn && !page().state.statementLinkBusy) linkBtn.disabled = !page().state.customerId;
   const printBtn = document.getElementById("customer-summary-print-btn");
   if (printBtn) {
     printBtn.disabled = !canShare;
@@ -716,6 +721,41 @@ function buildCreditWhatsAppText() {
     return TaskUtils.waMessageForCustomer(name, unpaid);
   }
   return formatCurrency(unpaid);
+}
+
+const STATEMENT_LINK_DAYS = 30;
+
+/** New 30-day read-only link; WhatsApp when the customer has a mobile, else share sheet or clipboard. */
+async function shareCreditStatementLink() {
+  const btn = document.getElementById("customer-statement-link-btn");
+  const customerId = page().state.customerId;
+  if (!customerId || page().state.statementLinkBusy) return;
+  page().state.statementLinkBusy = true;
+  if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await window.supabaseClient.rpc("create_credit_statement_link", {
+      p_customer_id: customerId,
+      p_valid_days: STATEMENT_LINK_DAYS,
+    });
+    if (error) throw error;
+    const url = new URL(`statement.html#t=${data.token}`, window.location.href).href;
+    const name = page().state.customerName || "";
+    const text = `${buildCreditWhatsAppText()}\n\nYour statement (valid ${STATEMENT_LINK_DAYS} days): ${url}`;
+    const waHref = creditCustomerWaHref(String(page().state.customerContact?.mobile || "").trim(), text);
+    if (waHref) {
+      window.open(waHref, "_blank", "noopener");
+    } else if (navigator.share) {
+      await navigator.share({ title: `Statement · ${name}`, text, url }).catch(() => {});
+    } else {
+      await navigator.clipboard.writeText(url);
+      AppDialog.toast("Statement link copied.", "success");
+    }
+  } catch (err) {
+    AppError.report(err, { context: "shareCreditStatementLink" });
+  } finally {
+    page().state.statementLinkBusy = false;
+    if (btn) btn.disabled = !page().state.customerId;
+  }
 }
 
 function showCreditShareNotice(message) {

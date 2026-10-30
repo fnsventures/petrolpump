@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, AppDialog, escapeHtml, formatCurrency, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress, mountPdfPreview, preloadPdfPreview */
+/* global requireAuth, applyRoleVisibility, AppCache, AppError, AppDialog, escapeHtml, formatCurrency, PumpSettings, loadPumpSettings, StaffEmployees, PrintUtils, AppConfig, DriveFiles, ActionProgress, mountPdfPreview, preloadPdfPreview, AttendantShort, getMonthRange, getLocalDateString */
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STATION_ID_BRAND = "BISHNUPRIYA FUELS";
@@ -816,11 +816,57 @@ function initStaffPage(auth) {
     setProfilePhoto(emp.photo_url, emp.name);
     renderRosterList();
     renderIdCardPanel(emp);
+    void renderShortExcessCard(emp.id);
     showPanel("profile");
     if (location.hash !== `#${emp.id}`) {
       history.replaceState(null, "", `staff.html#${emp.id}`);
     }
   }
+
+  const shortMonthInput = /** @type {HTMLInputElement|null} */ (document.getElementById("staff-short-month"));
+  let shortCardRequest = 0;
+
+  /** Monthly short / excess for the open profile (get_attendant_short_excess). */
+  async function renderShortExcessCard(employeeId) {
+    const netEl = document.getElementById("staff-short-net");
+    const metaEl = document.getElementById("staff-short-meta");
+    const shiftsEl = document.getElementById("staff-short-shifts");
+    if (!netEl || !metaEl || !shiftsEl || !shortMonthInput || typeof AttendantShort === "undefined") return;
+    if (!shortMonthInput.value) shortMonthInput.value = getLocalDateString().slice(0, 7);
+    const [y, m] = shortMonthInput.value.split("-").map(Number);
+    const { start, end } = getMonthRange(y, m - 1);
+    const req = ++shortCardRequest;
+    netEl.textContent = "Loading…";
+    netEl.className = "";
+    metaEl.textContent = "";
+    shiftsEl.innerHTML = "";
+    let rows;
+    try {
+      rows = await AttendantShort.load(start, end, employeeId);
+    } catch (err) {
+      if (req !== shortCardRequest) return;
+      netEl.textContent = "—";
+      shiftsEl.innerHTML = `<p class="error">${AttendantShort.reportError(err, "staffShortExcess")}</p>`;
+      return;
+    }
+    if (req !== shortCardRequest) return;
+    const [s] = AttendantShort.summarise(rows);
+    if (!s) {
+      netEl.textContent = "—";
+      metaEl.textContent = "No shift handovers this month.";
+      return;
+    }
+    netEl.textContent = AttendantShort.signed(s.net);
+    netEl.className = AttendantShort.toneClass(s.net);
+    metaEl.textContent =
+      `${s.shifts} shift(s) · short ${formatCurrency(s.short)} · excess ${formatCurrency(s.excess)}` +
+      (s.unpriced ? ` · ${s.unpriced} without rate` : "");
+    shiftsEl.innerHTML = AttendantShort.shiftRowsHtml(s.rows);
+  }
+
+  shortMonthInput?.addEventListener("change", () => {
+    if (selectedId) void renderShortExcessCard(selectedId);
+  });
 
   function selectEmployee(id) {
     const emp = staffList.find((s) => s.id === id);

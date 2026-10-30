@@ -74,6 +74,13 @@
       "description": "Shift meter readings",
       "url": "./meter-reading.html?source=pwa-shortcut#shift-readings",
       "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Day closing",
+      "short_name": "Close day",
+      "description": "Night cash, phone pay and today's short",
+      "url": "./day-closing.html?source=pwa-shortcut#close",
+      "icons": [{ "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

@@ -20,6 +20,7 @@
         <button type="button" class="settings-nav-item" data-section="documents">Document types</button>
         <button type="button" class="settings-nav-item" data-section="integrations">Integrations</button>
         <button type="button" class="settings-nav-item" data-section="access">Access list</button>
+        <button type="button" class="settings-nav-item" data-section="errors">App errors</button>
       </nav>
 
       <div class="settings-panels">
@@ -488,6 +489,18 @@
                 <small class="muted">Alert when |stock variation| exceeds this. Use 0 to disable.</small>
               </div>
             </div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="alert-stock-variance-pct">Stock variance tolerance (%)</label>
+                <input inputmode="decimal" id="alert-stock-variance-pct" type="text" min="0" step="0.1" />
+                <small class="muted">Dip vs book difference above this % of the day's meter sale is shown in red (DSR → Stock variance). Default 0.5.</small>
+              </div>
+              <div class="form-field">
+                <label for="alert-settlement-tolerance">Settlement tolerance (₹)</label>
+                <input inputmode="decimal" id="alert-settlement-tolerance" type="text" min="0" step="1" />
+                <small class="muted">Bank vs app UPI difference still counted as matched (DSR → Settlement). Default 10.</small>
+              </div>
+            </div>
             <div class="form-field form-field-checkbox">
               <label class="checkbox-label">
                 <input id="alert-stale-credit" type="checkbox" />
@@ -653,6 +666,23 @@
             </table>
           </div>
           <p id="access-list-error" class="error hidden margin-top"></p>
+        </section>
+
+        <!-- App errors -->
+        <section id="settings-panel-errors" class="settings-panel card" data-panel="errors" hidden>
+          <h2>App errors</h2>
+          <p class="muted">Errors from staff browsers and phones in the last 7 days, newest first. Rows are kept for 90 days.</p>
+          <button type="button" id="client-errors-refresh" class="button-secondary button-small">Refresh</button>
+          <div class="table-wrap margin-top">
+            <table>
+              <thead>
+                <tr><th>When</th><th>Who</th><th>Page</th><th>Error</th><th>Version</th><th>Browser</th></tr>
+              </thead>
+              <tbody id="client-errors-body">
+                <tr><td colspan="6" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </main>

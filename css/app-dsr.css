@@ -584,3 +584,30 @@ body.dsr-page .dsr-short--surplus {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* DSR → Stock control (js/dsrStockControl.js) */
+.sv-table,
+.decant-table,
+.stl-table,
+.stl-imports-table {
+  min-width: 760px;
+}
+
+.sv-table tr.sv-row--over td {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+
+.sv-table tr.sv-row--over td.sv-variance {
+  font-weight: 700;
+}
+
+.decant-form,
+.stl-upload {
+  margin-bottom: var(--space-4);
+}
+
+.decant-preview {
+  min-height: 1.25rem;
+  font-weight: 600;
+}

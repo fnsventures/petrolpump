@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatNumericDate, AppError, AppDialog, escapeHtml, escapeIlikePattern, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, VaultDocuments, DrivePreview, debounce, preloadPdfPreview, fetchAllRows */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatNumericDate, AppError, AppDialog, escapeHtml, escapeIlikePattern, readDateRangeFromControls, createDateRangeFilter, getYearRange, getLocalDateString, showProgress, hideProgress, ActionProgress, PumpSettings, loadPumpSettings, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, VaultDocuments, DrivePreview, debounce, preloadPdfPreview, fetchAllRows, initPageSections, LOOKUP_ROW_LIMIT, bindLiveRefresh */
 
 const MAX_INVOICE_BYTES = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);

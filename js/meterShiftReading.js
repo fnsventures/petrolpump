@@ -3,7 +3,7 @@
  * Shift tables are source of truth until the daily MS/HSD sheet is saved.
  * Prefill uses get_shift_aggregated_daily_meters; finished sheets own dsr_*.
  */
-/* global window.supabaseClient, AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper, trackUnsavedWork */
+/* global AppError, AppDialog, escapeHtml, PumpSettings, StaffEmployees, formatQuantity, formatCurrency, formatDisplayDate, initPersistedDateInput, RECORD_DATE_KEYS, AdminDelete, debounce, getLocalDateString, toLocalDateString, CacheInvalidation, DsrSalesBreakdown, MeterReadingForms, ShiftStaffLedger, mountDateStepper, trackUnsavedWork, DsrQueries, fetchAllRows, supabaseClient */
 
 (function (global) {
   const PRODUCTS = ["petrol", "diesel"];
@@ -1034,6 +1034,19 @@
       if (hasShort) bits.push(`Short ${formatCurrency(totalShort)}`);
       saveSummary.textContent = bits.length ? bits.join(" · ") : "Enter meters and staff cash, then save";
     }
+
+    const stickyExpected = el("shift-sticky-expected");
+    if (stickyExpected) stickyExpected.textContent = expected != null ? formatCurrency(expected) : "—";
+    const stickyShort = el("shift-sticky-short");
+    if (stickyShort) {
+      stickyShort.textContent = hasShort ? formatCurrency(totalShort) : "—";
+      stickyShort.className = shortClass;
+    }
+    syncUnsavedChip();
+  }
+
+  function syncUnsavedChip() {
+    el("shift-unsaved-chip")?.classList.toggle("hidden", !meterDraftDirty);
   }
 
   function productSheetLine(opts) {
@@ -1152,8 +1165,8 @@
           return `<tr data-product="${product}" data-pump="${slot.pump_no}" data-nozzle="${slot.nozzle_no}">
             <td class="shift-meter-label">${escapeHtml(slot.label)}</td>
             <td><label class="sr-only" for="${staffId}">${escapeHtml(staffLabel)}</label><select id="${staffId}" class="shift-staff">${staffOptionsHtml(empId, saved?.employee_name)}</select></td>
-            <td><label class="sr-only" for="${openingId}">${escapeHtml(openingLabel)}</label><input id="${openingId}" type="text" inputmode="numeric" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly}${isAdmin ? ' enterkeyhint="next"' : ""} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" /></td>
-            <td><label class="sr-only" for="${closingId}">${escapeHtml(closingLabel)}</label><input id="${closingId}" type="text" inputmode="numeric" enterkeyhint="next" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" /></td>
+            <td><label class="sr-only" for="${openingId}">${escapeHtml(openingLabel)}</label><input id="${openingId}" type="text" inputmode="decimal" autocomplete="off" maxlength="15" class="${openingClass}" value="${escapeHtml(opening)}" placeholder="0"${openingReadonly}${isAdmin ? ' enterkeyhint="next"' : ""} title="${!isAdmin ? "Opening comes from the prior shift / day and cannot be edited" : ""}" /></td>
+            <td><label class="sr-only" for="${closingId}">${escapeHtml(closingLabel)}</label><input id="${closingId}" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" maxlength="15" class="shift-closing meter-reading" value="${escapeHtml(closing)}" placeholder="Enter" /></td>
             <td><label class="sr-only" for="${saleId}">${escapeHtml(saleLabel)}</label><input id="${saleId}" type="text" readonly class="shift-sale calc-field" tabindex="-1" /></td>
           </tr>`;
         })
@@ -1382,7 +1395,10 @@
 
     const nozzleHost = el("shift-meter-nozzle-tables");
     if (nozzleHost) {
-      nozzleHost.innerHTML = `<p class="muted">Loading meters for ${escapeHtml(shiftLabel(shift))}…</p>`;
+      const skeletonRows = '<span class="skeleton-row"></span>'.repeat(4);
+      nozzleHost.innerHTML = `<div class="shift-skeleton" role="status" aria-busy="true">
+        <span class="sr-only">Loading meters for ${escapeHtml(shiftLabel(shift))}…</span>${skeletonRows}
+      </div>`;
     }
     const staffBody = el("shift-meter-staff-body");
     if (staffBody) staffBody.innerHTML = "";
@@ -2352,6 +2368,7 @@
     if (!displayedShift?.date || (displayedShift.date === date && displayedShift.shift === shift)) {
       meterDraftDirty = false;
     }
+    syncUnsavedChip();
     try {
       localStorage.removeItem(meterDraftKey(date, shift));
       localStorage.removeItem(`${LEGACY_DRAFT_PREFIX}${date || ""}.${shift || ""}`);
@@ -2390,6 +2407,7 @@
     try {
       localStorage.setItem(key, JSON.stringify({ v: 2, at: Date.now(), fields }));
       meterDraftDirty = true;
+      syncUnsavedChip();
     } catch (_) {
       /* ignore quota */
     }

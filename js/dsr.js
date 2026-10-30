@@ -1,7 +1,8 @@
-/* global requireAuth, applyRoleVisibility, loadPumpSettings, initPageSections, PrintUtils, AppError, escapeHtml, formatDisplayDate, formatQuantity */
+/* global requireAuth, applyRoleVisibility, loadPumpSettings, initPageSections, PrintUtils, AppError, escapeHtml, formatDisplayDate, formatQuantity, bindLiveRefresh, DsrStockControl */
 
 const DS = window.DsrSections;
 const DSR_SUMMARY_SECTIONS = DS?.SUMMARY ?? new Set(["filters", "dsr-petrol", "dsr-diesel"]);
+const DSR_STOCK_SECTIONS = window.DsrStockControl?.SECTIONS ?? new Set();
 let currentDsrSection = "filters";
 let lastBreakdownSection = "by-salesman";
 let dsrPrintBusy = false;
@@ -23,17 +24,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyRoleVisibility(auth.role);
   window.DsrFuelNav?.applyFuelNavMeta?.();
 
+  DsrStockControl?.init?.({ isAdmin: auth.role === "admin" });
+
   initDsrSummaryPage({
+    isAdmin: auth.role === "admin",
     dateFromDashboard: DS?.consumeDashboardDateDeepLink?.() ?? null,
     urlDateParam: DS?.getUrlDateParam?.() ?? null,
   });
 
   bindLiveRefresh(() => {
+    DsrStockControl?.refresh?.();
+    DsrStockControl?.onSection?.(currentDsrSection);
     void window.DsrSummary?.refreshIfNeeded?.(true);
   }, { match: () => document.body.classList.contains("dsr-page") });
 });
 
-function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
+function initDsrSummaryPage({ isAdmin = false, dateFromDashboard, urlDateParam } = {}) {
   const layoutEls = {
     registerView: document.getElementById("dsr-register-view"),
     breakdownView: document.getElementById("dsr-breakdown-view"),
@@ -99,6 +105,12 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
   function onSectionChange(section) {
     if (DS?.isBreakdownSection?.(section)) lastBreakdownSection = section;
     currentDsrSection = section;
+    const isStock = DSR_STOCK_SECTIONS.has(section);
+    if (layoutEls.printBtn) layoutEls.printBtn.hidden = isStock;
+    if (isStock) {
+      DsrStockControl?.onSection?.(section);
+      return;
+    }
     applySummaryLayout(section);
     window.DsrSummary?.refreshIfNeeded?.();
   }
@@ -114,15 +126,21 @@ function initDsrSummaryPage({ dateFromDashboard, urlDateParam } = {}) {
     shift: "by-shift",
     salesman: "by-salesman",
     staff: "by-salesman",
+    variance: "stock-variance",
+    decant: "decantation",
+    tanker: "decantation",
   };
 
   initPageSections({
     navItemSelector: "#dsr-sidebar-nav .settings-nav-item",
     panelSelector: ".settings-panels .settings-panel",
     defaultSection,
-    validSections: [...DSR_SUMMARY_SECTIONS],
+    validSections: [
+      ...DSR_SUMMARY_SECTIONS,
+      ...[...DSR_STOCK_SECTIONS].filter((s) => isAdmin || s !== "settlement"),
+    ],
     hashAliases,
-    resolvePanelId: () => "filters",
+    resolvePanelId: (section) => (DSR_STOCK_SECTIONS.has(section) ? section : "filters"),
     navSectionFor: (section) =>
       section === "sales-detail" || DS?.isBreakdownSection?.(section) ? "sales-detail" : section,
     normalizeSection: (section) => {

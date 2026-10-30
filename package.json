@@ -13,13 +13,21 @@
     "build:fonts": "node scripts/download-fonts.mjs",
     "build:assets": "npm run build:images && npm run build:vendor && npm run build:fonts",
     "minify": "node scripts/minify-assets.mjs",
-    "lint:css": "node scripts/check-css-colors.mjs"
+    "lint:css": "node scripts/check-css-colors.mjs",
+    "lint:js": "eslint js",
+    "typecheck": "tsc -p jsconfig.json",
+    "gen:types": "bash scripts/gen-db-types.sh"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@supabase/supabase-js": "^2.118.0",
     "chart.js": "^4.4.1",
     "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
     "nunjucks": "^3.2.4",
     "pdfjs-dist": "^4.10.38",
-    "stylelint": "^16.26.1"
+    "stylelint": "^16.26.1",
+    "typescript": "^5.9.3"
   }
 }

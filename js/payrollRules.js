@@ -1,4 +1,4 @@
-/* global AppConfig, PumpSettings */
+/* global AppConfig, PumpSettings, fetchAllRows */
 /**
  * Monthly leave allowance, loss of pay, and over-duty pay.
  * Day rate = monthly salary ÷ (calendar days, or a fixed divisor).

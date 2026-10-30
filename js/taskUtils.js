@@ -1,3 +1,4 @@
+/* global formatCurrency, getLocalDateString, formatDisplayDate, PumpSettings, AppConfig, escapeHtml */
 /**
  * Shared helpers for station Tasks (credit collection + todos).
  * Used by reminders.js and dashboard.js.

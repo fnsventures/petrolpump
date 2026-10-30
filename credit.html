@@ -505,16 +505,27 @@
               <h2 class="customer-activity-title">Activity</h2>
               <p id="customer-filter-summary" class="customer-activity-summary" aria-live="polite"></p>
             </div>
-            <button
-              type="button"
-              id="customer-summary-print-btn"
-              class="button-secondary customer-summary-print-btn"
-              title="Print this view"
-              aria-describedby="customer-filter-summary"
-              disabled
-            >
-              Print
-            </button>
+            <div class="customer-activity-actions">
+              <button
+                type="button"
+                id="customer-statement-link-btn"
+                class="button-secondary customer-summary-print-btn"
+                title="Send the customer a read-only statement link (valid 30 days)"
+                disabled
+              >
+                Share link
+              </button>
+              <button
+                type="button"
+                id="customer-summary-print-btn"
+                class="button-secondary customer-summary-print-btn"
+                title="Print this view"
+                aria-describedby="customer-filter-summary"
+                disabled
+              >
+                Print
+              </button>
+            </div>
           </div>
 
           <div class="customer-activity-bar">

@@ -1,4 +1,4 @@
-/* global PumpSettings, AppConfig, formatMonthLabel, normalizeProduct, computeFuelRowMargin, GST_SLABS, escapeHtml, formatNumberPlain, formatNumericDate, formatCurrency, formatBuyingRatePerKl, fuelRowClass, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, reportHeader */
+/* global PumpSettings, AppConfig, formatMonthLabel, normalizeProduct, computeFuelRowMargin, GST_SLABS, escapeHtml, formatNumberPlain, formatNumericDate, formatCurrency, formatBuyingRatePerKl, fuelRowClass, getPetrolPurchaseVatPct, getDieselPurchaseVatPct, getPurchaseTaxPct, getPurchaseGstSummaryNote, getPurchaseGstDetailNote, calcPurchaseLineTax, createBuyingRateContext, resolveStoredBuyingRate, getEffectiveBuyingRate, getLandedBuyingRateForDate, reportHeader, getPurchaseTaxPctLabel, isPurchaseTaxInclusive, getFuelPurchaseRows, formatFuelBadge, getBuyingPriceUnitLabel */
 /**
  * GST sales and purchase reports: slab totals, fuel NIL lines, inward VAT.
  * Loaded before reports.js. Functions stay global.

@@ -1,4 +1,4 @@
-/* global window.supabaseClient, AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, formatCurrency, formatQuantity, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
+/* global AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, formatCurrency, formatQuantity, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
 
 /**
  * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.

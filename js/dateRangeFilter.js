@@ -1,3 +1,4 @@
+/* global resolveDateRange, formatDisplayDate, formatDateInput, getMonthRange, getValidFilterState, setFilterState, AppError */
 /**
  * Period filter with optional custom-date popover. Layout stays stable when Custom is selected.
  * Depends on utils.js: resolveDateRange, get/setFilterState, formatDateInput, formatDisplayDate, getMonthRange.

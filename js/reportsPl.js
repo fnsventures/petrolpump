@@ -1,4 +1,4 @@
-/* global escapeHtml, formatCurrency, formatNumberPlain, reportHeader, computeProfitLossSummary, createBuyingRateContext, getDsrNetSaleLitres, getDsrSaleRate, normalizeProduct, findUnresolvedBuyingRateRows, getExpenseCategoryLabel, isTestingExpenseCategory, DsrQueries */
+/* global escapeHtml, formatCurrency, formatNumberPlain, reportHeader, computeProfitLossSummary, createBuyingRateContext, getDsrNetSaleLitres, getDsrSaleRate, normalizeProduct, findUnresolvedBuyingRateRows, getExpenseCategoryLabel, isTestingExpenseCategory, DsrQueries, getEffectiveBuyingRate, getLandedBuyingRateForDate, isTestingExpenseRow, getTradingAndPl, fuelRowClass, getBuyingPriceUnitLabel */
 /**
  * Trading account and profit & loss reports.
  */

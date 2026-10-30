@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion, mountDatePresets, syncDatePresetActive */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppError, PumpSettings, loadPumpSettings, createDateRangeFilter, formatDateInput, formatDateRangeLabel, normalizeProduct, formatQuantity, DsrQueries, createBuyingRateContext, computeFuelRowMargin, isTestingExpenseCategory, isTestingExpenseRow, buildExpenseCategoryMap, computeProfitLossSummary, initDocsAccordion, mountDatePresets, syncDatePresetActive, initPageSections, bindLiveRefresh, LOOKUP_ROW_LIMIT, Chart, runAppRequest */
 
 let analysisFilterApi = null;
 

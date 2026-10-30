@@ -27,6 +27,19 @@
           <span class="settings-nav-item-label">Sales detail</span>
           <span class="settings-nav-item-meta">Staff · shift · pump</span>
         </button>
+        <p class="settings-nav-title">Stock control</p>
+        <button type="button" class="settings-nav-item" data-section="stock-variance">
+          <span class="settings-nav-item-label">Stock variance</span>
+          <span class="settings-nav-item-meta">Dip vs book · L and ₹</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="decantation">
+          <span class="settings-nav-item-label">Tanker decantation</span>
+          <span class="settings-nav-item-meta">Dip before / after · short delivery</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="settlement" data-role="admin-only">
+          <span class="settings-nav-item-label">Settlement</span>
+          <span class="settings-nav-item-meta">Bank / UPI statement match</span>
+        </button>
       </nav>
       <div class="settings-panels">
         <section class="settings-panel card dashboard-card is-visible" data-panel="filters">
@@ -201,6 +214,320 @@
             <div id="dsr-breakdown-meta" class="dsr-sd-meta" hidden></div>
             <p id="dsr-breakdown-error" class="error hidden" role="alert"></p>
             <div id="dsr-breakdown-body" class="dsr-breakdown-body"></div>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="stock-variance" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Stock variance</h2>
+              <p class="muted panel-lead">
+                Book stock = opening dip + receipts − meter sale (net of testing). Variance = closing dip − book stock:
+                negative is a loss, positive a gain. Receipts use the decanted invoice quantity when a decantation is recorded.
+                Rows over the tolerance (<span id="sv-tolerance-label">0.5</span>% of meter sale, set in
+                <a href="settings.html#alerts" data-role="admin-only">Settings → Alerts</a>) are red.
+              </p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="sv-start">From</label>
+                <input id="sv-start" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="sv-end">To</label>
+                <input id="sv-end" type="date" />
+              </div>
+            </div>
+          </div>
+          <div id="sv-stats" class="dc-register-period-stats dsr-period-stats hidden" aria-label="Variance totals">
+            <div class="dc-stat-card dc-stat-card--petrol">
+              <span class="dc-stat-label">Petrol variance</span>
+              <strong id="sv-petrol-l" class="dc-stat-value">—</strong>
+              <span id="sv-petrol-rs" class="dc-stat-meta muted">—</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--diesel">
+              <span class="dc-stat-label">Diesel variance</span>
+              <strong id="sv-diesel-l" class="dc-stat-value">—</strong>
+              <span id="sv-diesel-rs" class="dc-stat-meta muted">—</span>
+            </div>
+            <div class="dc-stat-card dc-stat-card--highlight">
+              <span class="dc-stat-label">Net gain / loss</span>
+              <strong id="sv-total-rs" class="dc-stat-value">—</strong>
+              <span id="sv-over-count" class="dc-stat-meta muted">—</span>
+            </div>
+            <div class="dc-stat-card">
+              <span class="dc-stat-label">Short deliveries</span>
+              <strong id="sv-short-delivery" class="dc-stat-value">—</strong>
+              <span class="dc-stat-meta muted">From tanker decantation</span>
+            </div>
+          </div>
+          <p id="sv-error" class="error hidden" role="alert"></p>
+          <div class="table-scroll">
+            <table class="dsr-table sv-table" data-table-layout="scroll">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Tank</th>
+                  <th>Opening dip (L)</th>
+                  <th>Receipts (L)</th>
+                  <th>Meter sale (L)</th>
+                  <th>Book stock (L)</th>
+                  <th>Closing dip (L)</th>
+                  <th>Variance (L)</th>
+                  <th>Variance %</th>
+                  <th>Variance (₹)</th>
+                  <th>Delivery short (L)</th>
+                </tr>
+              </thead>
+              <tbody id="sv-body">
+                <tr><td colspan="11" class="muted">Select a date range.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="decantation" hidden>
+          <div class="panel-head card-head">
+            <div>
+              <h2 class="dashboard-section-title">Tanker decantation</h2>
+              <p class="muted panel-lead">
+                Stop sales on the tank, record the dip and chart stock before and after unloading, and the invoice quantity.
+                Short delivery = (stock after − stock before) − invoice quantity. The invoice quantity becomes that day's receipt in Stock variance.
+              </p>
+            </div>
+          </div>
+          <form id="decant-form" class="decant-form" autocomplete="off" novalidate>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="decant-date">Date</label>
+                <input id="decant-date" type="date" required />
+              </div>
+              <div class="form-field">
+                <label for="decant-product">Tank</label>
+                <select id="decant-product" required>
+                  <option value="petrol">Petrol (MS)</option>
+                  <option value="diesel">Diesel (HSD)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="decant-invoice-no">Invoice no.</label>
+                <input id="decant-invoice-no" type="text" maxlength="64" />
+              </div>
+              <div class="form-field">
+                <label for="decant-invoice-doc">Vault invoice</label>
+                <select id="decant-invoice-doc">
+                  <option value="">Not linked</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="decant-truck">Truck no.</label>
+                <input id="decant-truck" type="text" maxlength="32" />
+              </div>
+              <div class="form-field">
+                <label for="decant-invoice-qty">Invoice qty (L)</label>
+                <input id="decant-invoice-qty" type="text" inputmode="decimal" required />
+              </div>
+              <div class="form-field">
+                <label for="decant-dip-before">Dip before (cm)</label>
+                <input id="decant-dip-before" type="text" inputmode="decimal" />
+              </div>
+              <div class="form-field">
+                <label for="decant-stock-before">Stock before (L)</label>
+                <input id="decant-stock-before" type="text" inputmode="decimal" required />
+              </div>
+              <div class="form-field">
+                <label for="decant-dip-after">Dip after (cm)</label>
+                <input id="decant-dip-after" type="text" inputmode="decimal" />
+              </div>
+              <div class="form-field">
+                <label for="decant-stock-after">Stock after (L)</label>
+                <input id="decant-stock-after" type="text" inputmode="decimal" required />
+              </div>
+              <div class="form-field">
+                <label for="decant-density">Density observed (kg/m³)</label>
+                <input id="decant-density" type="text" inputmode="decimal" />
+              </div>
+              <div class="form-field">
+                <label for="decant-invoice-density">Density on invoice (kg/m³)</label>
+                <input id="decant-invoice-density" type="text" inputmode="decimal" />
+              </div>
+              <div class="form-field">
+                <label for="decant-temp">Temperature (°C)</label>
+                <input id="decant-temp" type="text" inputmode="decimal" />
+              </div>
+              <div class="form-field">
+                <label for="decant-remarks">Remarks</label>
+                <input id="decant-remarks" type="text" maxlength="500" />
+              </div>
+            </div>
+            <p id="decant-preview" class="muted decant-preview" aria-live="polite"></p>
+            <p id="decant-error" class="error hidden" role="alert"></p>
+            <div class="form-actions">
+              <button type="submit" id="decant-save">Save decantation</button>
+              <button type="button" id="decant-cancel" class="button-secondary hidden">Cancel edit</button>
+            </div>
+          </form>
+          <div class="panel-head card-head snapshot-head">
+            <h3 class="dashboard-subtitle">Recorded decantations</h3>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="decant-list-start">From</label>
+                <input id="decant-list-start" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="decant-list-end">To</label>
+                <input id="decant-list-end" type="date" />
+              </div>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="dsr-table decant-table" data-table-layout="scroll">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Tank</th>
+                  <th>Invoice</th>
+                  <th>Invoice qty (L)</th>
+                  <th>Before (L)</th>
+                  <th>After (L)</th>
+                  <th>Received (L)</th>
+                  <th>Short / excess (L)</th>
+                  <th>Density</th>
+                  <th>Temp</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="decant-body">
+                <tr><td colspan="11" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="settlement" data-role="admin-only" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Settlement matching</h2>
+              <p class="muted panel-lead">
+                Upload a bank or UPI-app statement (CSV), map its columns, and compare each day's credits with the UPI the app recorded
+                (day closing phone pay, or shift UPI + UPI credit payments when the day is not closed).
+                Differences within the tolerance count as matched. Card payments are recorded as UPI.
+              </p>
+            </div>
+          </div>
+
+          <form id="stl-upload-form" class="stl-upload" autocomplete="off" novalidate>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="stl-source">Statement source</label>
+                <input id="stl-source" type="text" maxlength="60" placeholder="e.g. SBI current a/c" required />
+              </div>
+              <div class="form-field">
+                <label for="stl-file">CSV file</label>
+                <input id="stl-file" type="file" accept=".csv,text/csv" required />
+              </div>
+            </div>
+            <div id="stl-mapping" class="form-grid hidden">
+              <div class="form-field">
+                <label for="stl-col-date">Date column</label>
+                <select id="stl-col-date"></select>
+              </div>
+              <div class="form-field">
+                <label for="stl-col-amount">Credit amount column</label>
+                <select id="stl-col-amount"></select>
+              </div>
+              <div class="form-field">
+                <label for="stl-col-reference">Reference / UTR column</label>
+                <select id="stl-col-reference"></select>
+              </div>
+              <div class="form-field">
+                <label for="stl-col-description">Description column</label>
+                <select id="stl-col-description"></select>
+              </div>
+              <div class="form-field">
+                <label for="stl-date-order">Date format</label>
+                <select id="stl-date-order">
+                  <option value="dmy">DD/MM/YYYY</option>
+                  <option value="mdy">MM/DD/YYYY</option>
+                  <option value="ymd">YYYY-MM-DD</option>
+                </select>
+              </div>
+            </div>
+            <p id="stl-preview" class="muted" aria-live="polite"></p>
+            <p id="stl-upload-error" class="error hidden" role="alert"></p>
+            <div class="form-actions">
+              <button type="submit" id="stl-import" disabled>Import lines</button>
+            </div>
+          </form>
+
+          <div class="panel-head card-head snapshot-head">
+            <h3 class="dashboard-subtitle">Daily match</h3>
+            <div class="snapshot-controls">
+              <div class="form-field">
+                <label for="stl-start">From</label>
+                <input id="stl-start" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="stl-end">To</label>
+                <input id="stl-end" type="date" />
+              </div>
+              <div class="form-field">
+                <label for="stl-lag">Bank credits after</label>
+                <select id="stl-lag">
+                  <option value="0">Same day</option>
+                  <option value="1">Next day (T+1)</option>
+                  <option value="2">T+2</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="stl-filter">Show</label>
+                <select id="stl-filter">
+                  <option value="unmatched">Unmatched only</option>
+                  <option value="all">All days</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <p id="stl-summary" class="muted" aria-live="polite"></p>
+          <p id="stl-error" class="error hidden" role="alert"></p>
+          <div class="table-scroll">
+            <table class="dsr-table stl-table" data-table-layout="scroll">
+              <thead>
+                <tr>
+                  <th>Business date</th>
+                  <th>Bank date</th>
+                  <th>App UPI (₹)</th>
+                  <th>From</th>
+                  <th>Bank (₹)</th>
+                  <th>Lines</th>
+                  <th>Difference (₹)</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="stl-body">
+                <tr><td colspan="8" class="muted">Select a date range.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 class="dashboard-subtitle">Imported statements</h3>
+          <div class="table-scroll">
+            <table class="dsr-table stl-imports-table" data-table-layout="scroll">
+              <thead>
+                <tr>
+                  <th>Imported</th>
+                  <th>Source</th>
+                  <th>File</th>
+                  <th>Period</th>
+                  <th>Lines</th>
+                  <th>Skipped</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="stl-imports-body">
+                <tr><td colspan="7" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
           </div>
         </section>
       </div>

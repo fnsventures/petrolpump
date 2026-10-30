@@ -1,3 +1,4 @@
+/* global fetchAllRows */
 /**
  * Employee roster — single source of truth for active / inactive staff.
  * Operational pages use active only; Staff page can load inactive; history resolves by id.

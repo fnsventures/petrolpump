@@ -312,3 +312,12 @@
   }
 }
 
+
+/* Short / excess section (renderShortExcess) */
+.short-excess-detail {
+  margin-top: var(--space-4);
+}
+
+.attendant-short-shifts {
+  width: 100%;
+}

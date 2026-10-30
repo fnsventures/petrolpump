@@ -567,6 +567,80 @@
   gap: 0.75rem;
 }
 
+/* Shown only in the phone save bar, where the result card has scrolled away. */
+.dc-sticky-short {
+  display: none;
+  margin: 0;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-sticky-short strong {
+  font-size: var(--text-base);
+}
+
+.dc-sticky-short .dc-short--shortage {
+  color: var(--color-danger-hover);
+}
+
+/* Breakdown amounts shimmer while the RPC loads instead of showing "…". */
+.day-closing-form.dc-loading .day-closing-breakdown dd:not(.dc-input-cell) {
+  color: transparent;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface-sunken) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shine 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-closing-form.dc-loading .day-closing-breakdown dd:not(.dc-input-cell) {
+    animation: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .day-closing-card .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.5rem;
+  }
+
+  .dc-sticky-short {
+    display: block;
+    flex: 1 0 100%;
+  }
+
+  .day-closing-card .form-actions button {
+    flex: 0 0 auto;
+    min-height: 3rem;
+  }
+
+  /* Save is the wide target under the thumb; Refresh and Print stay beside it. */
+  .day-closing-card .form-actions #day-closing-save {
+    order: 3;
+    flex: 1 1 auto;
+    font-size: var(--text-base);
+  }
+
+  .day-closing-breakdown .dc-input-cell input {
+    min-height: 3rem;
+    font-size: var(--heading-lg);
+  }
+
+  .day-closing-card :is(.date-step, .dc-breakdown-toggle, #dc-remarks) {
+    min-height: 3rem;
+  }
+
+  .day-closing-card .date-step {
+    min-width: 3rem;
+  }
+
+  #dc-short-today {
+    font-size: var(--heading-xl);
+  }
+}
+
 @media (max-width: 480px) {
   .day-closing-breakdown {
     --dc-amount-col: minmax(7rem, 42%);

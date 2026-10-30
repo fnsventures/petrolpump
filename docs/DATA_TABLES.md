@@ -9,6 +9,7 @@ Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md
 | Object | Purpose |
 |--------|---------|
 | [audit_log](#audit_log) | Audit trail for sensitive operations (admin-only read) |
+| [client_errors](#client_errors) | Browser errors from `AppError.report` (any login inserts, admin reads) |
 | [runtime_flags](#runtime_flags) | Switches. Staging sets `audit=off` so the playground stores no audit rows |
 | [users](#users) | App users (login / operator roles) |
 | [dsr_petrol](#dsr_petrol) | MS meter readings — one row per date |
@@ -31,6 +32,7 @@ Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md
 | [credit_customers](#credit_customers) | Credit ledger: customer master, amount_due, prepaid_balance |
 | [credit_entries](#credit_entries) | One row per credit sale (transaction date = DSR date) |
 | [credit_payments](#credit_payments) | Payments received from credit customers |
+| [credit_statement_links](#credit_statement_links) | Expiring read-only statement links for customers (hash only) |
 | [reminders](#reminders) | Station tasks: dated reminders + undated todos |
 | [e20_testing_registers](#e20_testing_registers) | Daily E-20 testing sheet (outlet, dealer certification) |
 | [e20_water_checks](#e20_water_checks) | Part A — morning water dip, one row per tank |
@@ -38,6 +40,8 @@ Index: [README.md](README.md). How pages write these tables: [FLOWS.md](FLOWS.md
 | [day_closing](#day_closing) | Daily closing statement (night cash, phone pay, short, snapshot) |
 | [night_cash_collections](#night_cash_collections) | Register of physical night-cash pickups linked to day_closing rows |
 | [write_requests](#write_requests) | Results of money RPCs keyed by client request id (retry safety) |
+| [tanker_decantations](#tanker_decantations) | Tanker unloading: dip before/after, invoice qty, density, temperature, short delivery |
+| [settlement_imports / settlement_lines](#settlement_imports--settlement_lines) | Uploaded bank / UPI statement credits for settlement matching (admin) |
 
 **Storage buckets** (Supabase Storage, not PostgreSQL tables): `user-avatars` (operator profile photos). Staff photos and Aadhaar scans are stored in Google Drive (see `drive-files` edge function). Legacy `staff-photos` bucket may still hold older ID photos.
 
@@ -58,11 +62,11 @@ All application tables have RLS enabled. Unless noted otherwise:
 
 **Security-definer RPCs** (credit, day closing, billing, DSR stock range, employee roster, etc.) call `require_staff_access()` at entry — same gate as RLS.
 
-**Function EXECUTE:** `anon` and `PUBLIC` cannot execute any function in `public` (`20261013092142_revoke_anon_function_execute`). With no login the role helpers return null and `require_staff_access()` returns early, so this revoke is what keeps the anon key out. A new function needs an explicit `grant execute on function … to authenticated`; default privileges no longer grant PUBLIC.
+**Function EXECUTE:** `anon` and `PUBLIC` cannot execute any function in `public` (`20261013092142_revoke_anon_function_execute`, `20261029161130_revoke_public_function_execute`). With no login the role helpers return null and `require_staff_access()` returns early, so this revoke is what keeps the anon key out. A new function needs an explicit `grant execute on function … to authenticated`; the global default privilege for `postgres` no longer grants PUBLIC. (The first migration's `in schema public` defaults could not remove the global PUBLIC grant, so functions re-created between 20261013 and 20261029, including `set_day_closing_certified` and `get_credit_aging`, were anon-callable until the second.) `supabase/tests/rls.test.sql` fails if any app function is executable by anon.
 
 **Exceptions:**
 
-- **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`. Avatar URL updated via `update_my_avatar`.
+- **users:** SELECT provisioned staff; INSERT admin, or first-admin bootstrap (own email, role `admin` only); UPDATE/DELETE admin. Prefer `upsert_staff` / `delete_staff`. Avatar URL updated via `update_my_avatar`. A direct client INSERT currently fails for every caller with `42P17 infinite recursion` (the policy's bootstrap branch reads `public.users`); staff are added through `upsert_staff`, which is unaffected.
 - **expense_categories, products, employees:** SELECT admin only on `employees` (supervisors use `list_employees_roster` / `list_employees_salary` RPCs); mutations admin only on all three.
 - **invoices, invoice_items:** SELECT provisioned staff; INSERT/UPDATE denied on client — header and lines are created only inside `save_invoice` RPC. DELETE admin only.
 - **salary_payments:** SELECT provisioned staff; INSERT/UPDATE denied on client — use `record_salary_payment` / `delete_salary_payment`.
@@ -72,6 +76,7 @@ All application tables have RLS enabled. Unless noted otherwise:
 - **expenses:** INSERT/UPDATE cannot set `salary_payment_id` or category `salary` (those rows come from `record_salary_payment`). A new amount must be greater than 0 (`expenses_guard_amount`); a historical non-positive amount can stay when the update does not change it. Admins cannot delete a salary-linked expense directly. A shift-attributed write is rejected for a supervisor once day closing is saved (`expenses_guard_shift_write`).
 - **write_requests:** no client access; written by money RPCs.
 - **audit_log:** SELECT admin only; writes via triggers only.
+- **client_errors:** INSERT any login (`user_id` must be the caller; the trigger overwrites it anyway); SELECT admin only; no UPDATE/DELETE.
 - **pump_settings:** SELECT provisioned staff; INSERT/UPDATE admin only.
 - **dsr_petrol / dsr_diesel `buying_price_per_litre`:** not granted to `authenticated` for select, insert, or update. Staff still read the other meter columns. Profit reads `dsr_cost` (admin only). `update_dsr_buying_price` writes the column.
 - **reminders:** SELECT/INSERT as default; UPDATE allowed for any provisioned staff (shared ops board); DELETE admin only.
@@ -101,6 +106,45 @@ Migration: `supabase/migrations/20260619100000_security_loophole_mitigation.sql`
 **Populated by:** Audit triggers on: users, dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash (insert, delete, and updates of cash, phone pay, remarks, date, shift, or employee — not cache-only refreshes of `credit_amount` / `expense_amount`), expenses, credit_customers, credit_entries, employees, salary_payments, salary_lop_exclusions, employee_attendance, credit_payments, day_closing, invoices.
 
 **Retention:** Production rows older than 6 months are deleted by `purge_audit_log_batch` (maintenance script only, not granted to app roles), run weekly by `.github/workflows/purge-audit-log.yml`. The same workflow, started by hand, can pass a keep of 3, 2, or 1 month. Staging sets `runtime_flags.audit = off`, so the trigger writes nothing there, and sync empties the table. See [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
+
+---
+
+## client_errors
+
+**Purpose:** Errors from staff browsers and phones, so an admin can see a failure nobody reported. Written by `AppError.report` in `js/errorHandler.js`; shown in **Settings → App errors** (last 7 days).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| created_at | timestamptz | When the server received the row |
+| occurred_at | timestamptz | When the browser saw the error (client clock; capped at `created_at` + 5 min) |
+| user_id | uuid | auth.uid() of the sender (set by trigger) |
+| user_email | text | JWT email (set by trigger) |
+| role | text | `get_user_role()` at insert; null for an unprovisioned login (set by trigger) |
+| page | text | File name, e.g. `dsr.html` |
+| message, code, name, stack | text | From the error object |
+| context | jsonb | The `context` argument passed to `AppError.report` |
+| app_version | text | Service worker `CACHE_VERSION` (null before the worker controls the page) |
+| app_env | text | `APP_ENV` from `js/env.js` |
+| user_agent | text | Browser user agent |
+
+**RLS:** INSERT for any authenticated user; SELECT admin only; no UPDATE/DELETE grant.
+
+**Trigger `client_errors_before_insert`:** sets `id`, `created_at`, `user_id`, `user_email`, `role` from the session; trims long text; drops rows past 30 per user per minute; deletes rows older than 90 days.
+
+**Client:** errors are queued in `localStorage` (`bpf_client_error_queue`, at most 50), deduplicated per page and message for 10 s, and inserted in one batch about 5 s after the first error, when the tab is hidden, or when the browser comes back online. Without a session the queue waits for the next signed-in page.
+
+**Weekly query** (SQL editor):
+
+```sql
+select page, message, count(*) as hits, count(distinct user_id) as users,
+       max(created_at) as last_seen, max(app_version) as version
+from public.client_errors
+where created_at > now() - interval '7 days'
+group by page, message
+order by hits desc
+limit 50;
+```
 
 ---
 
@@ -256,6 +300,8 @@ select ..., 'diesel' as product from dsr_diesel;
 **RPC:** `get_dsr_stock_range(start_date, end_date)` — same logic, but `LAG` is scoped to the range plus one prior day per product. Prefer it for a date picker so the report does not scan full history. Requires `require_staff_access()`. The client combines meter rows and stock fields with `mergeDsrStock` in `js/dsrQueries.js`.
 
 Dashboard and sales-daily read `dsr_stock` (or the RPC). Tank fill % uses `pump_settings.config.pumps` (`petrol.tankCapacity` / `diesel.tankCapacity`). `reports.tanks` is one section per product for the tank-wise DSR printout.
+
+**Dip vs book variance (owner view):** `get_stock_variance(start, end)` returns, per product and day, `book_stock = opening_dip + receipts − meter_sales`, `variance_litres = closing_dip − book_stock` (negative = loss; note the sign is the opposite of `variation`), `variance_pct` of meter sale, `variance_value` at that day's selling rate, and `over_tolerance` against `stock_variance_tolerance_pct()` (`pump_settings.config.alerts.stockVarianceTolerancePct`, default 0.5). When a [tanker decantation](#tanker_decantations) exists for the day, its invoice quantity replaces `dsr_*.receipts` as the receipt figure and `delivery_variance_litres` carries the short delivery. Shown on DSR → Stock variance and the dashboard tile.
 
 **Tank-wise DSR columns:** Open, Buy, **Short** (`max(0, variation)` = book − dip when the book is higher), **Total** (open + buy − short), Test, Meter, Actual, Cum, Dip sale, Close, Var, CumV, Rate, **TVA** (configured capacity − closing dip).
 
@@ -427,6 +473,8 @@ A single table with a `product` column would match today’s view plus two table
 | `reports.purchaseDeliveryPerKl` | Delivery charge ₹/KL on inward fuel |
 | `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
 | `alerts.*` | Low stock, credit/variation, day-closing, shortage/surplus, night cash, missing meter/rate/dip, stale credit, unpaid salary, attendance, expense ratio, missing invoice |
+| `alerts.stockVarianceTolerancePct` | Dip vs book tolerance, % of meter sale (default 0.5). Read by `get_stock_variance` |
+| `alerts.settlementTolerance` | ₹ difference still counted as matched in `get_settlement_match` (default 10) |
 | `shifts.*` | Morning/afternoon shift names and times for attendance |
 | `payroll.lossOfPayEnabled` | Deduct pay for leave beyond the monthly allowance, and half-days. An admin can exclude that deduction for one employee and month (`salary_lop_exclusions`) |
 | `payroll.paidLeaveDaysPerMonth` | Paid leave days allowed each month (default 2) |
@@ -672,6 +720,25 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 ---
 
+## credit_statement_links
+
+**Purpose:** Read-only statement links a customer opens without a login (`statement.html#t=<token>`). Credit → customer → **Share link** creates one valid 30 days and sends it on WhatsApp.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| credit_customer_id | uuid | FK → credit_customers.id (cascade) |
+| token_hash | text | sha256 hex of the token. The token itself is returned once and never stored |
+| expires_at | timestamptz | 1–90 days after creation |
+| revoked_at | timestamptz | Set by `revoke_credit_statement_links` |
+| created_by | uuid | auth.users.id |
+| created_at | timestamptz | Created at |
+| last_viewed_at / view_count | timestamptz / int | Updated on each successful open |
+
+**RLS:** SELECT provisioned staff; no client writes. `create_credit_statement_link(customer_id, days)` and `revoke_credit_statement_links(customer_id)` (whole name group) are staff RPCs. `get_credit_statement_by_token(token)` is **service_role only**: the public page calls the `credit-statement` Edge Function, so anon still executes no app function. The statement covers the customer's name group: balance, opening balance and activity for the last 90 days, and every open bill with its age. No staff names or payment notes.
+
+---
+
 ## reminders
 
 **Purpose:** Station tasks — dated reminders and undated todos (credit follow-ups, calls, general work). Shared across admin and supervisor. Due/overdue items and high-priority undated todos surface on Dashboard (login popup + Daily Snapshot strip + Notifications).
@@ -852,6 +919,34 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 
 ---
 
+## tanker_decantations
+
+**Purpose:** One row per tanker compartment unloaded into a tank (DSR → Tanker decantation). Migration `20261030125449_tanker_decantation`.
+
+| Column | Description |
+|--------|-------------|
+| decant_date, product | Business date and tank (`petrol` / `diesel`) |
+| invoice_no, invoice_document_id | Supplier invoice; optional link to the vault PDF (`invoice_documents`, set null on delete) |
+| truck_no | Tanker registration |
+| invoice_qty_litres | Quantity on the invoice (> 0) |
+| dip_before_cm, stock_before_litres | Dip and chart stock before unloading |
+| dip_after_cm, stock_after_litres | Dip and chart stock after unloading (≥ before) |
+| density_kg_m3, invoice_density_kg_m3, temperature_c | Observed vs invoice density, product temperature |
+| received_litres | **Generated:** after − before |
+| delivery_variance_litres | **Generated:** received − invoice qty. Negative = short delivery |
+
+**RLS:** select / insert (own `created_by`) / update: provisioned staff. Delete: admin. Trigger `tanker_decantations_guard` rejects a future date and, for a supervisor, a day whose meters are locked (`meter_day_is_locked`). Audited.
+
+## settlement_imports / settlement_lines
+
+**Purpose:** Bank or UPI-app statements uploaded on DSR → Settlement (admin). The browser parses the CSV (`js/statementCsv.js`); `import_settlement_lines(source, file_name, column_map, lines)` stores the credit lines. A `reference` is unique per source (case-insensitive), so re-uploading an overlapping statement skips lines already imported. Migration `20261030125452_settlement_matching`.
+
+**RLS:** admin select; admin delete of an import (cascades to its lines). No client insert or update.
+
+**Matching:** `get_settlement_match(start, end, tolerance?, lag_days?)` (admin) compares, per business date, `day_closing.phone_pay` (or shift UPI + UPI credit payments when the day has no closing) with statement lines dated `date + lag_days`. Status `matched` (|difference| ≤ tolerance), `short`, `excess`, `missing_bank`, `bank_only`. Tolerance defaults to `pump_settings.config.alerts.settlementTolerance` (₹10). Card payments are recorded as UPI; there is no card column.
+
+---
+
 ## Entity Relationship (Simplified)
 
 ```
@@ -913,6 +1008,11 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_staff(email)` | Remove app user | admin |
 | `update_my_avatar(url)` | Set operator profile photo URL | own row |
 | `get_dsr_stock_range(start, end)` | Stock reconciliation for date range | — |
+| `get_stock_variance(start, end)` | Dip vs book per tank and day: litres, %, ₹, over tolerance, short delivery ([dsr_stock](#dsr_stock-view)) | — |
+| `stock_variance_tolerance_pct()` | `alerts.stockVarianceTolerancePct` or 0.5 | — |
+| `get_attendant_short_excess(start, end, employee_id?)` | Per shift and attendant: expected (net litres × rate), handed over (cash + UPI + shift credit + shift expenses), `short_excess` = handed over − expected | — |
+| `import_settlement_lines(source, file, map, lines)` | Store statement credit lines; skips repeat references | admin |
+| `get_settlement_match(start, end, tolerance?, lag?)` | Daily app UPI vs statement totals | admin |
 | `sum_expenses(start, end, exclude_salary?)` | Sum of expense amounts. `exclude_salary` matches the expenses page | — |
 | `expense_totals_by_category(start, end)` | Expense totals grouped by category (jsonb) | — |
 | `expense_totals_by_day(start, end)` | Expense totals grouped by day and category (jsonb) | — |

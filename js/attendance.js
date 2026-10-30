@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel, mountDateStepper, mountMonthStepper, bindUnsavedDraft */
+/* global requireAuth, applyRoleVisibility, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, PumpSettings, loadPumpSettings, CacheInvalidation, AdminDelete, initPersistedDateInput, RECORD_DATE_KEYS, StaffEmployees, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, PayrollRules, formatCurrency, formatMonthLabel, mountDateStepper, mountMonthStepper, bindUnsavedDraft, initPageSections, ActionProgress */
 
 const STATUS_LABELS = {
   present: "Present",

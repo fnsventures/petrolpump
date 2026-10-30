@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, initPageSections, LOOKUP_ROW_LIMIT, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, escapeHtml, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
