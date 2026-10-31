@@ -26,7 +26,7 @@
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "nunjucks": "^3.2.4",
-    "pdfjs-dist": "^4.10.38",
+    "pdfjs-dist": "^6.4.299",
     "stylelint": "^16.26.1",
     "typescript": "^5.9.3"
   }
