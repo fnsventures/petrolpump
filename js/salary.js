@@ -878,7 +878,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const history = document.getElementById("salary-history-month");
     if (history) history.textContent = label;
     const pay = document.getElementById("payment-month-value");
-    if (pay) pay.textContent = `Salary for ${label}`;
+    if (pay) pay.textContent = label;
   }
 
   function placePaymentForm(inDialog) {
