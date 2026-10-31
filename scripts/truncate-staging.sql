@@ -7,27 +7,23 @@ begin;
 
 set session_replication_role = replica;
 
-truncate table
-  public.invoice_items,
-  public.invoices,
-  public.invoice_documents,
-  public.letterhead_letters,
-  public.credit_payments,
-  public.credit_entries,
-  public.day_closing,
-  public.salary_payments,
-  public.employee_attendance,
-  public.expenses,
-  public.dsr_petrol,
-  public.dsr_diesel,
-  public.credit_customers,
-  public.employees,
-  public.products,
-  public.expense_categories,
-  public.document_categories,
-  public.pump_settings,
-  public.audit_log
-restart identity cascade;
+-- Every public table except users, so a table added later is cleared too.
+do $$
+declare
+  v_tables text;
+begin
+  select string_agg(format('%I.%I', n.nspname, c.relname), ', ')
+  into v_tables
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public'
+    and c.relkind in ('r', 'p')
+    and not c.relispartition
+    and c.relname <> 'users';
+
+  execute 'truncate table ' || v_tables || ' restart identity cascade';
+end
+$$;
 
 truncate table storage.objects cascade;
 truncate table storage.buckets cascade;
