@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, initPageSections, LOOKUP_ROW_LIMIT, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, escapeHtml, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -286,8 +286,10 @@ async function loadExpenses(reset = false) {
     expensesPagination.totalCount = 0;
     tbody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>Loading…</td></tr>`;
   }
-  if (totalRow) totalRow.classList.add("hidden");
-  if (emptyCta) emptyCta.classList.add("hidden");
+  if (reset) {
+    if (totalRow) totalRow.classList.add("hidden");
+    if (emptyCta) emptyCta.classList.add("hidden");
+  }
   if (loadMoreBtn) {
     loadMoreBtn.disabled = true;
     loadMoreBtn.textContent = "Loading…";
@@ -315,6 +317,9 @@ async function loadExpenses(reset = false) {
           .gte("date", start)
           .lte("date", end)
           .order("date", { ascending: false })
+          // Tie-breakers keep pages stable when several expenses share a date.
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
           .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1)
       )
     );

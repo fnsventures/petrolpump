@@ -1,4 +1,4 @@
-/* global escapeHtml, formatNumberPlain, reportHeader, getGstr1Sections, getFuelPurchaseRows, gstr1FilingPeriod, cachedData, cachedRange */
+/* global escapeHtml, formatNumberPlain, reportHeader, getGstr1Sections, getFuelPurchaseRows, gstr1FilingPeriod, cachedData, cachedRange, getGstr3bSummary, PumpSettings */
 /**
  * GSTR-3B style summary and portal-style JSON.
  */

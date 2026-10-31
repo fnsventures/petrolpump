@@ -66,6 +66,8 @@
     /** Per-customer outstanding above this amount (₹). 0 = disabled. */
     individualHighCredit: 0,
     highVariation: 0,
+    /** Dip vs book stock variance above this % of meter sale is flagged (get_stock_variance). */
+    stockVarianceTolerancePct: 0.5,
     dayClosingReminder: true,
     /** Treat day closing short above this amount (₹) as a shortage. 0 = any positive short. */
     dayClosingShortage: 0,

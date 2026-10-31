@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, bindUnsavedDraft, captureDomDraftFields, omitDraftFields */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, addMonthsToMonthValue, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -586,7 +586,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   if (typeof initPageSections === "function") {
-    initPageSections({ defaultSection: "summary", validSections: ["summary", "record", "recent"] });
+    initPageSections({
+      defaultSection: "summary",
+      validSections: ["summary", "record", "recent", "short-excess"],
+      onSectionChange: (section) => {
+        if (section === "short-excess") void renderShortExcess(getSelectedMonth());
+      },
+    });
   }
 
   const paymentForm = document.getElementById("salary-payment-form");
@@ -619,7 +625,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   writeMonthYearValue(salaryMonthSelect, salaryYearSelect, currentMonth);
   syncSharedMonthLabel();
   if (typeof mountMonthStepper === "function") {
-    const monthMax = () => (typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth);
+    // Next month is reachable so salary can be paid in advance.
+    const monthMax = () =>
+      addMonthsToMonthValue(typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth, 1);
     mountMonthStepper(salaryMonthSelect, salaryYearSelect, { max: monthMax });
   }
 
@@ -870,7 +878,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const history = document.getElementById("salary-history-month");
     if (history) history.textContent = label;
     const pay = document.getElementById("payment-month-value");
-    if (pay) pay.textContent = `Salary for ${label}`;
+    if (pay) pay.textContent = label;
   }
 
   function placePaymentForm(inDialog) {
@@ -1467,6 +1475,113 @@ document.addEventListener("DOMContentLoaded", async () => {
     return loadPaymentsForSalaryMonth(monthValue);
   }
 
+  // ─── Short / excess (get_attendant_short_excess via AttendantShort) ────────
+  let shortExcessMonth = null;
+  let shortExcessRows = [];
+
+  async function renderShortExcess(monthValue) {
+    const tbody = document.getElementById("short-excess-body");
+    const label = document.getElementById("short-excess-month");
+    const detail = document.getElementById("short-excess-detail");
+    if (!tbody || !monthValue || typeof AttendantShort === "undefined") return;
+    if (label) label.textContent = formatMonthLabel(monthValue);
+    if (shortExcessMonth === monthValue) return;
+    shortExcessMonth = monthValue;
+    if (detail) detail.hidden = true;
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading…</td></tr>';
+    const [y, m] = monthValue.split("-").map(Number);
+    const { start, end } = getMonthRange(y, m - 1);
+    let rows;
+    let payments;
+    try {
+      [rows, payments] = await Promise.all([AttendantShort.load(start, end), loadPaymentsForSalaryMonth(monthValue)]);
+    } catch (err) {
+      shortExcessMonth = null;
+      tbody.innerHTML = `<tr><td colspan="8" class="error">${AttendantShort.reportError(err, "salaryShortExcess")}</td></tr>`;
+      return;
+    }
+    if (shortExcessMonth !== monthValue) return;
+    const deductNote = `Cash short deduction ${formatMonthLabel(monthValue)}`;
+    const deducted = new Set(
+      (payments ?? []).filter((p) => String(p.note || "").startsWith(deductNote)).map((p) => p.employee_id)
+    );
+    shortExcessRows = AttendantShort.summarise(rows);
+    if (!shortExcessRows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="muted">No shift handovers recorded this month.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = shortExcessRows
+      .map((s) => {
+        const canDeduct = isAdmin && s.net < -AttendantShort.EPSILON && !deducted.has(s.employee_id);
+        return `<tr>
+          <td>${escapeHtml(s.name)}${s.unpriced ? ` <small class="muted">(${s.unpriced} without rate)</small>` : ""}</td>
+          <td class="num">${s.shifts}</td>
+          <td class="num">${formatCurrency(s.expected)}</td>
+          <td class="num">${formatCurrency(s.handed_over)}</td>
+          <td class="num ${s.short ? "stat-negative" : ""}">${formatCurrency(s.short)}</td>
+          <td class="num ${s.excess ? "stat-positive" : ""}">${formatCurrency(s.excess)}</td>
+          <td class="num ${AttendantShort.toneClass(s.net)}"><strong>${AttendantShort.signed(s.net)}</strong></td>
+          <td class="table-actions">
+            ${deducted.has(s.employee_id) ? '<span class="muted">Deducted</span>' : ""}
+            <button type="button" class="button-secondary button-small" data-short-detail="${escapeHtml(s.employee_id)}">Shifts</button>
+            ${canDeduct ? `<button type="button" class="button-secondary button-small" data-short-deduct="${escapeHtml(s.employee_id)}">Deduct</button>` : ""}
+          </td>
+        </tr>`;
+      })
+      .join("");
+  }
+
+  /** Admin-confirmed: record the month's net short as a salary payment (record_salary_payment). */
+  async function deductShort(staffId) {
+    const s = shortExcessRows.find((r) => r.employee_id === staffId);
+    const monthValue = getSelectedMonth();
+    if (!s || !isAdmin || !monthValue) return;
+    const amount = Math.round(Math.abs(s.net) * 100) / 100;
+    const monthLabel = formatMonthLabel(monthValue);
+    const ok = await AppDialog.confirm(
+      `Record ${formatCurrency(amount)} cash short as a deduction from ${s.name}'s ${monthLabel} salary? ` +
+        "It is saved as a salary payment with a note, so it reduces the remaining salary and shows on the slip.",
+      { title: "Deduct cash short", confirmLabel: "Record deduction" }
+    );
+    if (!ok) return;
+    const today = getLocalDateString();
+    const { error } = await window.supabaseClient.rpc("record_salary_payment", {
+      p_employee_id: staffId,
+      p_date: today,
+      p_salary_month: normalizeSalaryMonth(monthValue),
+      p_amount: amount,
+      p_note: `Cash short deduction ${monthLabel}`,
+      p_allow_overpay: false,
+      p_request_id: formRequestId(null, ["short-deduct", staffId, monthValue, amount]),
+    });
+    if (error) {
+      AppError.report(error, { context: "salaryShortDeduct" });
+      AppError.showToast(AppError.getUserMessage(error), "error");
+      return;
+    }
+    AppError.showToast("Deduction recorded.", "success");
+    shortExcessMonth = null;
+    CacheInvalidation.invalidate("operational");
+    await refreshAll();
+    await renderShortExcess(monthValue);
+  }
+
+  document.getElementById("short-excess-body")?.addEventListener("click", (e) => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const deductId = target.closest("[data-short-deduct]")?.getAttribute("data-short-deduct");
+    if (deductId) {
+      void deductShort(deductId);
+      return;
+    }
+    const detailId = target.closest("[data-short-detail]")?.getAttribute("data-short-detail");
+    const detail = document.getElementById("short-excess-detail");
+    const s = shortExcessRows.find((r) => r.employee_id === detailId);
+    if (!s || !detail) return;
+    detail.innerHTML = `<h3 class="dashboard-subtitle">${escapeHtml(s.name)} · shifts</h3>${AttendantShort.shiftRowsHtml(s.rows)}`;
+    detail.hidden = false;
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+
   async function refreshAll() {
     await loadStaffMembers();
     fillStaffSelect(paymentStaffSelect);
@@ -1712,6 +1827,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     await onPaymentSalaryMonthChange();
     await renderSummary(val);
     await loadPaymentHistory(val);
+    shortExcessMonth = null;
+    if (location.hash === "#short-excess") await renderShortExcess(val);
   });
 
   const downloadCsvBtn = document.getElementById("salary-download-csv");

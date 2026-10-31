@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, window.supabaseClient, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees, mountDateStepper, bindUnsavedDraft */
+/* global requireAuth, applyRoleVisibility, AppError, AppDialog, escapeHtml, formatDisplayDate, getLocalDateString, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PumpSettings, loadPumpSettings, PrintUtils, AppConfig, initPageSections, createDateRangeFilter, readDateRangeFromControls, getMonthRange, StaffEmployees, mountDateStepper, bindUnsavedDraft, ActionProgress, bindLiveRefresh, isSettingsPanelActive */
 
 (function () {
   /** Part B checks every 2 hours, from morning-shift start through afternoon-shift end. */

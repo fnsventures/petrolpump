@@ -1,4 +1,4 @@
-/* global PumpSettings, AppConfig, escapeHtml, formatNumberPlain, formatNumericDate, formatCurrency, formatFuelBadge, normalizeProduct, computeFuelRowMargin, createBuyingRateContext, getEffectiveBuyingRate, reportHeader */
+/* global PumpSettings, AppConfig, escapeHtml, formatNumberPlain, formatNumericDate, formatCurrency, formatFuelBadge, normalizeProduct, computeFuelRowMargin, createBuyingRateContext, getEffectiveBuyingRate, reportHeader, getDsrNetSaleLitres, DsrQueries, getDsrSaleRate */
 /**
  * Operations reports: tank-wise DSR, fuel income, pump, shift, and salesman sales.
  */

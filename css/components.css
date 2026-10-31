@@ -2095,6 +2095,40 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
   100% { background-position: -200% 0; }
 }
 
+/* Placeholder bar while a form loads; same shimmer as stat tiles. */
+.skeleton-row {
+  display: block;
+  height: 3rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface-sunken) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shine 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-row {
+    animation: none;
+  }
+}
+
+/* Typed edits kept on this device but not yet sent to the server. */
+.unsaved-chip {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  border: 1px solid var(--warning-border);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.unsaved-chip.hidden {
+  display: none;
+}
+
 .card.loading .stat,
 .card.loading .stat-tile .stat {
   color: transparent !important;
@@ -2308,6 +2342,45 @@ body.modal-open {
 
 .empty-state .empty-cta {
   margin-top: 0.5rem;
+}
+
+/* Pagination controls */
+.pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.pagination-info {
+  font-size: var(--text-base);
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.pagination-controls button {
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-base);
+}
+
+@media (max-width: 480px) {
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .pagination-controls button {
+    width: 100%;
+  }
 }
 
 /* Print styles */
@@ -3069,6 +3142,55 @@ body.has-update-sheet {
   overflow: hidden;
 }
 
+/* Top of the screen: away from the keyboard and the pinned save bar. */
+.app-update-toast {
+  position: fixed;
+  z-index: 8800;
+  top: calc(var(--topbar-offset, 0px) + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.3rem 0.3rem 0.3rem 0.9rem;
+  border-radius: 999px;
+  background: var(--inverse);
+  color: var(--inverse-text);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.25);
+}
+
+.app-update-toast-text::after {
+  content: " —";
+}
+
+.app-update-toast-action,
+.app-update-toast-dismiss {
+  min-height: 3rem;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.app-update-toast-action {
+  padding: 0 1rem;
+  background: var(--bpcl-blue);
+  color: var(--text-on-accent);
+}
+
+.app-update-toast-dismiss {
+  min-width: 3rem;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--heading-lg);
+}
+
 @media (min-width: 769px) {
   .app-update-sheet {
     align-items: center;
@@ -3229,7 +3351,8 @@ body.has-install-sheet {
 
 @media print {
   .app-install-sheet,
-  .app-update-sheet {
+  .app-update-sheet,
+  .app-update-toast {
     display: none !important;
   }
 }

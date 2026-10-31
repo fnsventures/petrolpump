@@ -1,3 +1,4 @@
+/* global AppError, escapeHtml, AppDialog */
 /**
  * Centralized error handling for Petrol Pump application.
  * - User-friendly error messages
@@ -162,12 +163,150 @@
     return undefined;
   }
 
+  // Errors queued for public.client_errors. Kept in localStorage so an error raised offline or
+  // before login is sent on the next page that has a session. The server sets user and role.
+  const ERROR_QUEUE_KEY = "bpf_client_error_queue";
+  const ERROR_QUEUE_MAX = 50;
+  const ERROR_FLUSH_DELAY_MS = 5000;
+  const ERROR_DEDUPE_MS = 10000;
+  let errorQueue = null;
+  let flushTimer = null;
+  let flushing = false;
+  let appVersion = null;
+  const lastQueuedAt = {};
+
+  function readErrorQueue() {
+    if (errorQueue) return errorQueue;
+    errorQueue = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(ERROR_QUEUE_KEY) || "[]");
+      if (Array.isArray(parsed)) errorQueue = parsed.slice(-ERROR_QUEUE_MAX);
+    } catch (_) {
+      /* storage blocked */
+    }
+    return errorQueue;
+  }
+
+  function saveErrorQueue() {
+    try {
+      if (errorQueue && errorQueue.length) localStorage.setItem(ERROR_QUEUE_KEY, JSON.stringify(errorQueue));
+      else localStorage.removeItem(ERROR_QUEUE_KEY);
+    } catch (_) {
+      /* storage blocked or full */
+    }
+  }
+
+  function jsonSafe(value) {
+    try {
+      return JSON.parse(JSON.stringify(value === undefined ? null : value));
+    } catch (_) {
+      return { unserializable: String(value) };
+    }
+  }
+
+  function currentPage() {
+    if (typeof window === "undefined" || !window.location) return "";
+    return window.location.pathname.split("/").pop() || "index.html";
+  }
+
+  async function resolveAppVersion() {
+    if (appVersion) return appVersion;
+    const pwa = typeof window !== "undefined" ? window.PWA : null;
+    if (pwa && typeof pwa.sendToServiceWorker === "function") {
+      const reply = await pwa.sendToServiceWorker("GET_VERSION").catch(() => null);
+      if (reply && reply.version) appVersion = String(reply.version);
+    }
+    return appVersion;
+  }
+
+  function scheduleErrorFlush(delayMs) {
+    if (typeof setTimeout === "undefined" || flushTimer) return;
+    flushTimer = setTimeout(function () {
+      flushTimer = null;
+      void flushErrorQueue();
+    }, delayMs);
+  }
+
+  async function flushErrorQueue() {
+    const client = typeof window !== "undefined" ? window.supabaseClient : null;
+    const queue = readErrorQueue();
+    if (flushing || !queue.length || !client) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    flushing = true;
+    try {
+      const { data } = await client.auth.getSession();
+      if (!data || !data.session) return;
+      const version = await resolveAppVersion();
+      const batch = queue.slice(0, ERROR_QUEUE_MAX);
+      const rows = batch.map(function (row) {
+        return Object.assign({}, row, { app_version: row.app_version || version });
+      });
+      const { error } = await client.from("client_errors").insert(rows);
+      if (error) {
+        if (typeof console !== "undefined" && console.warn) console.warn("[AppError] error report failed", error);
+        return;
+      }
+      errorQueue = queue.slice(batch.length);
+      saveErrorQueue();
+    } catch (_) {
+      // Keep the queue; the next error or page load retries.
+    } finally {
+      flushing = false;
+    }
+  }
+
+  function queueClientError(err, context) {
+    const normalized = normalizeError(err);
+    const page = currentPage();
+    const dedupeKey = `${page}|${normalized.code || ""}|${normalized.message}`;
+    const now = Date.now();
+    if (lastQueuedAt[dedupeKey] && now - lastQueuedAt[dedupeKey] < ERROR_DEDUPE_MS) return;
+    lastQueuedAt[dedupeKey] = now;
+
+    const original = normalized.original;
+    const queue = readErrorQueue();
+    queue.push({
+      occurred_at: new Date(now).toISOString(),
+      page,
+      message: String(normalized.message || "(no message)").slice(0, 2000),
+      code: normalized.code != null ? String(normalized.code) : null,
+      name: normalized.name || null,
+      stack: original && typeof original.stack === "string" ? original.stack.slice(0, 4000) : null,
+      context: jsonSafe(context),
+      app_version: appVersion,
+      app_env: APP_ENV,
+      user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    });
+    if (queue.length > ERROR_QUEUE_MAX) queue.splice(0, queue.length - ERROR_QUEUE_MAX);
+    saveErrorQueue();
+    scheduleErrorFlush(ERROR_FLUSH_DELAY_MS);
+  }
+
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    // Send what an earlier page or session left behind, once the Supabase client is up.
+    window.addEventListener("load", function () {
+      if (readErrorQueue().length) scheduleErrorFlush(ERROR_FLUSH_DELAY_MS);
+    });
+    window.addEventListener("online", function () {
+      if (readErrorQueue().length) scheduleErrorFlush(1000);
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") void flushErrorQueue();
+    });
+  }
+
   /**
-   * Report error to monitoring service (if configured).
+   * Report an error: queue it for public.client_errors, and POST it to ERROR_REPORT_URL when set.
    * @param {*} err
    * @param {Object} context
    */
   function reportToMonitoring(err, context) {
+    try {
+      queueClientError(err, context);
+    } catch (_) {
+      // Never let reporting throw into the caller.
+    }
+
     if (!REPORT_URL || typeof fetch === "undefined") return;
 
     const normalized = normalizeError(err);
@@ -620,6 +759,7 @@
       });
     },
     report: reportToMonitoring,
+    flushReports: flushErrorQueue,
     withRetry: withRetry,
     isTransient: isTransientError,
     showGlobalBanner: showGlobalBanner,

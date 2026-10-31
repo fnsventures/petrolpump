@@ -49,9 +49,11 @@ Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md) · Recipes: [docs/CHECKLISTS.md]
 
 ## PR checks
 
-`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`: deploy-style build, `node --check` on all JS, Markdown link check, migration name/order check, and (when `supabase/` changes) the schema-drift check. Run the same locally:
+`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`: deploy-style build, `node --check` on all JS, ESLint (undeclared globals), `tsc` on `// @ts-check` files against the DB types, Markdown link check, migration name/order check, and (when `supabase/` changes) the schema-drift check, pgTAP tests and a `types/db.d.ts` freshness check. Dependabot opens weekly npm and Actions update PRs into `staging`. Run the same locally:
 
 ```bash
+npm run lint:js
+npm run typecheck
 node scripts/check-doc-links.mjs
 ./scripts/check-migration-order.sh
 ./scripts/check-schema-drift.sh   # Docker

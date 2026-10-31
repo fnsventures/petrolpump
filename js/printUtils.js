@@ -1,3 +1,4 @@
+/* global AppConfig, escapeHtml, PumpSettings */
 /**
  * Shared hidden-iframe print pipeline (invoice, reports, salary slips, credit, staff ID, letterhead).
  * On mobile Chrome/Safari, iframe.contentWindow.print() prints the parent page instead —

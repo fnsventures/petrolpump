@@ -76,3 +76,54 @@ test("a recorded payment names the amount, person, and remaining balance", () =>
     "Recorded ₹5,000.00 for Anita. Remaining advance ₹500.00."
   );
 });
+
+function reportingSandbox({ session = { user: { id: "u1" } } } = {}) {
+  const store = new Map();
+  const inserts = [];
+  const timers = [];
+  const sandbox = createSandbox({
+    addEventListener() {},
+    removeEventListener() {},
+    setTimeout(fn) { timers.push(fn); return timers.length; },
+    location: { pathname: "/staging/dsr.html", href: "https://x/staging/dsr.html" },
+    navigator: { userAgent: "TestAgent", onLine: true },
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+    supabaseClient: {
+      auth: { getSession: async () => ({ data: { session } }) },
+      from: (table) => ({
+        insert: async (rows) => { inserts.push({ table, rows }); return { error: null }; },
+      }),
+    },
+  });
+  loadScripts(sandbox, ["js/errorHandler.js"]);
+  const runTimers = async () => { while (timers.length) timers.shift()(); await new Promise((r) => setImmediate(r)); };
+  return { AppError: sandbox.AppError, inserts, store, runTimers };
+}
+
+test("report batches errors into client_errors with page and browser", async () => {
+  const { AppError, inserts, store, runTimers } = reportingSandbox();
+  AppError.report(new Error("first"), { context: "loadDsr" });
+  AppError.report({ message: "second", code: "P0001" }, {});
+  AppError.report(new Error("first"), { context: "loadDsr" }); // duplicate within 10s is dropped
+  await runTimers();
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].table, "client_errors");
+  assert.equal(inserts[0].rows.map((r) => r.message).join(","), "first,second");
+  assert.equal(inserts[0].rows[0].page, "dsr.html");
+  assert.equal(inserts[0].rows[0].user_agent, "TestAgent");
+  assert.equal(inserts[0].rows[0].context.context, "loadDsr");
+  assert.equal(inserts[0].rows[1].code, "P0001");
+  assert.equal(store.size, 0, "queue is cleared after a successful send");
+});
+
+test("report keeps the queue until there is a session", async () => {
+  const { AppError, inserts, store, runTimers } = reportingSandbox({ session: null });
+  AppError.report(new Error("before login"), {});
+  await runTimers();
+  assert.equal(inserts.length, 0);
+  assert.match(store.get("bpf_client_error_queue"), /before login/);
+});

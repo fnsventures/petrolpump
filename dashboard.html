@@ -133,6 +133,12 @@
               </div>
             </div>
             <div class="filter-actions">
+              <button type="button" id="dsr-prev" class="button-secondary date-step" aria-label="Previous period" title="Previous period">
+                <span aria-hidden="true">‹</span><span class="date-step-text">Prev</span>
+              </button>
+              <button type="button" id="dsr-next" class="button-secondary date-step" aria-label="Next period" title="Next period">
+                <span class="date-step-text">Next</span><span aria-hidden="true">›</span>
+              </button>
               <button type="submit" id="dsr-apply">Apply</button>
             </div>
           </form>
@@ -183,6 +189,12 @@
             </div>
           </article>
         </div>
+
+        <a class="card stock-variance-tile clickable-card" id="stock-variance-tile" href="dsr.html#stock-variance">
+          <span class="stock-variance-tile-label">Dip vs book stock</span>
+          <strong class="stat" id="stock-variance-value">&#8212;</strong>
+          <span class="muted stock-variance-tile-meta" id="stock-variance-meta">Loss or gain at selling rate</span>
+        </a>
 
         <article class="card dsr-summary-card dsr-summary-compact">
           <h3 class="dashboard-subtitle">Day summary</h3>

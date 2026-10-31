@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote */
+/* global requireAuth, applyRoleVisibility, AppError, escapeHtml, initPageSections, formatDisplayDate, formatCurrency, getLocalDateString, toLocalDateString, AdminDelete, TaskUtils, debounce, addDaysToDateString, appendDatedNote, searchCreditCustomers, fetchCreditCustomerById, bindLiveRefresh */
 
 (function () {
   const OPEN_SELECT =
@@ -997,7 +997,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const contactHtml =
       credit && mode === "open" && typeof TaskUtils.contactRowHtml === "function"
-        ? TaskUtils.contactRowHtml(mobile, TaskUtils.waMessageForCustomer(customerName, amountDue))
+        ? TaskUtils.contactRowHtml(mobile, TaskUtils.waMessageForCustomer(customerName, amountDue), {
+            customerId: row.credit_customer_id,
+            customerName,
+            amountDue,
+          })
         : "";
 
     const metaBits = [

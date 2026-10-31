@@ -1,3 +1,4 @@
+/* global formatCurrency, getLocalDateString, formatDisplayDate, PumpSettings, AppConfig, escapeHtml */
 /**
  * Shared helpers for station Tasks (credit collection + todos).
  * Used by reminders.js and dashboard.js.
@@ -51,6 +52,15 @@
     if (text) params.set("text", text);
     const q = params.toString();
     return `https://wa.me/${e164}${q ? `?${q}` : ""}`;
+  }
+
+  /** sms: link for the device's own messaging app. iOS wants `&body=`, others `?body=`. */
+  function smsHref(mobile, text) {
+    const e164 = phoneE164(mobile);
+    if (!e164) return "";
+    if (!text) return `sms:+${e164}`;
+    const sep = /iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?";
+    return `sms:+${e164}${sep}body=${encodeURIComponent(text)}`;
   }
 
   function amountDueOf(row) {
@@ -192,41 +202,164 @@
 </details>`;
   }
 
-  function waMessageForCustomer(_customerName, amountDue) {
-    const n = Number(amountDue);
-    const unpaid = Number.isFinite(n) ? Math.max(0, n) : 0;
-    const amount = typeof formatCurrency === "function" ? formatCurrency(unpaid) : String(unpaid);
+  // Same wording as supabase/functions/_shared/creditMessage.js (also used by the weekly SMS
+  // job). Keep the two in step; tests/creditMessage.test.mjs compares them.
+  function creditAmountText(amount, symbol) {
+    const n = Number(amount);
+    const v = Number.isFinite(n) ? Math.max(0, n) : 0;
+    return symbol + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function creditStationName(station) {
+    return String(station?.name || "").trim() || "BISHNU PRIYA FUELS";
+  }
+
+  function creditWhatsAppText(m) {
+    const station = creditStationName(m.station);
+    const tagline = String(m.station?.tagline || "").trim();
+    const due = Number(m.amount) > 0.004;
+    return [
+      `*${station}*`,
+      ...(tagline ? [tagline] : []),
+      "",
+      "Dear Customer,",
+      "",
+      due
+        ? "This is a reminder about your credit account with us."
+        : "Here is the latest statement of your credit account with us.",
+      "",
+      `*Amount due:* ${creditAmountText(m.amount, "₹")}`,
+      `*As on:* ${m.asOn}`,
+      ...(m.url
+        ? ["", "*Statement (view / download PDF):*", m.url, `_Link valid for ${m.linkDays || 30} days._`]
+        : []),
+      "",
+      ...(due ? ["Kindly clear the dues at the earliest. If you have already paid, please ignore this message.", ""] : []),
+      "Thank you,",
+      station,
+    ].join("\n");
+  }
+
+  function creditSmsText(m) {
+    const due = Number(m.amount) > 0.004;
+    return [
+      `${creditStationName(m.station)} (BPCL): Dear Customer, your credit a/c amount due as on ${m.asOn} is ${creditAmountText(m.amount, "Rs ")}.`,
+      due ? "Kindly pay at the earliest." : "",
+      m.url ? `Statement (PDF): ${m.url}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  /** Station letterhead fields and today's date for the reminder text. */
+  function creditMessageInput(amountDue, statementUrl) {
+    const settings = typeof PumpSettings !== "undefined" ? PumpSettings : null;
+    const def = typeof AppConfig !== "undefined" ? AppConfig.DEFAULT_STATION || {} : {};
     const today = typeof getLocalDateString === "function" ? getLocalDateString() : "";
     const asOn =
       today && typeof formatDisplayDate === "function" && formatDisplayDate(today) !== "—"
         ? formatDisplayDate(today)
         : today;
-    const station =
-      (typeof PumpSettings !== "undefined" && PumpSettings.getStationLegalName?.()) ||
-      (typeof AppConfig !== "undefined" && AppConfig.DEFAULT_STATION?.legalName) ||
-      "BISHNU PRIYA FUELS";
-    return [
-      "Hello,",
-      "",
-      `This is ${station}. As on ${asOn}, your outstanding balance is ${amount}.`,
-      "",
-      "Please clear this at the earliest.",
-      "",
-      "Thank you.",
-    ].join("\n");
+    return {
+      station: {
+        name: settings?.getStationLegalName?.() || def.legalName,
+        tagline: settings?.getStationTagline?.() || def.tagline,
+      },
+      amount: amountDue,
+      asOn,
+      url: statementUrl,
+      linkDays: STATEMENT_LINK_DAYS,
+    };
+  }
+
+  /** WhatsApp reminder. With statementUrl, adds the customer's statement link (PDF download there). */
+  function waMessageForCustomer(_customerName, amountDue, statementUrl) {
+    return creditWhatsAppText(creditMessageInput(amountDue, statementUrl));
+  }
+
+  /** SMS reminder: short GSM-7 text, the same wording as the weekly SMS job. */
+  function smsMessageForCustomer(_customerName, amountDue, statementUrl) {
+    return creditSmsText(creditMessageInput(amountDue, statementUrl));
+  }
+
+  const STATEMENT_LINK_DAYS = 30;
+  /** One link per customer per page load, so repeat taps don't mint new rows. */
+  const statementUrlCache = new Map();
+
+  /** New read-only statement URL via create_credit_statement_link; "" when it fails (e.g. role). */
+  async function statementUrlFor(customerId) {
+    if (!customerId) return "";
+    const cached = statementUrlCache.get(customerId);
+    if (cached) return cached;
+    const client = global.supabaseClient;
+    if (!client) return "";
+    const { data, error } = await client.rpc("create_credit_statement_link", {
+      p_customer_id: customerId,
+      p_valid_days: STATEMENT_LINK_DAYS,
+    });
+    if (error || !data?.token) {
+      if (error) global.AppError?.report?.(error, { context: "TaskUtils.statementUrlFor" });
+      return "";
+    }
+    const url = new URL(`statement.html#t=${data.token}`, global.location.href).href;
+    statementUrlCache.set(customerId, url);
+    return url;
+  }
+
+  /**
+   * WhatsApp/SMS icons with data-statement-customer: on tap, add a statement link to the
+   * message, then open. The plain href (no link) stays as the fallback.
+   */
+  function bindStatementLinkSend() {
+    if (typeof document === "undefined" || bindStatementLinkSend.bound) return;
+    bindStatementLinkSend.bound = true;
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest?.("a.contact-button[data-statement-customer]");
+      if (!link || !link.getAttribute("href") || link.classList.contains("is-disabled")) return;
+      event.preventDefault();
+      const channel = link.dataset.channel;
+      const mobile = link.dataset.mobile || "";
+      const fallback = link.getAttribute("href");
+      // Open WhatsApp's tab now, while the tap still counts as a user gesture; popup
+      // blockers drop window.open after an await.
+      const win = channel === "whatsapp" ? global.open("", "_blank") : null;
+      if (win) win.opener = null;
+      void statementUrlFor(link.dataset.statementCustomer)
+        .catch(() => "")
+        .then((url) => {
+          const build = channel === "whatsapp" ? waMessageForCustomer : smsMessageForCustomer;
+          const text = build("", link.dataset.amount, url);
+          const href = (channel === "whatsapp" ? waHref(mobile, text) : smsHref(mobile, text)) || fallback;
+          if (!url) global.AppError?.showToast?.("Couldn't add the statement link; sending the balance only.", "warning");
+          if (channel === "whatsapp") {
+            if (win) win.location.href = href;
+            else global.location.href = href;
+          } else {
+            global.location.href = href;
+          }
+        });
+    });
   }
 
   const CONTACT_CALL_ICON =
     '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z"/></svg>';
+  const CONTACT_SMS_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7V9zm6 5H7v-2h6v2zm4-6H7V6h10v2z"/></svg>';
   const CONTACT_WA_ICON =
     '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0-7.74 13.61L3 21l4.52-1.19A9 9 0 1 0 12 3zm0 2a7 7 0 1 1-3.57 13.03l-.3-.18-2.11.56.56-2.06-.2-.32A7 7 0 0 1 12 5zm3.15 9.64c-.17-.08-1-.49-1.16-.54-.16-.06-.27-.08-.39.08-.12.17-.45.54-.55.65-.1.11-.2.12-.37.04-.17-.08-.71-.26-1.35-.82-.5-.45-.83-1-.93-1.17-.1-.17-.01-.27.07-.35.08-.08.17-.2.25-.3.08-.1.11-.17.17-.28.06-.11.03-.21-.01-.3-.04-.08-.39-.94-.53-1.29-.14-.35-.28-.3-.39-.3h-.33c-.11 0-.3.04-.46.21-.16.17-.6.59-.6 1.45 0 .86.62 1.7.7 1.82.08.11 1.22 1.86 2.96 2.61.41.18.73.29.98.37.41.13.79.11 1.08.07.33-.05 1-.41 1.14-.81.14-.4.14-.74.1-.81-.04-.07-.15-.11-.32-.19z"/></svg>';
 
-  /** Same mobile line, call icon, and WhatsApp icon as the credit customer header. */
-  function contactRowHtml(mobile, waText) {
+  /** Same mobile line, call, SMS, and WhatsApp icons as the credit customer header. */
+  function contactRowHtml(mobile, waText, { customerId = "", customerName = "", amountDue = null } = {}) {
     const esc = escapeHtml;
+    // Lets bindStatementLinkSend rebuild the message with a statement link on tap.
+    const statementData = customerId
+      ? ` data-statement-customer="${esc(customerId)}" data-mobile="${esc(String(mobile || "").trim())}" data-amount="${esc(amountDue ?? "")}"`
+      : "";
     const shown = String(mobile || "").trim();
     const tel = telHref(shown);
     const wa = waHref(shown, waText);
+    const smsText = customerId || customerName ? smsMessageForCustomer("", amountDue) : waText;
+    const sms = smsHref(shown, smsText);
     if (!tel && !wa) return "";
     return `<span class="contact-line">
       ${
@@ -241,8 +374,13 @@
             : ""
         }
         ${
+          sms
+            ? `<a class="button-icon contact-button contact-button--sms" href="${esc(sms)}" data-channel="sms"${statementData} aria-label="Text ${esc(shown)}">${CONTACT_SMS_ICON}</a>`
+            : ""
+        }
+        ${
           wa
-            ? `<a class="button-icon contact-button contact-button--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
+            ? `<a class="button-icon contact-button contact-button--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" data-channel="whatsapp"${statementData} aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
             : ""
         }
       </span>
@@ -401,7 +539,13 @@
     phoneE164,
     telHref,
     waHref,
+    smsHref,
+    statementUrlFor,
+    STATEMENT_LINK_DAYS,
     waMessageForCustomer,
+    smsMessageForCustomer,
+    creditWhatsAppText,
+    creditSmsText,
     contactRowHtml,
     amountDueOf,
     urgencyRank,
@@ -421,4 +565,5 @@
     showUndoToast,
     CREDIT_TYPES,
   };
+  bindStatementLinkSend();
 })(typeof window !== "undefined" ? window : globalThis);

@@ -11,9 +11,13 @@ npm ci
 npm test                             # tax, GSTR, payroll, day-closing, and query paging
 npm run dev                          # build:site + serve http://localhost:3000 (needs js/env.js)
 npm run lint:css                     # no new hardcoded colours (use css/tokens.css)
+npm run lint:js                      # ESLint no-undef against each file's /* global */ header
+npm run typecheck                    # tsc on // @ts-check files against types/db.d.ts
+npm run gen:types                    # regenerate types/db.d.ts from schema.sql (Docker)
 node scripts/check-doc-links.mjs     # Markdown links/anchors
 ./scripts/check-migration-order.sh   # new migrations sort after origin/staging's newest
 ./scripts/check-schema-drift.sh      # migrations vs supabase/schema.sql (Docker)
+./scripts/test-db.sh                 # pgTAP in supabase/tests: day-closing totals, locks, request ids, RLS (Docker)
 ```
 
 Verify UI by building (`npm run build:site`), `node --check` on edited JS, and clicking through `npm run dev` as admin and supervisor.
@@ -34,6 +38,8 @@ Verify UI by building (`npm run build:site`), `node --check` on edited JS, and c
 - Pages contain body markup only. `<!-- @partial app-head -->` / `<!-- @partial app-topbar title="…" -->` are expanded at build by `scripts/build-html.mjs` from `_partials/`. Add CSS/JS to `_partials/app-pages.json`, never as copied `<script>` tags.
 - Never add `?v=` to asset URLs, or edit `CACHE_VERSION` / `STATIC_ASSET_PATHS` in `sw.js` — `scripts/stamp-assets.mjs` generates them at deploy.
 - No framework, no bundler for app code (esbuild only builds `js/vendor/` and minifies at deploy). Scripts are classic globals (`/* global … */` headers), not ES modules — except `js/supabaseLoginClient.js`, the esbuild entry for `js/vendor/supabase-login.min.js`.
+- Every global a script uses from another script goes in its `/* global … */` header (plain names; `window.x` is not valid there). `npm run lint:js` fails otherwise.
+- `// @ts-check` files (`utils.js`, `dsrQueries.js`, `day-closing.js`) are type-checked against `types/db.d.ts`: a wrong table, column, filter or RPC argument fails `npm run typecheck`. Narrow DOM types with JSDoc casts (`/** @type {HTMLInputElement} */ (el)`). [docs/TYPECHECK.md](docs/TYPECHECK.md).
 - Errors: `AppError.report(err, { context })`. HTML from data: `escapeHtml`.
 - Display money with `formatCurrency` (`js/utils.js`). Totals that must match the server (day closing, credit) are computed in SQL RPCs — don't re-derive them in JS.
 
@@ -52,6 +58,7 @@ Verify UI by building (`npm run build:site`), `node --check` on edited JS, and c
 ## Before finishing a change
 
 - [ ] `node --check` on edited JS; `npm test`; `npm run build:site` succeeds
-- [ ] Schema change → migration + `schema.sql` + DATA_TABLES.md
+- [ ] `npm run lint:js` and `npm run typecheck` pass
+- [ ] Schema change → migration + `schema.sql` + DATA_TABLES.md + `npm run gen:types`; `./scripts/test-db.sh` passes
 - [ ] New page / function / secret → follow [docs/CHECKLISTS.md](docs/CHECKLISTS.md)
 - [ ] Docs touched → `node scripts/check-doc-links.mjs`

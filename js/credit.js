@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, mountLoadMorePager, syncLoadMorePager, bindAppResume, bindCacheInvalidate */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatDisplayDate, getLocalDateString, AppCache, AppError, escapeHtml, initPageSections, debounce, setFilterState, CacheInvalidation, mountLoadMorePager, syncLoadMorePager, bindAppResume, bindCacheInvalidate, resetPaginationLoading, runAppRequest, renderTableRetryRow, normCustomerName, fetchAllRows, isCancelledRequestError, loadScript, searchCreditCustomers */
 
 const PAGE_SIZE = 25;
 
@@ -718,15 +718,28 @@ const CREDIT_AGING_BUCKETS = [
   { key: "90+", id: "90plus" },
 ];
 
+function creditAgingRowUrl(row) {
+  const params = new URLSearchParams();
+  if (row.customer_id) params.set("id", String(row.customer_id));
+  else params.set("name", row.customer_name || "");
+  params.set("period", "custom");
+  params.set("from", String(row.period_from || ""));
+  params.set("to", String(row.period_to || ""));
+  params.set("view", "activity");
+  return `credit.html?${params.toString()}#summary`;
+}
+
 function renderCreditAgingRows(rows) {
   return rows
     .map((row) => {
-      const href = customerDetailUrl({ id: row.customer_id, customer_name: row.customer_name });
+      const href = creditAgingRowUrl(row);
+      const outstanding = Number(row.outstanding) || 0;
+      const label = outstanding < 0 ? `${formatCurrency(-outstanding)} advance` : formatCurrency(outstanding);
       return `<tr class="credit-ledger-row" data-href="${href}">
           <td data-label="Customer"><a class="customer-link" href="${href}">${escapeHtml(row.customer_name)}</a></td>
-          <td data-label="Oldest bill">${escapeHtml(formatDisplayDate(row.oldest_unpaid))}</td>
-          <td data-label="Age">${escapeHtml(String(row.age_days))} days</td>
-          <td class="num" data-label="Open (₹)">${formatCurrency(row.open_amount)}</td>
+          <td class="num" data-label="Credit (₹)">${formatCurrency(row.credit_taken)}</td>
+          <td class="num" data-label="Settled (₹)">${formatCurrency(row.settlement_done)}</td>
+          <td class="num" data-label="Outstanding (₹)">${escapeHtml(label)}</td>
         </tr>`;
     })
     .join("");
@@ -736,17 +749,20 @@ function renderCreditAgingBucket(bucketId, rows) {
   const el = document.getElementById(`credit-aging-body-${bucketId}`);
   if (!el) return;
   if (!rows.length) {
-    el.innerHTML = `<p class="credit-aging-empty">No unpaid bills in this period.</p>`;
+    el.innerHTML = `<p class="credit-aging-empty">No outstanding credit in this period.</p>`;
     return;
   }
-  el.innerHTML = `<div class="table-wrap">
+  const first = rows[0];
+  const range = `${formatDisplayDate(first.period_from)} – ${formatDisplayDate(first.period_to)}`;
+  el.innerHTML = `<p class="credit-aging-empty">${escapeHtml(range)}. Outstanding is credit taken minus settlements in these dates.</p>
+    <div class="table-wrap">
       <table class="credit-ledger-table credit-aging-table">
         <thead>
           <tr>
             <th>Customer</th>
-            <th>Oldest bill</th>
-            <th>Age</th>
-            <th class="num">Open (₹)</th>
+            <th class="num">Credit (₹)</th>
+            <th class="num">Settled (₹)</th>
+            <th class="num">Outstanding (₹)</th>
           </tr>
         </thead>
         <tbody>${renderCreditAgingRows(rows)}</tbody>
@@ -775,14 +791,14 @@ async function loadCreditAging() {
       const bucket = row.bucket;
       if (!grouped[bucket]) return;
       grouped[bucket].push(row);
-      totals[bucket] += Number(row.open_amount) || 0;
+      totals[bucket] += Number(row.outstanding) || 0;
     });
     CREDIT_AGING_BUCKETS.forEach(({ key, id }) => {
       const el = document.getElementById(`credit-aging-${id}`);
       if (el) el.textContent = formatCurrency(totals[key]);
       grouped[key].sort((a, b) => {
-        const byAge = (Number(b.age_days) || 0) - (Number(a.age_days) || 0);
-        if (byAge) return byAge;
+        const byOpen = (Number(b.outstanding) || 0) - (Number(a.outstanding) || 0);
+        if (byOpen) return byOpen;
         return String(a.customer_name || "").localeCompare(String(b.customer_name || ""), undefined, {
           sensitivity: "base",
         });

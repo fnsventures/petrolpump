@@ -17,7 +17,7 @@ How a feature writes data, and in what order a normal day is entered. The table 
 | Reports | §6 | reports.html (admin); DSR, GST, trading/P&amp;L catalog |
 | Analysis | §6b | analysis.html (admin); KPIs, charts, insights |
 | HR | §7 | staff.html, employees, attendance, salary, Google Drive staff files |
-| Admin & config | §8 | pump_settings, settings, audit_log |
+| Admin & config | §8 | pump_settings, settings, audit_log, client_errors |
 
 ---
 
@@ -182,6 +182,7 @@ Admin corrections (admin only)
 - **Overdue / outstanding:** `get_outstanding_credit_list_as_of(date)` on `credit.html#outstanding`.
 - **Customer detail:** In-page on `credit.html` (hash routes) — not a separate page. Legacy `credit-customer.html` redirects with query/hash preserved.
 - **Legacy URL:** `credit-overdue.html` redirects to `credit.html#outstanding`.
+- **Statement link:** customer view → **Share link**, or a WhatsApp/SMS contact icon (credit header, Tasks, dashboard, notifications) → `create_credit_statement_link` → `credit_statement_links`. The customer opens `statement.html#t=…`, which calls the `credit-statement` Edge Function (`get_credit_statement_by_token`, service role) and renders a letterhead statement with **Download PDF / Print**. Message wording (WhatsApp letter, short GSM-7 SMS) is in `supabase/functions/_shared/creditMessage.js`, shared with the weekly SMS job and mirrored in `js/taskUtils.js` (`tests/creditMessage.test.mjs` checks they match).
 ---
 
 ## 4. DSR and stock flow
@@ -191,6 +192,9 @@ Admin corrections (admin only)
 - **Stock reconciliation** → read-only `dsr_stock` view (or `get_dsr_stock_range` for date ranges). Dip stock comes from the `stock` column on the meter row.
 - **Union reads** → `dsr` view when code queries “all products”.
 - **Legacy hashes** on `dsr.html` (`#meter`, `#petrol`, `#diesel`) redirect to `meter-reading.html`.
+- **Stock control** (`dsr.html` → `js/dsrStockControl.js`):
+  - `#stock-variance` → `get_stock_variance` (read; admin and supervisor). Grouped by tank (MS, then HSD) with a subtotal row each; the Tank filter shows one product. Rows over the tolerance are red; the dashboard tile reads the same RPC.
+  - `#decantation` → insert / update `tanker_decantations` (admin and supervisor; supervisors blocked on locked days), delete (admin). The invoice quantity becomes that day's receipt in the variance.
 - **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
 Stock formulas and why petrol and diesel are separate tables: [DATA_TABLES.md → dsr_stock](DATA_TABLES.md#dsr_stock-view).
@@ -377,7 +381,12 @@ Salary (salary.html)
    → Monthly summary: payable = salary − PF − loss of pay + over duty, from that month's attendance
    → Printable salary slips (css/salary-slip-print.css) with PF, loss of pay, over duty, establishment code
    → Admin can delete payment → delete_salary_payment() removes payment + linked expense
+   → Short / excess section: get_attendant_short_excess() for the month, per attendant
+     (handed over − expected). Optional admin "Deduct" records the net short through
+     record_salary_payment() with note "Cash short deduction <Month>"; hidden once recorded
 ```
+
+Staff profile (`staff.html`) shows the same monthly short / excess card for one attendant.
 
 ---
 
@@ -412,6 +421,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Dashboard Net profit:** Quick glance — see §1b.
 - **Meter Reading → Purchase cost:** Inline buying price — see §1b.
 - **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months in a weekly job. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
+- **App errors:** Every page writes `client_errors` through `AppError.report` (batched, any login). Admins read them in Settings → App errors ([DATA_TABLES.md](DATA_TABLES.md#client_errors)).
 
 ---
 
@@ -422,7 +432,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
 | Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price |
-| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman) |
+| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman), get_stock_variance, tanker_decantations |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
 | Billing | products, invoices, save_invoice, drive-files (sales invoice archive) |
@@ -431,9 +441,9 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Expenses | expenses, expense_categories |
 | Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, set_day_closing_certified, collect_night_cash, delete_day_closing |
 | E-20 testing (`e20-register.html`) | e20_testing_registers, e20_water_checks, e20_quality_checks, save_e20_testing_register |
-| Staff | employees, drive-files (photo + Aadhaar), set_employee_photo |
+| Staff | employees, drive-files (photo + Aadhaar), set_employee_photo, get_attendant_short_excess |
 | Attendance | employee_attendance, list_employees_roster, save_employee_attendance_batch |
-| Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees |
+| Salary | salary_payments, expenses (salary_payment_id), list_employees_salary, employees, get_attendant_short_excess |
 | Reports | dsr_*, invoices, expenses, pump_settings (admin) |
 | Analysis | dsr_*, expenses via DsrQueries (admin) |
 | Settings | pump_settings, users, employees, products, expense_categories, upsert_staff, delete_staff (admin) |

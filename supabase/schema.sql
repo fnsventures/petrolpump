@@ -362,6 +362,99 @@ create policy "audit_log_no_direct_write" on public.audit_log
   using (false)
   with check (false);
 
+-- ============================================================================
+-- CLIENT ERRORS (AppError.report, 20261030102202_client_errors)
+-- ============================================================================
+
+create table if not exists public.client_errors (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  occurred_at timestamptz,
+  user_id uuid default auth.uid() references auth.users (id) on delete set null,
+  user_email text,
+  role text,
+  page text,
+  message text not null,
+  code text,
+  name text,
+  stack text,
+  context jsonb,
+  app_version text,
+  app_env text,
+  user_agent text
+);
+
+create index if not exists client_errors_created_at_idx on public.client_errors (created_at desc);
+create index if not exists client_errors_user_created_idx on public.client_errors (user_id, created_at desc);
+
+comment on table public.client_errors is
+  'Browser errors sent by AppError.report. Insert: any login (user, email, role set by client_errors_before_insert). Select: admin. Rows older than 90 days are deleted on insert.';
+
+alter table public.client_errors enable row level security;
+
+revoke all on table public.client_errors from anon, authenticated;
+grant select, insert on table public.client_errors to authenticated;
+
+drop policy if exists "client_errors_insert_own" on public.client_errors;
+create policy "client_errors_insert_own" on public.client_errors
+  for insert
+  to authenticated
+  with check (user_id = (select auth.uid()));
+
+drop policy if exists "client_errors_select_admin" on public.client_errors;
+create policy "client_errors_select_admin" on public.client_errors
+  for select
+  to authenticated
+  using ((select public.is_admin()));
+
+create or replace function public.client_errors_before_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.id := gen_random_uuid();
+  new.created_at := timezone('utc'::text, now());
+  new.user_id := auth.uid();
+  new.user_email := nullif(auth.jwt() ->> 'email', '');
+  new.role := public.get_user_role();
+  new.page := left(new.page, 200);
+  new.message := left(coalesce(nullif(new.message, ''), '(no message)'), 2000);
+  new.code := left(new.code, 100);
+  new.name := left(new.name, 100);
+  new.stack := left(new.stack, 4000);
+  new.app_version := left(new.app_version, 100);
+  new.app_env := left(new.app_env, 20);
+  new.user_agent := left(new.user_agent, 400);
+  if new.context is not null and octet_length(new.context::text) > 4000 then
+    new.context := jsonb_build_object('truncated', left(new.context::text, 4000));
+  end if;
+  if new.occurred_at is null or new.occurred_at > new.created_at + interval '5 minutes' then
+    new.occurred_at := new.created_at;
+  end if;
+
+  if (select count(*) from public.client_errors
+      where user_id is not distinct from new.user_id
+        and created_at > new.created_at - interval '1 minute') >= 30 then
+    return null;
+  end if;
+
+  delete from public.client_errors where created_at < new.created_at - interval '90 days';
+  return new;
+end;
+$$;
+
+comment on function public.client_errors_before_insert() is
+  'Trigger: stamps user, email and role from the session, trims text, drops rows past 30 per user per minute, deletes rows older than 90 days.';
+
+revoke execute on function public.client_errors_before_insert() from public, anon;
+
+drop trigger if exists client_errors_before_insert on public.client_errors;
+create trigger client_errors_before_insert
+  before insert on public.client_errors
+  for each row execute function public.client_errors_before_insert();
+
 -- Staging sets key 'audit' to 'off'. No row means audit stays on (production).
 create table if not exists public.runtime_flags (
   key text primary key,
@@ -5178,6 +5271,21 @@ begin
     where lower(trim(customer_name)) = lower(v_name)
       and nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is null
     limit 1;
+    -- No mobile-less row: use the same-name customer if all its rows share one mobile.
+    if v_customer_id is null then
+      if (
+        select count(distinct regexp_replace(mobile, '\D', '', 'g'))
+        from public.credit_customers
+        where lower(trim(customer_name)) = lower(v_name)
+      ) > 1 then
+        raise exception 'More than one customer is named %. Enter a mobile number.', v_name;
+      end if;
+      select id into v_customer_id
+      from public.credit_customers
+      where lower(trim(customer_name)) = lower(v_name)
+      order by amount_due desc nulls last, created_at desc
+      limit 1;
+    end if;
   end if;
 
   if v_customer_id is null then
@@ -5250,7 +5358,7 @@ begin
 end;
 $$;
 comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text, uuid, text, uuid) is
-  'Add a credit sale. Locks the customer row before applying prepaid. Rejects a certified day and future dates (IST). Retry-safe with p_request_id.';
+  'Add a credit sale. Without a mobile, matches the same-name customer (a mobile-less row, else the only mobile on that name). Locks the customer row before applying prepaid. Rejects a certified day and future dates (IST). Retry-safe with p_request_id.';
 
 create or replace function public.apply_credit_payment_to_day_closing(
   p_date date,
@@ -6773,135 +6881,103 @@ create or replace function public.get_credit_aging(p_as_of date default public.m
 returns table (
   customer_id uuid,
   customer_name text,
-  open_amount numeric,
-  oldest_unpaid date,
-  age_days integer,
-  bucket text
+  bucket text,
+  period_from date,
+  period_to date,
+  credit_taken numeric,
+  settlement_done numeric,
+  outstanding numeric
 )
 language plpgsql
 security definer
 stable
 set search_path = public
 as $$
-declare
-  v_cust uuid;
-  v_ids uuid[];
-  v_dates date[];
-  v_amounts numeric[];
-  v_settled numeric[];
-  v_pay record;
-  v_i int;
-  v_n int;
-  v_remaining numeric;
-  v_open numeric;
-  v_alloc numeric;
-  v_pool numeric;
-  v_open_amount numeric;
-  v_oldest date;
-  v_name text;
 begin
   perform public.require_staff_access();
 
-  for v_cust in
-    select distinct e.credit_customer_id
+  return query
+  with customers as (
+    -- One line per name, like the credit list and customer page; the link opens the row that owes most.
+    select
+      c.id,
+      lower(trim(c.customer_name)) as name_key,
+      first_value(c.id) over w as primary_id,
+      first_value(trim(c.customer_name)) over w as display_name
+    from public.credit_customers c
+    window w as (
+      partition by lower(trim(c.customer_name))
+      order by c.amount_due desc nulls last, c.prepaid_balance desc nulls last, c.created_at desc
+    )
+  ),
+  activity as (
+    select e.credit_customer_id as cid, e.transaction_date as d, e.amount as credit, 0::numeric as settled
     from public.credit_entries e
     where e.status = 'posted'
       and e.transaction_date <= p_as_of
-  loop
+    union all
+    select p.credit_customer_id, p.date, 0::numeric, p.amount
+    from public.credit_payments p
+    where p.status = 'posted'
+      and p.date <= p_as_of
+  ),
+  bucketed as (
     select
-      array_agg(id order by transaction_date asc, id asc),
-      array_agg(transaction_date order by transaction_date asc, id asc),
-      array_agg(amount order by transaction_date asc, id asc)
-    into v_ids, v_dates, v_amounts
-    from public.credit_entries
-    where credit_customer_id = v_cust
-      and status = 'posted'
-      and transaction_date <= p_as_of;
-
-    v_n := coalesce(array_length(v_ids, 1), 0);
-    if v_n = 0 then
-      continue;
-    end if;
-    v_settled := array_fill(0::numeric, array[v_n]);
-
-    for v_pay in
-      select amount, date
-      from public.credit_payments
-      where credit_customer_id = v_cust
-        and status = 'posted'
-        and date <= p_as_of
-      order by date asc, created_at asc, id asc
-    loop
-      v_remaining := v_pay.amount;
-      for v_i in reverse v_n..1 loop
-        exit when v_remaining <= 0;
-        if v_dates[v_i] > v_pay.date then
-          continue;
-        end if;
-        v_open := v_amounts[v_i] - v_settled[v_i];
-        if v_open <= 0 then
-          continue;
-        end if;
-        v_alloc := least(v_remaining, v_open);
-        v_settled[v_i] := v_settled[v_i] + v_alloc;
-        v_remaining := v_remaining - v_alloc;
-      end loop;
-    end loop;
-
-    select coalesce(sum(amount), 0) into v_pool
-    from public.credit_payments
-    where credit_customer_id = v_cust
-      and status = 'posted'
-      and date <= p_as_of;
-
-    v_pool := v_pool - coalesce((select sum(x) from unnest(v_settled) as x), 0);
-    for v_i in 1..v_n loop
-      exit when v_pool <= 0;
-      v_open := v_amounts[v_i] - v_settled[v_i];
-      if v_open <= 0 then
-        continue;
-      end if;
-      v_alloc := least(v_pool, v_open);
-      v_settled[v_i] := v_settled[v_i] + v_alloc;
-      v_pool := v_pool - v_alloc;
-    end loop;
-
-    v_open_amount := 0;
-    v_oldest := null;
-    for v_i in 1..v_n loop
-      v_open := v_amounts[v_i] - v_settled[v_i];
-      if v_open > 0 then
-        v_open_amount := v_open_amount + v_open;
-        if v_oldest is null or v_dates[v_i] < v_oldest then
-          v_oldest := v_dates[v_i];
-        end if;
-      end if;
-    end loop;
-
-    if v_open_amount > 0 and v_oldest is not null then
-      customer_id := v_cust;
-      select c.customer_name into v_name
-      from public.credit_customers c
-      where c.id = v_cust;
-      customer_name := v_name;
-      open_amount := v_open_amount;
-      oldest_unpaid := v_oldest;
-      age_days := (p_as_of - v_oldest)::integer;
-      bucket := case
-        when age_days <= 30 then '0-30'
-        when age_days <= 60 then '31-60'
-        when age_days <= 90 then '61-90'
+      cu.name_key,
+      cu.primary_id,
+      cu.display_name,
+      a.d,
+      a.credit,
+      a.settled,
+      case
+        when p_as_of - a.d <= 30 then '0-30'
+        when p_as_of - a.d <= 60 then '31-60'
+        when p_as_of - a.d <= 90 then '61-90'
         else '90+'
-      end;
-      return next;
-    end if;
-  end loop;
+      end as bucket
+    from activity a
+    join customers cu on cu.id = a.cid
+  ),
+  totals as (
+    select
+      b.name_key,
+      b.primary_id,
+      b.display_name,
+      b.bucket,
+      min(b.d) as first_date,
+      sum(b.credit) as credit,
+      sum(b.settled) as settled
+    from bucketed b
+    group by b.name_key, b.primary_id, b.display_name, b.bucket
+  )
+  select
+    t.primary_id,
+    t.display_name,
+    t.bucket,
+    case t.bucket
+      when '0-30' then p_as_of - 30
+      when '31-60' then p_as_of - 60
+      when '61-90' then p_as_of - 90
+      else t.first_date
+    end,
+    case t.bucket
+      when '0-30' then p_as_of
+      when '31-60' then p_as_of - 31
+      when '61-90' then p_as_of - 61
+      else p_as_of - 91
+    end,
+    t.credit,
+    t.settled,
+    t.credit - t.settled
+  from totals t
+  where abs(t.credit - t.settled) > 0.009;
 end;
 $$;
 
 comment on function public.get_credit_aging(date) is
-  'Open credit as of p_as_of. Payments after that date are left out. Buckets follow the oldest unpaid bill: 0-30, 31-60, 61-90, 90+.';
+  'Aging by date window as of p_as_of (0-30, 31-60, 61-90, 90+ days back). One row per customer name (all its rows summed) per window with posted credit taken, settlements, and outstanding = credit - settlements in that window, matching the customer page Activity for the same dates. customer_id is the row that owes most. Negative outstanding is an advance.';
 
+revoke all on function public.get_credit_aging(date) from public, anon;
 grant execute on function public.get_credit_aging(date) to authenticated;
 
 create or replace function public.check_credit_balances()
@@ -9524,7 +9600,946 @@ create policy "staff_photos_delete_staff" on storage.objects
   for delete to authenticated
   using (bucket_id = 'staff-photos' and (select public.is_admin()));
 
--- Anon / PUBLIC may not execute app functions (20261013092142_revoke_anon_function_execute).
+-- ─── 20261030125449_tanker_decantation ───
+-- Tanker decantation register: one row per compartment / product unloaded into a tank.
+--
+-- The operator records the tank dip (cm) and the stock it converts to (L) just before and just
+-- after unloading, the invoice quantity, density and temperature, and optionally links the
+-- purchase invoice in the vault. Sales are stopped while decanting, so the stock change is what
+-- the tanker delivered:
+--
+--   received_litres          = stock_after - stock_before
+--   delivery_variance_litres = received_litres - invoice_qty_litres   (negative = short delivery)
+--
+-- get_stock_variance (20261030125450) uses the day's decanted invoice quantity as the receipt
+-- figure when a decantation exists, and reports the short delivery next to the dip variance.
+--
+-- Supervisors and admins add and edit rows; only admins delete. A supervisor cannot write a
+-- row for a future date or for a day whose meters are locked (certified or night cash
+-- collected), the same rule as the daily meter sheet.
+
+create table if not exists public.tanker_decantations (
+  id uuid primary key default gen_random_uuid(),
+  decant_date date not null,
+  product text not null check (product in ('petrol', 'diesel')),
+  invoice_no text check (invoice_no is null or char_length(btrim(invoice_no)) between 1 and 64),
+  invoice_document_id uuid references public.invoice_documents (id) on delete set null,
+  truck_no text check (truck_no is null or char_length(btrim(truck_no)) between 1 and 32),
+  invoice_qty_litres numeric(14, 2) not null check (invoice_qty_litres > 0),
+  dip_before_cm numeric(8, 2) check (dip_before_cm is null or dip_before_cm >= 0),
+  stock_before_litres numeric(14, 2) not null check (stock_before_litres >= 0),
+  dip_after_cm numeric(8, 2) check (dip_after_cm is null or dip_after_cm >= 0),
+  stock_after_litres numeric(14, 2) not null check (stock_after_litres >= 0),
+  density_kg_m3 numeric(8, 2) check (density_kg_m3 is null or density_kg_m3 between 600 and 1000),
+  invoice_density_kg_m3 numeric(8, 2)
+    check (invoice_density_kg_m3 is null or invoice_density_kg_m3 between 600 and 1000),
+  temperature_c numeric(5, 2) check (temperature_c is null or temperature_c between -10 and 70),
+  received_litres numeric(14, 2) generated always as (stock_after_litres - stock_before_litres) stored,
+  delivery_variance_litres numeric(14, 2)
+    generated always as ((stock_after_litres - stock_before_litres) - invoice_qty_litres) stored,
+  remarks text check (remarks is null or char_length(remarks) <= 500),
+  created_by uuid default auth.uid() references auth.users (id) on delete set null,
+  created_at timestamptz not null default timezone('utc'::text, now()),
+  updated_at timestamptz not null default timezone('utc'::text, now()),
+  constraint tanker_decantations_after_gte_before check (stock_after_litres >= stock_before_litres)
+);
+
+create index if not exists tanker_decantations_date_idx
+  on public.tanker_decantations (decant_date desc, product);
+create index if not exists tanker_decantations_invoice_document_idx
+  on public.tanker_decantations (invoice_document_id)
+  where invoice_document_id is not null;
+
+comment on table public.tanker_decantations is
+  'Tanker unloading: dip before/after, invoice qty, density, temperature. delivery_variance_litres < 0 is a short delivery. Feeds get_stock_variance receipts.';
+comment on column public.tanker_decantations.stock_before_litres is
+  'Tank stock (L) from the dip chart just before unloading.';
+comment on column public.tanker_decantations.stock_after_litres is
+  'Tank stock (L) from the dip chart after unloading and settling.';
+comment on column public.tanker_decantations.delivery_variance_litres is
+  '(stock_after - stock_before) - invoice_qty. Negative = short delivery.';
+comment on column public.tanker_decantations.density_kg_m3 is
+  'Observed density at the station (kg/m³).';
+comment on column public.tanker_decantations.invoice_density_kg_m3 is
+  'Density printed on the invoice / challan (kg/m³).';
+
+create or replace function public.tanker_decantations_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_date date;
+begin
+  if tg_op = 'UPDATE' then
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+  end if;
+  new.updated_at := timezone('utc'::text, now());
+  new.invoice_no := nullif(btrim(coalesce(new.invoice_no, '')), '');
+  new.truck_no := nullif(upper(btrim(coalesce(new.truck_no, ''))), '');
+  new.remarks := nullif(btrim(coalesce(new.remarks, '')), '');
+
+  if new.decant_date > public.meter_station_today() then
+    raise exception 'Decantation date cannot be in the future.';
+  end if;
+
+  -- Same lock as the daily meter sheet: once the day is certified or its night cash collected,
+  -- only an admin may change the stock that day's variance is computed from.
+  if not coalesce(public.is_admin(), true) then
+    foreach v_date in array array[new.decant_date, case when tg_op = 'UPDATE' then old.decant_date end] loop
+      if v_date is not null and public.meter_day_is_locked(v_date) then
+        raise exception 'Meters for % are locked (day certified or night cash collected). Ask an admin.', v_date;
+      end if;
+    end loop;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists tanker_decantations_guard on public.tanker_decantations;
+create trigger tanker_decantations_guard
+  before insert or update on public.tanker_decantations
+  for each row execute function public.tanker_decantations_guard();
+
+revoke all on function public.tanker_decantations_guard() from public, anon;
+
+drop trigger if exists audit_tanker_decantations_trigger on public.tanker_decantations;
+create trigger audit_tanker_decantations_trigger
+  after insert or update or delete on public.tanker_decantations
+  for each row execute function public.audit_trigger_fn();
+
+alter table public.tanker_decantations enable row level security;
+
+revoke all on table public.tanker_decantations from anon, authenticated;
+grant select, insert, update, delete on table public.tanker_decantations to authenticated;
+
+drop policy if exists "tanker_decantations_select" on public.tanker_decantations;
+create policy "tanker_decantations_select" on public.tanker_decantations
+  for select to authenticated
+  using ((select public.is_supervisor_or_admin()));
+
+drop policy if exists "tanker_decantations_insert_own" on public.tanker_decantations;
+create policy "tanker_decantations_insert_own" on public.tanker_decantations
+  for insert to authenticated
+  with check ((select public.is_supervisor_or_admin()) and created_by = (select auth.uid()));
+
+drop policy if exists "tanker_decantations_update_staff" on public.tanker_decantations;
+create policy "tanker_decantations_update_staff" on public.tanker_decantations
+  for update to authenticated
+  using ((select public.is_supervisor_or_admin()))
+  with check ((select public.is_supervisor_or_admin()));
+
+drop policy if exists "tanker_decantations_delete_admin" on public.tanker_decantations;
+create policy "tanker_decantations_delete_admin" on public.tanker_decantations
+  for delete to authenticated
+  using ((select public.is_admin()));
+
+-- ─── 20261030125450_stock_variance ───
+-- Dip vs book stock variance, per tank (product) and day.
+--
+--   receipts       = invoice qty from tanker_decantations that day, else dsr_*.receipts
+--   book_stock     = opening_dip + receipts - meter_sales        (meter_sales = net of testing)
+--   variance_l     = closing_dip - book_stock                    (negative = loss, positive = gain)
+--   variance_pct   = variance_l / meter_sales * 100
+--   variance_value = variance_l * that day's selling rate
+--
+-- Note the sign: dsr_stock.variation is book - dip (positive = loss). This RPC follows the
+-- owner's view, dip - book, so a loss reads as a negative number of litres and rupees.
+--
+-- opening_dip is the last finished dip before the day, exactly as get_dsr_stock_range finds it.
+-- A day without a finished meter sheet has null closing_dip and null variance.
+--
+-- Tolerance: pump_settings.config.alerts.stockVarianceTolerancePct (default 0.5). A day is
+-- over_tolerance when |variance_pct| exceeds it.
+
+create or replace function public.stock_variance_tolerance_pct()
+returns numeric
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select case
+       when s.config #>> '{alerts,stockVarianceTolerancePct}' ~ '^[0-9]+(\.[0-9]+)?$'
+         then (s.config #>> '{alerts,stockVarianceTolerancePct}')::numeric
+     end
+     from public.pump_settings s where s.id = 1),
+    0.5
+  );
+$$;
+
+comment on function public.stock_variance_tolerance_pct() is
+  'Stock variance tolerance (% of meter sales) from pump_settings.config.alerts.stockVarianceTolerancePct; 0.5 when unset.';
+
+grant execute on function public.stock_variance_tolerance_pct() to authenticated;
+
+create or replace function public.get_stock_variance(p_start date, p_end date)
+returns table (
+  date date,
+  product text,
+  opening_dip numeric,
+  receipts numeric,
+  dsr_receipts numeric,
+  decanted_invoice_litres numeric,
+  delivery_variance_litres numeric,
+  meter_sales numeric,
+  book_stock numeric,
+  closing_dip numeric,
+  variance_litres numeric,
+  variance_pct numeric,
+  rate numeric,
+  variance_value numeric,
+  tolerance_pct numeric,
+  over_tolerance boolean
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_tolerance numeric;
+begin
+  perform public.require_staff_access();
+  if p_start is null or p_end is null then
+    raise exception 'From and To dates are required.';
+  end if;
+  if p_start > p_end then
+    raise exception 'From must be on or before To.';
+  end if;
+  if p_end - p_start > 400 then
+    raise exception 'Choose a range of 400 days or less.';
+  end if;
+
+  v_tolerance := public.stock_variance_tolerance_pct();
+
+  return query
+  with stock as (
+    select s.date, s.product, s.opening_stock, s.receipts, s.net_sale, s.dip_stock
+    from public.get_dsr_stock_range(p_start, p_end) s
+  ),
+  decant as (
+    select t.decant_date, t.product,
+           sum(t.invoice_qty_litres) as invoice_litres,
+           sum(t.delivery_variance_litres) as delivery_variance
+    from public.tanker_decantations t
+    where t.decant_date between p_start and p_end
+    group by t.decant_date, t.product
+  ),
+  rates as (
+    select x.date, 'petrol'::text as product, x.petrol_rate as rate
+    from (select distinct on (p.date) p.date, p.petrol_rate
+          from public.dsr_petrol p where p.date between p_start and p_end
+          order by p.date, p.created_at desc nulls last, p.id desc) x
+    union all
+    select x.date, 'diesel'::text, x.diesel_rate
+    from (select distinct on (d.date) d.date, d.diesel_rate
+          from public.dsr_diesel d where d.date between p_start and p_end
+          order by d.date, d.created_at desc nulls last, d.id desc) x
+  ),
+  calc as (
+    select
+      s.date,
+      s.product,
+      s.opening_stock as opening_dip,
+      coalesce(dc.invoice_litres, s.receipts) as receipts,
+      s.receipts as dsr_receipts,
+      dc.invoice_litres as decanted_invoice_litres,
+      dc.delivery_variance as delivery_variance_litres,
+      s.net_sale as meter_sales,
+      (s.opening_stock + coalesce(dc.invoice_litres, s.receipts) - s.net_sale) as book_stock,
+      s.dip_stock as closing_dip,
+      r.rate
+    from stock s
+    left join decant dc on dc.decant_date = s.date and dc.product = s.product
+    left join rates r on r.date = s.date and r.product = s.product
+  )
+  select
+    c.date,
+    c.product,
+    c.opening_dip,
+    c.receipts,
+    c.dsr_receipts,
+    c.decanted_invoice_litres,
+    c.delivery_variance_litres,
+    c.meter_sales,
+    c.book_stock,
+    c.closing_dip,
+    (c.closing_dip - c.book_stock) as variance_litres,
+    case when c.closing_dip is not null and c.meter_sales > 0
+      then round((c.closing_dip - c.book_stock) / c.meter_sales * 100, 3) end as variance_pct,
+    c.rate,
+    case when c.closing_dip is not null and c.rate is not null
+      then round((c.closing_dip - c.book_stock) * c.rate, 2) end as variance_value,
+    v_tolerance as tolerance_pct,
+    coalesce(
+      c.closing_dip is not null
+        and c.meter_sales > 0
+        and abs((c.closing_dip - c.book_stock) / c.meter_sales * 100) > v_tolerance,
+      false
+    ) as over_tolerance
+  from calc c
+  order by c.date desc, c.product;
+end;
+$$;
+
+comment on function public.get_stock_variance(date, date) is
+  'Per product and day: book = opening dip + receipts (decanted invoice qty, else DSR receipts) - net meter sale; variance = closing dip - book (negative = loss); % of meter sale; ₹ at selling rate; over_tolerance vs stock_variance_tolerance_pct().';
+
+grant execute on function public.get_stock_variance(date, date) to authenticated;
+
+-- ─── 20261030125451_attendant_short_excess ───
+-- Short / excess per attendant and shift, computed on the server so the staff and salary
+-- pages (and any report) show the same figure as the shift register.
+--
+--   expected       = net litres (closing - opening - testing, per nozzle) x that day's rate
+--   handed_over    = cash + UPI (phone_pay) + shift credit + shift expenses
+--   short_excess   = handed_over - expected          (negative = short, positive = excess)
+--
+-- This is the shift register's own figure (js/meterShiftReading.js computeStaffSummary) with
+-- the sign flipped to "cash minus expected". There is no card column: card payments are
+-- recorded as UPI. Rates come from that day's dsr_petrol / dsr_diesel row; with no rate the
+-- expected and short_excess are null rather than a misleading 0.
+--
+-- Read-only. Turning a short into a salary deduction stays a separate, admin-confirmed
+-- record_salary_payment call.
+
+create or replace function public.get_attendant_short_excess(
+  p_start date,
+  p_end date,
+  p_employee_id uuid default null
+)
+returns table (
+  reading_date date,
+  shift text,
+  employee_id uuid,
+  employee_name text,
+  petrol_litres numeric,
+  diesel_litres numeric,
+  petrol_rate numeric,
+  diesel_rate numeric,
+  expected numeric,
+  cash numeric,
+  phone_pay numeric,
+  credit numeric,
+  expense numeric,
+  handed_over numeric,
+  short_excess numeric
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  perform public.require_staff_access();
+  if p_start is null or p_end is null then
+    raise exception 'From and To dates are required.';
+  end if;
+  if p_start > p_end then
+    raise exception 'From must be on or before To.';
+  end if;
+  if p_end - p_start > 400 then
+    raise exception 'Choose a range of 400 days or less.';
+  end if;
+
+  return query
+  with meters as (
+    select r.reading_date, r.shift, r.employee_id,
+           sum(greatest(r.closing_meter - r.opening_meter - r.testing_litres, 0))
+             filter (where r.product = 'petrol') as petrol_l,
+           sum(greatest(r.closing_meter - r.opening_meter - r.testing_litres, 0))
+             filter (where r.product = 'diesel') as diesel_l
+    from public.meter_shift_readings r
+    where r.reading_date between p_start and p_end
+      and (p_employee_id is null or r.employee_id = p_employee_id)
+    group by r.reading_date, r.shift, r.employee_id
+  ),
+  cash as (
+    select c.reading_date, c.shift, c.employee_id,
+           c.cash_collected, c.phone_pay, c.credit_amount, c.expense_amount
+    from public.meter_shift_cash c
+    where c.reading_date between p_start and p_end
+      and (p_employee_id is null or c.employee_id = p_employee_id)
+  ),
+  joined as (
+    select coalesce(m.reading_date, c.reading_date) as reading_date,
+           coalesce(m.shift, c.shift) as shift,
+           coalesce(m.employee_id, c.employee_id) as employee_id,
+           coalesce(m.petrol_l, 0) as petrol_l,
+           coalesce(m.diesel_l, 0) as diesel_l,
+           coalesce(c.cash_collected, 0) as cash,
+           coalesce(c.phone_pay, 0) as phone_pay,
+           coalesce(c.credit_amount, 0) as credit,
+           coalesce(c.expense_amount, 0) as expense
+    from meters m
+    full join cash c
+      on c.reading_date = m.reading_date and c.shift = m.shift and c.employee_id = m.employee_id
+  ),
+  rates as (
+    select dd.date,
+           (select p.petrol_rate from public.dsr_petrol p where p.date = dd.date
+            order by p.created_at desc nulls last, p.id desc limit 1) as petrol_rate,
+           (select d.diesel_rate from public.dsr_diesel d where d.date = dd.date
+            order by d.created_at desc nulls last, d.id desc limit 1) as diesel_rate
+    from (select distinct j.reading_date as date from joined j) dd
+  ),
+  priced as (
+    select j.*, r.petrol_rate, r.diesel_rate,
+           case
+             when (j.petrol_l > 0 and r.petrol_rate is null) or (j.diesel_l > 0 and r.diesel_rate is null)
+               then null
+             else round(j.petrol_l * coalesce(r.petrol_rate, 0) + j.diesel_l * coalesce(r.diesel_rate, 0), 2)
+           end as expected
+    from joined j
+    left join rates r on r.date = j.reading_date
+  )
+  select p.reading_date, p.shift, p.employee_id, e.name,
+         p.petrol_l, p.diesel_l, p.petrol_rate, p.diesel_rate,
+         p.expected, p.cash, p.phone_pay, p.credit, p.expense,
+         (p.cash + p.phone_pay + p.credit + p.expense) as handed_over,
+         (p.cash + p.phone_pay + p.credit + p.expense) - p.expected as short_excess
+  from priced p
+  left join public.employees e on e.id = p.employee_id
+  order by p.reading_date desc, p.shift, e.name;
+end;
+$$;
+
+comment on function public.get_attendant_short_excess(date, date, uuid) is
+  'Per shift and attendant: expected = net shift litres x day rate; handed_over = cash + UPI + shift credit + shift expenses; short_excess = handed_over - expected (negative = short). Null expected when a rate is missing.';
+
+grant execute on function public.get_attendant_short_excess(date, date, uuid) to authenticated;
+
+-- ─── 20261030125452_settlement_matching ───
+-- UPI / bank settlement matching.
+--
+-- An admin uploads a bank or UPI-app statement CSV (DSR → Settlement). The browser parses it,
+-- the admin maps the date / amount / reference columns, and import_settlement_lines stores the
+-- credit lines. Lines with a reference already imported for the same source are skipped, so
+-- re-uploading an overlapping statement does not double-count.
+--
+-- get_settlement_match compares, per business date, what the app recorded as digital money
+-- with what the statement shows:
+--
+--   app_digital   = day_closing.phone_pay when the day is closed, else
+--                   shift UPI (meter_shift_cash.phone_pay) + UPI credit payments that day
+--   bank_amount   = statement lines dated business date + p_lag_days
+--   difference    = bank_amount - app_digital   (negative = money missing from the bank)
+--   status        = matched (|difference| <= tolerance) | short | excess | missing_bank | bank_only
+--
+-- Tolerance: p_tolerance, else pump_settings.config.alerts.settlementTolerance (₹), else 10.
+
+create table if not exists public.settlement_imports (
+  id uuid primary key default gen_random_uuid(),
+  source text not null check (char_length(btrim(source)) between 1 and 60),
+  file_name text check (file_name is null or char_length(file_name) <= 200),
+  column_map jsonb not null default '{}'::jsonb,
+  line_count integer not null default 0,
+  skipped_count integer not null default 0,
+  first_date date,
+  last_date date,
+  created_by uuid default auth.uid() references auth.users (id) on delete set null,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create table if not exists public.settlement_lines (
+  id uuid primary key default gen_random_uuid(),
+  import_id uuid not null references public.settlement_imports (id) on delete cascade,
+  source text not null,
+  txn_date date not null,
+  amount numeric(14, 2) not null check (amount > 0),
+  reference text check (reference is null or char_length(reference) <= 120),
+  description text check (description is null or char_length(description) <= 300),
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+create index if not exists settlement_imports_created_idx on public.settlement_imports (created_at desc);
+create index if not exists settlement_lines_date_idx on public.settlement_lines (txn_date);
+create index if not exists settlement_lines_import_idx on public.settlement_lines (import_id);
+create unique index if not exists settlement_lines_source_reference_unique
+  on public.settlement_lines (lower(source), reference)
+  where reference is not null;
+
+comment on table public.settlement_imports is
+  'One uploaded bank / UPI statement. Rows written by import_settlement_lines (admin).';
+comment on table public.settlement_lines is
+  'Credit lines from an uploaded statement. A reference is unique per source (re-uploads skip it).';
+
+alter table public.settlement_imports enable row level security;
+alter table public.settlement_lines enable row level security;
+
+revoke all on table public.settlement_imports from anon, authenticated;
+revoke all on table public.settlement_lines from anon, authenticated;
+grant select, delete on table public.settlement_imports to authenticated;
+grant select on table public.settlement_lines to authenticated;
+
+drop policy if exists "settlement_imports_select_admin" on public.settlement_imports;
+create policy "settlement_imports_select_admin" on public.settlement_imports
+  for select to authenticated
+  using ((select public.is_admin()));
+
+drop policy if exists "settlement_imports_delete_admin" on public.settlement_imports;
+create policy "settlement_imports_delete_admin" on public.settlement_imports
+  for delete to authenticated
+  using ((select public.is_admin()));
+
+drop policy if exists "settlement_lines_select_admin" on public.settlement_lines;
+create policy "settlement_lines_select_admin" on public.settlement_lines
+  for select to authenticated
+  using ((select public.is_admin()));
+
+create or replace function public.import_settlement_lines(
+  p_source text,
+  p_file_name text,
+  p_column_map jsonb,
+  p_lines jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_source text := nullif(btrim(coalesce(p_source, '')), '');
+  v_import uuid;
+  v_total int;
+  v_inserted int;
+begin
+  if not coalesce(public.is_admin(), false) then
+    raise exception 'Only an admin can import settlement statements.';
+  end if;
+  if v_source is null then
+    raise exception 'Name the statement source (e.g. SBI current account, PhonePe Business).';
+  end if;
+  if p_lines is null or jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'The statement has no credit lines to import.';
+  end if;
+  v_total := jsonb_array_length(p_lines);
+  if v_total > 5000 then
+    raise exception 'Import at most 5000 lines at a time (got %).', v_total;
+  end if;
+
+  insert into public.settlement_imports (source, file_name, column_map)
+  values (left(v_source, 60), left(nullif(btrim(coalesce(p_file_name, '')), ''), 200),
+          coalesce(p_column_map, '{}'::jsonb))
+  returning id into v_import;
+
+  with parsed as (
+    select
+      (l->>'date')::date as txn_date,
+      round((l->>'amount')::numeric, 2) as amount,
+      left(nullif(btrim(coalesce(l->>'reference', '')), ''), 120) as reference,
+      left(nullif(btrim(coalesce(l->>'description', '')), ''), 300) as description
+    from jsonb_array_elements(p_lines) l
+  ),
+  checked as (
+    select * from parsed
+    where txn_date is not null and amount > 0
+      and txn_date <= public.meter_station_today()
+  ),
+  -- Within one file a reference can repeat (split lines); keep the first.
+  deduped as (
+    select distinct on (coalesce(reference, gen_random_uuid()::text)) *
+    from checked
+  ),
+  ins as (
+    insert into public.settlement_lines (import_id, source, txn_date, amount, reference, description)
+    select v_import, left(v_source, 60), d.txn_date, d.amount, d.reference, d.description
+    from deduped d
+    on conflict (lower(source), reference) where reference is not null do nothing
+    returning txn_date
+  )
+  select count(*)::int into v_inserted from ins;
+
+  update public.settlement_imports si
+  set line_count = v_inserted,
+      skipped_count = v_total - v_inserted,
+      first_date = (select min(sl.txn_date) from public.settlement_lines sl where sl.import_id = v_import),
+      last_date = (select max(sl.txn_date) from public.settlement_lines sl where sl.import_id = v_import)
+  where si.id = v_import;
+
+  if v_inserted = 0 then
+    delete from public.settlement_imports where id = v_import;
+    v_import := null;
+  end if;
+
+  return jsonb_build_object('import_id', v_import, 'inserted', v_inserted, 'skipped', v_total - v_inserted);
+exception
+  when invalid_datetime_format or datetime_field_overflow or invalid_text_representation then
+    raise exception 'A mapped date or amount could not be read (%). Check the column mapping.', sqlerrm;
+end;
+$$;
+
+comment on function public.import_settlement_lines(text, text, jsonb, jsonb) is
+  'Admin: store parsed statement credit lines [{date, amount, reference?, description?}]. Skips future dates, non-positive amounts and references already imported for the source.';
+
+grant execute on function public.import_settlement_lines(text, text, jsonb, jsonb) to authenticated;
+
+create or replace function public.get_settlement_match(
+  p_start date,
+  p_end date,
+  p_tolerance numeric default null,
+  p_lag_days integer default 0
+)
+returns table (
+  business_date date,
+  bank_date date,
+  app_digital numeric,
+  app_source text,
+  bank_amount numeric,
+  bank_lines integer,
+  difference numeric,
+  status text
+)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_tol numeric;
+  v_lag int := greatest(least(coalesce(p_lag_days, 0), 7), 0);
+begin
+  if not coalesce(public.is_admin(), false) then
+    raise exception 'Only an admin can view settlement matching.';
+  end if;
+  if p_start is null or p_end is null or p_start > p_end then
+    raise exception 'Choose a valid From / To range.';
+  end if;
+  if p_end - p_start > 400 then
+    raise exception 'Choose a range of 400 days or less.';
+  end if;
+
+  v_tol := coalesce(
+    p_tolerance,
+    (select case when s.config #>> '{alerts,settlementTolerance}' ~ '^[0-9]+(\.[0-9]+)?$'
+                 then (s.config #>> '{alerts,settlementTolerance}')::numeric end
+     from public.pump_settings s where s.id = 1),
+    10
+  );
+
+  return query
+  with days as (
+    select g::date as d from generate_series(p_start, p_end, interval '1 day') g
+  ),
+  shift_upi as (
+    select c.reading_date as d, sum(c.phone_pay) as amt
+    from public.meter_shift_cash c
+    where c.reading_date between p_start and p_end
+    group by 1
+  ),
+  credit_upi as (
+    select cp.date as d, sum(cp.amount) as amt
+    from public.credit_payments cp
+    where cp.date between p_start and p_end
+      and cp.status = 'posted'
+      and lower(btrim(coalesce(cp.payment_mode, ''))) = 'upi'
+    group by 1
+  ),
+  closing as (
+    select dc.date as d, dc.phone_pay as amt
+    from public.day_closing dc
+    where dc.date between p_start and p_end
+  ),
+  bank as (
+    select sl.txn_date as d, sum(sl.amount) as amt, count(*)::int as n
+    from public.settlement_lines sl
+    where sl.txn_date between p_start + v_lag and p_end + v_lag
+    group by 1
+  ),
+  app as (
+    select dd.d,
+           case when cl.d is not null then cl.amt
+                else coalesce(su.amt, 0) + coalesce(cu.amt, 0) end as amt,
+           case when cl.d is not null then 'day_closing'
+                when su.d is not null or cu.d is not null then 'shift_and_credit'
+                else null end as src
+    from days dd
+    left join closing cl on cl.d = dd.d
+    left join shift_upi su on su.d = dd.d
+    left join credit_upi cu on cu.d = dd.d
+  )
+  select a.d,
+         (a.d + v_lag)::date,
+         a.amt,
+         a.src,
+         coalesce(b.amt, 0),
+         coalesce(b.n, 0),
+         coalesce(b.amt, 0) - a.amt,
+         case
+           when coalesce(a.amt, 0) = 0 and coalesce(b.amt, 0) = 0 then 'none'
+           when coalesce(b.n, 0) = 0 then 'missing_bank'
+           when coalesce(a.amt, 0) = 0 then 'bank_only'
+           when abs(coalesce(b.amt, 0) - a.amt) <= v_tol then 'matched'
+           when coalesce(b.amt, 0) < a.amt then 'short'
+           else 'excess'
+         end
+  from app a
+  left join bank b on b.d = a.d + v_lag
+  where coalesce(a.amt, 0) <> 0 or coalesce(b.amt, 0) <> 0
+  order by a.d desc;
+end;
+$$;
+
+comment on function public.get_settlement_match(date, date, numeric, integer) is
+  'Admin: per business date, app digital (day_closing.phone_pay, else shift UPI + UPI credit payments) vs imported statement lines on date + lag. status matched | short | excess | missing_bank | bank_only.';
+
+grant execute on function public.get_settlement_match(date, date, numeric, integer) to authenticated;
+
+-- Read-only credit statement links a customer can open without a login.
+--
+-- Staff call create_credit_statement_link(customer_id, days) and share
+-- statement.html#t=<token>. Only sha256(token) is stored, so a database read does not
+-- reveal working links. The token sits in the URL fragment, so it never reaches the web
+-- server or a Referer header.
+--
+-- anon still executes no app function (rls.test.sql). The public page calls the
+-- credit-statement Edge Function, which runs get_credit_statement_by_token as service_role.
+-- The statement leaves out staff names and payment notes.
+
+create table if not exists public.credit_statement_links (
+  id uuid primary key default uuid_generate_v4(),
+  credit_customer_id uuid not null references public.credit_customers (id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  last_viewed_at timestamptz,
+  view_count integer not null default 0
+);
+
+create index if not exists credit_statement_links_customer_idx
+  on public.credit_statement_links (credit_customer_id, created_at desc);
+
+comment on table public.credit_statement_links is
+  'Expiring read-only statement links. token_hash = sha256 hex of the token in statement.html#t=. Written only by create/revoke RPCs and the service-role reader.';
+
+alter table public.credit_statement_links enable row level security;
+
+revoke all on table public.credit_statement_links from anon, authenticated;
+grant select on table public.credit_statement_links to authenticated;
+
+drop policy if exists "credit_statement_links_select" on public.credit_statement_links;
+create policy "credit_statement_links_select" on public.credit_statement_links
+  for select
+  to authenticated
+  using ((select public.is_supervisor_or_admin()));
+
+create or replace function public.create_credit_statement_link(
+  p_customer_id uuid,
+  p_valid_days integer default 30
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_token text;
+  v_expires timestamptz;
+  v_id uuid;
+begin
+  if not coalesce(public.is_supervisor_or_admin(), false) then
+    raise exception 'Provisioned staff access required';
+  end if;
+  if p_valid_days is null or p_valid_days < 1 or p_valid_days > 90 then
+    raise exception 'valid days must be between 1 and 90';
+  end if;
+  if not exists (select 1 from public.credit_customers c where c.id = p_customer_id) then
+    raise exception 'Unknown credit customer';
+  end if;
+
+  v_token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+  v_expires := now() + make_interval(days => p_valid_days);
+
+  insert into public.credit_statement_links (credit_customer_id, token_hash, expires_at, created_by)
+  values (p_customer_id, encode(sha256(convert_to(v_token, 'UTF8')), 'hex'), v_expires, auth.uid())
+  returning id into v_id;
+
+  return jsonb_build_object('id', v_id, 'token', v_token, 'expires_at', v_expires);
+end;
+$$;
+
+comment on function public.create_credit_statement_link(uuid, integer) is
+  'Staff: new read-only statement link for a customer, valid 1–90 days. Returns the token once; only its hash is stored.';
+
+revoke execute on function public.create_credit_statement_link(uuid, integer) from public, anon;
+grant execute on function public.create_credit_statement_link(uuid, integer) to authenticated;
+
+-- Revokes every live link for the customer's name group (the ledger groups rows by name).
+create or replace function public.revoke_credit_statement_links(p_customer_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not coalesce(public.is_supervisor_or_admin(), false) then
+    raise exception 'Provisioned staff access required';
+  end if;
+
+  update public.credit_statement_links l
+  set revoked_at = now()
+  where l.revoked_at is null
+    and l.expires_at > now()
+    and l.credit_customer_id in (
+      select c2.id
+      from public.credit_customers c
+      join public.credit_customers c2
+        on lower(trim(c2.customer_name)) = lower(trim(c.customer_name))
+      where c.id = p_customer_id
+    );
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
+comment on function public.revoke_credit_statement_links(uuid) is
+  'Staff: revoke all live statement links for this customer (all rows sharing the name). Returns how many.';
+
+revoke execute on function public.revoke_credit_statement_links(uuid) from public, anon;
+grant execute on function public.revoke_credit_statement_links(uuid) to authenticated;
+
+-- Service role only (credit-statement Edge Function). Null when the token is unknown,
+-- expired or revoked. Shows the last 90 days with an opening balance, plus every open bill.
+create or replace function public.get_credit_statement_by_token(p_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_link public.credit_statement_links%rowtype;
+  v_name text;
+  v_today date := public.meter_station_today();
+  v_from date := public.meter_station_today() - 90;
+  v_station jsonb;
+  v_out jsonb;
+begin
+  if p_token is null or p_token !~ '^[0-9a-f]{64}$' then
+    return null;
+  end if;
+
+  select * into v_link
+  from public.credit_statement_links l
+  where l.token_hash = encode(sha256(convert_to(p_token, 'UTF8')), 'hex')
+    and l.revoked_at is null
+    and l.expires_at > now();
+  if not found then
+    return null;
+  end if;
+
+  update public.credit_statement_links
+  set last_viewed_at = now(), view_count = view_count + 1
+  where id = v_link.id;
+
+  select trim(c.customer_name) into v_name
+  from public.credit_customers c
+  where c.id = v_link.credit_customer_id;
+
+  select coalesce(s.config -> 'station', '{}'::jsonb) into v_station
+  from public.pump_settings s
+  where s.id = 1;
+  v_station := coalesce(v_station, '{}'::jsonb);
+
+  with ids as (
+    select c.id from public.credit_customers c
+    where lower(trim(c.customer_name)) = lower(v_name)
+  ),
+  e as (
+    select * from public.credit_entries
+    where credit_customer_id in (select id from ids) and status = 'posted'
+  ),
+  p as (
+    select * from public.credit_payments
+    where credit_customer_id in (select id from ids) and status = 'posted'
+  ),
+  opening as (
+    select
+      (select coalesce(sum(amount), 0) from e where transaction_date < v_from)
+      - (select coalesce(sum(amount), 0) from p where date < v_from) as amount
+  ),
+  moves as (
+    select e.transaction_date as d, e.created_at as at, 0 as ord,
+           case when e.entry_kind = 'opening' then 'opening' else 'fuel' end as kind,
+           e.fuel_type, e.quantity, null::text as mode, e.amount as amount
+    from e where e.transaction_date between v_from and v_today
+    union all
+    select p.date, p.created_at, 1, 'payment', null, null, p.payment_mode, -p.amount
+    from p where p.date between v_from and v_today
+  ),
+  lines as (
+    select m.*,
+           (select amount from opening)
+             + sum(m.amount) over (order by m.d, m.ord, m.at rows unbounded preceding) as balance
+    from moves m
+  )
+  select jsonb_build_object(
+    'customer_name', v_name,
+    'station_name', coalesce(nullif(trim(v_station ->> 'legalName'), ''), 'BISHNU PRIYA FUELS'),
+    'station', jsonb_build_object(
+      'name', coalesce(nullif(trim(v_station ->> 'legalName'), ''), 'BISHNU PRIYA FUELS'),
+      'tagline', coalesce(nullif(trim(v_station ->> 'tagline'), ''),
+        'Authorized Dealer — Bharat Petroleum Corporation Ltd.'),
+      'address', nullif(trim(v_station ->> 'address'), ''),
+      'gstin', nullif(trim(v_station ->> 'gstin'), ''),
+      'mobile', nullif(trim(v_station ->> 'mobile'), ''),
+      'email', nullif(trim(v_station ->> 'email'), '')
+    ),
+    'as_of', v_today,
+    'from', v_from,
+    'expires_at', v_link.expires_at,
+    'opening_balance', (select amount from opening),
+    'balance',
+      (select coalesce(sum(amount), 0) from e where transaction_date <= v_today)
+      - (select coalesce(sum(amount), 0) from p where date <= v_today),
+    'period_billed',
+      (select coalesce(sum(amount), 0) from e where transaction_date between v_from and v_today),
+    'period_paid',
+      (select coalesce(sum(amount), 0) from p where date between v_from and v_today),
+    'lines', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'date', d, 'kind', kind, 'fuel_type', fuel_type, 'quantity', quantity,
+               'mode', mode, 'amount', amount, 'balance', balance
+             ) order by d, ord, at), '[]'::jsonb)
+      from lines),
+    'credits', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'date', transaction_date, 'amount', amount, 'fuel_type', fuel_type,
+               'quantity', quantity, 'opening', entry_kind = 'opening'
+             ) order by transaction_date, created_at), '[]'::jsonb)
+      from e where transaction_date between v_from and v_today),
+    'payments', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'date', date, 'amount', amount, 'mode', payment_mode
+             ) order by date, created_at), '[]'::jsonb)
+      from p where date between v_from and v_today),
+    'open_bills', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'date', transaction_date, 'amount', amount, 'open', amount - amount_settled,
+               'age_days', v_today - transaction_date
+             ) order by transaction_date, created_at), '[]'::jsonb)
+      from e where amount - amount_settled > 0.009)
+  ) into v_out;
+
+  return v_out;
+end;
+$$;
+
+comment on function public.get_credit_statement_by_token(text) is
+  'Service role only (credit-statement Edge Function): customer statement for a live link token, or null. Station letterhead fields, period totals, ledger lines with running balance. No staff names or notes.';
+
+revoke execute on function public.get_credit_statement_by_token(text) from public, anon, authenticated;
+grant execute on function public.get_credit_statement_by_token(text) to service_role;
+
+-- Anon / PUBLIC may not execute app functions (20261013092142_revoke_anon_function_execute,
+-- 20261029161130_revoke_public_function_execute).
 do $$
 declare
   f record;
@@ -9556,3 +10571,6 @@ alter default privileges in schema public revoke execute on functions from publi
 alter default privileges in schema public revoke execute on functions from anon;
 alter default privileges for role postgres in schema public revoke execute on functions from public;
 alter default privileges for role postgres in schema public revoke execute on functions from anon;
+-- The `in schema` lines above cannot remove the global PUBLIC default; this one does
+-- (20261029161130_revoke_public_function_execute).
+alter default privileges for role postgres revoke execute on functions from public;

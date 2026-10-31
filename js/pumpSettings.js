@@ -1,3 +1,4 @@
+/* global AppConfig, AppCache, CacheInvalidation */
 /**
  * Central pump/station settings: DB-backed with in-memory cache and localStorage migration.
  */
@@ -315,6 +316,10 @@
       highCredit: Number(a.highCredit) || 0,
       individualHighCredit: Number(a.individualHighCredit) || 0,
       highVariation: Number(a.highVariation) || 0,
+      stockVarianceTolerancePct:
+        Number(a.stockVarianceTolerancePct) >= 0 && a.stockVarianceTolerancePct !== ""
+          ? Number(a.stockVarianceTolerancePct)
+          : d.stockVarianceTolerancePct,
       dayClosingReminder: a.dayClosingReminder !== false,
       dayClosingShortage: shortage,
       shortageAlert: a.shortageAlert !== false,

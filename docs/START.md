@@ -128,8 +128,12 @@ The order for a release is [OPERATIONS.md](OPERATIONS.md).
 
 ```bash
 npm test
+npm run lint:js                   # ESLint: undeclared globals
+npm run typecheck                 # tsc: // @ts-check files vs types/db.d.ts
 npm run build:site
 node scripts/check-doc-links.mjs
 ./scripts/check-migration-order.sh
 ./scripts/check-schema-drift.sh   # needs Docker
+./scripts/test-db.sh              # pgTAP: day closing, credit, RLS (needs Docker)
+./scripts/gen-db-types.sh --check # types/db.d.ts matches schema.sql (needs Docker)
 ```

@@ -18,9 +18,10 @@ function escapeCreditIlike(value) {
 function creditCustomerSearchFilter(query) {
   const raw = String(query || "")
     .trim()
-    .replace(/[,()*]/g, " ")
     .replace(/\s+/g, " ");
-  const pattern = `%${escapeCreditIlike(raw)}%`;
+  // PostgREST's or() syntax reserves , ( ) *; match any one character there so
+  // "RAJA(AREIKANA)" still finds itself.
+  const pattern = `%${escapeCreditIlike(raw).replace(/[,()*]/g, "_")}%`;
   const parts = [
     `customer_name.ilike.${pattern}`,
     `mobile.ilike.${pattern}`,

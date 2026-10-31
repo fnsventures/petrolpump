@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft */
+/* global requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, isCancelledRequestError, DsrQueries, bindLiveRefresh, isSettingsPanelActive */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -90,7 +90,10 @@ function blankUnsetStockFields(form) {
   }
 }
 
-/** Cache of in-flight/completed shift rollup promises per date. */
+/**
+ * In-flight shift rollup requests per date. Settled results are not kept, so another
+ * device's shift save shows on the next refresh.
+ */
 const shiftAggregateCache = new Map();
 
 async function fetchShiftAggregatedDailyMeters(dateStr) {
@@ -103,11 +106,12 @@ async function fetchShiftAggregatedDailyMeters(dateStr) {
     });
     if (error) {
       AppError.report(error, { context: "fetchShiftAggregatedDailyMeters", dateStr });
-      shiftAggregateCache.delete(dateStr);
       return null;
     }
     return data || null;
-  })();
+  })().finally(() => {
+    if (shiftAggregateCache.get(dateStr) === pending) shiftAggregateCache.delete(dateStr);
+  });
 
   shiftAggregateCache.set(dateStr, pending);
   return pending;
@@ -1598,6 +1602,11 @@ bindLiveRefresh(
       resetPaginationLoading(dsrPagination[product], document.getElementById(`dsr-load-more-${product}`));
     });
     void Promise.all(PRODUCTS.map((product) => loadReadingHistory(product, true)));
+    // Re-read the meter forms too, unless the operator has typed into one.
+    PRODUCTS.forEach((product) => {
+      const form = document.getElementById(`dsr-form-${product}`);
+      if (form && !meterDrafts[product]?.isDirty()) void refreshMeterFormForSelectedDate(product, form);
+    });
     if (typeof MeterShiftReading !== "undefined" && isSettingsPanelActive("shift-readings")) {
       void MeterShiftReading.init({ isAdmin: currentUserRole === "admin", userId: currentUserId });
     }

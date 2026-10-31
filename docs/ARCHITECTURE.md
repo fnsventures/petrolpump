@@ -64,6 +64,7 @@ petrolPump/
 ├── about.html              # About / info page
 ├── 404.html                # Not found page
 ├── offline.html            # Offline fallback shown by the service worker
+├── statement.html          # Public read-only credit statement (link token, no login)
 ├── assets/                 # BPCL logo, landing images
 ├── CNAME                   # GitHub Pages custom domain
 ├── sw.js                   # Service worker (PWA / offline caching)
@@ -158,6 +159,9 @@ js/
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
 ├── dsrSalesBreakdown.js # DSR sales detail by pump / shift / salesman
+├── dsrStockControl.js  # DSR stock variance, tanker decantation
+├── statementCsv.js     # Bank / UPI statement CSV parsing (pure; tests/statementCsv.test.mjs)
+├── attendantShort.js   # Short / excess per attendant (salary + staff pages)
 ├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
 ├── meterShiftReading.js # Shift register: nozzles, staff, cash (Meter Reading)
 ├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
@@ -219,7 +223,8 @@ Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `cred
 
 ```
 supabase/
-├── schema.sql     # Greenfield snapshot; must match migrations (scripts/check-schema-drift.sh)
+├── schema.sql     # Greenfield snapshot; must match migrations (scripts/check-schema-drift.sh); types/db.d.ts is generated from it
+├── tests/         # pgTAP: day closing, certified lock, request ids, RLS (scripts/test-db.sh)
 ├── migrations/    # Incremental migrations — the source of truth (apply in filename order)
 │   ├── 20250129*_dsr_*.sql
 │   ├── 202502*_credit_*.sql
@@ -234,6 +239,8 @@ supabase/
     ├── get-pl-data/          # Edge: batched P&L (DSR + expenses + lube)
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
     ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
+    ├── credit-statement/     # Edge: public read-only statement for a link token (service role)
+    ├── weekly-credit-sms/    # Edge: weekly balance SMS via Android SMS Gate (cron secret)
     └── _shared/        # googleDrive.ts (OAuth / service-account auth), archivePdf.ts, logoPng.ts
 ```
 
@@ -299,7 +306,7 @@ supabase/
 |------|--------|-----------------|
 | `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + Net profit glance loaded lazily per section |
 | `meter-reading.html` | `meterReading.js`, `meterShiftReading.js` | Daily MS/HSD entry; shift+staff meters with daily sync; Purchase cost |
-| `dsr.html` | `dsr.js`, `dsrSummary.js`, `dsrSalesBreakdown.js` | Period DSR register (Total/MS/HSD) + sales detail by pump / shift / salesman |
+| `dsr.html` | `dsr.js`, `dsrSummary.js`, `dsrSalesBreakdown.js`, `dsrStockControl.js` | Period DSR register (Total/MS/HSD) + sales detail by pump / shift / salesman; stock variance, tanker decantation |
 | `sales-daily.html` | — | Legacy redirect to `dsr.html` |
 | `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
 | `expenses.html` | `expenses.js` | Daily expenses by category |
@@ -324,7 +331,8 @@ supabase/
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
 - **`scripts/stamp-assets.mjs` (build time only):** Rewrites every local JS/CSS reference in the deploy output (HTML `src`/`href`, CSS `@import`, JS string literals like `"css/invoice-print.css"`) to `?v=<content hash>`, and generates `sw.js` `CACHE_VERSION` + `STATIC_ASSET_PATHS`. Source files never carry `?v=`; nothing is bumped by hand.
 - **`sw.js`:** Lean app-shell precache + runtime LRU caches. Strategies:
-  - HTML navigations: **network-first**; if the network has not answered in 4 s and a cached copy exists, serve that (the late response still refreshes the cache). `offline.html` when offline with nothing cached
+  - HTML navigations: **network-first**; a cached copy is served only when the network fails, never because it is slow, so a new build is not hidden behind the previous one. `offline.html` when offline with nothing cached
+  - Install precaches with `cache: "reload"` so it bypasses the browser HTTP cache (GitHub Pages `max-age=600`)
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
   - Updates: branded reload popup as soon as a new build is waiting, including on a tab left open. Reload applies it. Only the tab that asked is reloaded; other open tabs get the same popup so an in-progress entry is not wiped
@@ -381,6 +389,8 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `get-pl-data` | Batched P&amp;L (DSR + receipt history, expenses, lube sales) | GitHub Actions or Supabase CLI |
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
 | `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
+| `credit-statement` | Public (anon key) read-only customer statement for a `statement.html#t=` token; calls `get_credit_statement_by_token` as service role | GitHub Actions or Supabase CLI |
+| `weekly-credit-sms` | Mondays (`.github/workflows/weekly-credit-sms.yml`, `x-cron-secret`): SMS with balance + new statement link to each customer who owes, through an Android phone running SMS Gate. Wording from `_shared/creditMessage.js`, the same as the in-app SMS icon | GitHub Actions or Supabase CLI |
 
 Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`, when `supabase/functions/**` changes on `main` or `staging`. Each environment needs `SUPABASE_ACCESS_TOKEN` ([Account → Tokens](https://supabase.com/dashboard/account/tokens)) and `SUPABASE_PROJECT_REF` (Project Settings → General). Register a new function in the `for fn in …` list in that workflow or it is never deployed. Google secrets for `invoice-documents` and `drive-files` live in Supabase → **Edge Functions → Secrets**, not in GitHub — [SECRETS.md](SECRETS.md#c-supabase-edge-function-secrets).
 

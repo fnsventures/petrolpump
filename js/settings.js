@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, AppDialog, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules */
+/* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, AppDialog, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules, initPageSections, LOOKUP_ROW_LIMIT, ActionProgress, passwordResetRedirectUrl, formatDateTime */
 
 let currentAuth = null;
 
@@ -31,11 +31,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   initExpenseCategories();
   initDocumentTypeCategories();
   loadStaffList();
+  document.getElementById("client-errors-refresh")?.addEventListener("click", () => void loadClientErrors());
 });
 
 // ─── Section navigation ──────────────────────────────────────────────────────
 
-const VALID_SECTIONS = ["station", "billing", "pumps", "users", "salaries", "attendance", "alerts", "expenses", "documents", "integrations", "access"];
+const VALID_SECTIONS = ["station", "billing", "pumps", "users", "salaries", "attendance", "alerts", "expenses", "documents", "integrations", "access", "errors"];
 
 function parseOptionalNumber(raw, fallback) {
   const s = raw === undefined || raw === null ? "" : String(raw).trim();
@@ -60,6 +61,7 @@ function initSettingsNav() {
   const refreshAccessIfNeeded = () => {
     const section = (location.hash || "").replace(/^#/, "");
     if (section === "access") void loadStaffList();
+    if (section === "errors") void loadClientErrors();
   };
   window.addEventListener("hashchange", refreshAccessIfNeeded);
   refreshAccessIfNeeded();
@@ -549,6 +551,8 @@ function applyAlertsFormValues() {
   const individualHighCreditInput = document.getElementById("alert-individual-high-credit");
   if (individualHighCreditInput) individualHighCreditInput.value = a.individualHighCredit || "";
   if (highVariationInput) highVariationInput.value = a.highVariation || "";
+  const stockTolInput = document.getElementById("alert-stock-variance-pct");
+  if (stockTolInput) stockTolInput.value = a.stockVarianceTolerancePct ?? 0.5;
   if (dayClosingShortageInput) dayClosingShortageInput.value = a.dayClosingShortage ?? 0;
   if (nightCashMinInput) nightCashMinInput.value = a.nightCashMinAmount ?? 0;
   if (staleCreditDaysInput) staleCreditDaysInput.value = a.staleCreditDays ?? 30;
@@ -603,6 +607,10 @@ function bindAlertsForm(auth) {
             0
           ),
           highVariation: parseOptionalNumber(document.getElementById("alert-high-variation")?.value, 0),
+          stockVarianceTolerancePct: Math.max(
+            0,
+            parseOptionalNumber(document.getElementById("alert-stock-variance-pct")?.value, d.stockVarianceTolerancePct)
+          ),
           dayClosingShortage: parseOptionalNumber(
             document.getElementById("alert-day-closing-shortage")?.value,
             0
@@ -1329,4 +1337,49 @@ function formatSettingsDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// ─── App errors ──────────────────────────────────────────────────────────────
+
+function shortBrowser(userAgent) {
+  const ua = userAgent || "";
+  const os = /Android/i.test(ua) ? "Android" : /iPhone|iPad/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac OS/i.test(ua) ? "Mac" : "";
+  const browser = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+  return [browser, os].filter(Boolean).join(" · ") || "—";
+}
+
+async function loadClientErrors() {
+  const tbody = document.getElementById("client-errors-body");
+  if (!tbody) return;
+  tbody.innerHTML = "<tr><td colspan='6' class='muted'>Loading…</td></tr>";
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await window.supabaseClient
+    .from("client_errors")
+    .select("created_at, user_email, role, page, message, code, context, app_version, user_agent")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan='6' class='error'>${escapeHtml(AppError.getUserMessage(error))}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    tbody.innerHTML = "<tr><td colspan='6' class='muted'>No errors in the last 7 days.</td></tr>";
+    return;
+  }
+  tbody.innerHTML = data
+    .map((row) => {
+      const where = row.context?.context || row.context?.source || "";
+      const detail = [row.code, where].filter(Boolean).join(" · ");
+      return `
+        <tr>
+          <td>${escapeHtml(formatDateTime(row.created_at))}</td>
+          <td>${escapeHtml(row.user_email || "—")}<br><small class="muted">${escapeHtml(row.role || "unprovisioned")}</small></td>
+          <td>${escapeHtml(row.page || "—")}</td>
+          <td>${escapeHtml(row.message)}${detail ? `<br><small class="muted">${escapeHtml(detail)}</small>` : ""}</td>
+          <td><small>${escapeHtml(row.app_version || "—")}</small></td>
+          <td title="${escapeHtml(row.user_agent || "")}">${escapeHtml(shortBrowser(row.user_agent))}</td>
+        </tr>`;
+    })
+    .join("");
 }

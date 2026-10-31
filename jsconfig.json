@@ -1,0 +1,46 @@
+{
+  // Type-check for js/. Only files starting with `// @ts-check` report errors; the rest are
+  // listed so tsc sees the globals they define. Classic scripts share one global scope, so list
+  // one page's script set at a time (day-closing.html, from _partials/app-pages.json) to avoid
+  // false "redeclared" errors between page scripts. DB types: types/db.d.ts (scripts/gen-db-types.sh).
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "strict": true,
+    // ~600 untyped parameters; turn on per file as JSDoc lands.
+    "noImplicitAny": false,
+    // JS catch blocks read err.message freely; keep catch variables `any`.
+    "useUnknownInCatchVariables": false,
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "legacy",
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": [
+    "types/globals.d.ts",
+    "js/roleBootstrap.js",
+    "js/appNav.js",
+    "js/errorHandler.js",
+    "js/appDialog.js",
+    "js/cache.js",
+    "js/appConfig.js",
+    "js/purchaseTaxUtils.js",
+    "js/utils.js",
+    "js/pwa.js",
+    "js/queryPages.js",
+    "js/creditCustomerSearch.js",
+    "js/pumpSettings.js",
+    "js/printUtils.js",
+    "js/pageSections.js",
+    "js/dayClosingMath.js",
+    "js/auth.js",
+    "js/taskUtils.js",
+    "js/dsrQueries.js",
+    "js/notifications.js",
+    "js/day-closing.js"
+  ]
+}

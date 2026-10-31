@@ -373,7 +373,13 @@ body.meter-reading-page .dsr-card--diesel .sheet-actions button[type="submit"]:h
 
   body.meter-reading-page .page-layout-wide .dsr-card .meter-table.compact input:not([type="checkbox"]):not([type="radio"]) {
     font-size: max(16px, var(--text-base));
-    min-height: 2.75rem;
+    min-height: 3rem;
+  }
+
+  body.meter-reading-page .dsr-card .meter-table.table-cards input.meter-reading:not([readonly]) {
+    font-size: var(--heading-lg);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
   }
 
   body.meter-reading-page .page-layout-wide .meter-table-scroll:has(> table.table-cards) {
@@ -1253,6 +1259,34 @@ body.meter-reading-page .shift-save-row .shift-save-btn {
   align-self: flex-end;
 }
 
+body.meter-reading-page .shift-save-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+body.meter-reading-page .shift-sticky-total {
+  display: none;
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
+body.meter-reading-page .shift-sticky-line {
+  display: block;
+  white-space: nowrap;
+}
+
+body.meter-reading-page .shift-sticky-total strong {
+  font-size: var(--text-base);
+}
+
+body.meter-reading-page .shift-skeleton {
+  display: grid;
+  gap: 0.6rem;
+}
+
 body.meter-reading-page .shift-opening.shift-opening--locked {
   background-color: var(--surface-sunken);
   color: var(--text-secondary);
@@ -1332,8 +1366,8 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
     width: 100%;
   }
 
-  /* Comments and the summary stay in the page. Only the save button stays pinned,
-     so the keyboard does not cover the staff rows with the whole bar. */
+  /* Comments and the summary stay in the page. Only one slim row is pinned (expected,
+     short, Save) so the keyboard does not cover the staff rows with the whole form. */
   body.meter-reading-page .shift-save-row {
     position: static;
     flex-direction: column;
@@ -1345,37 +1379,105 @@ body.meter-reading-page #shift-meter-locked-banner:not(.hidden) {
     box-shadow: none;
   }
 
-  body.meter-reading-page .shift-save-row .shift-save-btn {
+  body.meter-reading-page .shift-save-bar {
     position: fixed;
     z-index: 6;
-    left: max(0.75rem, var(--safe-left));
-    right: max(0.75rem, var(--safe-right));
-    bottom: calc(max(0.5rem, var(--safe-bottom)) + var(--app-tabbar-offset, 0px));
-    width: auto;
+    left: 0;
+    right: 0;
+    bottom: var(--app-tabbar-offset, 0px);
+    align-items: center;
+    justify-content: space-between;
+    padding:
+      0.5rem
+      max(0.75rem, var(--safe-right))
+      calc(0.5rem + var(--safe-bottom))
+      max(0.75rem, var(--safe-left));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(var(--shadow-rgb), 0.08);
   }
 
-  body:has(.app-network-status:not(.hidden)) .shift-save-row .shift-save-btn {
-    bottom: calc(2.75rem + var(--safe-bottom) + 0.5rem + var(--app-tabbar-offset, 0px));
+  body.has-app-tabbar.meter-reading-page .shift-save-bar {
+    bottom: calc(var(--app-tabbar-offset) + var(--safe-bottom));
+    padding-bottom: 0.5rem;
+  }
+
+  body.meter-reading-page .shift-sticky-total {
+    display: block;
+    min-width: 0;
+  }
+
+  body.meter-reading-page .shift-save-row.shift-save-row--locked .shift-save-bar {
+    display: none;
+  }
+
+  body.meter-reading-page .shift-save-row .shift-save-btn {
+    flex: 1 1 auto;
+    max-width: 12rem;
+    min-height: 3rem;
+    align-self: center;
+    font-size: var(--text-base);
+  }
+
+  body:has(.app-network-status:not(.hidden)).meter-reading-page .shift-save-bar {
+    bottom: calc(2.75rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
   }
 
   body.meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
-    padding-bottom: calc(4.5rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
+    padding-bottom: calc(4.75rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
   }
 
   body:has(.app-network-status:not(.hidden)).meter-reading-page:has(.shift-save-row:not([hidden]):not(.shift-save-row--locked)) {
-    padding-bottom: calc(7.25rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
+    padding-bottom: calc(7.5rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
+  }
+
+  /* Phone entry: 48px targets and large, tabular meter digits so readings are easy to check. */
+  body.meter-reading-page .shift-register-panel :is(input, select, button):not([type="checkbox"]):not([type="radio"]),
+  body.meter-reading-page .shift-register-panel .shift-coll-add-btn {
+    min-height: 3rem;
+  }
+
+  body.meter-reading-page .shift-nozzle-table.table-cards tbody td {
+    padding: 0.3rem 0.65rem;
+  }
+
+  body.meter-reading-page .shift-nozzle-table.table-cards .meter-reading,
+  body.meter-reading-page .shift-nozzle-table.table-cards .calc-field {
+    flex: 1 1 60%;
+    min-height: 3rem;
+    font-size: var(--heading-lg);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    letter-spacing: 0.02em;
+  }
+
+  body.meter-reading-page .shift-nozzle-table.table-cards .shift-closing {
+    min-height: 3.5rem;
+    font-size: var(--heading-xl);
+    font-weight: 700;
+  }
+
+  body.meter-reading-page .shift-nozzle-table.table-cards .shift-sale {
+    font-weight: 700;
+    color: var(--text-heading);
+  }
+
+  body.meter-reading-page .shift-money-input {
+    min-height: 3rem;
+    font-size: var(--heading-md);
+    font-variant-numeric: tabular-nums;
   }
 
   body.meter-reading-page .shift-coll-add-btn {
     height: auto;
-    min-height: 2.75rem;
+    min-height: 3rem;
     padding: 0 0.75rem;
     font-size: var(--text-sm);
   }
 
   body.meter-reading-page .shift-ledger-remove {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: 3rem;
+    height: 3rem;
   }
 }
 

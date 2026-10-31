@@ -1,4 +1,4 @@
-/* global window.supabaseClient, requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, AppDialog, getValidFilterState, setFilterState, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, createDateRangeFilter, normalizeProduct, formatQuantity, formatDisplayDate, formatDateInput, getRangeForSelection, CacheInvalidation, getDsrNetSaleLitres, calculateDsrSaleRupees, computeProfitLossSummary, buildExpenseCategoryMap, sumByProduct, resolveDayFuelStock, initPersistedDateInput, getLocalDateString, getYesterdayDateString, getMonthRange, DsrQueries, TaskUtils, addDaysToDateString, appendDatedNote, toLocalDateString, mountDateStepper, fetchAllRows, initPageSections, createRequestGuard, LOOKUP_ROW_LIMIT, supabaseClient, bindLiveRefresh */
 
 /**
  * Generate cache key for dashboard data queries
@@ -730,8 +730,13 @@ function taskContactHtml(row) {
   const embedded = Array.isArray(row.credit_customers) ? row.credit_customers[0] : row.credit_customers;
   const mobile = embedded?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
-  const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
-  return TaskUtils.contactRowHtml(mobile, waText);
+  const amountDue = TaskUtils.amountDueOf(row);
+  const waText = TaskUtils.waMessageForCustomer(customerName, amountDue);
+  return TaskUtils.contactRowHtml(mobile, waText, {
+    customerId: row.credit_customer_id,
+    customerName,
+    amountDue,
+  });
 }
 
 
@@ -1171,9 +1176,71 @@ function setupDsrFilter() {
     labelEl: "dsr-date-label",
     trigger: "manual",
     runOnInit: false,
-    onApply: (range) => loadDsrSummary(range),
+    onApply: (range) => {
+      syncDsrStepButtons(range);
+      return loadDsrSummary(range);
+    },
   });
+  if (dsrFilterApi) {
+    document.getElementById("dsr-prev")?.addEventListener("click", () => void stepDsrRange(-1));
+    document.getElementById("dsr-next")?.addEventListener("click", () => void stepDsrRange(1));
+  }
   return dsrFilterApi;
+}
+
+/** True when start..end is exactly one whole calendar month. */
+function isWholeMonthRange(start, end) {
+  if (!start || !end || !start.endsWith("-01")) return false;
+  const [y, m] = start.split("-").map(Number);
+  return getMonthRange(y, m - 1).end === end;
+}
+
+/** Shift a range by its own length: day ±1, week ±7, whole month ±1 month, custom span ±span. */
+function shiftDsrRange(range, direction) {
+  const { start, end } = range;
+  if (isWholeMonthRange(start, end)) {
+    const [y, m] = start.split("-").map(Number);
+    return getMonthRange(y, m - 1 + direction);
+  }
+  const spanDays =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+  return {
+    start: addDaysToDateString(start, direction * spanDays),
+    end: addDaysToDateString(end, direction * spanDays),
+  };
+}
+
+function syncDsrStepButtons(range) {
+  const nextBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("dsr-next"));
+  if (!nextBtn) return;
+  const atToday = !!range?.end && range.end >= getLocalDateString();
+  nextBtn.disabled = atToday;
+  nextBtn.title = atToday ? "Already at today" : "Next period";
+}
+
+async function stepDsrRange(direction) {
+  const range = dsrFilterApi?.getRange();
+  if (!range?.start || !range?.end) return;
+  const next = shiftDsrRange(range, direction);
+  const todayStr = getLocalDateString();
+  if (direction > 0 && next.start > todayStr) return;
+
+  const rangeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("dsr-range"));
+  const startInput = /** @type {HTMLInputElement | null} */ (document.getElementById("dsr-start"));
+  const endInput = /** @type {HTMLInputElement | null} */ (document.getElementById("dsr-end"));
+  if (!rangeSelect || !startInput || !endInput) return;
+
+  // Land back on the Today / Yesterday presets when the step reaches them.
+  if (next.start === next.end && next.start === todayStr) {
+    rangeSelect.value = "today";
+  } else if (next.start === next.end && next.start === getYesterdayDateString()) {
+    rangeSelect.value = "yesterday";
+  } else {
+    rangeSelect.value = "custom";
+    startInput.value = next.start;
+    endInput.value = next.end;
+  }
+  await dsrFilterApi.refresh();
 }
 
 async function ensureDsrSectionLoaded() {
@@ -1662,6 +1729,7 @@ async function loadDsrSummary(range) {
   }
 
   renderDsrSummary(dashboardData, elements, range);
+  void loadStockVarianceTile(range, loadId);
   const todayStr = getLocalDateString();
   if (range.start === todayStr && range.end === todayStr) {
     const snapshotDate = document.getElementById("snapshot-date")?.value || todayStr;
@@ -1682,6 +1750,47 @@ async function loadDsrSummary(range) {
     updateLowStockAlert(null, null);
     updateSmartAlerts();
   }
+}
+
+/** Dashboard tile: get_stock_variance totals for the range (litres and ₹, over-tolerance days). */
+async function loadStockVarianceTile(range, loadId) {
+  const valueEl = document.getElementById("stock-variance-value");
+  const metaEl = document.getElementById("stock-variance-meta");
+  const tile = document.getElementById("stock-variance-tile");
+  if (!valueEl || !metaEl || !range?.start || !range?.end) return;
+  valueEl.textContent = "Loading…";
+  const { data, error } = await window.supabaseClient.rpc("get_stock_variance", {
+    p_start: range.start,
+    p_end: range.end,
+  });
+  if (!dsrSummaryGuard.isCurrent(loadId)) return;
+  tile?.classList.remove("is-over");
+  if (error) {
+    AppError.report(error, { context: "stockVarianceTile" });
+    valueEl.textContent = "—";
+    metaEl.textContent = "Could not load stock variance";
+    return;
+  }
+  const rows = (data ?? []).filter((r) => r.variance_litres != null);
+  if (!rows.length) {
+    valueEl.textContent = "—";
+    applyVariationTone(valueEl, 0, false);
+    metaEl.textContent = "No dip entered for this range";
+    return;
+  }
+  const litres = (product) =>
+    rows.filter((r) => r.product === product).reduce((a, r) => a + Number(r.variance_litres), 0);
+  const rupees = rows.reduce((a, r) => a + Number(r.variance_value ?? 0), 0);
+  const over = rows.filter((r) => r.over_tolerance).length;
+  const sign = (v) => (v > 0 ? "+" : "");
+  valueEl.textContent = `${sign(rupees)}${formatCurrency(rupees)}`;
+  applyVariationTone(valueEl, rupees, true);
+  const p = litres("petrol");
+  const d = litres("diesel");
+  metaEl.textContent =
+    `MS ${sign(p)}${formatQuantity(p)} L · HSD ${sign(d)}${formatQuantity(d)} L` +
+    (over ? ` · ${over} over ${formatQuantity(rows[0].tolerance_pct)}%` : "");
+  tile?.classList.toggle("is-over", over > 0);
 }
 
 /** Prefer a SQL total. Fall back to adding the raw rows an older payload still carries. */

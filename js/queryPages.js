@@ -9,8 +9,11 @@ const QUERY_ROW_CAP = 50000;
 const LOOKUP_ROW_LIMIT = 500;
 
 /**
- * @param {() => { range: Function }} buildQuery Fresh select chain. No limit/range yet. Order the rows.
- * @returns {Promise<{ data: unknown[] | null, error: { message?: string } | null, truncated: boolean }>}
+ * @template T
+ * @param {() => { range: (from: number, to: number) => PromiseLike<{ data: T[] | null, error: { message: string } | null }> }} buildQuery
+ *   Fresh select chain. No limit/range yet. Order the rows.
+ * @param {{ pageSize?: number, maxRows?: number }} [options]
+ * @returns {Promise<{ data: T[] | null, error: { message?: string } | null, truncated: boolean }>}
  */
 async function fetchAllRows(buildQuery, options = {}) {
   if (typeof buildQuery !== "function") {

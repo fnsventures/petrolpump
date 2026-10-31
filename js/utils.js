@@ -1,3 +1,5 @@
+// @ts-check
+/* global AppDialog, storedToLandedBuyingRatePerLitre, AppError, AppCache */
 /**
  * Shared utilities for the app.
  */
@@ -34,10 +36,11 @@ function normCustomerName(s) {
  * Debounce a function — waits until calls stop for `waitMs`.
  * @param {Function} fn
  * @param {number} waitMs
- * @returns {Function}
+ * @returns {Function & { cancel: () => void }}
  */
 function debounce(fn, waitMs = 150) {
   let timer = null;
+  /** @this {unknown} */
   function debounced(...args) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), waitMs);
@@ -58,6 +61,7 @@ function debounce(fn, waitMs = 150) {
 function throttle(fn, limitMs = 150) {
   let last = 0;
   let pending = null;
+  /** @this {unknown} */
   return function throttled(...args) {
     const now = Date.now();
     const run = () => {
@@ -191,7 +195,7 @@ function createDateStepButton(label, glyph, text, iconFirst) {
  * Steps exactly one local calendar day. The browser's own date spinner is not used:
  * on some desktop browsers that control moves a week when the weekday segment is active.
  *
- * @param {HTMLInputElement} input
+ * @param {HTMLInputElement & { _dateStepper?: { sync: () => void } }} input
  * @param {{ compact?: boolean, min?: string|(() => string), max?: string|(() => string), dispatch?: boolean, beforeStep?: (target: string, current: string) => boolean|Promise<boolean>, onStep?: (target: string, current: string) => void }} [opts]
  * @returns {{ sync: () => void } | null}
  */
@@ -268,7 +272,7 @@ function mountDateStepper(input, opts = {}) {
  * Pass wrapSelector to put the buttons around an existing control (attendance).
  * Otherwise the two selects are grouped between the buttons.
  *
- * @param {HTMLSelectElement} monthSelect
+ * @param {HTMLSelectElement & { _monthStepper?: { sync: () => void } }} monthSelect
  * @param {HTMLSelectElement} yearSelect
  * @param {{ wrapSelector?: string, min?: string|(() => string), max?: string|(() => string) }} [opts]
  * @returns {{ sync: () => void } | null}
@@ -624,7 +628,7 @@ function getCustomRange(startValue, endValue) {
 /**
  * Resolve date range from a filter selection value.
  * @param {string} selection - today | this-week | this-month | this-year | last-year | last-3-months | all-time | custom | date
- * @param {{ startInput?: HTMLInputElement, endInput?: HTMLInputElement, singleDate?: string }} [opts]
+ * @param {{ startInput?: HTMLInputElement|null, endInput?: HTMLInputElement|null, singleDate?: string }} [opts]
  * @returns {{ start: string, end: string, modeInfo?: object }|null}
  */
 function resolveDateRange(selection, opts = {}) {
@@ -729,7 +733,7 @@ function getValidFilterState(key, allowedRanges) {
 /**
  * Persist filter state so it can be restored when the user comes back.
  * @param {string} key
- * @param {{ range: string, start?: string, end?: string }} state
+ * @param {{ range: string, start?: string, end?: string, savedOn?: string }} state
  */
 function setFilterState(key, state) {
   if (typeof localStorage === "undefined" || !state || typeof state.range !== "string") return;
@@ -814,7 +818,9 @@ function savePersistedDate(storageKey, dateStr) {
  * @returns {string} resolved date
  */
 function initPersistedDateInput(inputRef, storageKey, opts = {}) {
-  const input = typeof inputRef === "string" ? document.getElementById(inputRef) : inputRef;
+  const input = /** @type {HTMLInputElement | null} */ (
+    typeof inputRef === "string" ? document.getElementById(inputRef) : inputRef
+  );
   const fallback = opts.fallback || getLocalDateString();
   if (!input) return fallback;
 
@@ -879,7 +885,7 @@ function resetFormKeepingFields(form, fieldValues) {
  */
 function formRequestId(form, values) {
   const fingerprint = JSON.stringify(values ?? null);
-  const pending = form?._pendingRequest;
+  const pending = /** @type {any} */ (form)?._pendingRequest;
   if (pending && pending.fingerprint === fingerprint) return pending.id;
   const id =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -887,7 +893,7 @@ function formRequestId(form, values) {
       : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
           (Number(c) ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (Number(c) / 4)))).toString(16)
         );
-  if (form) form._pendingRequest = { id, fingerprint };
+  if (form) /** @type {any} */ (form)._pendingRequest = { id, fingerprint };
   return id;
 }
 
@@ -1002,7 +1008,9 @@ function trackUnsavedWork(isDirty, opts = {}) {
   document.addEventListener(
     "click",
     (event) => {
-      const link = event.target?.closest?.("a[href]");
+      const link = /** @type {HTMLAnchorElement | null} */ (
+        /** @type {Element | null} */ (event.target)?.closest?.("a[href]") ?? null
+      );
       if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
       const href = link.getAttribute("href") || "";
@@ -1042,7 +1050,7 @@ function trackUnsavedWork(isDirty, opts = {}) {
 /** True when a reload would lose typed input: dirty edits, or a focused entry, with no local draft. */
 function unsavedWorkWouldBeLost() {
   if (unsavedWorkPending({ undraftedOnly: true })) return true;
-  const el = typeof document !== "undefined" ? document.activeElement : null;
+  const el = /** @type {HTMLInputElement | null} */ (typeof document !== "undefined" ? document.activeElement : null);
   if (!el || !el.matches?.("input, textarea, select")) return false;
   if (!String(el.value || "").trim()) return false;
   return !unsavedGuards.some((guard) => guard.drafted && guard.root?.contains(el));
@@ -1436,7 +1444,7 @@ const AppLoader = (function () {
     }
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (node.data.includes("…")) syncBusy(node.parentElement);
+      if (/** @type {Text} */ (node).data.includes("…")) syncBusy(node.parentElement);
     }
   }
 
@@ -1541,7 +1549,8 @@ const ActionProgress = (function () {
     finishing = null;
     displayed = 0;
     lead = 0;
-    document.getElementById("action-progress-title").textContent = opts.title || "Working";
+    const titleEl = document.getElementById("action-progress-title");
+    if (titleEl) titleEl.textContent = opts.title || "Working";
     setStatus(opts.status || "Please wait…");
     setFill(0);
     root.hidden = false;
@@ -1634,7 +1643,8 @@ function recoverStuckUi() {
   AppLoader.endBoot();
   document.querySelectorAll(".loading").forEach((el) => el.classList.remove("loading"));
   document.querySelectorAll("[aria-busy='true']").forEach((el) => el.removeAttribute("aria-busy"));
-  document.querySelectorAll("button[disabled], input[disabled]").forEach((el) => {
+  document.querySelectorAll("button[disabled], input[disabled]").forEach((node) => {
+    const el = /** @type {HTMLButtonElement} */ (node);
     if (el.dataset.stuckDisabled === "1") {
       el.disabled = false;
       delete el.dataset.stuckDisabled;
@@ -2148,6 +2158,8 @@ function findUnresolvedBuyingRateRows(dsrRows, getBuyingOrCtx) {
  * missingBuyingPrice lists rows that still need an entered rate (warning only).
  * Net profit = fuel gross profit + lube sales − lube COGS − operating expenses
  * (MS/HS and density testing excluded). Requires purchaseTaxUtils.js (loaded before utils.js).
+ * @param {{ dsrRows?: any[], receiptRows?: any[], expenseRows?: any[], lubeSales?: number, lubeCogs?: number,
+ *   requireAllBuying?: boolean, buyingContext?: any, categoryMap?: any }} params
  */
 function computeProfitLossSummary({
   dsrRows,
@@ -2303,7 +2315,7 @@ function loadScript(src, options = {}) {
       finish(reject, new Error(`Timed out loading ${src}`));
     }, timeoutMs);
 
-    const existing = document.querySelector(`script[src="${url}"]`);
+    const existing = /** @type {HTMLScriptElement | null} */ (document.querySelector(`script[src="${url}"]`));
     if (existing) {
       if (existing.dataset.loaded === "1") {
         finish(resolve);
@@ -2383,7 +2395,7 @@ function isCancelledRequestError(err) {
 }
 
 function isSettingsPanelActive(panelId) {
-  const panel = document.querySelector(`[data-panel="${panelId}"]`);
+  const panel = /** @type {HTMLElement | null} */ (document.querySelector(`[data-panel="${panelId}"]`));
   return Boolean(panel && !panel.hidden);
 }
 
@@ -2412,7 +2424,7 @@ async function runAppRequest(label, fn, options = {}) {
       : fn();
   const result = await withRequestTimeout(runner, options.timeoutMs, label);
   if (loadId !== appLoadGeneration) {
-    const err = new Error("Request cancelled.");
+    const err = /** @type {Error & { code?: string }} */ (new Error("Request cancelled."));
     err.code = "CANCELLED";
     throw err;
   }
@@ -2421,7 +2433,7 @@ async function runAppRequest(label, fn, options = {}) {
 
 /**
  * Append a "Showing N of M" line and a Load more button. No-op when already mounted.
- * @returns {{ info: HTMLElement|null, button: HTMLElement|null }}
+ * @returns {{ info: HTMLElement|null, button: HTMLButtonElement|null }}
  */
 function mountLoadMorePager(container, { infoId, buttonId, onMore }) {
   if (!container) return { info: null, button: null };
@@ -2439,12 +2451,12 @@ function mountLoadMorePager(container, { infoId, buttonId, onMore }) {
   }
   return {
     info: document.getElementById(infoId),
-    button: document.getElementById(buttonId),
+    button: /** @type {HTMLButtonElement | null} */ (document.getElementById(buttonId)),
   };
 }
 
 /**
- * @param {{ info?: HTMLElement|null, button?: HTMLElement|null, extraInfo?: HTMLElement|null, shown: number, total: number, hasMore: boolean, noun?: string }} state
+ * @param {{ info?: HTMLElement|null, button?: HTMLButtonElement|null, extraInfo?: HTMLElement|null, shown: number, total: number, hasMore: boolean, noun?: string }} state
  */
 function syncLoadMorePager({ info, button, extraInfo, shown, total, hasMore, noun = "entries" }) {
   const text = total > 0 ? `Showing ${Math.min(shown, total)} of ${total} ${noun}` : "";
@@ -2459,7 +2471,7 @@ function syncLoadMorePager({ info, button, extraInfo, shown, total, hasMore, nou
 
 /**
  * Append Back and Load more for a windowed page (meter history).
- * @returns {{ info: HTMLElement|null, back: HTMLElement|null, more: HTMLElement|null }}
+ * @returns {{ info: HTMLElement|null, back: HTMLButtonElement|null, more: HTMLButtonElement|null }}
  */
 function mountWindowPager(container, { infoId, backId, moreId, onBack, onMore }) {
   if (!container) return { info: null, back: null, more: null };
@@ -2481,13 +2493,13 @@ function mountWindowPager(container, { infoId, backId, moreId, onBack, onMore })
   }
   return {
     info: document.getElementById(infoId),
-    back: document.getElementById(backId),
-    more: document.getElementById(moreId),
+    back: /** @type {HTMLButtonElement | null} */ (document.getElementById(backId)),
+    more: /** @type {HTMLButtonElement | null} */ (document.getElementById(moreId)),
   };
 }
 
 /**
- * @param {{ info?: HTMLElement|null, back?: HTMLElement|null, more?: HTMLElement|null, page: number, pageSize: number, total: number, singlePageText?: string, moreLabel?: string }} state
+ * @param {{ info?: HTMLElement|null, back?: HTMLButtonElement|null, more?: HTMLButtonElement|null, page: number, pageSize: number, total: number, singlePageText?: string, moreLabel?: string }} state
  */
 function syncWindowPager({ info, back, more, page, pageSize, total, singlePageText, moreLabel }) {
   const totalPages = total > 0 ? Math.ceil(total / pageSize) : 0;
@@ -2656,7 +2668,7 @@ function installNumericInputScrollGuard() {
           : null;
       if (!el) return;
       e.preventDefault();
-      if (document.activeElement === el) el.blur();
+      if (document.activeElement === el) /** @type {HTMLElement} */ (el).blur();
     },
     { passive: false, capture: true }
   );
@@ -2720,7 +2732,7 @@ function installFieldValidation() {
   document.addEventListener(
     "invalid",
     (event) => {
-      const el = event.target;
+      const el = /** @type {HTMLInputElement | null} */ (event.target);
       if (!el?.matches?.(FIELD_CONTROL)) return;
       event.preventDefault();
       setFieldInvalid(el, el.validationMessage);
@@ -2728,7 +2740,7 @@ function installFieldValidation() {
       focusQueued = true;
       queueMicrotask(() => {
         focusQueued = false;
-        document.querySelector(`${FIELD_CONTROL}.is-invalid`)?.focus();
+        /** @type {HTMLElement | null} */ (document.querySelector(`${FIELD_CONTROL}.is-invalid`))?.focus();
       });
     },
     true
@@ -2757,9 +2769,9 @@ function installEnterMovesToNextField() {
   document.documentElement.dataset.bpfEnterNext = "1";
 
   document.addEventListener("focusin", (event) => {
-    const el = event.target;
+    const el = /** @type {HTMLElement | null} */ (event.target);
     const form = el?.closest?.("form[data-enter-next]");
-    if (!form || !el.matches(ENTER_NEXT_FIELD) || el.tagName === "TEXTAREA" || el.hasAttribute("enterkeyhint")) return;
+    if (!form || !el || !el.matches(ENTER_NEXT_FIELD) || el.tagName === "TEXTAREA" || el.hasAttribute("enterkeyhint")) return;
     const fields = enterNextFields(form);
     el.setAttribute("enterkeyhint", fields[fields.length - 1] === el ? "done" : "next");
   });
@@ -2767,7 +2779,7 @@ function installEnterMovesToNextField() {
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.defaultPrevented || event.isComposing) return;
     if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
-    const el = event.target;
+    const el = /** @type {HTMLElement | null} */ (event.target);
     if (!el?.matches?.("input") || !el.matches(ENTER_NEXT_FIELD)) return;
     const form = el.closest("form[data-enter-next]");
     if (!form) return;

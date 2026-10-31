@@ -34,6 +34,13 @@ jobs:
       - name: CSS colours (no new hardcoded colours)
         run: npm run lint:css
 
+      - name: ESLint (undeclared globals)
+        run: npm run lint:js
+
+      # // @ts-check files against types/db.d.ts: wrong table, column or RPC argument fails here.
+      - name: Type check
+        run: npm run typecheck
+
       - name: JS syntax
         run: |
           set -euo pipefail
@@ -47,6 +54,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/site"
           rsync -a --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs \
             --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json \
+            --exclude types --exclude jsconfig.json --exclude eslint.config.mjs \
             ./ "$RUNNER_TEMP/site/"
           npm run build:html -- "$RUNNER_TEMP/site"
           npm run stamp -- "$RUNNER_TEMP/site"
@@ -86,3 +94,45 @@ jobs:
       - name: Diff migrations vs schema.sql
         if: steps.changes.outputs.db == 'true'
         run: bash scripts/check-schema-drift.sh
+
+  db-tests:
+    name: pgTAP (day closing, credit, RLS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            db:
+              - 'supabase/migrations/**'
+              - 'supabase/tests/**'
+              - 'scripts/test-db.sh'
+              - 'scripts/check-schema-drift.sh'
+
+      # Throwaway Postgres in Docker; no Supabase project or secrets.
+      - name: Migrations + supabase/tests
+        if: steps.changes.outputs.db == 'true'
+        run: bash scripts/test-db.sh
+
+  db-types:
+    name: types/db.d.ts matches schema.sql
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            db:
+              - 'supabase/migrations/**'
+              - 'supabase/schema.sql'
+              - 'types/db.d.ts'
+              - 'scripts/gen-db-types.sh'
+
+      # Throwaway Postgres + postgres-meta in Docker; no Supabase project or secrets.
+      - name: Regenerate and diff
+        if: steps.changes.outputs.db == 'true'
+        run: bash scripts/gen-db-types.sh --check
