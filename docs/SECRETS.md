@@ -23,6 +23,9 @@ One map of every credential this app needs, where it lives, and how to rotate it
 | `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | GitHub **prod** | DB backup upload | Drive folder URL after `/folders/` |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Supabase Edge secrets (optional) | `invoice-documents`, `drive-files` — used **only if** the OAuth trio is not fully set | Google Cloud → IAM → Service account key (JSON). Needs a Shared Drive — [INVOICE_DOCUMENTS.md §5](INVOICE_DOCUMENTS.md#5-alternative-service-account-workspace--shared-drive) |
 | Invoice Drive folder / roots | Settings + Edge secrets | `invoice-documents`, `drive-files` | See [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md) |
+| `CRON_SECRET` | GitHub env **prod** / **staging** + Supabase Edge secrets (same value) | `weekly-credit-sms` caller check | Any long random string (`openssl rand -hex 32`); change both places together |
+| `SMS_GATE_USERNAME` / `SMS_GATE_PASSWORD` | Supabase Edge secrets | `weekly-credit-sms` → SMS Gate cloud API | SMS Gate app on the Android phone → Home → Cloud server credentials |
+| `SITE_URL` | Supabase Edge secrets | `weekly-credit-sms` statement link base | Prod `https://bishnupriyafuels.fnsventures.in`; staging adds `/staging` |
 | `GODADDY_API_KEY` | GitHub repo secrets (optional) | DNS sibling auto-fix | [developer.godaddy.com/keys](https://developer.godaddy.com/keys) |
 | `GODADDY_API_SECRET` | Same | Same | Same |
 
@@ -65,6 +68,7 @@ Dashboard → Edge Functions → Secrets (per project). Used by `invoice-documen
 |--------|-------|
 | `GOOGLE_OAUTH_CLIENT_ID` / `_CLIENT_SECRET` / `_REFRESH_TOKEN` | Preferred. Wins when all three are set (`resolveDriveAuthMode` in `supabase/functions/_shared/googleDrive.ts`) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Fallback when the OAuth trio is incomplete. Full key JSON on one line |
+| `CRON_SECRET`, `SMS_GATE_USERNAME`, `SMS_GATE_PASSWORD`, `SITE_URL` | `weekly-credit-sms`. Optional: `SMS_GATE_URL` (local-mode URL), `MIN_BALANCE` (default 1), `MAX_SMS_PER_RUN` (default 90), `STATEMENT_LINK_DAYS` (default 14), `SMS_TEST_TO` (**set on staging**: all SMS go to this number, max 3 a run) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Injected by Supabase automatically — do not set |
 
 If neither OAuth nor the service account is configured, Drive features fail with a configuration error. **Not** the same place as GitHub secrets — see [INVOICE_DOCUMENTS.md](INVOICE_DOCUMENTS.md).

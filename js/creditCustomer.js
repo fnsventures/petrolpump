@@ -155,6 +155,16 @@ async function initCustomerView() {
         : "Add this customer's mobile number, then send on WhatsApp."
     );
   });
+  document.getElementById("customer-sms-btn")?.addEventListener("click", (event) => {
+    if (event.currentTarget.getAttribute("href")) return;
+    event.preventDefault();
+    const mobile = String(page().state.customerContact?.mobile || "").trim();
+    showCreditShareNotice(
+      mobile
+        ? "Load the customer account first, then send the text message."
+        : "Add this customer's mobile number, then send the text message."
+    );
+  });
 
   customerDetailReady = true;
   await loadCustomerDetail();
@@ -519,13 +529,22 @@ async function saveCustomerContact() {
 
   const patch = {
     customer_name: newName,
-    mobile: mobile || null,
     address: address || null,
   };
   if (window.CreditPage?.isAdmin) {
     patch.credit_limit = Number.isFinite(creditLimit) ? creditLimit : null;
   }
-  const { error } = await window.supabaseClient.from("credit_customers").update(patch).in("id", ids);
+  // (name, mobile) is unique, so the mobile goes on one row only; the other vehicle rows keep theirs.
+  const primaryId = ids.includes(page().state.customerId) ? page().state.customerId : ids[0];
+  const otherIds = ids.filter((id) => id !== primaryId);
+  const client = window.supabaseClient;
+  let { error } = await client
+    .from("credit_customers")
+    .update({ ...patch, mobile: mobile || null })
+    .eq("id", primaryId);
+  if (!error && otherIds.length > 0) {
+    ({ error } = await client.from("credit_customers").update(patch).in("id", otherIds));
+  }
 
   if (submitBtn) submitBtn.disabled = false;
 
@@ -660,6 +679,7 @@ function syncCustomerContactActions() {
   const actions = document.getElementById("customer-contact-actions");
   const callBtn = document.getElementById("customer-call-btn");
   const waBtn = document.getElementById("customer-whatsapp-btn");
+  const smsBtn = document.getElementById("customer-sms-btn");
   const mobile = String(page().state.customerContact?.mobile || "").trim();
   const tel = creditCustomerTelHref(mobile);
   setHiddenEl(actions, !tel);
@@ -672,10 +692,24 @@ function syncCustomerContactActions() {
       callBtn.removeAttribute("href");
     }
   }
-  if (!waBtn) return;
   // The message needs only the balance, known once the customer rows load. Waiting for the
   // period summary left the icon disabled whenever that slower request was late or failed.
   const canShare = page().state.customerIds.length > 0;
+  if (smsBtn) {
+    const smsHref = tel && canShare ? creditCustomerSmsHref(mobile, buildCreditWhatsAppText()) : "";
+    if (smsHref) {
+      smsBtn.href = smsHref;
+      smsBtn.classList.remove("is-disabled");
+      smsBtn.removeAttribute("aria-disabled");
+      smsBtn.setAttribute("aria-label", `Text ${mobile}`);
+    } else {
+      smsBtn.removeAttribute("href");
+      smsBtn.classList.add("is-disabled");
+      smsBtn.setAttribute("aria-disabled", "true");
+      smsBtn.setAttribute("aria-label", "Send the outstanding reminder by text message");
+    }
+  }
+  if (!waBtn) return;
   const waHref = tel && canShare ? creditCustomerWaHref(mobile, buildCreditWhatsAppText()) : "";
   if (waHref) {
     waBtn.href = waHref;
@@ -711,6 +745,15 @@ function creditCustomerWaHref(mobile, text) {
   if (text) params.set("text", text);
   const query = params.toString();
   return `https://wa.me/${e164}${query ? `?${query}` : ""}`;
+}
+
+/** sms: opens the device's messaging app. iOS wants `&body=`, others `?body=`. */
+function creditCustomerSmsHref(mobile, text) {
+  const e164 = creditCustomerPhoneDigits(mobile);
+  if (!e164) return "";
+  if (!text) return `sms:+${e164}`;
+  const sep = /iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?";
+  return `sms:+${e164}${sep}body=${encodeURIComponent(text)}`;
 }
 
 function buildCreditWhatsAppText() {

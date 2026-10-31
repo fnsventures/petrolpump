@@ -240,6 +240,7 @@ supabase/
     ├── invoice-documents/    # Edge: vault documents ↔ Google Drive
     ├── drive-files/          # Edge: print-style sales/letter PDFs + staff files ↔ Google Drive
     ├── credit-statement/     # Edge: public read-only statement for a link token (service role)
+    ├── weekly-credit-sms/    # Edge: weekly balance SMS via Android SMS Gate (cron secret)
     └── _shared/        # googleDrive.ts (OAuth / service-account auth), archivePdf.ts, logoPng.ts
 ```
 
@@ -388,6 +389,7 @@ Bucket policies are created in migrations `20260528300000_user_avatar.sql` and `
 | `invoice-documents` | Supplier invoice upload/download/delete/status ↔ Google Drive | GitHub Actions or Supabase CLI |
 | `drive-files` | Print-style sales/letter PDFs + staff photo/Aadhaar ↔ Google Drive | GitHub Actions or Supabase CLI |
 | `credit-statement` | Public (anon key) read-only customer statement for a `statement.html#t=` token; calls `get_credit_statement_by_token` as service role | GitHub Actions or Supabase CLI |
+| `weekly-credit-sms` | Mondays (`.github/workflows/weekly-credit-sms.yml`, `x-cron-secret`): SMS with balance + new statement link to each customer who owes, through an Android phone running SMS Gate | GitHub Actions or Supabase CLI |
 
 Deploy workflow: `.github/workflows/deploy-supabase-functions.yml`, when `supabase/functions/**` changes on `main` or `staging`. Each environment needs `SUPABASE_ACCESS_TOKEN` ([Account → Tokens](https://supabase.com/dashboard/account/tokens)) and `SUPABASE_PROJECT_REF` (Project Settings → General). Register a new function in the `for fn in …` list in that workflow or it is never deployed. Google secrets for `invoice-documents` and `drive-files` live in Supabase → **Edge Functions → Secrets**, not in GitHub — [SECRETS.md](SECRETS.md#c-supabase-edge-function-secrets).
 

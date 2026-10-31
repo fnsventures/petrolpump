@@ -1157,6 +1157,19 @@ tr.is-editing .expense-cat-drag-handle {
   border-color: var(--fuel-petrol-border);
 }
 
+.contact-line a.contact-button.contact-button--sms {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.contact-line a.contact-button.contact-button--sms:is(:hover, :focus-visible):not(.is-disabled) {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  border-color: var(--accent-text);
+  text-decoration: none;
+}
+
 .contact-line a.contact-button.contact-button--whatsapp {
   color: var(--bpcl-green);
   background: rgba(0, 122, 51, 0.08);
