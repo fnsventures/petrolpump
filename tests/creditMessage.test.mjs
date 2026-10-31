@@ -31,9 +31,17 @@ test("SMS stays GSM-7 so it is not billed as Unicode", () => {
   }
 });
 
-test("WhatsApp text names the customer, amount and statement link", () => {
+test("messages leave out the customer name and phone number", () => {
+  for (const build of [creditWhatsAppText, creditSmsText]) {
+    const text = build(cases[0]);
+    assert.doesNotMatch(text, /Acme/);
+    assert.doesNotMatch(text, /96689|Ph:/);
+    assert.match(text, /Dear Customer,/);
+  }
+});
+
+test("WhatsApp text has the amount and statement link", () => {
   const text = creditWhatsAppText(cases[0]);
-  assert.match(text, /Dear Acme Transport,/);
   assert.match(text, /\*Amount due:\* ₹12,345\.50/);
   assert.match(text, /https:\/\/x\/statement\.html#t=ab/);
   assert.match(text, /valid for 14 days/);

@@ -1044,7 +1044,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |
 | `delete_credit_payment(id)` | Delete a payment (row is removed) and reallocate. Locks the customer first | admin |
-| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets: one row per customer per bucket, summing `amount - amount_settled` of that customer's bills of that age (same open amounts as the customer page) | — |
+| `get_credit_aging(date)` | Date windows 0–30, 31–60, 61–90, 90+ days back: one row per customer per window with `credit_taken`, `settlement_done`, `outstanding` (credit minus settlements dated in the window, same as customer Activity for those dates; negative = advance) | — |
 | `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
 | `get_open_credit_as_of(date)` | Total open credit | — |

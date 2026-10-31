@@ -215,16 +215,14 @@
   }
 
   function creditWhatsAppText(m) {
-    const name = String(m.customerName || "").trim();
     const station = creditStationName(m.station);
     const tagline = String(m.station?.tagline || "").trim();
-    const mobile = String(m.station?.mobile || "").trim();
     const due = Number(m.amount) > 0.004;
     return [
       `*${station}*`,
       ...(tagline ? [tagline] : []),
       "",
-      name ? `Dear ${name},` : "Dear Customer,",
+      "Dear Customer,",
       "",
       due
         ? "This is a reminder about your credit account with us."
@@ -239,26 +237,22 @@
       ...(due ? ["Kindly clear the dues at the earliest. If you have already paid, please ignore this message.", ""] : []),
       "Thank you,",
       station,
-      ...(mobile ? [`Ph: ${mobile}`] : []),
     ].join("\n");
   }
 
   function creditSmsText(m) {
-    const name = String(m.customerName || "").trim();
-    const mobile = String(m.station?.mobile || "").trim();
     const due = Number(m.amount) > 0.004;
     return [
-      `${creditStationName(m.station)} (BPCL): Dear ${name || "Customer"}, your credit a/c amount due as on ${m.asOn} is ${creditAmountText(m.amount, "Rs ")}.`,
+      `${creditStationName(m.station)} (BPCL): Dear Customer, your credit a/c amount due as on ${m.asOn} is ${creditAmountText(m.amount, "Rs ")}.`,
       due ? "Kindly pay at the earliest." : "",
       m.url ? `Statement (PDF): ${m.url}` : "",
-      mobile ? `Ph: ${mobile}` : "",
     ]
       .filter(Boolean)
       .join(" ");
   }
 
   /** Station letterhead fields and today's date for the reminder text. */
-  function creditMessageInput(customerName, amountDue, statementUrl) {
+  function creditMessageInput(amountDue, statementUrl) {
     const settings = typeof PumpSettings !== "undefined" ? PumpSettings : null;
     const def = typeof AppConfig !== "undefined" ? AppConfig.DEFAULT_STATION || {} : {};
     const today = typeof getLocalDateString === "function" ? getLocalDateString() : "";
@@ -270,9 +264,7 @@
       station: {
         name: settings?.getStationLegalName?.() || def.legalName,
         tagline: settings?.getStationTagline?.() || def.tagline,
-        mobile: settings?.getStationField?.("mobile") || def.mobile,
       },
-      customerName,
       amount: amountDue,
       asOn,
       url: statementUrl,
@@ -281,13 +273,13 @@
   }
 
   /** WhatsApp reminder. With statementUrl, adds the customer's statement link (PDF download there). */
-  function waMessageForCustomer(customerName, amountDue, statementUrl) {
-    return creditWhatsAppText(creditMessageInput(customerName, amountDue, statementUrl));
+  function waMessageForCustomer(_customerName, amountDue, statementUrl) {
+    return creditWhatsAppText(creditMessageInput(amountDue, statementUrl));
   }
 
   /** SMS reminder: short GSM-7 text, the same wording as the weekly SMS job. */
-  function smsMessageForCustomer(customerName, amountDue, statementUrl) {
-    return creditSmsText(creditMessageInput(customerName, amountDue, statementUrl));
+  function smsMessageForCustomer(_customerName, amountDue, statementUrl) {
+    return creditSmsText(creditMessageInput(amountDue, statementUrl));
   }
 
   const STATEMENT_LINK_DAYS = 30;
@@ -336,7 +328,7 @@
         .catch(() => "")
         .then((url) => {
           const build = channel === "whatsapp" ? waMessageForCustomer : smsMessageForCustomer;
-          const text = build(link.dataset.customerName, link.dataset.amount, url);
+          const text = build("", link.dataset.amount, url);
           const href = (channel === "whatsapp" ? waHref(mobile, text) : smsHref(mobile, text)) || fallback;
           if (!url) global.AppError?.showToast?.("Couldn't add the statement link; sending the balance only.", "warning");
           if (channel === "whatsapp") {
@@ -361,12 +353,12 @@
     const esc = escapeHtml;
     // Lets bindStatementLinkSend rebuild the message with a statement link on tap.
     const statementData = customerId
-      ? ` data-statement-customer="${esc(customerId)}" data-mobile="${esc(String(mobile || "").trim())}" data-customer-name="${esc(customerName)}" data-amount="${esc(amountDue ?? "")}"`
+      ? ` data-statement-customer="${esc(customerId)}" data-mobile="${esc(String(mobile || "").trim())}" data-amount="${esc(amountDue ?? "")}"`
       : "";
     const shown = String(mobile || "").trim();
     const tel = telHref(shown);
     const wa = waHref(shown, waText);
-    const smsText = customerId || customerName ? smsMessageForCustomer(customerName, amountDue) : waText;
+    const smsText = customerId || customerName ? smsMessageForCustomer("", amountDue) : waText;
     const sms = smsHref(shown, smsText);
     if (!tel && !wa) return "";
     return `<span class="contact-line">

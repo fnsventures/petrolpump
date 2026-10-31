@@ -2103,12 +2103,14 @@ export type Database = {
       get_credit_aging: {
         Args: { p_as_of?: string }
         Returns: {
-          age_days: number
           bucket: string
+          credit_taken: number
           customer_id: string
           customer_name: string
-          oldest_unpaid: string
-          open_amount: number
+          outstanding: number
+          period_from: string
+          period_to: string
+          settlement_done: number
         }[]
       }
       get_credit_ledger_aggregated: {
