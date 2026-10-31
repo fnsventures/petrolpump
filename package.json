@@ -23,7 +23,7 @@
     "@supabase/supabase-js": "^2.118.0",
     "chart.js": "^4.4.1",
     "esbuild": "^0.25.0",
-    "eslint": "^9.39.5",
+    "eslint": "^10.13.0",
     "globals": "^17.13.0",
     "nunjucks": "^3.2.4",
     "pdfjs-dist": "^4.10.38",
