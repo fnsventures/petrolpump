@@ -135,12 +135,11 @@ Deno.serve(async (req: Request) => {
 
     const { data: settings } = await supabase.from("pump_settings").select("config").eq("id", 1).maybeSingle();
     const stationCfg =
-      (settings?.config as { station?: { legalName?: string; tagline?: string; mobile?: string } } | null)?.station ?? {};
+      (settings?.config as { station?: { legalName?: string; tagline?: string } } | null)?.station ?? {};
     // Same fallbacks as AppConfig.DEFAULT_STATION when settings leave a field blank.
     const station = {
       name: stationCfg.legalName,
       tagline: stationCfg.tagline || "Authorized Dealer — Bharat Petroleum Corporation Ltd.",
-      mobile: stationCfg.mobile || "+91 96689 13299",
     };
     const asOn = istDisplayDate();
 
@@ -191,7 +190,6 @@ Deno.serve(async (req: Request) => {
       // Same wording as the SMS icon in the app (supabase/functions/_shared/creditMessage.js).
       const text = creditSmsText({
         station,
-        customerName: g.name,
         amount: balance,
         asOn,
         url: `${siteUrl}/statement.html#t=${token}`,

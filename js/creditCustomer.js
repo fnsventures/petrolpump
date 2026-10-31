@@ -267,6 +267,11 @@ function applyCustomerActivityView(mode, options = {}) {
 }
 
 function restoreCustomerActivityView() {
+  const fromUrl = new URLSearchParams(window.location.search).get("view") || "";
+  if (ACTIVITY_VIEWS.has(fromUrl)) {
+    applyCustomerActivityView(fromUrl, { render: false, navigate: false });
+    return;
+  }
   let stored = "";
   try {
     stored = sessionStorage.getItem(ACTIVITY_VIEW_STORAGE_KEY) || "";
@@ -739,8 +744,6 @@ function setStatementSendData(btn, channel, mobile) {
   btn.dataset.channel = channel;
   btn.dataset.statementCustomer = customerId;
   btn.dataset.mobile = mobile;
-  btn.dataset.customerName =
-    page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
   btn.dataset.amount = String(Number.isFinite(net) ? Math.max(0, net) : 0);
 }
 

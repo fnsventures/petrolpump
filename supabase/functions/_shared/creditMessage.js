@@ -4,12 +4,14 @@
 // js/taskUtils.js keeps a copy (classic script, cannot import this). tests/creditMessage.test.mjs
 // fails if the two drift.
 //
+// No customer name or phone number in the text; the statement link carries the account details.
+//
 // SMS stays GSM-7 ("Rs", plain ASCII): one "₹" makes the whole message UCS-2, which halves the
 // characters per part and roughly doubles the cost.
 
 /**
- * @typedef {{ name?: string, tagline?: string, mobile?: string }} Station
- * @typedef {{ station?: Station, customerName?: string, amount?: number, asOn: string,
+ * @typedef {{ name?: string, tagline?: string }} Station
+ * @typedef {{ station?: Station, amount?: number, asOn: string,
  *             url?: string, linkDays?: number }} CreditMessageInput
  */
 
@@ -25,16 +27,14 @@ function stationName(station) {
 
 /** @param {CreditMessageInput} m */
 export function creditWhatsAppText(m) {
-  const name = String(m.customerName || "").trim();
   const station = stationName(m.station);
   const tagline = String(m.station?.tagline || "").trim();
-  const mobile = String(m.station?.mobile || "").trim();
   const due = Number(m.amount) > 0.004;
   return [
     `*${station}*`,
     ...(tagline ? [tagline] : []),
     "",
-    name ? `Dear ${name},` : "Dear Customer,",
+    "Dear Customer,",
     "",
     due
       ? "This is a reminder about your credit account with us."
@@ -49,20 +49,16 @@ export function creditWhatsAppText(m) {
     ...(due ? ["Kindly clear the dues at the earliest. If you have already paid, please ignore this message.", ""] : []),
     "Thank you,",
     station,
-    ...(mobile ? [`Ph: ${mobile}`] : []),
   ].join("\n");
 }
 
 /** @param {CreditMessageInput} m */
 export function creditSmsText(m) {
-  const name = String(m.customerName || "").trim();
-  const mobile = String(m.station?.mobile || "").trim();
   const due = Number(m.amount) > 0.004;
   return [
-    `${stationName(m.station)} (BPCL): Dear ${name || "Customer"}, your credit a/c amount due as on ${m.asOn} is ${amountText(m.amount, "Rs ")}.`,
+    `${stationName(m.station)} (BPCL): Dear Customer, your credit a/c amount due as on ${m.asOn} is ${amountText(m.amount, "Rs ")}.`,
     due ? "Kindly pay at the earliest." : "",
     m.url ? `Statement (PDF): ${m.url}` : "",
-    mobile ? `Ph: ${mobile}` : "",
   ]
     .filter(Boolean)
     .join(" ");
