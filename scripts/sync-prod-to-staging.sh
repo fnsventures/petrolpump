@@ -24,14 +24,10 @@ echo "    Apply pending migrations..."
 supabase db push --db-url "${STAGING_DB_URL}" --yes
 
 echo "==> 2/4 Dump from production (read-only)"
-AUTH_DUMP="${DUMP_DIR}/prod-auth-${TIMESTAMP}.sql"
 PUBLIC_DUMP="${DUMP_DIR}/prod-public-${TIMESTAMP}.sql"
 STORAGE_DUMP="${DUMP_DIR}/prod-storage-${TIMESTAMP}.sql"
 DSR_DUMP="${DUMP_DIR}/prod-dsr-${TIMESTAMP}.sql"
 DSR_DUMP_READY="${DUMP_DIR}/prod-dsr-${TIMESTAMP}-ready.sql"
-
-supabase db dump --data-only --db-url "${PROD_DB_URL}" --use-copy \
-  --schema auth --exclude "${AUTH_DUMP_EXCLUDES}" -f "${AUTH_DUMP}"
 
 supabase db dump --data-only --db-url "${PROD_DB_URL}" --use-copy \
   --schema public --exclude "${PUBLIC_SYNC_EXCLUDES}" -f "${PUBLIC_DUMP}"
@@ -53,7 +49,6 @@ echo "==> 3/4 Clear staging"
 run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/truncate-staging.sql"
 
 echo "==> 4/4 Load into staging"
-run_psql_stdin "${STAGING_DB_URL}" < "${AUTH_DUMP}"
 run_psql_stdin "${STAGING_DB_URL}" < "${STORAGE_DUMP}"
 run_psql_stdin "${STAGING_DB_URL}" < "${PUBLIC_DUMP}"
 
@@ -67,6 +62,9 @@ if [[ "${NEED_DSR_IMPORT:-0}" == "1" ]]; then
   } | run_psql_stdin "${STAGING_DB_URL}"
   run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/dsr-import-from-prod.sql"
 fi
+
+echo "    Clear prod user ids that have no staging login…"
+run_psql "${STAGING_DB_URL}" "${ROOT}/scripts/clear-prod-auth-refs.sql"
 
 echo
 echo "==> Staging keeps no audit log"
