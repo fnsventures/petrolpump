@@ -159,7 +159,7 @@ js/
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
 ├── dsrSalesBreakdown.js # DSR sales detail by pump / shift / salesman
-├── dsrStockControl.js  # DSR stock variance, tanker decantation, settlement matching
+├── dsrStockControl.js  # DSR stock variance, tanker decantation
 ├── statementCsv.js     # Bank / UPI statement CSV parsing (pure; tests/statementCsv.test.mjs)
 ├── attendantShort.js   # Short / excess per attendant (salary + staff pages)
 ├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
@@ -305,7 +305,7 @@ supabase/
 |------|--------|-----------------|
 | `dashboard.html` | `dashboard.js` | Snapshot (always loaded); DSR summary + Net profit glance loaded lazily per section |
 | `meter-reading.html` | `meterReading.js`, `meterShiftReading.js` | Daily MS/HSD entry; shift+staff meters with daily sync; Purchase cost |
-| `dsr.html` | `dsr.js`, `dsrSummary.js`, `dsrSalesBreakdown.js`, `dsrStockControl.js` | Period DSR register (Total/MS/HSD) + sales detail by pump / shift / salesman; stock variance, tanker decantation, settlement matching |
+| `dsr.html` | `dsr.js`, `dsrSummary.js`, `dsrSalesBreakdown.js`, `dsrStockControl.js` | Period DSR register (Total/MS/HSD) + sales detail by pump / shift / salesman; stock variance, tanker decantation |
 | `sales-daily.html` | — | Legacy redirect to `dsr.html` |
 | `credit.html` | `credit.js` | Ledger; overview/record/customer modules lazy-loaded |
 | `expenses.html` | `expenses.js` | Daily expenses by category |

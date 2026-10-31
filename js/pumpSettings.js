@@ -320,10 +320,6 @@
         Number(a.stockVarianceTolerancePct) >= 0 && a.stockVarianceTolerancePct !== ""
           ? Number(a.stockVarianceTolerancePct)
           : d.stockVarianceTolerancePct,
-      settlementTolerance:
-        Number(a.settlementTolerance) >= 0 && a.settlementTolerance !== ""
-          ? Number(a.settlementTolerance)
-          : d.settlementTolerance,
       dayClosingReminder: a.dayClosingReminder !== false,
       dayClosingShortage: shortage,
       shortageAlert: a.shortageAlert !== false,

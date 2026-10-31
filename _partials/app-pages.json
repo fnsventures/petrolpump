@@ -76,7 +76,7 @@
       "earlyScripts": ["js/dsrLegacyRedirect.js", "js/dsrSections.js"],
       "css": ["css/app-dsr.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/printUtils.js", "js/dsrFuelNav.js", "js/pageSections.js"],
-      "afterAuth": ["js/dsrSummary.js", "js/dsrSalesBreakdown.js", "js/statementCsv.js", "js/dsrStockControl.js"],
+      "afterAuth": ["js/dsrSummary.js", "js/dsrSalesBreakdown.js", "js/dsrStockControl.js"],
       "page": "js/dsr.js"
     },
     "e20-register.html": {
