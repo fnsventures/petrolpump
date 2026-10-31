@@ -474,7 +474,7 @@ A single table with a `product` column would match today’s view plus two table
 | `reports.purchaseTaxInclusive` | Whether buying price is tax-inclusive |
 | `alerts.*` | Low stock, credit/variation, day-closing, shortage/surplus, night cash, missing meter/rate/dip, stale credit, unpaid salary, attendance, expense ratio, missing invoice |
 | `alerts.stockVarianceTolerancePct` | Dip vs book tolerance, % of meter sale (default 0.5). Read by `get_stock_variance` |
-| `alerts.settlementTolerance` | ₹ difference still counted as matched in `get_settlement_match` (default 10) |
+| `alerts.settlementTolerance` | ₹ difference still counted as matched in `get_settlement_match` (default 10). No longer editable in Settings |
 | `shifts.*` | Morning/afternoon shift names and times for attendance |
 | `payroll.lossOfPayEnabled` | Deduct pay for leave beyond the monthly allowance, and half-days. An admin can exclude that deduction for one employee and month (`salary_lop_exclusions`) |
 | `payroll.paidLeaveDaysPerMonth` | Paid leave days allowed each month (default 2) |
@@ -939,7 +939,7 @@ Migration: `supabase/migrations/20260801120000_reminders.sql`.
 
 ## settlement_imports / settlement_lines
 
-**Purpose:** Bank or UPI-app statements uploaded on DSR → Settlement (admin). The browser parses the CSV (`js/statementCsv.js`); `import_settlement_lines(source, file_name, column_map, lines)` stores the credit lines. A `reference` is unique per source (case-insensitive), so re-uploading an overlapping statement skips lines already imported. Migration `20261030125452_settlement_matching`.
+**Purpose:** Bank or UPI-app statement credits for settlement matching (admin). **No UI:** the DSR → Settlement tab was removed; the tables and RPCs remain in the schema. `import_settlement_lines(source, file_name, column_map, lines)` stores the credit lines. A `reference` is unique per source (case-insensitive), so re-uploading an overlapping statement skips lines already imported. Migration `20261030125452_settlement_matching`.
 
 **RLS:** admin select; admin delete of an import (cascades to its lines). No client insert or update.
 

@@ -193,9 +193,8 @@ Admin corrections (admin only)
 - **Union reads** → `dsr` view when code queries “all products”.
 - **Legacy hashes** on `dsr.html` (`#meter`, `#petrol`, `#diesel`) redirect to `meter-reading.html`.
 - **Stock control** (`dsr.html` → `js/dsrStockControl.js`):
-  - `#stock-variance` → `get_stock_variance` (read). Rows over the tolerance are red; the dashboard tile reads the same RPC.
-  - `#decantation` → insert / update `tanker_decantations` (staff), delete (admin). The invoice quantity becomes that day's receipt in the variance.
-  - `#settlement` (admin) → parse CSV in the browser → `import_settlement_lines`; daily match from `get_settlement_match`; remove an import by deleting `settlement_imports`.
+  - `#stock-variance` → `get_stock_variance` (read; admin and supervisor). Grouped by tank (MS, then HSD) with a subtotal row each; the Tank filter shows one product. Rows over the tolerance are red; the dashboard tile reads the same RPC.
+  - `#decantation` → insert / update `tanker_decantations` (admin and supervisor; supervisors blocked on locked days), delete (admin). The invoice quantity becomes that day's receipt in the variance.
 - **Dashboard:** Snapshot date picker; **At a glance** rail shows MS/HSD rates and tank visuals using `pump_settings.config.reports.tanks` capacities.
 
 Stock formulas and why petrol and diesel are separate tables: [DATA_TABLES.md → dsr_stock](DATA_TABLES.md#dsr_stock-view).
@@ -433,7 +432,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
 | Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price |
-| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman), get_stock_variance, tanker_decantations, import_settlement_lines / get_settlement_match / settlement_imports (admin) |
+| DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman), get_stock_variance, tanker_decantations |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
 | Billing | products, invoices, save_invoice, drive-files (sales invoice archive) |

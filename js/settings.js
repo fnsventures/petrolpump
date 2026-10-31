@@ -553,8 +553,6 @@ function applyAlertsFormValues() {
   if (highVariationInput) highVariationInput.value = a.highVariation || "";
   const stockTolInput = document.getElementById("alert-stock-variance-pct");
   if (stockTolInput) stockTolInput.value = a.stockVarianceTolerancePct ?? 0.5;
-  const settlementTolInput = document.getElementById("alert-settlement-tolerance");
-  if (settlementTolInput) settlementTolInput.value = a.settlementTolerance ?? 10;
   if (dayClosingShortageInput) dayClosingShortageInput.value = a.dayClosingShortage ?? 0;
   if (nightCashMinInput) nightCashMinInput.value = a.nightCashMinAmount ?? 0;
   if (staleCreditDaysInput) staleCreditDaysInput.value = a.staleCreditDays ?? 30;
@@ -612,10 +610,6 @@ function bindAlertsForm(auth) {
           stockVarianceTolerancePct: Math.max(
             0,
             parseOptionalNumber(document.getElementById("alert-stock-variance-pct")?.value, d.stockVarianceTolerancePct)
-          ),
-          settlementTolerance: Math.max(
-            0,
-            parseOptionalNumber(document.getElementById("alert-settlement-tolerance")?.value, d.settlementTolerance)
           ),
           dayClosingShortage: parseOptionalNumber(
             document.getElementById("alert-day-closing-shortage")?.value,

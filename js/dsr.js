@@ -137,7 +137,7 @@ function initDsrSummaryPage({ isAdmin = false, dateFromDashboard, urlDateParam }
     defaultSection,
     validSections: [
       ...DSR_SUMMARY_SECTIONS,
-      ...[...DSR_STOCK_SECTIONS].filter((s) => isAdmin || s !== "settlement"),
+      ...DSR_STOCK_SECTIONS,
     ],
     hashAliases,
     resolvePanelId: (section) => (DSR_STOCK_SECTIONS.has(section) ? section : "filters"),

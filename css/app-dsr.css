@@ -587,9 +587,7 @@ body.dsr-page .dsr-short--surplus {
 
 /* DSR → Stock control (js/dsrStockControl.js) */
 .sv-table,
-.decant-table,
-.stl-table,
-.stl-imports-table {
+.decant-table {
   min-width: 760px;
 }
 
@@ -602,8 +600,13 @@ body.dsr-page .dsr-short--surplus {
   font-weight: 700;
 }
 
-.decant-form,
-.stl-upload {
+.sv-table tr.sv-subtotal td {
+  font-weight: 600;
+  border-top: 2px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.decant-form {
   margin-bottom: var(--space-4);
 }
 
