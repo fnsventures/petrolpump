@@ -1176,9 +1176,71 @@ function setupDsrFilter() {
     labelEl: "dsr-date-label",
     trigger: "manual",
     runOnInit: false,
-    onApply: (range) => loadDsrSummary(range),
+    onApply: (range) => {
+      syncDsrStepButtons(range);
+      return loadDsrSummary(range);
+    },
   });
+  if (dsrFilterApi) {
+    document.getElementById("dsr-prev")?.addEventListener("click", () => void stepDsrRange(-1));
+    document.getElementById("dsr-next")?.addEventListener("click", () => void stepDsrRange(1));
+  }
   return dsrFilterApi;
+}
+
+/** True when start..end is exactly one whole calendar month. */
+function isWholeMonthRange(start, end) {
+  if (!start || !end || !start.endsWith("-01")) return false;
+  const [y, m] = start.split("-").map(Number);
+  return getMonthRange(y, m - 1).end === end;
+}
+
+/** Shift a range by its own length: day ±1, week ±7, whole month ±1 month, custom span ±span. */
+function shiftDsrRange(range, direction) {
+  const { start, end } = range;
+  if (isWholeMonthRange(start, end)) {
+    const [y, m] = start.split("-").map(Number);
+    return getMonthRange(y, m - 1 + direction);
+  }
+  const spanDays =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000) + 1;
+  return {
+    start: addDaysToDateString(start, direction * spanDays),
+    end: addDaysToDateString(end, direction * spanDays),
+  };
+}
+
+function syncDsrStepButtons(range) {
+  const nextBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("dsr-next"));
+  if (!nextBtn) return;
+  const atToday = !!range?.end && range.end >= getLocalDateString();
+  nextBtn.disabled = atToday;
+  nextBtn.title = atToday ? "Already at today" : "Next period";
+}
+
+async function stepDsrRange(direction) {
+  const range = dsrFilterApi?.getRange();
+  if (!range?.start || !range?.end) return;
+  const next = shiftDsrRange(range, direction);
+  const todayStr = getLocalDateString();
+  if (direction > 0 && next.start > todayStr) return;
+
+  const rangeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("dsr-range"));
+  const startInput = /** @type {HTMLInputElement | null} */ (document.getElementById("dsr-start"));
+  const endInput = /** @type {HTMLInputElement | null} */ (document.getElementById("dsr-end"));
+  if (!rangeSelect || !startInput || !endInput) return;
+
+  // Land back on the Today / Yesterday presets when the step reaches them.
+  if (next.start === next.end && next.start === todayStr) {
+    rangeSelect.value = "today";
+  } else if (next.start === next.end && next.start === getYesterdayDateString()) {
+    rangeSelect.value = "yesterday";
+  } else {
+    rangeSelect.value = "custom";
+    startInput.value = next.start;
+    endInput.value = next.end;
+  }
+  await dsrFilterApi.refresh();
 }
 
 async function ensureDsrSectionLoaded() {
