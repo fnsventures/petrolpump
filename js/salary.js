@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, addMonthsToMonthValue, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -625,7 +625,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   writeMonthYearValue(salaryMonthSelect, salaryYearSelect, currentMonth);
   syncSharedMonthLabel();
   if (typeof mountMonthStepper === "function") {
-    const monthMax = () => (typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth);
+    // Next month is reachable so salary can be paid in advance.
+    const monthMax = () =>
+      addMonthsToMonthValue(typeof getLocalDateString === "function" ? getLocalDateString().slice(0, 7) : currentMonth, 1);
     mountMonthStepper(salaryMonthSelect, salaryYearSelect, { max: monthMax });
   }
 
