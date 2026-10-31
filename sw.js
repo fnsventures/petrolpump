@@ -5,7 +5,7 @@
  * - App shell: precache on install (app HTML + shared/page CSS/JS + fonts)
  * - Precache is never LRU-trimmed; other static files use a runtime cache
  * - Static JS/CSS/fonts/images: stale-while-revalidate (fast + fresh)
- * - HTML navigations: network-first; after NAVIGATE_TIMEOUT_MS fall back to a cached copy if one exists
+ * - HTML navigations: network-first; a cached copy is used only when the network fails (offline)
  * - env.js: network-first with last-known cache fallback (generated at deploy)
  * - Supabase REST/Functions: always network-only (ops data must never be stale)
  * - Updates: client sends SKIP_WAITING when safe (see js/pwa.js)
@@ -26,9 +26,6 @@ const CACHE_LIMITS = {
 /** Min gap between background revalidations for the same URL (reduces network churn). */
 const REVALIDATE_MS = 30 * 1000;
 const revalidateAt = new Map();
-
-/** Weak signal: serve the cached page after this long instead of a blank screen. */
-const NAVIGATE_TIMEOUT_MS = 4000;
 
 /**
  * True app shell (HTML + hashed JS/CSS + fonts + icons). env.js is never precached.
@@ -80,7 +77,9 @@ self.addEventListener("install", (event) => {
         const slice = STATIC_ASSET_PATHS.slice(i, i + CONCURRENCY);
         await Promise.allSettled(
           slice.map((path) =>
-            cache.add(resolveScopedUrl(path)).catch((err) => {
+            // cache: "reload" skips the browser HTTP cache (GitHub Pages max-age=600), so a new
+            // build never precaches the previous build's HTML.
+            cache.add(new Request(resolveScopedUrl(path), { cache: "reload" })).catch((err) => {
               console.warn(`[SW] Failed to cache: ${path}`, err);
             })
           )
@@ -207,27 +206,13 @@ async function networkFirstNavigate(event) {
     }
     return response;
   });
-  // Keep the worker alive so a late response still refreshes the cache for next time.
-  event.waitUntil(network.catch(() => null));
-
-  let timer;
-  const timedOut = new Promise((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), NAVIGATE_TIMEOUT_MS);
-  });
 
   try {
-    const first = await Promise.race([network, timedOut]);
-    if (first !== "timeout") return first;
-    // Slow network: show the cached page if there is one, otherwise keep waiting.
-    const cached = await cachedNavigation(request);
-    if (cached) return cached;
     return await network;
   } catch {
     const cached = await cachedNavigation(request);
     if (cached) return cached;
     return getOfflineFallback();
-  } finally {
-    clearTimeout(timer);
   }
 }
 
