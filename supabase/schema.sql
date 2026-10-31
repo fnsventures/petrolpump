@@ -5271,6 +5271,21 @@ begin
     where lower(trim(customer_name)) = lower(v_name)
       and nullif(regexp_replace(coalesce(mobile, ''), '\D', '', 'g'), '') is null
     limit 1;
+    -- No mobile-less row: use the same-name customer if all its rows share one mobile.
+    if v_customer_id is null then
+      if (
+        select count(distinct regexp_replace(mobile, '\D', '', 'g'))
+        from public.credit_customers
+        where lower(trim(customer_name)) = lower(v_name)
+      ) > 1 then
+        raise exception 'More than one customer is named %. Enter a mobile number.', v_name;
+      end if;
+      select id into v_customer_id
+      from public.credit_customers
+      where lower(trim(customer_name)) = lower(v_name)
+      order by amount_due desc nulls last, created_at desc
+      limit 1;
+    end if;
   end if;
 
   if v_customer_id is null then
@@ -5343,7 +5358,7 @@ begin
 end;
 $$;
 comment on function public.add_credit_entry(text, date, numeric, text, text, numeric, text, text, text, uuid, text, uuid) is
-  'Add a credit sale. Locks the customer row before applying prepaid. Rejects a certified day and future dates (IST). Retry-safe with p_request_id.';
+  'Add a credit sale. Without a mobile, matches the same-name customer (a mobile-less row, else the only mobile on that name). Locks the customer row before applying prepaid. Rejects a certified day and future dates (IST). Retry-safe with p_request_id.';
 
 create or replace function public.apply_credit_payment_to_day_closing(
   p_date date,
@@ -6882,7 +6897,20 @@ begin
   perform public.require_staff_access();
 
   return query
-  with activity as (
+  with customers as (
+    -- One line per name, like the credit list and customer page; the link opens the row that owes most.
+    select
+      c.id,
+      lower(trim(c.customer_name)) as name_key,
+      first_value(c.id) over w as primary_id,
+      first_value(trim(c.customer_name)) over w as display_name
+    from public.credit_customers c
+    window w as (
+      partition by lower(trim(c.customer_name))
+      order by c.amount_due desc nulls last, c.prepaid_balance desc nulls last, c.created_at desc
+    )
+  ),
+  activity as (
     select e.credit_customer_id as cid, e.transaction_date as d, e.amount as credit, 0::numeric as settled
     from public.credit_entries e
     where e.status = 'posted'
@@ -6895,7 +6923,9 @@ begin
   ),
   bucketed as (
     select
-      a.cid,
+      cu.name_key,
+      cu.primary_id,
+      cu.display_name,
       a.d,
       a.credit,
       a.settled,
@@ -6906,20 +6936,23 @@ begin
         else '90+'
       end as bucket
     from activity a
+    join customers cu on cu.id = a.cid
   ),
   totals as (
     select
-      b.cid,
+      b.name_key,
+      b.primary_id,
+      b.display_name,
       b.bucket,
       min(b.d) as first_date,
       sum(b.credit) as credit,
       sum(b.settled) as settled
     from bucketed b
-    group by b.cid, b.bucket
+    group by b.name_key, b.primary_id, b.display_name, b.bucket
   )
   select
-    t.cid,
-    c.customer_name::text,
+    t.primary_id,
+    t.display_name,
     t.bucket,
     case t.bucket
       when '0-30' then p_as_of - 30
@@ -6937,13 +6970,12 @@ begin
     t.settled,
     t.credit - t.settled
   from totals t
-  join public.credit_customers c on c.id = t.cid
   where abs(t.credit - t.settled) > 0.009;
 end;
 $$;
 
 comment on function public.get_credit_aging(date) is
-  'Aging by date window as of p_as_of (0-30, 31-60, 61-90, 90+ days back). One row per customer per window with posted credit taken, settlements, and outstanding = credit - settlements in that window, matching the customer page Activity for the same dates. Negative outstanding is an advance.';
+  'Aging by date window as of p_as_of (0-30, 31-60, 61-90, 90+ days back). One row per customer name (all its rows summed) per window with posted credit taken, settlements, and outstanding = credit - settlements in that window, matching the customer page Activity for the same dates. customer_id is the row that owes most. Negative outstanding is an advance.';
 
 revoke all on function public.get_credit_aging(date) from public, anon;
 grant execute on function public.get_credit_aging(date) to authenticated;

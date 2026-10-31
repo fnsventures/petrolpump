@@ -1036,7 +1036,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `get_night_cash_available()` | Uncollected night cash totals | — |
 | `preview_night_cash_collection(from, to)` | Preview pickup for a date range | — |
 | `collect_night_cash(from, to, remarks?)` | Record pickup; link closings | — |
-| `add_credit_entry(..., request_id?)` | New credit sale; locks the customer row; rejects a certified day | — |
+| `add_credit_entry(..., request_id?)` | New credit sale; without a mobile, matches the same-name customer (mobile-less row, else its only mobile); locks the customer row; rejects a certified day | — |
 | `record_credit_payment(..., request_id?)` | Payment + LIFO; locks the customer row; prepaid on overpay; rejects a certified day | — |
 | `batch_record_credit_settlements(..., request_id?)` | Multi-customer payment in one transaction; locks those rows; rejects a certified day | — |
 | `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
@@ -1044,7 +1044,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |
 | `delete_credit_payment(id)` | Delete a payment (row is removed) and reallocate. Locks the customer first | admin |
-| `get_credit_aging(date)` | Date windows 0–30, 31–60, 61–90, 90+ days back: one row per customer per window with `credit_taken`, `settlement_done`, `outstanding` (credit minus settlements dated in the window, same as customer Activity for those dates; negative = advance) | — |
+| `get_credit_aging(date)` | Date windows 0–30, 31–60, 61–90, 90+ days back: one row per customer name (all its rows summed; `customer_id` is the row that owes most) per window with `credit_taken`, `settlement_done`, `outstanding` (credit minus settlements dated in the window, same as customer Activity for those dates; negative = advance) | — |
 | `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
 | `get_open_credit_as_of(date)` | Total open credit | — |
