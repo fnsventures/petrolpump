@@ -2344,6 +2344,45 @@ body.modal-open {
   margin-top: 0.5rem;
 }
 
+/* Pagination controls */
+.pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.pagination-info {
+  font-size: var(--text-base);
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.pagination-controls button {
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  font-size: var(--text-base);
+}
+
+@media (max-width: 480px) {
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+
+  .pagination-controls button {
+    width: 100%;
+  }
+}
+
 /* Print styles */
 @media print {
   .topbar,

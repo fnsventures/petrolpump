@@ -202,32 +202,92 @@
 </details>`;
   }
 
-  /** Reminder text. With statementUrl, adds the customer's read-only statement link (print/save as PDF there). */
-  function waMessageForCustomer(_customerName, amountDue, statementUrl) {
-    const n = Number(amountDue);
-    const unpaid = Number.isFinite(n) ? Math.max(0, n) : 0;
-    const amount = typeof formatCurrency === "function" ? formatCurrency(unpaid) : String(unpaid);
+  // Same wording as supabase/functions/_shared/creditMessage.js (also used by the weekly SMS
+  // job). Keep the two in step; tests/creditMessage.test.mjs compares them.
+  function creditAmountText(amount, symbol) {
+    const n = Number(amount);
+    const v = Number.isFinite(n) ? Math.max(0, n) : 0;
+    return symbol + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function creditStationName(station) {
+    return String(station?.name || "").trim() || "BISHNU PRIYA FUELS";
+  }
+
+  function creditWhatsAppText(m) {
+    const name = String(m.customerName || "").trim();
+    const station = creditStationName(m.station);
+    const tagline = String(m.station?.tagline || "").trim();
+    const mobile = String(m.station?.mobile || "").trim();
+    const due = Number(m.amount) > 0.004;
+    return [
+      `*${station}*`,
+      ...(tagline ? [tagline] : []),
+      "",
+      name ? `Dear ${name},` : "Dear Customer,",
+      "",
+      due
+        ? "This is a reminder about your credit account with us."
+        : "Here is the latest statement of your credit account with us.",
+      "",
+      `*Amount due:* ${creditAmountText(m.amount, "₹")}`,
+      `*As on:* ${m.asOn}`,
+      ...(m.url
+        ? ["", "*Statement (view / download PDF):*", m.url, `_Link valid for ${m.linkDays || 30} days._`]
+        : []),
+      "",
+      ...(due ? ["Kindly clear the dues at the earliest. If you have already paid, please ignore this message.", ""] : []),
+      "Thank you,",
+      station,
+      ...(mobile ? [`Ph: ${mobile}`] : []),
+    ].join("\n");
+  }
+
+  function creditSmsText(m) {
+    const name = String(m.customerName || "").trim();
+    const mobile = String(m.station?.mobile || "").trim();
+    const due = Number(m.amount) > 0.004;
+    return [
+      `${creditStationName(m.station)} (BPCL): Dear ${name || "Customer"}, your credit a/c amount due as on ${m.asOn} is ${creditAmountText(m.amount, "Rs ")}.`,
+      due ? "Kindly pay at the earliest." : "",
+      m.url ? `Statement (PDF): ${m.url}` : "",
+      mobile ? `Ph: ${mobile}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  /** Station letterhead fields and today's date for the reminder text. */
+  function creditMessageInput(customerName, amountDue, statementUrl) {
+    const settings = typeof PumpSettings !== "undefined" ? PumpSettings : null;
+    const def = typeof AppConfig !== "undefined" ? AppConfig.DEFAULT_STATION || {} : {};
     const today = typeof getLocalDateString === "function" ? getLocalDateString() : "";
     const asOn =
       today && typeof formatDisplayDate === "function" && formatDisplayDate(today) !== "—"
         ? formatDisplayDate(today)
         : today;
-    const station =
-      (typeof PumpSettings !== "undefined" && PumpSettings.getStationLegalName?.()) ||
-      (typeof AppConfig !== "undefined" && AppConfig.DEFAULT_STATION?.legalName) ||
-      "BISHNU PRIYA FUELS";
-    return [
-      "Hello,",
-      "",
-      `This is ${station}. As on ${asOn}, your outstanding balance is ${amount}.`,
-      "",
-      "Please clear this at the earliest.",
-      ...(statementUrl
-        ? ["", `View or download your statement (valid ${STATEMENT_LINK_DAYS} days):`, statementUrl]
-        : []),
-      "",
-      "Thank you.",
-    ].join("\n");
+    return {
+      station: {
+        name: settings?.getStationLegalName?.() || def.legalName,
+        tagline: settings?.getStationTagline?.() || def.tagline,
+        mobile: settings?.getStationField?.("mobile") || def.mobile,
+      },
+      customerName,
+      amount: amountDue,
+      asOn,
+      url: statementUrl,
+      linkDays: STATEMENT_LINK_DAYS,
+    };
+  }
+
+  /** WhatsApp reminder. With statementUrl, adds the customer's statement link (PDF download there). */
+  function waMessageForCustomer(customerName, amountDue, statementUrl) {
+    return creditWhatsAppText(creditMessageInput(customerName, amountDue, statementUrl));
+  }
+
+  /** SMS reminder: short GSM-7 text, the same wording as the weekly SMS job. */
+  function smsMessageForCustomer(customerName, amountDue, statementUrl) {
+    return creditSmsText(creditMessageInput(customerName, amountDue, statementUrl));
   }
 
   const STATEMENT_LINK_DAYS = 30;
@@ -275,7 +335,8 @@
       void statementUrlFor(link.dataset.statementCustomer)
         .catch(() => "")
         .then((url) => {
-          const text = waMessageForCustomer(link.dataset.customerName, link.dataset.amount, url);
+          const build = channel === "whatsapp" ? waMessageForCustomer : smsMessageForCustomer;
+          const text = build(link.dataset.customerName, link.dataset.amount, url);
           const href = (channel === "whatsapp" ? waHref(mobile, text) : smsHref(mobile, text)) || fallback;
           if (!url) global.AppError?.showToast?.("Couldn't add the statement link; sending the balance only.", "warning");
           if (channel === "whatsapp") {
@@ -305,7 +366,8 @@
     const shown = String(mobile || "").trim();
     const tel = telHref(shown);
     const wa = waHref(shown, waText);
-    const sms = smsHref(shown, waText);
+    const smsText = customerId || customerName ? smsMessageForCustomer(customerName, amountDue) : waText;
+    const sms = smsHref(shown, smsText);
     if (!tel && !wa) return "";
     return `<span class="contact-line">
       ${
@@ -489,6 +551,9 @@
     statementUrlFor,
     STATEMENT_LINK_DAYS,
     waMessageForCustomer,
+    smsMessageForCustomer,
+    creditWhatsAppText,
+    creditSmsText,
     contactRowHtml,
     amountDueOf,
     urgencyRank,

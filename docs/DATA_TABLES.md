@@ -735,7 +735,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | created_at | timestamptz | Created at |
 | last_viewed_at / view_count | timestamptz / int | Updated on each successful open |
 
-**RLS:** SELECT provisioned staff; no client writes. `create_credit_statement_link(customer_id, days)` and `revoke_credit_statement_links(customer_id)` (whole name group) are staff RPCs. `get_credit_statement_by_token(token)` is **service_role only**: the public page calls the `credit-statement` Edge Function, so anon still executes no app function. The statement covers the customer's name group: balance, opening balance and activity for the last 90 days, and every open bill with its age. No staff names or payment notes.
+**RLS:** SELECT provisioned staff; no client writes. `create_credit_statement_link(customer_id, days)` and `revoke_credit_statement_links(customer_id)` (whole name group) are staff RPCs. `get_credit_statement_by_token(token)` is **service_role only**: the public page calls the `credit-statement` Edge Function, so anon still executes no app function. The statement covers the customer's name group: station letterhead fields (`station`: name, tagline, address, GSTIN, mobile, email from `pump_settings`), balance, opening balance, period billed/paid, ledger `lines` with a running balance for the last 90 days, and every open bill with its age. No staff names or payment notes.
 
 ---
 
@@ -1044,7 +1044,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |
 | `delete_credit_payment(id)` | Delete a payment (row is removed) and reallocate. Locks the customer first | admin |
-| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets: one row per customer per bucket, holding only the bills of that age | — |
+| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets: one row per customer per bucket, summing `amount - amount_settled` of that customer's bills of that age (same open amounts as the customer page) | — |
 | `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
 | `get_open_credit_as_of(date)` | Total open credit | — |

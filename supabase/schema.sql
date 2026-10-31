@@ -6876,135 +6876,41 @@ security definer
 stable
 set search_path = public
 as $$
-declare
-  v_cust uuid;
-  v_ids uuid[];
-  v_dates date[];
-  v_amounts numeric[];
-  v_settled numeric[];
-  v_pay record;
-  v_i int;
-  v_n int;
-  v_remaining numeric;
-  v_open numeric;
-  v_alloc numeric;
-  v_pool numeric;
-  v_open_amount numeric;
-  v_oldest date;
-  v_name text;
-  v_bucket text;
-  v_age integer;
 begin
   perform public.require_staff_access();
 
-  for v_cust in
-    select distinct e.credit_customer_id
+  return query
+  with open_bills as (
+    select
+      e.credit_customer_id,
+      e.transaction_date,
+      e.amount - e.amount_settled as open,
+      case
+        when p_as_of - e.transaction_date <= 30 then '0-30'
+        when p_as_of - e.transaction_date <= 60 then '31-60'
+        when p_as_of - e.transaction_date <= 90 then '61-90'
+        else '90+'
+      end as bucket
     from public.credit_entries e
     where e.status = 'posted'
       and e.transaction_date <= p_as_of
-  loop
-    select
-      array_agg(id order by transaction_date asc, id asc),
-      array_agg(transaction_date order by transaction_date asc, id asc),
-      array_agg(amount order by transaction_date asc, id asc)
-    into v_ids, v_dates, v_amounts
-    from public.credit_entries
-    where credit_customer_id = v_cust
-      and status = 'posted'
-      and transaction_date <= p_as_of;
-
-    v_n := coalesce(array_length(v_ids, 1), 0);
-    if v_n = 0 then
-      continue;
-    end if;
-    v_settled := array_fill(0::numeric, array[v_n]);
-
-    for v_pay in
-      select amount, date
-      from public.credit_payments
-      where credit_customer_id = v_cust
-        and status = 'posted'
-        and date <= p_as_of
-      order by date asc, created_at asc, id asc
-    loop
-      v_remaining := v_pay.amount;
-      for v_i in reverse v_n..1 loop
-        exit when v_remaining <= 0;
-        if v_dates[v_i] > v_pay.date then
-          continue;
-        end if;
-        v_open := v_amounts[v_i] - v_settled[v_i];
-        if v_open <= 0 then
-          continue;
-        end if;
-        v_alloc := least(v_remaining, v_open);
-        v_settled[v_i] := v_settled[v_i] + v_alloc;
-        v_remaining := v_remaining - v_alloc;
-      end loop;
-    end loop;
-
-    select coalesce(sum(amount), 0) into v_pool
-    from public.credit_payments
-    where credit_customer_id = v_cust
-      and status = 'posted'
-      and date <= p_as_of;
-
-    v_pool := v_pool - coalesce((select sum(x) from unnest(v_settled) as x), 0);
-    for v_i in 1..v_n loop
-      exit when v_pool <= 0;
-      v_open := v_amounts[v_i] - v_settled[v_i];
-      if v_open <= 0 then
-        continue;
-      end if;
-      v_alloc := least(v_pool, v_open);
-      v_settled[v_i] := v_settled[v_i] + v_alloc;
-      v_pool := v_pool - v_alloc;
-    end loop;
-
-    select c.customer_name into v_name
-    from public.credit_customers c
-    where c.id = v_cust;
-
-    -- One row per bucket, holding only the open bills in that age range.
-    foreach v_bucket in array array['0-30', '31-60', '61-90', '90+'] loop
-      v_open_amount := 0;
-      v_oldest := null;
-      for v_i in 1..v_n loop
-        v_open := v_amounts[v_i] - v_settled[v_i];
-        if v_open <= 0 then
-          continue;
-        end if;
-        v_age := (p_as_of - v_dates[v_i])::integer;
-        if (case
-              when v_age <= 30 then '0-30'
-              when v_age <= 60 then '31-60'
-              when v_age <= 90 then '61-90'
-              else '90+'
-            end) <> v_bucket then
-          continue;
-        end if;
-        v_open_amount := v_open_amount + v_open;
-        if v_oldest is null or v_dates[v_i] < v_oldest then
-          v_oldest := v_dates[v_i];
-        end if;
-      end loop;
-
-      if v_open_amount > 0 and v_oldest is not null then
-        customer_id := v_cust;
-        customer_name := v_name;
-        open_amount := v_open_amount;
-        oldest_unpaid := v_oldest;
-        age_days := (p_as_of - v_oldest)::integer;
-        bucket := v_bucket;
-        return next;
-      end if;
-    end loop;
-  end loop;
+      and e.amount - e.amount_settled > 0.009
+  )
+  select
+    b.credit_customer_id,
+    c.customer_name::text,
+    sum(b.open),
+    min(b.transaction_date),
+    (p_as_of - min(b.transaction_date))::integer,
+    b.bucket
+  from open_bills b
+  join public.credit_customers c on c.id = b.credit_customer_id
+  group by b.credit_customer_id, c.customer_name, b.bucket;
 end;
 $$;
 
 comment on function public.get_credit_aging(date) is
-  'Open credit as of p_as_of, one row per customer per bucket (0-30, 31-60, 61-90, 90+). Each row holds only the open bills whose age falls in that bucket. Payments after p_as_of are left out.';
+  'Open credit by bill age as of p_as_of: one row per customer per bucket (0-30, 31-60, 61-90, 90+). Each row sums amount - amount_settled for that customer''s posted bills in the bucket, matching the unpaid bills on the customer page.';
 
 grant execute on function public.get_credit_aging(date) to authenticated;
 
@@ -10447,6 +10353,7 @@ declare
   v_name text;
   v_today date := public.meter_station_today();
   v_from date := public.meter_station_today() - 90;
+  v_station jsonb;
   v_out jsonb;
 begin
   if p_token is null or p_token !~ '^[0-9a-f]{64}$' then
@@ -10470,6 +10377,11 @@ begin
   from public.credit_customers c
   where c.id = v_link.credit_customer_id;
 
+  select coalesce(s.config -> 'station', '{}'::jsonb) into v_station
+  from public.pump_settings s
+  where s.id = 1;
+  v_station := coalesce(v_station, '{}'::jsonb);
+
   with ids as (
     select c.id from public.credit_customers c
     where lower(trim(c.customer_name)) = lower(v_name)
@@ -10481,21 +10393,56 @@ begin
   p as (
     select * from public.credit_payments
     where credit_customer_id in (select id from ids) and status = 'posted'
+  ),
+  opening as (
+    select
+      (select coalesce(sum(amount), 0) from e where transaction_date < v_from)
+      - (select coalesce(sum(amount), 0) from p where date < v_from) as amount
+  ),
+  moves as (
+    select e.transaction_date as d, e.created_at as at, 0 as ord,
+           case when e.entry_kind = 'opening' then 'opening' else 'fuel' end as kind,
+           e.fuel_type, e.quantity, null::text as mode, e.amount as amount
+    from e where e.transaction_date between v_from and v_today
+    union all
+    select p.date, p.created_at, 1, 'payment', null, null, p.payment_mode, -p.amount
+    from p where p.date between v_from and v_today
+  ),
+  lines as (
+    select m.*,
+           (select amount from opening)
+             + sum(m.amount) over (order by m.d, m.ord, m.at rows unbounded preceding) as balance
+    from moves m
   )
   select jsonb_build_object(
     'customer_name', v_name,
-    'station_name', coalesce(
-      nullif(trim((select s.config #>> '{station,legalName}' from public.pump_settings s where s.id = 1)), ''),
-      'BISHNU PRIYA FUELS'),
+    'station_name', coalesce(nullif(trim(v_station ->> 'legalName'), ''), 'BISHNU PRIYA FUELS'),
+    'station', jsonb_build_object(
+      'name', coalesce(nullif(trim(v_station ->> 'legalName'), ''), 'BISHNU PRIYA FUELS'),
+      'tagline', coalesce(nullif(trim(v_station ->> 'tagline'), ''),
+        'Authorized Dealer — Bharat Petroleum Corporation Ltd.'),
+      'address', nullif(trim(v_station ->> 'address'), ''),
+      'gstin', nullif(trim(v_station ->> 'gstin'), ''),
+      'mobile', nullif(trim(v_station ->> 'mobile'), ''),
+      'email', nullif(trim(v_station ->> 'email'), '')
+    ),
     'as_of', v_today,
     'from', v_from,
     'expires_at', v_link.expires_at,
-    'opening_balance',
-      (select coalesce(sum(amount), 0) from e where transaction_date < v_from)
-      - (select coalesce(sum(amount), 0) from p where date < v_from),
+    'opening_balance', (select amount from opening),
     'balance',
       (select coalesce(sum(amount), 0) from e where transaction_date <= v_today)
       - (select coalesce(sum(amount), 0) from p where date <= v_today),
+    'period_billed',
+      (select coalesce(sum(amount), 0) from e where transaction_date between v_from and v_today),
+    'period_paid',
+      (select coalesce(sum(amount), 0) from p where date between v_from and v_today),
+    'lines', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'date', d, 'kind', kind, 'fuel_type', fuel_type, 'quantity', quantity,
+               'mode', mode, 'amount', amount, 'balance', balance
+             ) order by d, ord, at), '[]'::jsonb)
+      from lines),
     'credits', (
       select coalesce(jsonb_agg(jsonb_build_object(
                'date', transaction_date, 'amount', amount, 'fuel_type', fuel_type,
@@ -10520,7 +10467,7 @@ end;
 $$;
 
 comment on function public.get_credit_statement_by_token(text) is
-  'Service role only (credit-statement Edge Function): customer statement for a live link token, or null. No staff names or notes.';
+  'Service role only (credit-statement Edge Function): customer statement for a live link token, or null. Station letterhead fields, period totals, ledger lines with running balance. No staff names or notes.';
 
 revoke execute on function public.get_credit_statement_by_token(text) from public, anon, authenticated;
 grant execute on function public.get_credit_statement_by_token(text) to service_role;
