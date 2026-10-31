@@ -722,7 +722,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 ## credit_statement_links
 
-**Purpose:** Read-only statement links a customer opens without a login (`statement.html#t=<token>`). Credit → customer → **Share link** creates one valid 30 days and sends it on WhatsApp.
+**Purpose:** Read-only statement links a customer opens without a login (`statement.html#t=<token>`). Credit → customer → **Share link** creates one valid 30 days and sends it on WhatsApp. The WhatsApp and SMS contact icons (credit header, Tasks, dashboard, notifications) also create one when tapped (one per customer per page load) and add it to the balance message.
 
 | Column | Type | Description |
 |--------|------|-------------|

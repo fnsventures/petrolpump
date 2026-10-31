@@ -699,11 +699,13 @@ function syncCustomerContactActions() {
     const smsHref = tel && canShare ? creditCustomerSmsHref(mobile, buildCreditWhatsAppText()) : "";
     if (smsHref) {
       smsBtn.href = smsHref;
+      setStatementSendData(smsBtn, "sms", mobile);
       smsBtn.classList.remove("is-disabled");
       smsBtn.removeAttribute("aria-disabled");
       smsBtn.setAttribute("aria-label", `Text ${mobile}`);
     } else {
       smsBtn.removeAttribute("href");
+      delete smsBtn.dataset.statementCustomer;
       smsBtn.classList.add("is-disabled");
       smsBtn.setAttribute("aria-disabled", "true");
       smsBtn.setAttribute("aria-label", "Send the outstanding reminder by text message");
@@ -713,15 +715,33 @@ function syncCustomerContactActions() {
   const waHref = tel && canShare ? creditCustomerWaHref(mobile, buildCreditWhatsAppText()) : "";
   if (waHref) {
     waBtn.href = waHref;
+    setStatementSendData(waBtn, "whatsapp", mobile);
     waBtn.classList.remove("is-disabled");
     waBtn.removeAttribute("aria-disabled");
     waBtn.setAttribute("aria-label", `WhatsApp ${mobile}`);
   } else {
     waBtn.removeAttribute("href");
+    delete waBtn.dataset.statementCustomer;
     waBtn.classList.add("is-disabled");
     waBtn.setAttribute("aria-disabled", "true");
     waBtn.setAttribute("aria-label", "Send the outstanding reminder on WhatsApp");
   }
+}
+
+/** TaskUtils.bindStatementLinkSend reads these to add a statement link to the message on tap. */
+function setStatementSendData(btn, channel, mobile) {
+  const customerId = page().state.customerId;
+  if (!customerId) {
+    delete btn.dataset.statementCustomer;
+    return;
+  }
+  const net = Number(page().state.customerNetBalance);
+  btn.dataset.channel = channel;
+  btn.dataset.statementCustomer = customerId;
+  btn.dataset.mobile = mobile;
+  btn.dataset.customerName =
+    page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
+  btn.dataset.amount = String(Number.isFinite(net) ? Math.max(0, net) : 0);
 }
 
 /** Digits for tel: and wa.me. 10-digit Indian mobiles get 91. */
@@ -756,14 +776,14 @@ function creditCustomerSmsHref(mobile, text) {
   return `sms:+${e164}${sep}body=${encodeURIComponent(text)}`;
 }
 
-function buildCreditWhatsAppText() {
+function buildCreditWhatsAppText(statementUrl) {
   const net = Number(page().state.customerNetBalance);
   const unpaid = Number.isFinite(net) ? Math.max(0, net) : 0;
   const name = page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
   if (typeof TaskUtils?.waMessageForCustomer === "function") {
-    return TaskUtils.waMessageForCustomer(name, unpaid);
+    return TaskUtils.waMessageForCustomer(name, unpaid, statementUrl);
   }
-  return formatCurrency(unpaid);
+  return statementUrl ? `${formatCurrency(unpaid)}\n${statementUrl}` : formatCurrency(unpaid);
 }
 
 const STATEMENT_LINK_DAYS = 30;
@@ -783,7 +803,7 @@ async function shareCreditStatementLink() {
     if (error) throw error;
     const url = new URL(`statement.html#t=${data.token}`, window.location.href).href;
     const name = page().state.customerName || "";
-    const text = `${buildCreditWhatsAppText()}\n\nYour statement (valid ${STATEMENT_LINK_DAYS} days): ${url}`;
+    const text = buildCreditWhatsAppText(url);
     const waHref = creditCustomerWaHref(String(page().state.customerContact?.mobile || "").trim(), text);
     if (waHref) {
       window.open(waHref, "_blank", "noopener");

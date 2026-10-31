@@ -328,7 +328,11 @@
       typeof TaskUtils.waMessageForCustomer === "function"
         ? TaskUtils.waMessageForCustomer(customerName, amountDue)
         : "";
-    return TaskUtils.contactRowHtml(mobile, waText);
+    return TaskUtils.contactRowHtml(mobile, waText, {
+      customerId: row.credit_customer_id,
+      customerName,
+      amountDue,
+    });
   }
 
   function laterPanel(id, credit) {

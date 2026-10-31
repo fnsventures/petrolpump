@@ -202,7 +202,8 @@
 </details>`;
   }
 
-  function waMessageForCustomer(_customerName, amountDue) {
+  /** Reminder text. With statementUrl, adds the customer's read-only statement link (print/save as PDF there). */
+  function waMessageForCustomer(_customerName, amountDue, statementUrl) {
     const n = Number(amountDue);
     const unpaid = Number.isFinite(n) ? Math.max(0, n) : 0;
     const amount = typeof formatCurrency === "function" ? formatCurrency(unpaid) : String(unpaid);
@@ -221,9 +222,70 @@
       `This is ${station}. As on ${asOn}, your outstanding balance is ${amount}.`,
       "",
       "Please clear this at the earliest.",
+      ...(statementUrl
+        ? ["", `View or download your statement (valid ${STATEMENT_LINK_DAYS} days):`, statementUrl]
+        : []),
       "",
       "Thank you.",
     ].join("\n");
+  }
+
+  const STATEMENT_LINK_DAYS = 30;
+  /** One link per customer per page load, so repeat taps don't mint new rows. */
+  const statementUrlCache = new Map();
+
+  /** New read-only statement URL via create_credit_statement_link; "" when it fails (e.g. role). */
+  async function statementUrlFor(customerId) {
+    if (!customerId) return "";
+    const cached = statementUrlCache.get(customerId);
+    if (cached) return cached;
+    const client = global.supabaseClient;
+    if (!client) return "";
+    const { data, error } = await client.rpc("create_credit_statement_link", {
+      p_customer_id: customerId,
+      p_valid_days: STATEMENT_LINK_DAYS,
+    });
+    if (error || !data?.token) {
+      if (error) global.AppError?.report?.(error, { context: "TaskUtils.statementUrlFor" });
+      return "";
+    }
+    const url = new URL(`statement.html#t=${data.token}`, global.location.href).href;
+    statementUrlCache.set(customerId, url);
+    return url;
+  }
+
+  /**
+   * WhatsApp/SMS icons with data-statement-customer: on tap, add a statement link to the
+   * message, then open. The plain href (no link) stays as the fallback.
+   */
+  function bindStatementLinkSend() {
+    if (typeof document === "undefined" || bindStatementLinkSend.bound) return;
+    bindStatementLinkSend.bound = true;
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest?.("a.contact-button[data-statement-customer]");
+      if (!link || !link.getAttribute("href") || link.classList.contains("is-disabled")) return;
+      event.preventDefault();
+      const channel = link.dataset.channel;
+      const mobile = link.dataset.mobile || "";
+      const fallback = link.getAttribute("href");
+      // Open WhatsApp's tab now, while the tap still counts as a user gesture; popup
+      // blockers drop window.open after an await.
+      const win = channel === "whatsapp" ? global.open("", "_blank") : null;
+      if (win) win.opener = null;
+      void statementUrlFor(link.dataset.statementCustomer)
+        .catch(() => "")
+        .then((url) => {
+          const text = waMessageForCustomer(link.dataset.customerName, link.dataset.amount, url);
+          const href = (channel === "whatsapp" ? waHref(mobile, text) : smsHref(mobile, text)) || fallback;
+          if (!url) global.AppError?.showToast?.("Couldn't add the statement link; sending the balance only.", "warning");
+          if (channel === "whatsapp") {
+            if (win) win.location.href = href;
+            else global.location.href = href;
+          } else {
+            global.location.href = href;
+          }
+        });
+    });
   }
 
   const CONTACT_CALL_ICON =
@@ -234,8 +296,12 @@
     '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 0 0-7.74 13.61L3 21l4.52-1.19A9 9 0 1 0 12 3zm0 2a7 7 0 1 1-3.57 13.03l-.3-.18-2.11.56.56-2.06-.2-.32A7 7 0 0 1 12 5zm3.15 9.64c-.17-.08-1-.49-1.16-.54-.16-.06-.27-.08-.39.08-.12.17-.45.54-.55.65-.1.11-.2.12-.37.04-.17-.08-.71-.26-1.35-.82-.5-.45-.83-1-.93-1.17-.1-.17-.01-.27.07-.35.08-.08.17-.2.25-.3.08-.1.11-.17.17-.28.06-.11.03-.21-.01-.3-.04-.08-.39-.94-.53-1.29-.14-.35-.28-.3-.39-.3h-.33c-.11 0-.3.04-.46.21-.16.17-.6.59-.6 1.45 0 .86.62 1.7.7 1.82.08.11 1.22 1.86 2.96 2.61.41.18.73.29.98.37.41.13.79.11 1.08.07.33-.05 1-.41 1.14-.81.14-.4.14-.74.1-.81-.04-.07-.15-.11-.32-.19z"/></svg>';
 
   /** Same mobile line, call, SMS, and WhatsApp icons as the credit customer header. */
-  function contactRowHtml(mobile, waText) {
+  function contactRowHtml(mobile, waText, { customerId = "", customerName = "", amountDue = null } = {}) {
     const esc = escapeHtml;
+    // Lets bindStatementLinkSend rebuild the message with a statement link on tap.
+    const statementData = customerId
+      ? ` data-statement-customer="${esc(customerId)}" data-mobile="${esc(String(mobile || "").trim())}" data-customer-name="${esc(customerName)}" data-amount="${esc(amountDue ?? "")}"`
+      : "";
     const shown = String(mobile || "").trim();
     const tel = telHref(shown);
     const wa = waHref(shown, waText);
@@ -255,12 +321,12 @@
         }
         ${
           sms
-            ? `<a class="button-icon contact-button contact-button--sms" href="${esc(sms)}" aria-label="Text ${esc(shown)}">${CONTACT_SMS_ICON}</a>`
+            ? `<a class="button-icon contact-button contact-button--sms" href="${esc(sms)}" data-channel="sms"${statementData} aria-label="Text ${esc(shown)}">${CONTACT_SMS_ICON}</a>`
             : ""
         }
         ${
           wa
-            ? `<a class="button-icon contact-button contact-button--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
+            ? `<a class="button-icon contact-button contact-button--whatsapp" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" data-channel="whatsapp"${statementData} aria-label="WhatsApp ${esc(shown)}">${CONTACT_WA_ICON}</a>`
             : ""
         }
       </span>
@@ -420,6 +486,8 @@
     telHref,
     waHref,
     smsHref,
+    statementUrlFor,
+    STATEMENT_LINK_DAYS,
     waMessageForCustomer,
     contactRowHtml,
     amountDueOf,
@@ -440,4 +508,5 @@
     showUndoToast,
     CREDIT_TYPES,
   };
+  bindStatementLinkSend();
 })(typeof window !== "undefined" ? window : globalThis);

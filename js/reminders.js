@@ -997,7 +997,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const contactHtml =
       credit && mode === "open" && typeof TaskUtils.contactRowHtml === "function"
-        ? TaskUtils.contactRowHtml(mobile, TaskUtils.waMessageForCustomer(customerName, amountDue))
+        ? TaskUtils.contactRowHtml(mobile, TaskUtils.waMessageForCustomer(customerName, amountDue), {
+            customerId: row.credit_customer_id,
+            customerName,
+            amountDue,
+          })
         : "";
 
     const metaBits = [

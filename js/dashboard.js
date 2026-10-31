@@ -730,8 +730,13 @@ function taskContactHtml(row) {
   const embedded = Array.isArray(row.credit_customers) ? row.credit_customers[0] : row.credit_customers;
   const mobile = embedded?.mobile || "";
   const customerName = TaskUtils.customerNameOf(row);
-  const waText = TaskUtils.waMessageForCustomer(customerName, TaskUtils.amountDueOf(row));
-  return TaskUtils.contactRowHtml(mobile, waText);
+  const amountDue = TaskUtils.amountDueOf(row);
+  const waText = TaskUtils.waMessageForCustomer(customerName, amountDue);
+  return TaskUtils.contactRowHtml(mobile, waText, {
+    customerId: row.credit_customer_id,
+    customerName,
+    amountDue,
+  });
 }
 
 
