@@ -29,7 +29,7 @@ jobs:
     environment: prod
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client jq
@@ -69,7 +69,7 @@ jobs:
 
       - name: Setup Supabase CLI
         if: steps.plan.outputs.full == 'yes' || steps.plan.outputs.year == 'yes'
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           version: latest
 
