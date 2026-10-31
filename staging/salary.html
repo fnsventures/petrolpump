@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; frame-ancestors 'none'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <script>
+      if (window.top !== window.self) {
+        try { window.top.location = window.location.href; } catch (err) { /* cross-origin frame */ }
+        document.documentElement.replaceChildren();
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Salary · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <script src="js/theme.js?v=785528b4cc"></script>
+    <link rel="stylesheet" href="css/fonts.css?v=9965543f7a" />
+    <link rel="stylesheet" href="css/app-sidebar.css?v=cd8d76410f" />
+    <link rel="stylesheet" href="css/tokens.css?v=e957fc4bc8" />
+    <link rel="stylesheet" href="css/reset.css?v=5c69299123" />
+    <link rel="stylesheet" href="css/components.css?v=28f59b96e8" />
+    <link rel="stylesheet" href="css/utilities.css?v=cfd7a641fc" />
+
+    <script src="js/roleBootstrap.js?v=4498985c28"></script>
+    <script src="js/appNav.js?v=f0383121c3"></script>
+    <link rel="stylesheet" href="css/app-layout.css?v=f953e5723a" />
+    <link rel="stylesheet" href="css/app-notifications.css?v=7317abf624" />
+    <link rel="stylesheet" href="css/app-core.css?v=e9c373d45e" />
+    <link rel="stylesheet" href="css/app-salary.css?v=528f537651" />
+    <link rel="stylesheet" href="css/payroll.css?v=3b80a58a90" />
+    <script defer src="js/vendor/supabase.min.js?v=d7e6895fca"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=6873efbf0c"></script>
+    <script defer src="js/appDialog.js?v=3aeedfc486"></script>
+    <script defer src="js/cache.js?v=5863c973ae"></script>
+    <script defer src="js/appConfig.js?v=458e49d641"></script>
+    <script defer src="js/utils.js?v=90155a12fa"></script>
+    <script defer src="js/pwa.js?v=a31abdbceb"></script>
+    <script defer src="js/supabase.js?v=09666dbaaf"></script>
+    <script defer src="js/queryPages.js?v=412293472a"></script>
+    <script defer src="js/creditCustomerSearch.js?v=0a6719a6e2"></script>
+    <script defer src="js/pumpSettings.js?v=6c7cafdfcb"></script>
+    <script defer src="js/payrollRules.js?v=fd665449a1"></script>
+    <script defer src="js/pageSections.js?v=f59df264eb"></script>
+    <script defer src="js/auth.js?v=bd3c8449b0"></script>
+    <script defer src="js/taskUtils.js?v=773e711152"></script>
+    <script defer src="js/dsrQueries.js?v=cb33805ddd"></script>
+    <script defer src="js/notifications.js?v=dca38df5d7"></script>
+    <script defer src="js/staffEmployees.js?v=c1eafa62d0"></script>
+    <script defer src="js/printUtils.js?v=af100179aa"></script>
+    <script defer src="js/attendantShort.js?v=fc316b32cb"></script>
+    <script defer src="js/salary.js?v=307daf6ac1"></script>
+  </head>
+  <body class="salary-page">
+    <header class="topbar">
+  <div class="brand">
+    <a href="dashboard.html">Bishnupriya Fuels</a>
+  </div>
+  <div class="page-title-stack">
+    <span class="page-subtitle">Salary</span>
+    <span class="page-layer">HR</span>
+  </div>
+  <button type="button" class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg></button>
+  <nav class="nav-wrap collapsible" data-app-nav aria-label="Main navigation"></nav>
+</header>
+
+    <main class="app-layout settings-layout">
+      <nav class="settings-nav card" aria-label="Salary sections">
+        <p class="settings-nav-title">Sections</p>
+        <button type="button" class="settings-nav-item is-active" data-section="summary">Monthly summary</button>
+        <button type="button" class="settings-nav-item" data-section="record">Record payment</button>
+        <button type="button" class="settings-nav-item" data-section="recent">Payment history</button>
+        <button type="button" class="settings-nav-item" data-section="short-excess">Short / excess</button>
+      </nav>
+      <div class="settings-panels">
+        <section class="settings-panel card dashboard-card" data-panel="record" hidden>
+          <div class="panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Record salary payment</h2>
+              <p class="muted panel-lead">Record each installment when salary is paid. The salary month is the one selected on Monthly summary (the cash date can differ). Pay from the summary opens this form in that person’s details.</p>
+            </div>
+          </div>
+          <div id="salary-record-form-slot">
+          <form id="salary-payment-form" data-enter-next class="form" autocomplete="off">
+            <div class="form-grid">
+              <div class="form-field payment-staff-field">
+                <label for="payment-staff">Staff</label>
+                <select id="payment-staff" name="staff_member_id" required>
+                  <option value="">Select staff</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label id="payment-month-label">Salary month</label>
+                <p id="payment-month-value" class="payment-month-value" aria-labelledby="payment-month-label">Follows the summary above</p>
+              </div>
+              <div class="form-field">
+                <label for="payment-date">Payment date</label>
+                <input id="payment-date" name="date" type="date" required />
+              </div>
+              <div class="form-field">
+                <label for="payment-amount">Amount (₹)</label>
+                <input inputmode="decimal"
+                  id="payment-amount"
+                  name="amount"
+                  type="text"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0"
+                  required
+                />
+                <button type="button" id="payment-fill-remaining" class="button-secondary button-small payment-fill-remaining">Fill remaining</button>
+              </div>
+              <div class="form-field">
+                <label for="payment-note">Note</label>
+                <input
+                  id="payment-note"
+                  name="note"
+                  type="text"
+                  maxlength="200"
+                  placeholder="e.g. Advance, January part 1"
+                />
+              </div>
+            </div>
+            <p id="payment-month-hint" class="muted hidden" aria-live="polite"></p>
+            <button type="submit">Save payment</button>
+            <p id="salary-payment-success" class="success hidden">Payment recorded.</p>
+            <p id="salary-payment-error" class="error hidden"></p>
+          </form>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card is-visible" data-panel="summary">
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Monthly salary summary</h2>
+              <p class="muted panel-lead">Payable is monthly salary after PF, loss of pay, and over duty. Rules are in <a href="settings.html#attendance">Settings → Attendance &amp; pay</a>. Unmarked attendance days are ignored. Inactive staff are hidden here (manage status in <a href="staff.html">HR → Staff</a>).</p>
+            </div>
+            <div class="snapshot-controls">
+              <div class="form-field month-year-filter">
+                <label id="salary-month-label">Salary month</label>
+                <div class="month-year-filter-controls">
+                  <select id="salary-month-month" aria-labelledby="salary-month-label"></select>
+                  <select id="salary-month-year" aria-label="Year"></select>
+                  <button type="button" id="salary-download-csv" class="button-secondary month-year-filter-action">Download CSV</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="salary-kpi-grid stat-grid" aria-label="Month totals">
+            <div class="stat-card">
+              <span class="stat-label">Total payable</span>
+              <strong id="salary-kpi-payroll" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card is-deduct" id="salary-kpi-lop-card">
+              <span class="stat-label">Loss of pay</span>
+              <strong id="salary-kpi-lop" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card is-earn" id="salary-kpi-od-card">
+              <span class="stat-label">Over duty</span>
+              <strong id="salary-kpi-od" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card stat-card-highlight">
+              <span class="stat-label">Paid for month</span>
+              <strong id="salary-kpi-paid" class="stat-value">—</strong>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Remaining</span>
+              <strong id="salary-kpi-pending" class="stat-value">—</strong>
+            </div>
+          </div>
+
+          <p id="salary-payroll-note" class="salary-payroll-note muted" hidden></p>
+          <div class="table-wrap">
+            <table class="salary-summary-table" id="salary-summary-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Role</th>
+                  <th class="num">Payable (₹)</th>
+                  <th class="num salary-col-lop">Loss of pay</th>
+                  <th class="num salary-col-od">Over duty</th>
+                  <th class="num">Paid (₹)</th>
+                  <th class="num">Remaining (₹)</th>
+                  <th>Status</th>
+                  <th class="table-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="salary-summary-body">
+                <tr>
+                  <td colspan="9" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="short-excess" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Short / excess by attendant</h2>
+              <p class="muted panel-lead">
+                For <strong id="short-excess-month">this month</strong>, per attendant: handed over (cash + UPI + shift credit + shift expenses)
+                minus expected (net shift litres × that day's rate). Negative is short, positive is excess.
+                Shifts without a selling rate are left out. A deduction is optional: an admin records it as a salary payment with a note.
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="salary-summary-table" id="short-excess-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th class="num">Shifts</th>
+                  <th class="num">Expected (₹)</th>
+                  <th class="num">Handed over (₹)</th>
+                  <th class="num">Short (₹)</th>
+                  <th class="num">Excess (₹)</th>
+                  <th class="num">Net (₹)</th>
+                  <th class="table-actions">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="short-excess-body">
+                <tr><td colspan="8" class="muted">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="short-excess-detail" class="short-excess-detail" hidden></div>
+        </section>
+
+        <section class="settings-panel card dashboard-card" data-panel="recent" hidden>
+          <div class="panel-head card-head snapshot-head">
+            <div>
+              <h2 class="dashboard-section-title">Payment history</h2>
+              <p class="muted panel-lead">All salary installments for <strong id="salary-history-month">this month</strong> (regardless of when cash was paid).</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Paid on</th>
+                  <th>Staff</th>
+                  <th class="num">Amount (₹)</th>
+                  <th>Note</th>
+                  <th class="table-actions" id="salary-history-actions-head">Slip</th>
+                </tr>
+              </thead>
+              <tbody id="salary-payments-body">
+                <tr>
+                  <td colspan="5" class="muted">Loading…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <dialog
+      id="salary-detail-overlay"
+      class="app-modal app-modal-shell salary-detail-overlay"
+      aria-hidden="true"
+      aria-labelledby="salary-detail-title"
+    >
+      <div class="app-modal-backdrop" id="salary-detail-backdrop"></div>
+      <div class="card app-modal-panel salary-detail-card">
+        <div class="app-modal-head">
+          <div>
+            <h2 id="salary-detail-title">Staff salary</h2>
+            <p id="salary-detail-subtitle" class="muted"></p>
+          </div>
+          <button type="button" class="app-modal-close" id="salary-detail-close" aria-label="Close">×</button>
+        </div>
+
+        <dl class="salary-detail-meta" id="salary-detail-stats"></dl>
+        <div id="salary-detail-adjust" class="salary-adjust" hidden></div>
+
+        <div class="salary-detail-payments">
+          <div class="salary-detail-payments-head">
+            <h3 class="salary-detail-section-title">Payments this month</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="num">Amount (₹)</th>
+                  <th>Note</th>
+                  <th class="table-actions" id="salary-detail-actions-head" hidden>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="salary-detail-payments-body">
+                <tr><td colspan="3" class="muted">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="salary-detail-pay-host" hidden></div>
+
+        <div class="salary-detail-actions">
+          <button type="button" id="salary-detail-add-payment" class="button-secondary">Add payment</button>
+          <button type="button" id="salary-detail-print-slip">Print salary slip</button>
+          <button type="button" id="salary-detail-dismiss" class="button-secondary">Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <footer class="app-footer">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+    </footer>
+  </body>
+</html>

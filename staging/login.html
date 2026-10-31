@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+        <script>
+      if (window.top !== window.self) {
+        try { window.top.location = window.location.href; } catch (err) {}
+        document.documentElement.replaceChildren();
+      }
+    </script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Login · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0070c0" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <script src="js/theme.js?v=785528b4cc"></script>
+    <link rel="stylesheet" href="css/fonts.css?v=9965543f7a" />
+    <link rel="stylesheet" href="css/app-sidebar.css?v=cd8d76410f" />
+    <link rel="stylesheet" href="css/tokens.css?v=e957fc4bc8" />
+    <link rel="stylesheet" href="css/reset.css?v=5c69299123" />
+    <link rel="stylesheet" href="css/components.css?v=28f59b96e8" />
+    <link rel="stylesheet" href="css/utilities.css?v=cfd7a641fc" />
+    <link rel="stylesheet" href="css/login.css?v=65d4f8a0ba" />
+    <script defer src="js/vendor/supabase-login.min.js?v=9d65ccc61c"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=6873efbf0c"></script>
+    <script defer src="js/cache.js?v=5863c973ae"></script>
+    <script defer src="js/utils.js?v=90155a12fa"></script>
+    <script defer src="js/pwa.js?v=a31abdbceb"></script>
+    <script defer src="js/supabase.js?v=09666dbaaf"></script>
+    <script defer src="js/auth.js?v=bd3c8449b0"></script>
+  </head>
+  <body class="login-page">
+    <main class="login-card card">
+      <header class="login-brand">
+        <span class="login-logo" aria-hidden="true">
+          <picture>
+            <source srcset="assets/logo-104.webp" type="image/webp" />
+            <img
+              src="assets/logo-104.png"
+              alt=""
+              class="login-logo-img"
+              width="104"
+              height="104"
+              decoding="async"
+              fetchpriority="high"
+            />
+          </picture>
+        </span>
+        <div class="login-brand-text">
+          <h1 class="login-brand-title">
+            <span class="login-brand-primary">Bishnupriya Fuels</span>
+            <span class="login-brand-venture">— a F&amp;S Ventures</span>
+          </h1>
+          <p class="login-brand-dealer">Authorized BPCL Dealer</p>
+          <p class="login-brand-portal"><span>Operator Portal</span></p>
+        </div>
+      </header>
+
+      <p class="login-intro">Sign in to manage daily operations, credit, billing, and reports.</p>
+
+      <form id="login-form" class="form login-form" autocomplete="on" novalidate>
+        <div class="login-field">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="operator@fnsventures.in"
+            autocomplete="username"
+            inputmode="email"
+            spellcheck="false"
+            autofocus
+            required
+          />
+        </div>
+
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            placeholder="Enter password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+          />
+        </div>
+
+        <button type="submit" id="login-button">Sign in</button>
+        <p class="login-forgot">
+          <a href="#" id="forgot-password-link">Forgot password?</a>
+        </p>
+        <p id="login-error" class="login-error hidden" role="alert" aria-live="polite"></p>
+      </form>
+
+      <form id="reset-password-form" class="form login-form hidden" autocomplete="off" novalidate>
+        <p class="login-reset-copy">Choose a new password for your account.</p>
+        <div class="login-field">
+          <label for="new-password">New password</label>
+          <input
+            id="new-password"
+            name="password"
+            type="password"
+            placeholder="At least 6 characters"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <div class="login-field">
+          <label for="confirm-password">Confirm password</label>
+          <input
+            id="confirm-password"
+            name="confirm"
+            type="password"
+            placeholder="Repeat the new password"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <button type="submit" id="reset-password-button">Set new password</button>
+        <p class="login-forgot">
+          <a href="login.html" id="reset-password-back">Back to sign in</a>
+        </p>
+        <p id="reset-password-error" class="login-error hidden" role="alert" aria-live="polite"></p>
+      </form>
+    </main>
+    <footer class="app-footer app-footer--minimal">
+      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
+    </footer>
+  </body>
+</html>

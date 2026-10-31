@@ -1,0 +1,11 @@
+{
+  "ignoreFiles": ["css/*print*.css", "css/report-watermark.css", "css/fonts.css", "css/tokens.css"],
+  "rules": {
+    "color-no-hex": [true, { "message": "Use a colour token from css/tokens.css instead of a hex value." }],
+    "color-named": ["never", { "message": "Use a colour token from css/tokens.css instead of a named colour." }],
+    "declaration-property-value-disallowed-list": [
+      { "/.*/": ["/(rgb|hsl)a?\\(\\s*[\\d.]/"] },
+      { "message": "Use a colour token from css/tokens.css instead of a literal rgb()/hsl() colour." }
+    ]
+  }
+}
