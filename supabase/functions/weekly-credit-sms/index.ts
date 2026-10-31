@@ -16,6 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { fetchAll } from "../_shared/pageQuery.ts";
+import { creditSmsText } from "../_shared/creditMessage.js";
 
 const DEFAULT_GATE_URL = "https://api.sms-gate.app/3rdparty/v1/message";
 const RESEND_GUARD_DAYS = 5;
@@ -44,10 +45,6 @@ function phoneE164(mobile: string | null): string {
   if (digits.length === 10) return `+91${digits}`;
   if (digits.startsWith("0") && digits.length === 11) return `+91${digits.slice(1)}`;
   return digits.length >= 11 ? `+${digits}` : "";
-}
-
-function formatRupees(value: number) {
-  return "₹" + value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function istDisplayDate() {
@@ -137,9 +134,14 @@ Deno.serve(async (req: Request) => {
     const recentlySent = new Set((recent ?? []).map((l) => l.credit_customer_id as string));
 
     const { data: settings } = await supabase.from("pump_settings").select("config").eq("id", 1).maybeSingle();
-    const station =
-      String((settings?.config as { station?: { legalName?: string } } | null)?.station?.legalName || "").trim() ||
-      "BISHNU PRIYA FUELS";
+    const stationCfg =
+      (settings?.config as { station?: { legalName?: string; tagline?: string; mobile?: string } } | null)?.station ?? {};
+    // Same fallbacks as AppConfig.DEFAULT_STATION when settings leave a field blank.
+    const station = {
+      name: stationCfg.legalName,
+      tagline: stationCfg.tagline || "Authorized Dealer — Bharat Petroleum Corporation Ltd.",
+      mobile: stationCfg.mobile || "+91 96689 13299",
+    };
     const asOn = istDisplayDate();
 
     const due = [...groups.values()]
@@ -186,10 +188,15 @@ Deno.serve(async (req: Request) => {
         .single();
       if (linkErr) throw linkErr;
 
-      const text = [
-        `${station}: As on ${asOn}, your outstanding balance is ${formatRupees(balance)}. Please clear it at the earliest.`,
-        `Statement: ${siteUrl}/statement.html#t=${token}`,
-      ].join("\n");
+      // Same wording as the SMS icon in the app (supabase/functions/_shared/creditMessage.js).
+      const text = creditSmsText({
+        station,
+        customerName: g.name,
+        amount: balance,
+        asOn,
+        url: `${siteUrl}/statement.html#t=${token}`,
+        linkDays,
+      });
 
       let delivered = 0;
       for (const phone of phones) {

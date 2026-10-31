@@ -1,7 +1,7 @@
 -- Read-only statement links: only the hash is stored, the reader is service-role only, and an
 -- expired or revoked link returns nothing.
 begin;
-select plan(12);
+select plan(15);
 
 select tests.seed_users();
 select tests.seed_books();
@@ -41,6 +41,11 @@ select is((select (s->>'opening_balance')::numeric + 0 from st),
   (select case when '2026-01-10'::date < public.meter_station_today() - 90 then 600 else 0 end)::numeric,
   'Activity before the 90-day window is in the opening balance');
 select ok((select s::text !~ 'created_by|note' from st), 'No staff names or notes in the statement');
+select ok((select s #>> '{station,name}' <> '' from st), 'Statement carries the station letterhead name');
+select is((select (s->>'opening_balance')::numeric + (s->>'period_billed')::numeric - (s->>'period_paid')::numeric from st),
+  (select (s->>'balance')::numeric from st), 'Opening + billed - paid = balance');
+select is((select coalesce((s->'lines'->-1->>'balance')::numeric, (s->>'opening_balance')::numeric) from st),
+  (select (s->>'balance')::numeric from st), 'Running balance ends at the balance');
 select is((select view_count from public.credit_statement_links), 1, 'A view is counted');
 
 select tests.login('supervisor');

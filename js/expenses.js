@@ -286,8 +286,10 @@ async function loadExpenses(reset = false) {
     expensesPagination.totalCount = 0;
     tbody.innerHTML = `<tr><td colspan='${colCount}' class='muted'>Loading…</td></tr>`;
   }
-  if (totalRow) totalRow.classList.add("hidden");
-  if (emptyCta) emptyCta.classList.add("hidden");
+  if (reset) {
+    if (totalRow) totalRow.classList.add("hidden");
+    if (emptyCta) emptyCta.classList.add("hidden");
+  }
   if (loadMoreBtn) {
     loadMoreBtn.disabled = true;
     loadMoreBtn.textContent = "Loading…";
@@ -315,6 +317,9 @@ async function loadExpenses(reset = false) {
           .gte("date", start)
           .lte("date", end)
           .order("date", { ascending: false })
+          // Tie-breakers keep pages stable when several expenses share a date.
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
           .range(expensesPagination.offset, expensesPagination.offset + PAGE_SIZE - 1)
       )
     );

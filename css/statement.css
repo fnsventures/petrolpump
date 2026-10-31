@@ -1,4 +1,5 @@
-/* Public credit statement (statement.html). Loaded after css/tokens.css; no app shell. */
+/* Public credit statement (statement.html). Loaded after css/tokens.css; no app shell.
+ * Styled as a letterhead document so the shared link and its PDF look like the in-app print. */
 * {
   box-sizing: border-box;
 }
@@ -12,7 +13,7 @@ body {
 }
 
 .statement {
-  width: min(40rem, 100%);
+  width: min(44rem, 100%);
   margin: 0 auto;
 }
 
@@ -27,30 +28,77 @@ body {
 }
 
 .statement-card {
-  padding: 1.25rem;
+  padding: 1.5rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-top: 4px solid var(--bpcl-blue);
   border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Letterhead: logo + station block, BPCL blue rule underneath. */
+.statement-letterhead {
+  display: flex;
+  gap: 0.875rem;
+  align-items: center;
+  padding-bottom: 0.875rem;
+  border-bottom: 3px solid var(--bpcl-blue);
+}
+
+.statement-logo {
+  flex: 0 0 auto;
+  width: 4.5rem;
+  height: 4.5rem;
+  object-fit: contain;
+}
+
+.statement-letterhead-text {
+  min-width: 0;
+}
+
+.statement-letterhead-text p {
+  margin: 0;
 }
 
 .statement-station {
-  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: var(--bpcl-blue-dark);
+}
+
+.statement-tagline {
   font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--bpcl-blue);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.statement-small {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.statement-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 1.125rem;
 }
 
 h1 {
-  margin: 0.25rem 0;
-  font-size: 1.375rem;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-heading);
 }
 
 h2 {
   margin: 1.5rem 0 0.5rem;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   color: var(--text-heading);
 }
 
@@ -60,19 +108,80 @@ h2 {
   color: var(--text-muted);
 }
 
+.statement-party,
+.statement-summary {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+}
+
+.statement-party {
+  grid-template-columns: 1fr auto;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.statement-party div:last-child {
+  text-align: right;
+}
+
+.statement-summary {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.statement-party dt,
+.statement-summary dt {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.statement-party dd,
+.statement-summary dd {
+  margin: 0.125rem 0 0;
+  font-weight: 700;
+  color: var(--text-heading);
+  font-variant-numeric: tabular-nums;
+}
+
+.statement-party dd {
+  font-size: 1rem;
+}
+
+.statement-summary div {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-sunken);
+}
+
 .statement-balance {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 1rem;
   margin-top: 1rem;
   padding: 0.875rem 1rem;
+  border: 1px solid var(--warning-border);
   border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
+.statement-balance.is-advance,
+.statement-balance.is-clear {
+  border-color: var(--success-border);
+  background: var(--success-soft);
+  color: var(--success-text);
 }
 
 .statement-balance strong {
   font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .statement-table-wrap {
@@ -82,7 +191,7 @@ h2 {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 th,
@@ -94,8 +203,16 @@ td {
 }
 
 th {
+  font-size: 0.6875rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
+  background: var(--surface-sunken);
+}
+
+tbody tr:nth-child(even) td {
+  background: var(--surface-muted);
 }
 
 .num {
@@ -103,19 +220,37 @@ th {
   font-variant-numeric: tabular-nums;
 }
 
-footer {
+.col-phone {
+  display: none;
+}
+
+td.is-overdue {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+
+td.is-total {
+  font-weight: 700;
+  border-top: 2px solid var(--border-strong);
+}
+
+.statement-foot {
   margin-top: 1.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: space-between;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.statement-foot p {
+  margin: 0 0 0.375rem;
 }
 
 .statement-print {
+  margin-top: 0.75rem;
   border: none;
   border-radius: 8px;
-  padding: 0.6rem 1rem;
+  padding: 0.65rem 1.1rem;
   font: inherit;
   font-weight: 600;
   color: var(--text-on-accent);
@@ -123,14 +258,94 @@ footer {
   cursor: pointer;
 }
 
-@media print {
-  body {
-    background: none;
-    padding: 0;
+@media screen and (max-width: 480px) {
+  .col-phone {
+    display: table-cell;
+  }
+
+  .col-wide {
+    display: none;
+  }
+
+  th,
+  td {
+    padding: 0.5rem 0.25rem;
+  }
+
+  td:nth-child(2) {
+    white-space: normal;
   }
 
   .statement-card {
+    padding: 1.125rem 0.875rem;
+  }
+
+  .statement-logo {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .statement-station {
+    font-size: 1.0625rem;
+  }
+
+  .statement-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .statement-summary div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 14mm 12mm;
+}
+
+@media print {
+  /* tokens.css paints :root grey; on paper only the card's own fills should show. */
+  :root,
+  body {
+    background: var(--surface);
+  }
+
+  body {
+    padding: 0;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .statement {
+    width: 100%;
+  }
+
+  .statement-card {
+    padding: 0;
     border: none;
+    box-shadow: none;
+  }
+
+  .statement-summary {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .statement-summary div {
+    display: block;
+  }
+
+  .statement-table-wrap {
+    overflow: visible;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr {
+    break-inside: avoid;
   }
 
   .statement-print {

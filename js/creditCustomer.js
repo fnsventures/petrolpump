@@ -696,7 +696,7 @@ function syncCustomerContactActions() {
   // period summary left the icon disabled whenever that slower request was late or failed.
   const canShare = page().state.customerIds.length > 0;
   if (smsBtn) {
-    const smsHref = tel && canShare ? creditCustomerSmsHref(mobile, buildCreditWhatsAppText()) : "";
+    const smsHref = tel && canShare ? creditCustomerSmsHref(mobile, buildCreditSmsText()) : "";
     if (smsHref) {
       smsBtn.href = smsHref;
       setStatementSendData(smsBtn, "sms", mobile);
@@ -784,6 +784,16 @@ function buildCreditWhatsAppText(statementUrl) {
     return TaskUtils.waMessageForCustomer(name, unpaid, statementUrl);
   }
   return statementUrl ? `${formatCurrency(unpaid)}\n${statementUrl}` : formatCurrency(unpaid);
+}
+
+function buildCreditSmsText() {
+  const net = Number(page().state.customerNetBalance);
+  const unpaid = Number.isFinite(net) ? Math.max(0, net) : 0;
+  const name = page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
+  if (typeof TaskUtils?.smsMessageForCustomer === "function") {
+    return TaskUtils.smsMessageForCustomer(name, unpaid);
+  }
+  return formatCurrency(unpaid);
 }
 
 const STATEMENT_LINK_DAYS = 30;
