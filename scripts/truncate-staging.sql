@@ -1,4 +1,5 @@
 -- Clears staging app data before importing a prod snapshot.
+-- Keeps staging's own logins (auth.users, auth.identities) and app users (public.users).
 -- Run against the STAGING database only.
 -- Uses session_replication_role so FK order and audit triggers do not block the load.
 
@@ -25,15 +26,11 @@ truncate table
   public.expense_categories,
   public.document_categories,
   public.pump_settings,
-  public.users,
   public.audit_log
 restart identity cascade;
 
 truncate table storage.objects cascade;
 truncate table storage.buckets cascade;
-
--- Do not use RESTART IDENTITY on auth — Supabase-owned sequences (e.g. refresh_tokens_id_seq) block it.
-truncate table auth.identities, auth.users cascade;
 
 drop table if exists public._dsr_import;
 

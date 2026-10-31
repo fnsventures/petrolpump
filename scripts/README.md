@@ -29,9 +29,11 @@ Runs `sync-prod-to-staging.sh`. Mirrors production **data** into staging.
 | Step | Action |
 |------|--------|
 | 1 | Stamp staging migrations, then `db push` (schema only on staging) |
-| 2 | Dump prod auth, public, storage, and legacy `dsr` if needed |
+| 2 | Dump prod public (except `users`), storage, and legacy `dsr` if needed |
 | 3 | Truncate staging |
-| 4 | Load dumps. Split legacy `dsr` into `dsr_petrol` / `dsr_diesel` when prod still has the old table |
+| 4 | Load dumps. Split legacy `dsr` into `dsr_petrol` / `dsr_diesel` when prod still has the old table. Null prod user ids (`created_by`, …) that have no staging login |
+
+Staging keeps its own logins: `auth.users`, `auth.identities` and `public.users` are never copied from prod or cleared.
 
 Output: `scripts/.sync-dumps/` (gitignored). Does not copy storage file bytes, session tokens, or edge function secrets.
 
@@ -107,6 +109,7 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 | `stamp-prod-migrations.sql` | Legacy prod only — mark pre-DSR-split history applied |
 | `truncate-staging.sql` | Staging only — clear before import |
 | `relink-app-users.sql` | Staging sync — set `users.auth_user_id` from Auth emails |
+| `clear-prod-auth-refs.sql` | Staging sync — null prod `auth.users` ids with no staging login |
 | `create-dsr-import-table.sql` | Staging sync — temp legacy `dsr` import |
 | `dsr-import-from-prod.sql` | Staging sync — split into petrol/diesel |
 | `migrate-prod-preflight.sql` | Checks before a production migration |

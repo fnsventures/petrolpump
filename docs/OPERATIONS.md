@@ -74,13 +74,13 @@ A new `*.fnsventures.in` Pages app is added to **this** repo’s `scripts/check-
 
 Copies **data** from the live database into staging so you can test with real numbers. Before the copy, it applies pending migrations on staging.
 
-It does not change production, deploy the website, or keep the staging rows you already have. Storage file bytes (photos) are not copied.
+It does not change production, deploy the website, or keep the staging rows you already have. Storage file bytes (photos) are not copied. Staging logins and app users (Settings → Users & roles) are kept; prod accounts are not copied.
 
 To apply SQL on staging and **keep** its rows, use [Staging schema](#apply-migrations-to-staging-only).
 
 | | Production | Staging |
 |--|------------|---------|
-| Data | Read only | Fully replaced |
+| Data | Read only | Replaced, except logins and users |
 | Website | Unchanged | Unchanged |
 
 ```bash
