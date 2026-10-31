@@ -1,0 +1,64 @@
+name: Weekly credit SMS
+
+# Mondays: text every credit customer who owes money, through the weekly-credit-sms Edge
+# Function and the Android SMS Gate phone. The function skips anyone it texted in the last
+# 5 days, so a re-run does not send twice. Manual runs default to a dry run (lists only).
+
+on:
+  schedule:
+    # Mondays 03:30 UTC (09:00 IST), prod only
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Project
+        type: choice
+        required: true
+        options:
+          - staging
+          - prod
+        default: staging
+      mode:
+        description: Dry run lists who would be texted. Send sends the SMS.
+        type: choice
+        required: true
+        options:
+          - dry-run
+          - send
+        default: dry-run
+
+concurrency:
+  group: weekly-credit-sms
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'schedule' && 'prod' || inputs.target }}
+    steps:
+      - name: Call weekly-credit-sms
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "CRON_SECRET must be set in the GitHub environment." >&2
+            exit 1
+          fi
+          status=$(curl -sS -o result.json -w '%{http_code}' --max-time 140 \
+            -X POST "${SUPABASE_URL}/functions/v1/weekly-credit-sms" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "x-cron-secret: ${CRON_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "{\"dry_run\": ${DRY_RUN}}")
+          # Names and counts only; phone numbers stay out of the public log.
+          jq '{dry_run, test_to, sent: (.sent // [] | length), sent_to: [.sent[]?.name],
+               skipped_recent, deferred_over_cap, no_mobile,
+               failed: [.failed[]? | {name, error}], error}' result.json
+          [ "$status" = "200" ]

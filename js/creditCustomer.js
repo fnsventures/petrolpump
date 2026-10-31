@@ -155,6 +155,16 @@ async function initCustomerView() {
         : "Add this customer's mobile number, then send on WhatsApp."
     );
   });
+  document.getElementById("customer-sms-btn")?.addEventListener("click", (event) => {
+    if (event.currentTarget.getAttribute("href")) return;
+    event.preventDefault();
+    const mobile = String(page().state.customerContact?.mobile || "").trim();
+    showCreditShareNotice(
+      mobile
+        ? "Load the customer account first, then send the text message."
+        : "Add this customer's mobile number, then send the text message."
+    );
+  });
 
   customerDetailReady = true;
   await loadCustomerDetail();
@@ -519,13 +529,22 @@ async function saveCustomerContact() {
 
   const patch = {
     customer_name: newName,
-    mobile: mobile || null,
     address: address || null,
   };
   if (window.CreditPage?.isAdmin) {
     patch.credit_limit = Number.isFinite(creditLimit) ? creditLimit : null;
   }
-  const { error } = await window.supabaseClient.from("credit_customers").update(patch).in("id", ids);
+  // (name, mobile) is unique, so the mobile goes on one row only; the other vehicle rows keep theirs.
+  const primaryId = ids.includes(page().state.customerId) ? page().state.customerId : ids[0];
+  const otherIds = ids.filter((id) => id !== primaryId);
+  const client = window.supabaseClient;
+  let { error } = await client
+    .from("credit_customers")
+    .update({ ...patch, mobile: mobile || null })
+    .eq("id", primaryId);
+  if (!error && otherIds.length > 0) {
+    ({ error } = await client.from("credit_customers").update(patch).in("id", otherIds));
+  }
 
   if (submitBtn) submitBtn.disabled = false;
 
@@ -660,6 +679,7 @@ function syncCustomerContactActions() {
   const actions = document.getElementById("customer-contact-actions");
   const callBtn = document.getElementById("customer-call-btn");
   const waBtn = document.getElementById("customer-whatsapp-btn");
+  const smsBtn = document.getElementById("customer-sms-btn");
   const mobile = String(page().state.customerContact?.mobile || "").trim();
   const tel = creditCustomerTelHref(mobile);
   setHiddenEl(actions, !tel);
@@ -672,22 +692,56 @@ function syncCustomerContactActions() {
       callBtn.removeAttribute("href");
     }
   }
-  if (!waBtn) return;
   // The message needs only the balance, known once the customer rows load. Waiting for the
   // period summary left the icon disabled whenever that slower request was late or failed.
   const canShare = page().state.customerIds.length > 0;
+  if (smsBtn) {
+    const smsHref = tel && canShare ? creditCustomerSmsHref(mobile, buildCreditWhatsAppText()) : "";
+    if (smsHref) {
+      smsBtn.href = smsHref;
+      setStatementSendData(smsBtn, "sms", mobile);
+      smsBtn.classList.remove("is-disabled");
+      smsBtn.removeAttribute("aria-disabled");
+      smsBtn.setAttribute("aria-label", `Text ${mobile}`);
+    } else {
+      smsBtn.removeAttribute("href");
+      delete smsBtn.dataset.statementCustomer;
+      smsBtn.classList.add("is-disabled");
+      smsBtn.setAttribute("aria-disabled", "true");
+      smsBtn.setAttribute("aria-label", "Send the outstanding reminder by text message");
+    }
+  }
+  if (!waBtn) return;
   const waHref = tel && canShare ? creditCustomerWaHref(mobile, buildCreditWhatsAppText()) : "";
   if (waHref) {
     waBtn.href = waHref;
+    setStatementSendData(waBtn, "whatsapp", mobile);
     waBtn.classList.remove("is-disabled");
     waBtn.removeAttribute("aria-disabled");
     waBtn.setAttribute("aria-label", `WhatsApp ${mobile}`);
   } else {
     waBtn.removeAttribute("href");
+    delete waBtn.dataset.statementCustomer;
     waBtn.classList.add("is-disabled");
     waBtn.setAttribute("aria-disabled", "true");
     waBtn.setAttribute("aria-label", "Send the outstanding reminder on WhatsApp");
   }
+}
+
+/** TaskUtils.bindStatementLinkSend reads these to add a statement link to the message on tap. */
+function setStatementSendData(btn, channel, mobile) {
+  const customerId = page().state.customerId;
+  if (!customerId) {
+    delete btn.dataset.statementCustomer;
+    return;
+  }
+  const net = Number(page().state.customerNetBalance);
+  btn.dataset.channel = channel;
+  btn.dataset.statementCustomer = customerId;
+  btn.dataset.mobile = mobile;
+  btn.dataset.customerName =
+    page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
+  btn.dataset.amount = String(Number.isFinite(net) ? Math.max(0, net) : 0);
 }
 
 /** Digits for tel: and wa.me. 10-digit Indian mobiles get 91. */
@@ -713,14 +767,23 @@ function creditCustomerWaHref(mobile, text) {
   return `https://wa.me/${e164}${query ? `?${query}` : ""}`;
 }
 
-function buildCreditWhatsAppText() {
+/** sms: opens the device's messaging app. iOS wants `&body=`, others `?body=`. */
+function creditCustomerSmsHref(mobile, text) {
+  const e164 = creditCustomerPhoneDigits(mobile);
+  if (!e164) return "";
+  if (!text) return `sms:+${e164}`;
+  const sep = /iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?";
+  return `sms:+${e164}${sep}body=${encodeURIComponent(text)}`;
+}
+
+function buildCreditWhatsAppText(statementUrl) {
   const net = Number(page().state.customerNetBalance);
   const unpaid = Number.isFinite(net) ? Math.max(0, net) : 0;
   const name = page().state.lastCustomerSummaryContext?.customerName || page().state.customerName || "";
   if (typeof TaskUtils?.waMessageForCustomer === "function") {
-    return TaskUtils.waMessageForCustomer(name, unpaid);
+    return TaskUtils.waMessageForCustomer(name, unpaid, statementUrl);
   }
-  return formatCurrency(unpaid);
+  return statementUrl ? `${formatCurrency(unpaid)}\n${statementUrl}` : formatCurrency(unpaid);
 }
 
 const STATEMENT_LINK_DAYS = 30;
@@ -740,7 +803,7 @@ async function shareCreditStatementLink() {
     if (error) throw error;
     const url = new URL(`statement.html#t=${data.token}`, window.location.href).href;
     const name = page().state.customerName || "";
-    const text = `${buildCreditWhatsAppText()}\n\nYour statement (valid ${STATEMENT_LINK_DAYS} days): ${url}`;
+    const text = buildCreditWhatsAppText(url);
     const waHref = creditCustomerWaHref(String(page().state.customerContact?.mobile || "").trim(), text);
     if (waHref) {
       window.open(waHref, "_blank", "noopener");

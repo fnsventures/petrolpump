@@ -182,7 +182,7 @@ Admin corrections (admin only)
 - **Overdue / outstanding:** `get_outstanding_credit_list_as_of(date)` on `credit.html#outstanding`.
 - **Customer detail:** In-page on `credit.html` (hash routes) — not a separate page. Legacy `credit-customer.html` redirects with query/hash preserved.
 - **Legacy URL:** `credit-overdue.html` redirects to `credit.html#outstanding`.
-- **Statement link:** customer view → **Share link** → `create_credit_statement_link` → `credit_statement_links`. The customer opens `statement.html#t=…`, which calls the `credit-statement` Edge Function (`get_credit_statement_by_token`, service role).
+- **Statement link:** customer view → **Share link**, or a WhatsApp/SMS contact icon (credit header, Tasks, dashboard, notifications) → `create_credit_statement_link` → `credit_statement_links`. The customer opens `statement.html#t=…`, which calls the `credit-statement` Edge Function (`get_credit_statement_by_token`, service role).
 ---
 
 ## 4. DSR and stock flow

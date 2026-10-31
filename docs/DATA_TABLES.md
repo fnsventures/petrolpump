@@ -722,7 +722,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 
 ## credit_statement_links
 
-**Purpose:** Read-only statement links a customer opens without a login (`statement.html#t=<token>`). Credit → customer → **Share link** creates one valid 30 days and sends it on WhatsApp.
+**Purpose:** Read-only statement links a customer opens without a login (`statement.html#t=<token>`). Credit → customer → **Share link** creates one valid 30 days and sends it on WhatsApp. The WhatsApp and SMS contact icons (credit header, Tasks, dashboard, notifications) also create one when tapped (one per customer per page load) and add it to the balance message.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -1044,7 +1044,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |
 | `delete_credit_payment(id)` | Delete a payment (row is removed) and reallocate. Locks the customer first | admin |
-| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets | — |
+| `get_credit_aging(date)` | Open bills in 0–30, 31–60, 61–90, and 90+ day buckets: one row per customer per bucket, holding only the bills of that age | — |
 | `check_credit_balances()` | Compare stored balances with posted entries and payments | admin |
 | `get_credit_ledger_aggregated()` | Ledger summary list | — |
 | `get_open_credit_as_of(date)` | Total open credit | — |

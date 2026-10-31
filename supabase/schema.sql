@@ -6892,6 +6892,8 @@ declare
   v_open_amount numeric;
   v_oldest date;
   v_name text;
+  v_bucket text;
+  v_age integer;
 begin
   perform public.require_staff_access();
 
@@ -6959,41 +6961,50 @@ begin
       v_pool := v_pool - v_alloc;
     end loop;
 
-    v_open_amount := 0;
-    v_oldest := null;
-    for v_i in 1..v_n loop
-      v_open := v_amounts[v_i] - v_settled[v_i];
-      if v_open > 0 then
+    select c.customer_name into v_name
+    from public.credit_customers c
+    where c.id = v_cust;
+
+    -- One row per bucket, holding only the open bills in that age range.
+    foreach v_bucket in array array['0-30', '31-60', '61-90', '90+'] loop
+      v_open_amount := 0;
+      v_oldest := null;
+      for v_i in 1..v_n loop
+        v_open := v_amounts[v_i] - v_settled[v_i];
+        if v_open <= 0 then
+          continue;
+        end if;
+        v_age := (p_as_of - v_dates[v_i])::integer;
+        if (case
+              when v_age <= 30 then '0-30'
+              when v_age <= 60 then '31-60'
+              when v_age <= 90 then '61-90'
+              else '90+'
+            end) <> v_bucket then
+          continue;
+        end if;
         v_open_amount := v_open_amount + v_open;
         if v_oldest is null or v_dates[v_i] < v_oldest then
           v_oldest := v_dates[v_i];
         end if;
+      end loop;
+
+      if v_open_amount > 0 and v_oldest is not null then
+        customer_id := v_cust;
+        customer_name := v_name;
+        open_amount := v_open_amount;
+        oldest_unpaid := v_oldest;
+        age_days := (p_as_of - v_oldest)::integer;
+        bucket := v_bucket;
+        return next;
       end if;
     end loop;
-
-    if v_open_amount > 0 and v_oldest is not null then
-      customer_id := v_cust;
-      select c.customer_name into v_name
-      from public.credit_customers c
-      where c.id = v_cust;
-      customer_name := v_name;
-      open_amount := v_open_amount;
-      oldest_unpaid := v_oldest;
-      age_days := (p_as_of - v_oldest)::integer;
-      bucket := case
-        when age_days <= 30 then '0-30'
-        when age_days <= 60 then '31-60'
-        when age_days <= 90 then '61-90'
-        else '90+'
-      end;
-      return next;
-    end if;
   end loop;
 end;
 $$;
 
 comment on function public.get_credit_aging(date) is
-  'Open credit as of p_as_of. Payments after that date are left out. Buckets follow the oldest unpaid bill: 0-30, 31-60, 61-90, 90+.';
+  'Open credit as of p_as_of, one row per customer per bucket (0-30, 31-60, 61-90, 90+). Each row holds only the open bills whose age falls in that bucket. Payments after p_as_of are left out.';
 
 grant execute on function public.get_credit_aging(date) to authenticated;
 
