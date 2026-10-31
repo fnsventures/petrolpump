@@ -331,7 +331,8 @@ supabase/
 - **`manifest.json`:** Installable web app (`standalone`), `start_url` → dashboard, shortcuts (Dashboard / DSR / Meters), `launch_handler` focuses an existing window on desktop.
 - **`scripts/stamp-assets.mjs` (build time only):** Rewrites every local JS/CSS reference in the deploy output (HTML `src`/`href`, CSS `@import`, JS string literals like `"css/invoice-print.css"`) to `?v=<content hash>`, and generates `sw.js` `CACHE_VERSION` + `STATIC_ASSET_PATHS`. Source files never carry `?v=`; nothing is bumped by hand.
 - **`sw.js`:** Lean app-shell precache + runtime LRU caches. Strategies:
-  - HTML navigations: **network-first**; if the network has not answered in 4 s and a cached copy exists, serve that (the late response still refreshes the cache). `offline.html` when offline with nothing cached
+  - HTML navigations: **network-first**; a cached copy is served only when the network fails, never because it is slow, so a new build is not hidden behind the previous one. `offline.html` when offline with nothing cached
+  - Install precaches with `cache: "reload"` so it bypasses the browser HTTP cache (GitHub Pages `max-age=600`)
   - Static JS/CSS/fonts/images: **stale-while-revalidate** (exact URL match so `?v=` busting works)
   - Supabase REST / Edge Functions: **network-only** (ops data must never be SW-cached)
   - Updates: branded reload popup as soon as a new build is waiting, including on a tab left open. Reload applies it. Only the tab that asked is reloaded; other open tabs get the same popup so an in-progress entry is not wiped
