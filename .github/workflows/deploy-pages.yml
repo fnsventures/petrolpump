@@ -46,13 +46,13 @@ jobs:
     steps:
       - name: >-
           ${{ env.TARGET == 'staging' && 'Scout' || 'Pull' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.REF }}
           fetch-depth: 1
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm

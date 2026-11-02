@@ -30,7 +30,7 @@ jobs:
       check_failed: ${{ steps.dns.outputs.check_failed }}
     steps:
       - name: Checkout canonical DNS check (petrolpump)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: fnsventures/petrolpump
           # Same-repo runs use the caller's commit; other repos use main.
@@ -50,7 +50,7 @@ jobs:
 
       - name: Open issue when auto-fix restored DNS
         if: always() && steps.dns.outputs.fixed_count != '' && steps.dns.outputs.fixed_count != '0'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fixed = '${{ steps.dns.outputs.fixed_count }}';
