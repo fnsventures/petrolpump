@@ -29,6 +29,6 @@
     "nunjucks": "^3.2.4",
     "pdfjs-dist": "^6.4.299",
     "stylelint": "^18.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }
