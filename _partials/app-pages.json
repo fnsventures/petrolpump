@@ -46,6 +46,7 @@
       "beforeAuth": [
         "js/payrollRules.js",
         "js/purchaseTaxUtils.js",
+        "js/fuelPnl.js",
         "js/dateRangeFilter.js",
         "js/pageSections.js"
       ],
@@ -184,6 +185,7 @@
       "beforeAuth": [
         "js/vendor/chart.min.js",
         "js/purchaseTaxUtils.js",
+        "js/fuelPnl.js",
         "js/dateRangeFilter.js",
         "js/pageSections.js"
       ],
@@ -197,6 +199,7 @@
       "css": ["css/app-reports.css", "css/report-watermark.css"],
       "beforeAuth": [
         "js/purchaseTaxUtils.js",
+        "js/fuelPnl.js",
         "js/dateRangeFilter.js",
         "js/pageSections.js",
         "js/printUtils.js",

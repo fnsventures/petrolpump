@@ -99,7 +99,7 @@ A typical daily sequence:
 
 ```
 1. Meter Reading (meter-reading.html)
-   → Upsert dsr_petrol and/or dsr_diesel for today (rejected when that day is certified, including for admin)
+   → save_dsr_meter_row(product, date, row, request_id?) upserts dsr_petrol or dsr_diesel (IST "today"; a supervisor cannot change a finished row or a locked day; rejected when that day is certified, including for admin)
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → Optional: Shift register — staff per nozzle, shift meters, cash + phone pay, short (₹)
    → Supervisors may re-save a shift with updates until day closing is saved (then admin only)
@@ -113,7 +113,7 @@ A typical daily sequence:
    → Overpayment stored as prepaid_balance (net = amount_due − prepaid)
 
 3. Expenses (expenses.html)
-   → Add expenses for the day → expenses (client_request_id so a retry cannot duplicate; rejected when that day is certified)
+   → Add expenses for the day → add_expense(date, category, amount, description?, request_id?) (retry-safe; IST "today"; no salary; rejected when that day is certified)
    → Shift-register expenses go through add_shift_expense(...), not this form
 
 4. Day closing (day-closing.html)
@@ -187,7 +187,7 @@ Admin corrections (admin only)
 
 ## 4. DSR and stock flow
 
-- **Meter form** (`meter-reading.html` → `js/meterReading.js`) → `dsr_petrol` or `dsr_diesel` (one row per date per product).
+- **Meter form** (`meter-reading.html` → `js/meterReading.js`) → `save_dsr_meter_row` → `dsr_petrol` or `dsr_diesel` (one row per date per product).
 - **DSR listing** (`dsr.html` → `js/dsr.js`) → range views and stock summary.
 - **Stock reconciliation** → read-only `dsr_stock` view (or `get_dsr_stock_range` for date ranges). Dip stock comes from the `stock` column on the meter row.
 - **Union reads** → `dsr` view when code queries “all products”.

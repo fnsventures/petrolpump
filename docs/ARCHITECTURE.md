@@ -139,6 +139,7 @@ js/
 ├── roleBootstrap.js    # Early role visibility from cache (FOUC prevention)
 ├── pumpSettings.js     # Load/cache pump_settings.config
 ├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
+├── fuelPnl.js          # Buying rates, fuel margin, P&L summary (dashboard, analysis, reports only)
 ├── dsrQueries.js       # Shared DSR fetch/select helpers; receipt-history split
 ├── dsrSummary.js       # DSR summary section (lazy-loaded from dsr.js)
 ├── dsrSections.js      # DSR summary section ids and copy
@@ -440,7 +441,7 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 - **Default policy pattern (operational tables):** SELECT for provisioned staff; INSERT with `is_supervisor_or_admin()` and `created_by = auth.uid()`; UPDATE for provisioned staff on own row or admin; DELETE admin only. Admin-only tables (e.g. `expense_categories`, `products`, `employees`) and exceptions are documented in [Data Tables](DATA_TABLES.md).
 - **Admin bootstrap:** When no admin exists, the first user may self-provision via `upsert_staff` or the matching RLS INSERT — only their own JWT email, role must be `admin`. Prevents arbitrary email escalation before an admin is established.
 - **Admin delete pattern:** `js/utils.js` → `AdminDelete` shows destructive actions only for admins (credit entries, day closing register, salary payments, etc.).
-- **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`).
+- **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`). Buying-rate and profit helpers (`createBuyingRateContext`, `computeFuelRowMargin`, `computeProfitLossSummary`, testing-expense split) are in `js/fuelPnl.js`, which only dashboard, analysis and reports load; add it to a page's `beforeAuth` in `_partials/app-pages.json` before using them.
 
 ---
 

@@ -1,4 +1,4 @@
-/* global AppDialog, AppError, escapeHtml, mountPdfPreview, preloadPdfPreview */
+/* global AppDialog, AppError, html, setHtml, mountPdfPreview, preloadPdfPreview */
 /**
  * In-page preview for a Drive file. The list underneath stays mounted.
  */
@@ -25,7 +25,9 @@
     dialog.className = "app-modal app-modal-shell drive-preview-modal hidden";
     dialog.hidden = true;
     dialog.setAttribute("aria-labelledby", "drive-preview-title");
-    dialog.innerHTML = `
+    setHtml(
+      dialog,
+      html`
       <div class="app-modal-backdrop" data-drive-preview-close tabindex="-1" aria-hidden="true"></div>
       <div class="card app-modal-panel drive-preview-panel">
         <div class="card-head snapshot-head app-modal-head">
@@ -37,7 +39,8 @@
         </div>
         <div id="drive-preview-body" class="drive-preview-body"></div>
         <div id="drive-preview-actions" class="drive-preview-actions"></div>
-      </div>`;
+      </div>`
+    );
     document.body.append(dialog);
     titleEl = dialog.querySelector("#drive-preview-title");
     subtitleEl = dialog.querySelector("#drive-preview-subtitle");
@@ -53,7 +56,7 @@
     if (!dialog) return;
     seq += 1;
     revokeUrl();
-    if (bodyEl) bodyEl.innerHTML = "";
+    setHtml(bodyEl, "");
     AppDialog.hide(dialog);
   }
 
@@ -73,12 +76,13 @@
   async function paint(token, result) {
     if (token !== seq || !bodyEl) return;
     if (result?.html != null) {
-      bodyEl.innerHTML = result.html;
+      // Only SafeHtml renders as markup; a plain string is shown as text.
+      setHtml(bodyEl, result.html);
       return;
     }
     const blob = result?.blob;
     if (!blob) {
-      bodyEl.innerHTML = `<p class="muted">Nothing to preview.</p>`;
+      setHtml(bodyEl, html`<p class="muted">Nothing to preview.</p>`);
       return;
     }
     const fileName = result.fileName || "";
@@ -99,7 +103,7 @@
     }
     if (isPdf) {
       if (typeof preloadPdfPreview === "function") preloadPdfPreview();
-      bodyEl.innerHTML = `<div class="drive-preview-pages"></div>`;
+      setHtml(bodyEl, html`<div class="drive-preview-pages"></div>`);
       const pages = bodyEl.querySelector(".drive-preview-pages");
       try {
         await mountPdfPreview(pages, blob);
@@ -107,12 +111,12 @@
         if (token !== seq) return;
         AppError?.report?.(err, { context: "drivePreviewPdf" });
         if (pages?.isConnected) {
-          bodyEl.innerHTML = `<p class="muted">This PDF can’t be previewed here. Use Download to save it.</p>`;
+          setHtml(bodyEl, html`<p class="muted">This PDF can’t be previewed here. Use Download to save it.</p>`);
         }
       }
       return;
     }
-    bodyEl.innerHTML = `<p class="muted">This file can’t be previewed here. Use Download to save it.</p>`;
+    setHtml(bodyEl, html`<p class="muted">This file can’t be previewed here. Use Download to save it.</p>`);
   }
 
   function renderActions(token, options) {
@@ -158,7 +162,7 @@
   }
 
   /**
-   * @param {{ title?: string, subtitle?: string, download?: (() => Promise<void>)|null, actions?: Array<{ id: string, label: string, hidden?: boolean, className?: string, onClick?: () => void }>, load: (ctx: object) => Promise<{ blob?: Blob, fileName?: string, html?: string }|null|undefined> }} options
+   * @param {{ title?: string, subtitle?: string, download?: (() => Promise<void>)|null, actions?: Array<{ id: string, label: string, hidden?: boolean, className?: string, onClick?: () => void }>, load: (ctx: object) => Promise<{ blob?: Blob, fileName?: string, html?: SafeHtml }|null|undefined> }} options
    */
   function open(options) {
     const token = ++seq;
@@ -169,7 +173,7 @@
       subtitleEl.textContent = options.subtitle || "";
       subtitleEl.hidden = !options.subtitle;
     }
-    if (bodyEl) bodyEl.innerHTML = `<p class="drive-preview-loading">Opening…</p>`;
+    setHtml(bodyEl, html`<p class="drive-preview-loading">Opening…</p>`);
     renderActions(token, options);
     const ctx = {
       isCurrent: () => token === seq,
@@ -201,7 +205,7 @@
         if (token !== seq || !bodyEl) return;
         AppError?.report?.(err, { context: "drivePreview" });
         const message = AppError?.getUserMessage?.(err) || err?.message || "Could not open the document.";
-        bodyEl.innerHTML = `<p class="error">${escapeHtml(message)}</p>`;
+        setHtml(bodyEl, html`<p class="error">${message}</p>`);
       });
   }
 

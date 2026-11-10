@@ -1,4 +1,5 @@
-/* global requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, isCancelledRequestError, DsrQueries, bindLiveRefresh, isSettingsPanelActive */
+// @ts-check
+/* global requireAuth, applyRoleVisibility, AppCache, AppError, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, formatQuantity, formatCurrency, CacheInvalidation, AdminDelete, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, debounce, toLocalDateString, initPageSections, BuyingPriceEntry, getPlBuyingPriceHint, MeterShiftReading, mountDateStepper, mountWindowPager, syncWindowPager, bindUnsavedDraft, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, isCancelledRequestError, DsrQueries, bindLiveRefresh, isSettingsPanelActive, formRequestId, clearFormRequestId */
 
 const PRODUCTS = ["petrol", "diesel"];
 let currentUserId = null;
@@ -22,10 +23,16 @@ function applyPumpConfigFromSettings() {
   };
 }
 
-/** Rate column name per product (dsr table). */
+/**
+ * Rate column name per product (dsr table).
+ * @type {Record<string, "petrol_rate" | "diesel_rate">}
+ */
 const RATE_FIELD_BY_PRODUCT = { petrol: "petrol_rate", diesel: "diesel_rate" };
 
-/** Maps product to its dedicated database table name (writes go here). */
+/**
+ * Maps product to its dedicated database table name (writes go here).
+ * @type {Record<string, "dsr_petrol" | "dsr_diesel">}
+ */
 const DSR_TABLE = { petrol: "dsr_petrol", diesel: "dsr_diesel" };
 
 /** Shown when a supervisor picks a date that already has a completed meter entry (read-only view). */
@@ -400,8 +407,8 @@ function initMeterDeleteHandlers() {
       },
       cacheScope: "dsr",
       onSuccess: async () => {
-        const form = document.getElementById(`dsr-form-${product}`);
-        const dateInput = form?.querySelector('input[name="date"]');
+        const form = /** @type {HTMLFormElement | null} */ (document.getElementById(`dsr-form-${product}`));
+        const dateInput = /** @type {HTMLInputElement | null | undefined} */ (form?.querySelector('input[name="date"]'));
         if (form && dateInput?.value === dateStr) {
           await refreshMeterFormForSelectedDate(product, form);
         }
@@ -468,7 +475,7 @@ function applyDsrRowFieldsToMeterForm(form, row, product, openingStockHint) {
   const skip = new Set(["id", "created_at", "created_by", "product", "date"]);
   for (const [key, val] of Object.entries(row)) {
     if (skip.has(key)) continue;
-    const input = form.querySelector(`[name="${key}"]`);
+    const input = /** @type {HTMLInputElement | null} */ (form.querySelector(`[name="${key}"]`));
     if (!input) continue;
     if (key === "remarks") {
       input.value = val ?? "";
@@ -519,9 +526,9 @@ async function refreshMeterFormsForShiftDate(dateStr, products, { alignDate = tr
 
   await Promise.all(
     list.map(async (product) => {
-      const form = document.getElementById(`dsr-form-${product}`);
+      const form = /** @type {HTMLFormElement | null} */ (document.getElementById(`dsr-form-${product}`));
       if (!form) return;
-      const dateInput = form.querySelector("input[name='date']");
+      const dateInput = /** @type {HTMLInputElement | null} */ (form.querySelector("input[name='date']"));
       if (!dateInput) return;
       if (alignDate && dateInput.value !== dateStr) {
         dateInput.value = dateStr;
@@ -755,7 +762,7 @@ function ensureMeterDraft(product, form) {
       return date ? `meter.${product}.${date}` : null;
     },
     root: form,
-    skipTarget: (target) => target?.name === "date",
+    skipTarget: (/** @type {any} */ target) => target?.name === "date",
   });
   return meterDrafts[product];
 }
@@ -826,12 +833,12 @@ async function refreshMeterFormForSelectedDate(product, form) {
 }
 
 function initReadingForm(product) {
-  const form = document.getElementById(`dsr-form-${product}`);
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById(`dsr-form-${product}`));
   if (!form) return;
 
   initMeterFormDate(form, product);
 
-  const dateInput = form.querySelector("input[name='date']");
+  const dateInput = /** @type {HTMLInputElement | null} */ (form.querySelector("input[name='date']"));
   if (dateInput) {
     const onDateChange = () => {
       void refreshMeterFormForSelectedDate(product, form);
@@ -855,14 +862,14 @@ function initReadingForm(product) {
   }, 120);
   form.addEventListener("input", debouncedUpdateDerived);
 
-  const copyPrevBtn = form.querySelector(".dsr-copy-prev[data-product]");
+  const copyPrevBtn = /** @type {HTMLButtonElement | null} */ (form.querySelector(".dsr-copy-prev[data-product]"));
   if (copyPrevBtn && copyPrevBtn.dataset.product === product) {
     copyPrevBtn.addEventListener("click", async () => {
       if (form.classList.contains("dsr-meter-supervisor-locked")) return;
       if (form.classList.contains("dsr-meter-shift-meters-locked")) return;
       copyPrevBtn.disabled = true;
       copyPrevBtn.textContent = "Loading…";
-      const d = form.querySelector("input[name='date']")?.value;
+      const d = /** @type {HTMLInputElement | null} */ (form.querySelector("input[name='date']"))?.value;
       try {
         const shiftAgg = d ? await fetchShiftAggregatedDailyMeters(d) : null;
         if (shiftAgg?.[product]?.has_shifts) {
@@ -881,7 +888,7 @@ function initReadingForm(product) {
     });
   }
 
-  const refreshBtn = form.querySelector(".dsr-refresh-form[data-product]");
+  const refreshBtn = /** @type {HTMLButtonElement | null} */ (form.querySelector(".dsr-refresh-form[data-product]"));
   if (refreshBtn && refreshBtn.dataset.product === product) {
     refreshBtn.addEventListener("click", async () => {
       if (refreshBtn.dataset.busy === "1") return;
@@ -903,7 +910,7 @@ function initReadingForm(product) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.textContent = "Saving…";
@@ -956,14 +963,12 @@ function initReadingForm(product) {
       }
     }
 
+    /** @type {Record<string, any>} */
     const payload = {
       date: formData.get("date"),
       product,
       remarks: formData.get("remarks") || null,
     };
-    if (currentUserId) {
-      payload.created_by = currentUserId;
-    }
 
     getReadingNumberFields(product).forEach((field) => {
       payload[field] = toNumber(formData.get(field));
@@ -1027,63 +1032,32 @@ function initReadingForm(product) {
       return;
     }
 
-    const table = DSR_TABLE[product] || "dsr_petrol";
+    // Early, friendlier message; save_dsr_meter_row enforces the same rule.
     const existingRow = await fetchDsrFullRowForDate(product, payload.date);
-    const existingId = existingRow?.id || null;
-    let saveError = null;
-
-    if (existingId) {
-      const complete = isDailyMeterEntryComplete(existingRow, product);
-      if (currentUserRole !== "admin" && complete) {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Save meter entry";
-        }
-        if (errorEl) {
-          errorEl.textContent = MSG_SUPERVISOR_METER_DAY_LOCKED;
-          errorEl.classList.add("dsr-meter-locked-msg");
-          errorEl.classList.remove("hidden");
-        }
-        return;
+    if (existingRow && currentUserRole !== "admin" && isDailyMeterEntryComplete(existingRow, product)) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Save meter entry";
       }
-
-      const updatePayload = { ...payload };
-      delete updatePayload.created_by;
-      delete updatePayload.product;
-      const { error } = await window.supabaseClient.from(table).update(updatePayload).eq("id", existingId);
-      saveError = error;
-    } else {
-      const insertPayload = { ...payload };
-      delete insertPayload.product;
-      const { error } = await window.supabaseClient.from(table).insert(insertPayload);
-      // Race: another writer inserted the same date — fall back to update when allowed
-      if (error && /duplicate|unique|23505/i.test(`${error.message || ""} ${error.code || ""}`)) {
-        const racedRow = await fetchDsrFullRowForDate(product, payload.date);
-        const racedId = racedRow?.id;
-        const canUpdate =
-          racedId &&
-          (currentUserRole === "admin" || !isDailyMeterEntryComplete(racedRow, product));
-        if (canUpdate) {
-          const updatePayload = { ...payload };
-          delete updatePayload.created_by;
-          delete updatePayload.product;
-          const { error: updErr } = await window.supabaseClient
-            .from(table)
-            .update(updatePayload)
-            .eq("id", racedId);
-          saveError = updErr;
-        } else if (racedId) {
-          saveError = {
-            message:
-              "A meter entry for this date already exists. Only an admin can update it.",
-          };
-        } else {
-          saveError = error;
-        }
-      } else {
-        saveError = error;
+      if (errorEl) {
+        errorEl.textContent = MSG_SUPERVISOR_METER_DAY_LOCKED;
+        errorEl.classList.add("dsr-meter-locked-msg");
+        errorEl.classList.remove("hidden");
       }
+      return;
     }
+
+    // Insert or update in one server call (row lock, IST date, finished-row rule).
+    const row = { ...payload };
+    delete row.date;
+    delete row.product;
+    const { error: saveError } = await window.supabaseClient.rpc("save_dsr_meter_row", {
+      p_product: product,
+      p_date: payload.date,
+      p_row: row,
+      p_request_id: formRequestId(form, payload),
+    });
+    if (!saveError) clearFormRequestId(form);
 
     if (saveError) {
       if (submitBtn) {
@@ -1110,7 +1084,7 @@ function initReadingForm(product) {
     try {
       const { error: syncErr } = await window.supabaseClient.rpc("sync_shift_meters_from_dsr", {
         p_date: payload.date,
-        p_shift: null,
+        // p_shift omitted = null (all shifts).
       });
       if (syncErr) throw syncErr;
     } catch (syncErr) {
@@ -1150,15 +1124,11 @@ function initReadingForm(product) {
 async function getPreviousDayDipStock(product, dateStr) {
   if (!dateStr || !product) return 0;
   const table = DSR_TABLE[product] || "dsr_petrol";
-  const rateField = RATE_FIELD_BY_PRODUCT[product];
-  const selectCols = ["stock", "dip_reading", "receipts", "date"]
-    .concat(rateField ? [rateField] : [])
-    .join(", ");
-
-  // Look back several days so an incomplete row (stock 0) does not wipe opening stock.
+  // Both rate columns exist on both tables; isDailyMeterEntryComplete reads the product's one.
+  // A literal select string lets tsc check the columns.
   const { data, error } = await window.supabaseClient
     .from(table)
-    .select(selectCols)
+    .select("stock, dip_reading, receipts, date, petrol_rate, diesel_rate")
     .lt("date", dateStr)
     .order("date", { ascending: false })
     .limit(14);
@@ -1202,7 +1172,7 @@ function initMeterPaginationControls(product) {
 
 /**
  * PostgREST filter: finished meter sheets only (matches isDailyMeterEntryComplete).
- * @param {"petrol"|"diesel"} product
+ * @param {string} product - petrol | diesel
  */
 function finishedMeterHistoryFilter(product) {
   const rateField = RATE_FIELD_BY_PRODUCT[product] || "petrol_rate";
@@ -1216,7 +1186,7 @@ function finishedMeterHistoryFilter(product) {
  */
 async function loadReadingHistory(product, reset = false) {
   const tbody = document.getElementById(`dsr-table-${product}`);
-  const loadMoreBtn = document.getElementById(`dsr-load-more-${product}`);
+  const loadMoreBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById(`dsr-load-more-${product}`));
   const pagination = dsrPagination[product];
 
   if (!tbody) return;
@@ -1361,8 +1331,8 @@ function updateDsrPaginationUI(product) {
   const total = pagination.totalCount;
   syncWindowPager({
     info: document.getElementById(`dsr-pagination-info-${product}`),
-    back: document.getElementById(`dsr-pagination-back-${product}`),
-    more: document.getElementById(`dsr-load-more-${product}`),
+    back: /** @type {HTMLButtonElement | null} */ (document.getElementById(`dsr-pagination-back-${product}`)),
+    more: /** @type {HTMLButtonElement | null} */ (document.getElementById(`dsr-load-more-${product}`)),
     page: pagination.currentPage,
     pageSize: METER_RECENT_PAGE_SIZE,
     total,
@@ -1435,7 +1405,7 @@ function applyOpeningMeterToForm(form, row, config) {
   const closingFields = getClosingMeterFields(config);
   for (const closingKey of closingFields) {
     const openingKey = closingKey.replace("closing_", "opening_");
-    const input = form.querySelector(`[name="${openingKey}"]`);
+    const input = /** @type {HTMLInputElement | null} */ (form.querySelector(`[name="${openingKey}"]`));
     if (!input) continue;
 
     let value = "0.00";
@@ -1456,7 +1426,7 @@ function applyOpeningMeterToForm(form, row, config) {
 function applyRateToForm(form, product, rateValue) {
   const rateField = RATE_FIELD_BY_PRODUCT[product];
   if (!rateField) return;
-  const input = form.querySelector(`[name="${rateField}"]`);
+  const input = /** @type {HTMLInputElement | null} */ (form.querySelector(`[name="${rateField}"]`));
   if (!input || rateValue == null || !Number.isFinite(rateValue) || rateValue <= 0) return;
   input.value = rateValue.toFixed(2);
 }
@@ -1467,7 +1437,7 @@ function applyRateToForm(form, product, rateValue) {
  * @param {HTMLFormElement} form - The DSR reading form
  */
 async function prefillOpeningFromPreviousDay(product, form) {
-  const dateInput = form.querySelector("input[name='date']");
+  const dateInput = /** @type {HTMLInputElement | null} */ (form.querySelector("input[name='date']"));
   if (!dateInput?.value) return;
 
   const selectedDateStr = dateInput.value;

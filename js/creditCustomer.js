@@ -1,3 +1,4 @@
+// @ts-check
 /* global formatCurrency, formatRecordedBalance, formatMoneyInput, formatMonthLabel, formatDisplayDate, getLocalDateString, AppCache, AppError, AppDialog, escapeHtml, escapeIlikePattern, formatFuelBadge, normCustomerName, CreditCustomerDetail, initPageSections, createDateRangeFilter, readDateRangeFromControls, formatDateRangeLabel, setFilterState, PumpSettings, loadPumpSettings, AppConfig, CacheInvalidation, formatNumberPlain, initPersistedDateInput, savePersistedDate, RECORD_DATE_KEYS, PrintUtils, formRequestId, clearFormRequestId, pickCreditCustomerContact, fetchCreditCustomerById, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, fetchAllRows, TaskUtils, ActionProgress */
 
 (function () {
@@ -28,9 +29,9 @@ function applyCustomerPeriodFromUrl(params) {
   const allowed = new Set(["today", "this-week", "this-month", "all-time", "custom"]);
   if (!allowed.has(period)) return false;
 
-  const rangeSelect = document.getElementById("filter-range");
-  const fromInput = document.getElementById("filter-from");
-  const toInput = document.getElementById("filter-to");
+  const rangeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("filter-range"));
+  const fromInput = /** @type {HTMLInputElement | null} */ (document.getElementById("filter-from"));
+  const toInput = /** @type {HTMLInputElement | null} */ (document.getElementById("filter-to"));
   const customRange = document.getElementById("customer-custom-range");
   if (!rangeSelect) return false;
 
@@ -83,7 +84,7 @@ async function initCustomerView() {
 
   if (page().state.customerName) applyCustomerDisplayName(page().state.customerName);
 
-  const settleDate = document.getElementById("settle-date");
+  const settleDate = /** @type {HTMLInputElement | null} */ (document.getElementById("settle-date"));
   if (settleDate) initPersistedDateInput(settleDate, RECORD_DATE_KEYS.creditSettle);
 
   applyCustomerPeriodFromUrl(new URLSearchParams(window.location.search));
@@ -134,7 +135,7 @@ async function initCustomerView() {
     });
   }
 
-  document.querySelectorAll(".customer-activity-view").forEach((btn) => {
+  /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".customer-activity-view")).forEach((btn) => {
     btn.addEventListener("click", () => {
       applyCustomerActivityView(btn.dataset.activityView, { render: true, navigate: true });
     });
@@ -146,7 +147,7 @@ async function initCustomerView() {
     void shareCreditStatementLink();
   });
   document.getElementById("customer-whatsapp-btn")?.addEventListener("click", (event) => {
-    if (event.currentTarget.getAttribute("href")) return;
+    if (/** @type {HTMLAnchorElement} */ (event.currentTarget).getAttribute("href")) return;
     event.preventDefault();
     const mobile = String(page().state.customerContact?.mobile || "").trim();
     showCreditShareNotice(
@@ -156,7 +157,7 @@ async function initCustomerView() {
     );
   });
   document.getElementById("customer-sms-btn")?.addEventListener("click", (event) => {
-    if (event.currentTarget.getAttribute("href")) return;
+    if (/** @type {HTMLAnchorElement} */ (event.currentTarget).getAttribute("href")) return;
     event.preventDefault();
     const mobile = String(page().state.customerContact?.mobile || "").trim();
     showCreditShareNotice(
@@ -182,7 +183,7 @@ function bindSettleDraft() {
     },
     root: form,
     capture: () => omitDraftFields(captureDomDraftFields(form), ["settle-date"]),
-    skipTarget: (target) => target?.id === "settle-date",
+    skipTarget: (target) => /** @type {Element} */ (target)?.id === "settle-date",
   });
   settleDraft.adoptServerState();
   if (settleDraft.restore()) {
@@ -217,8 +218,8 @@ function activityViewMeta(mode) {
 }
 
 function creditPrintMode() {
-  const active = document.querySelector(".customer-activity-view.is-active")?.dataset.activityView;
-  return ACTIVITY_VIEWS.has(active) ? active : "outstanding";
+  const active = /** @type {HTMLElement | null} */ (document.querySelector(".customer-activity-view.is-active"))?.dataset.activityView;
+  return ACTIVITY_VIEWS.has(/** @type {string} */ (active)) ? active : "outstanding";
 }
 
 function customerActivitySummaryText(range) {
@@ -243,7 +244,7 @@ function updateCustomerFilterSummary() {
 
 function applyCustomerActivityView(mode, options = {}) {
   const next = ACTIVITY_VIEWS.has(mode) ? mode : "outstanding";
-  document.querySelectorAll(".customer-activity-view").forEach((btn) => {
+  /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".customer-activity-view")).forEach((btn) => {
     const on = btn.dataset.activityView === next;
     btn.classList.toggle("is-active", on);
     btn.setAttribute("aria-checked", on ? "true" : "false");
@@ -253,7 +254,7 @@ function applyCustomerActivityView(mode, options = {}) {
   } catch (_) {
     /* private browsing */
   }
-  const printBtn = document.getElementById("customer-summary-print-btn");
+  const printBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("customer-summary-print-btn"));
   if (printBtn && !page().state.creditSummaryPrintBusy) {
     printBtn.title = `Print ${activityViewMeta(next).heading.toLowerCase()}`;
   }
@@ -310,7 +311,7 @@ function initCustomerViewFilter() {
 function updateSettleBalanceBanner() {
   const labelEl = document.getElementById("settle-balance-label");
   const valueEl = document.getElementById("settle-balance-value");
-  const fillBtn = document.getElementById("settle-fill-full");
+  const fillBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("settle-fill-full"));
   if (!valueEl) return;
 
   const label = page().getCustomerBalanceLabel(page().state.customerNetBalance, page().state.customerPrepaidBalance);
@@ -327,7 +328,7 @@ function initCustomerSettlePanel() {
   updateSettleBalanceBanner();
 
   document.getElementById("settle-fill-full")?.addEventListener("click", () => {
-    const amountInput = document.getElementById("settle-amount");
+    const amountInput = /** @type {HTMLInputElement | null} */ (document.getElementById("settle-amount"));
     if (!amountInput || page().state.customerNetBalance <= 0) return;
     amountInput.value = formatMoneyInput(page().state.customerNetBalance);
     amountInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -364,7 +365,7 @@ function renderCustomerMeta(rows) {
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .join(" · ");
-  const meta = document.getElementById("customer-meta");
+  const meta = /** @type {HTMLAnchorElement | null} */ (document.getElementById("customer-meta"));
   setContactLine(meta, mobile);
   if (meta) {
     const tel = creditCustomerTelHref(mobile);
@@ -415,16 +416,16 @@ function openCustomerEditModal() {
   if (page().state.customerIds.length === 0 && !page().state.customerId) return;
 
   const overlay = document.getElementById("customer-edit-overlay");
-  const nameInput = document.getElementById("edit-customer-name");
-  const mobileInput = document.getElementById("edit-customer-mobile");
-  const addressInput = document.getElementById("edit-customer-address");
+  const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-name"));
+  const mobileInput = /** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-mobile"));
+  const addressInput = /** @type {HTMLTextAreaElement | null} */ (document.getElementById("edit-customer-address"));
   const msg = document.getElementById("customer-info-msg");
 
   if (nameInput) nameInput.value = page().state.customerName;
   if (mobileInput) mobileInput.value = page().state.customerContact.mobile;
   if (addressInput) addressInput.value = page().state.customerContact.address;
-  const limitInput = document.getElementById("edit-customer-limit");
-  const limitField = limitInput?.closest(".form-field");
+  const limitInput = /** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-limit"));
+  const limitField = /** @type {HTMLElement | null | undefined} */ (limitInput?.closest(".form-field"));
   if (limitField) limitField.hidden = !window.CreditPage?.isAdmin;
   if (limitInput) limitInput.value = page().state.creditLimit ? String(page().state.creditLimit) : "";
   msg?.classList.add("hidden");
@@ -482,7 +483,7 @@ async function isCustomerNameTakenByOther(newName, ids) {
     AppError.report(error, { context: "isCustomerNameTakenByOther" });
     return false;
   }
-  const mobileKey = (document.getElementById("edit-customer-mobile")?.value || "").replace(/\D/g, "");
+  const mobileKey = (/** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-mobile"))?.value || "").replace(/\D/g, "");
   return (data || []).some((r) => {
     if (ids.includes(r.id) || normCustomerName(r.customer_name) !== targetNorm) return false;
     const other = String(r.mobile || "").replace(/\D/g, "");
@@ -492,7 +493,7 @@ async function isCustomerNameTakenByOther(newName, ids) {
 
 async function saveCustomerContact() {
   const msg = document.getElementById("customer-info-msg");
-  const submitBtn = document.querySelector("#customer-info-form button[type='submit']");
+  const submitBtn = /** @type {HTMLButtonElement | null} */ (document.querySelector("#customer-info-form button[type='submit']"));
   const ids = page().state.customerIds.length > 0 ? page().state.customerIds : page().state.customerId ? [page().state.customerId] : [];
 
   if (ids.length === 0) {
@@ -504,10 +505,10 @@ async function saveCustomerContact() {
     return;
   }
 
-  const newName = (document.getElementById("edit-customer-name")?.value || "").trim();
-  const mobile = (document.getElementById("edit-customer-mobile")?.value || "").trim();
-  const address = (document.getElementById("edit-customer-address")?.value || "").trim();
-  const limitRaw = document.getElementById("edit-customer-limit")?.value;
+  const newName = (/** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-name"))?.value || "").trim();
+  const mobile = (/** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-mobile"))?.value || "").trim();
+  const address = (/** @type {HTMLTextAreaElement | null} */ (document.getElementById("edit-customer-address"))?.value || "").trim();
+  const limitRaw = /** @type {HTMLInputElement | null} */ (document.getElementById("edit-customer-limit"))?.value;
   const creditLimit = limitRaw === "" || limitRaw == null ? null : Number(limitRaw);
 
   if (!newName) {
@@ -667,9 +668,9 @@ function entryDateBounds(entries) {
 
 function updateCreditSummaryPrintButton() {
   const canShare = Boolean(page().state.lastCustomerSummary && page().state.lastCustomerSummaryContext?.customerName);
-  const linkBtn = document.getElementById("customer-statement-link-btn");
+  const linkBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("customer-statement-link-btn"));
   if (linkBtn && !page().state.statementLinkBusy) linkBtn.disabled = !page().state.customerId;
-  const printBtn = document.getElementById("customer-summary-print-btn");
+  const printBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("customer-summary-print-btn"));
   if (printBtn) {
     printBtn.disabled = !canShare;
     if (!page().state.creditSummaryPrintBusy) {
@@ -682,9 +683,9 @@ function updateCreditSummaryPrintButton() {
 /** Icons sit on the mobile line. href is set only when the link can open. */
 function syncCustomerContactActions() {
   const actions = document.getElementById("customer-contact-actions");
-  const callBtn = document.getElementById("customer-call-btn");
-  const waBtn = document.getElementById("customer-whatsapp-btn");
-  const smsBtn = document.getElementById("customer-sms-btn");
+  const callBtn = /** @type {HTMLAnchorElement | null} */ (document.getElementById("customer-call-btn"));
+  const waBtn = /** @type {HTMLAnchorElement | null} */ (document.getElementById("customer-whatsapp-btn"));
+  const smsBtn = /** @type {HTMLAnchorElement | null} */ (document.getElementById("customer-sms-btn"));
   const mobile = String(page().state.customerContact?.mobile || "").trim();
   const tel = creditCustomerTelHref(mobile);
   setHiddenEl(actions, !tel);
@@ -803,7 +804,7 @@ const STATEMENT_LINK_DAYS = 30;
 
 /** New 30-day read-only link; WhatsApp when the customer has a mobile, else share sheet or clipboard. */
 async function shareCreditStatementLink() {
-  const btn = document.getElementById("customer-statement-link-btn");
+  const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("customer-statement-link-btn"));
   const customerId = page().state.customerId;
   if (!customerId || page().state.statementLinkBusy) return;
   page().state.statementLinkBusy = true;
@@ -1237,7 +1238,7 @@ async function runCreditSummaryPrint() {
 
 async function handleCreditSummaryPrintClick() {
   if (page().state.creditSummaryPrintBusy) return;
-  const btn = document.getElementById("customer-summary-print-btn");
+  const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("customer-summary-print-btn"));
   const prevLabel = btn?.textContent || "Print summary";
 
   page().state.creditSummaryPrintBusy = true;
@@ -1565,8 +1566,9 @@ async function loadCustomerDetail() {
     }
 
     page().state.lastCustomerSummaryFull = summary;
+    // Non-null: resolvedName above is only set when summary exists.
     const periodSummary =
-      summary.opening_balance != null && summary.opening_balance !== undefined
+      /** @type {NonNullable<typeof summary>} */ (summary).opening_balance != null && /** @type {NonNullable<typeof summary>} */ (summary).opening_balance !== undefined
         ? summary
         : buildPeriodScopedSummary(summary, from, to);
     applyLifetimeSummary(periodSummary, {
@@ -1659,11 +1661,11 @@ async function handleSettle() {
     return;
   }
 
-  const amount = Number(document.getElementById("settle-amount")?.value || 0);
+  const amount = Number(/** @type {HTMLInputElement | null} */ (document.getElementById("settle-amount"))?.value || 0);
   const settlementDate =
-    document.getElementById("settle-date")?.value?.trim() || getLocalDateString();
-  const paymentMode = document.getElementById("settle-mode")?.value || "Cash";
-  const sameDaySettlement = Boolean(document.getElementById("settle-same-day")?.checked);
+    /** @type {HTMLInputElement | null} */ (document.getElementById("settle-date"))?.value?.trim() || getLocalDateString();
+  const paymentMode = /** @type {HTMLSelectElement | null} */ (document.getElementById("settle-mode"))?.value || "Cash";
+  const sameDaySettlement = Boolean(/** @type {HTMLInputElement | null} */ (document.getElementById("settle-same-day"))?.checked);
   const todayStr = getLocalDateString();
 
   if (!amount || amount <= 0) {
@@ -1692,7 +1694,7 @@ async function handleSettle() {
 
   settleInFlight = true;
 
-  const btn = document.getElementById("settle-btn");
+  const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById("settle-btn"));
   if (btn) {
     btn.disabled = true;
     btn.textContent = "Saving…";
@@ -1707,7 +1709,7 @@ async function handleSettle() {
 
   try {
     // Same id while the form is unchanged, so a retry cannot record the payment twice.
-    const settleForm = document.getElementById("settle-form");
+    const settleForm = /** @type {HTMLFormElement} */ (document.getElementById("settle-form"));
     const requestId = formRequestId(settleForm, [
       settleIds,
       settlementDate,
@@ -1758,9 +1760,9 @@ async function handleSettle() {
 
     clearFormRequestId(settleForm);
 
-    const settleAmountInput = document.getElementById("settle-amount");
+    const settleAmountInput = /** @type {HTMLInputElement | null} */ (document.getElementById("settle-amount"));
     if (settleAmountInput) settleAmountInput.value = "";
-    const sameDayInput = document.getElementById("settle-same-day");
+    const sameDayInput = /** @type {HTMLInputElement | null} */ (document.getElementById("settle-same-day"));
     if (sameDayInput) sameDayInput.checked = false;
     savePersistedDate(RECORD_DATE_KEYS.creditSettle, settlementDate);
     settleDraft?.markClean();
@@ -1795,10 +1797,11 @@ function initCreditDeleteHandlers() {
   document.body.dataset.creditDeleteBound = "1";
 
   document.addEventListener("click", async (e) => {
-    if (!e.target.closest?.("#credit-entries-body, #payment-entries-body")) return;
+    const target = /** @type {Element} */ (e.target);
+    if (!target.closest?.("#credit-entries-body, #payment-entries-body")) return;
 
-    const entryBtn = e.target.closest?.(".credit-delete-entry");
-    const paymentBtn = e.target.closest?.(".credit-delete-payment");
+    const entryBtn = target.closest?.(".credit-delete-entry");
+    const paymentBtn = target.closest?.(".credit-delete-payment");
     const btn = entryBtn || paymentBtn;
     if (!btn) return;
 

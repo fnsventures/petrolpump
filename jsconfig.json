@@ -1,8 +1,9 @@
 {
-  // Type-check for js/. Only files starting with `// @ts-check` report errors; the rest are
-  // listed so tsc sees the globals they define. Classic scripts share one global scope, so list
-  // one page's script set at a time (day-closing.html, from _partials/app-pages.json) to avoid
-  // false "redeclared" errors between page scripts. DB types: types/db.d.ts (scripts/gen-db-types.sh).
+  // Base options for `npm run typecheck` (scripts/typecheck.mjs), which extends this config once
+  // per page with that page's scripts from _partials/app-pages.json. Classic scripts share one
+  // global scope, so one config for all of js/ would give false "redeclared" errors.
+  // The "files" list below (day-closing.html's set) is only for editors and `tsc -p jsconfig.json`.
+  // DB types: types/db.d.ts (scripts/gen-db-types.sh).
   "compilerOptions": {
     "allowJs": true,
     "checkJs": false,
