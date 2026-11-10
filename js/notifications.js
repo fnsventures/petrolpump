@@ -1,4 +1,4 @@
-/* global escapeHtml, PumpSettings, normalizeProduct, DsrQueries, sumByProduct, formatQuantity, addDaysToDateString, TaskUtils, formatCurrency, getLocalDateString, formatDisplayDate, AppError, formatDateInput, getMonthRange, LOOKUP_ROW_LIMIT, fetchAllRows, calculateDsrSaleRupees, loadPumpSettings */
+/* global escapeHtml, html, trustedHtml, setHtml, PumpSettings, normalizeProduct, DsrQueries, sumByProduct, formatQuantity, addDaysToDateString, TaskUtils, formatCurrency, getLocalDateString, formatDisplayDate, AppError, formatDateInput, getMonthRange, LOOKUP_ROW_LIMIT, fetchAllRows, calculateDsrSaleRupees, loadPumpSettings */
 /**
  * Header notification inbox — same live feed as Dashboard, on every app page.
  */
@@ -68,10 +68,6 @@
   let userId = null;
   let lastReminderRows = [];
 
-  function esc(value) {
-    return escapeHtml(value);
-  }
-
   function isAdmin() {
     return (
       document.documentElement.classList.contains("role-admin") ||
@@ -85,16 +81,15 @@
   }
 
   function renderNotifItem({ type, label, message, meta, cta, href, role = "alert", dataNotif, expandHtml }) {
-    const metaHtml = meta ? `<span class="notif-item-meta">${esc(meta)}</span>` : "";
-    const ctaHtml =
-      cta && href ? `<a href="${esc(href)}" class="button-secondary notif-item-cta">${esc(cta)}</a>` : "";
-    const dataAttr = dataNotif ? ` data-notif="${esc(dataNotif)}"` : "";
-    return `<article class="notif-item notif-item--${esc(type)}" role="${esc(role)}"${dataAttr}>
+    const metaHtml = meta ? html`<span class="notif-item-meta">${meta}</span>` : "";
+    const ctaHtml = cta && href ? html`<a href="${href}" class="button-secondary notif-item-cta">${cta}</a>` : "";
+    const dataAttr = dataNotif ? html` data-notif="${dataNotif}"` : "";
+    return html`<article class="notif-item notif-item--${type}" role="${role}"${dataAttr}>
     <div class="notif-item-body">
-      <span class="notif-item-label">${esc(label)}</span>
-      <p class="notif-item-message">${esc(message)}</p>
+      <span class="notif-item-label">${label}</span>
+      <p class="notif-item-message">${message}</p>
       ${metaHtml}
-      ${expandHtml || ""}
+      ${expandHtml}
     </div>
     ${ctaHtml}
   </article>`;
@@ -102,16 +97,14 @@
 
   function renderNotifCustomerExpand(rows, summaryLabel) {
     if (!rows?.length) return "";
-    const items = rows
-      .map(
-        (r) => `<li class="notif-customer-row">
-          <a class="notif-customer-link" href="${esc(r.href)}">${esc(r.name)}</a>
-          <span class="notif-customer-detail">${esc(r.detail)}</span>
+    const items = rows.map(
+      (r) => html`<li class="notif-customer-row">
+          <a class="notif-customer-link" href="${r.href}">${r.name}</a>
+          <span class="notif-customer-detail">${r.detail}</span>
         </li>`
-      )
-      .join("");
-    return `<details class="notif-customer-expand">
-    <summary>${esc(summaryLabel)}</summary>
+    );
+    return html`<details class="notif-customer-expand">
+    <summary>${summaryLabel}</summary>
     <ul class="notif-customer-list">${items}</ul>
   </details>`;
   }
@@ -328,16 +321,16 @@
       typeof TaskUtils.waMessageForCustomer === "function"
         ? TaskUtils.waMessageForCustomer(customerName, amountDue)
         : "";
-    return TaskUtils.contactRowHtml(mobile, waText, {
+    return trustedHtml(TaskUtils.contactRowHtml(mobile, waText, {
       customerId: row.credit_customer_id,
       customerName,
       amountDue,
-    });
+    }));
   }
 
   function laterPanel(id, credit) {
     if (typeof TaskUtils?.laterPanelHtml === "function") {
-      return TaskUtils.laterPanelHtml(id, { credit, escapeHtml, today: getLocalDateString() });
+      return trustedHtml(TaskUtils.laterPanelHtml(id, { credit, escapeHtml, today: getLocalDateString() }));
     }
     return "";
   }
@@ -364,20 +357,20 @@
     const when = undated ? "No date" : overdue ? `Overdue · ${formatDisplayDate(row.due_date)}` : "Due today";
     const href = TaskUtils.customerHref(customerName);
     const accountLink = customerName
-      ? `<a class="task-dash-account" href="${esc(href)}">Account</a>`
-      : `<a class="task-dash-account" href="reminders.html">Open</a>`;
-    return `<article class="notif-item notif-item--task notif-item--${type}" role="alert" data-reminder-id="${esc(row.id)}">
+      ? html`<a class="task-dash-account" href="${href}">Account</a>`
+      : html`<a class="task-dash-account" href="reminders.html">Open</a>`;
+    return html`<article class="notif-item notif-item--task notif-item--${type}" role="alert" data-reminder-id="${row.id}">
     <div class="notif-item-body">
-      <span class="notif-item-label">${esc(label)}</span>
-      <p class="notif-item-message">${esc(row.title)}</p>
-      ${outstanding ? `<p class="notif-item-amount">${esc(outstanding)}</p>` : ""}
-      <span class="notif-item-meta">${esc(when)}${customerName ? ` · ${esc(customerName)}` : ""} · ${accountLink}</span>
+      <span class="notif-item-label">${label}</span>
+      <p class="notif-item-message">${row.title}</p>
+      ${outstanding ? html`<p class="notif-item-amount">${outstanding}</p>` : ""}
+      <span class="notif-item-meta">${when}${customerName ? html` · ${customerName}` : ""} · ${accountLink}</span>
       ${taskContactHtml(row)}
     </div>
     <div class="notif-item-actions task-action-bar">
-      <button type="button" class="button-secondary button-small reminder-done-btn" data-reminder-id="${esc(row.id)}">Done</button>
-      <button type="button" class="button-secondary button-small reminder-later-btn" data-reminder-later="reschedule" data-reminder-id="${esc(row.id)}" data-days="3" title="Follow up in 3 days">+3 days</button>
-      <button type="button" class="button-secondary button-small reminder-later-toggle" data-reminder-id="${esc(row.id)}" aria-expanded="false">More…</button>
+      <button type="button" class="button-secondary button-small reminder-done-btn" data-reminder-id="${row.id}">Done</button>
+      <button type="button" class="button-secondary button-small reminder-later-btn" data-reminder-later="reschedule" data-reminder-id="${row.id}" data-days="3" title="Follow up in 3 days">+3 days</button>
+      <button type="button" class="button-secondary button-small reminder-later-toggle" data-reminder-id="${row.id}" aria-expanded="false">More…</button>
     </div>
     ${laterPanel(row.id, isCredit)}
   </article>`;
@@ -387,11 +380,13 @@
     if (!rows.length) return "";
     const preview = rows.slice(0, TASKS_PREVIEW_COUNT);
     const more = rows.slice(TASKS_PREVIEW_COUNT);
-    return TaskUtils.wrapMoreCollapse(
-      preview.map((r) => buildTaskHtml(r, todayStr)).join(""),
-      more.map((r) => buildTaskHtml(r, todayStr)).join(""),
-      more.length,
-      { escapeHtml }
+    return trustedHtml(
+      TaskUtils.wrapMoreCollapse(
+        preview.map((r) => String(buildTaskHtml(r, todayStr))).join(""),
+        more.map((r) => String(buildTaskHtml(r, todayStr))).join(""),
+        more.length,
+        { escapeHtml }
+      )
     );
   }
 
@@ -401,22 +396,22 @@
     if (!block || !container) return;
     if (!rows.length || typeof TaskUtils?.splitCreditTodo !== "function") {
       block.classList.add("hidden");
-      container.innerHTML = "";
+      setHtml(container, "");
       return;
     }
     const { credit, todo } = TaskUtils.splitCreditTodo(rows);
     const parts = [];
     if (credit.length) {
       parts.push(
-        `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Credit collection</h4>${renderTaskGroupHtml(credit, todayStr)}</div>`
+        html`<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Credit collection</h4>${renderTaskGroupHtml(credit, todayStr)}</div>`
       );
     }
     if (todo.length) {
       parts.push(
-        `<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Todo</h4>${renderTaskGroupHtml(todo, todayStr)}</div>`
+        html`<div class="tasks-dash-group"><h4 class="tasks-dash-group-title">Todo</h4>${renderTaskGroupHtml(todo, todayStr)}</div>`
       );
     }
-    container.innerHTML = parts.join("");
+    setHtml(container, parts);
     block.classList.remove("hidden");
     bindReminderActions(container);
   }
@@ -498,7 +493,8 @@
   function restoreSnapshot(panel) {
     const snap = readSnapshot();
     if (!snap || !panel) return false;
-    panel.innerHTML = snap.html;
+    // Markup this module rendered and saved in this tab (saveSnapshot).
+    setHtml(panel, trustedHtml(snap.html));
     const reminders = document.getElementById("reminders-banners");
     if (reminders) {
       delete reminders.dataset.reminderDoneBound;
@@ -675,7 +671,7 @@
     const th = getAlertThresholds();
     if (!th.dayClosingReminder) {
       block.classList.add("hidden");
-      container.innerHTML = "";
+      setHtml(container, "");
       updateBadge();
       return;
     }
@@ -683,7 +679,7 @@
     if (windowResult.error) {
       AppError.report(windowResult.error, { context: "notifications.refreshDayClosing" });
       block.classList.add("hidden");
-      container.innerHTML = "";
+      setHtml(container, "");
       updateBadge();
       return;
     }
@@ -742,11 +738,11 @@
     }
     const parts = [bannerForDate(datesToShow[0], true)];
     datesToShow.slice(1).forEach((dateStr) => {
-      const html = bannerForDate(dateStr, false);
-      if (html) parts.push(html);
+      const banner = bannerForDate(dateStr, false);
+      if (banner) parts.push(banner);
     });
     const visible = parts.filter(Boolean);
-    container.innerHTML = visible.join("");
+    setHtml(container, visible);
     block.classList.toggle("hidden", visible.length === 0);
     updateBadge();
   }
@@ -763,12 +759,12 @@
       existing?.remove();
       if (!panel.querySelector(".notif-item")) {
         panel.classList.add("hidden");
-        panel.innerHTML = "";
+        setHtml(panel, "");
       }
       updateAlertsVisibility();
       return;
     }
-    const html = renderNotifItem({
+    const item = renderNotifItem({
       type: "warning",
       label: "Total high credit",
       message: `${formatCurrency(creditTotalRupees)} is above your portfolio limit (${formatCurrency(th.highCredit)}).`,
@@ -776,9 +772,11 @@
       href: "credit.html#outstanding",
       dataNotif: "credit",
     });
-    if (existing) existing.outerHTML = html;
+    // eslint-disable-next-line no-restricted-syntax -- item is html`` output
+    if (existing) existing.outerHTML = String(item);
     else {
-      panel.insertAdjacentHTML("afterbegin", html);
+      // eslint-disable-next-line no-restricted-syntax -- item is html`` output
+      panel.insertAdjacentHTML("afterbegin", String(item));
       panel.classList.remove("hidden");
     }
     updateAlertsVisibility();
@@ -1196,11 +1194,11 @@
 
     if (!alerts.length) {
       panel.classList.add("hidden");
-      panel.innerHTML = "";
+      setHtml(panel, "");
       updateAlertsVisibility();
       return;
     }
-    panel.innerHTML = alerts.map((a) => renderNotifItem(a)).join("");
+    setHtml(panel, alerts.map((a) => renderNotifItem(a)));
     panel.classList.remove("hidden");
     updateAlertsVisibility();
   }
@@ -1258,10 +1256,13 @@
   function showFallbackError(message) {
     const body = document.getElementById("topbar-notifications-body");
     if (!body) return;
-    body.innerHTML = `<div class="topbar-notifications-fallback" id="topbar-notifications-fallback">
+    setHtml(
+      body,
+      html`<div class="topbar-notifications-fallback" id="topbar-notifications-fallback">
       <p class="topbar-notifications-fallback-title">Couldn't load alerts</p>
-      <p class="topbar-notifications-fallback-copy muted">${esc(message || "Refresh the page and try again.")}</p>
-    </div>`;
+      <p class="topbar-notifications-fallback-copy muted">${message || "Refresh the page and try again."}</p>
+    </div>`
+    );
   }
 
   async function waitForClient() {
@@ -1290,6 +1291,7 @@
     document.getElementById("topbar-notifications-fallback")?.remove();
     document.querySelector("#topbar-notifications-popup .topbar-notifications-head")?.setAttribute("hidden", "");
     if (!panel) {
+      // eslint-disable-next-line no-restricted-syntax -- static markup, no data
       body.insertAdjacentHTML("afterbegin", PANEL_HTML);
       panel = body.querySelector(".notifications-panel");
     }

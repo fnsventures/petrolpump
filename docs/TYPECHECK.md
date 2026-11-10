@@ -20,15 +20,28 @@ Use plain names. `window.supabaseClient` is not a valid entry; ESLint ignores it
 
 ## tsc: database types
 
-`jsconfig.json` sets up `tsc --noEmit` (strict, except `noImplicitAny` and `useUnknownInCatchVariables`). Only files whose first line is `// @ts-check` report errors:
+`npm run typecheck` runs `scripts/typecheck.mjs`. It runs `tsc --noEmit` once per page, with exactly the scripts that page loads (from `_partials/app-pages.json`, in `scripts/build-html.mjs` order), using `jsconfig.json` for the compiler options (strict, except `noImplicitAny` and `useUnknownInCatchVariables`). All classic scripts share one global scope, so checking every page script together would give false "cannot redeclare" errors (for example `isAdmin` in both `credit.js` and `day-closing.js`). Pages whose own scripts are all unchecked are skipped. Errors in shared files are reported once.
+
+```bash
+npm run typecheck              # every page with a checked script
+npm run typecheck -- salary    # only pages whose file name contains "salary"
+```
+
+Scripts a page loads later with `loadScript()` are listed in `LAZY` in `scripts/typecheck.mjs` (the credit page's `creditCustomer.js` and its siblings). Add to it when a page lazy-loads a new module.
+
+Only files whose first line is `// @ts-check` report errors:
 
 | Checked | Why |
 |---------|-----|
 | `js/utils.js` | Shared helpers every page calls |
+| `js/fuelPnl.js` | Buying rates and P&L for dashboard, analysis and reports |
 | `js/dsrQueries.js` | DSR, expense and receipt reads for dashboard, reports and analysis |
 | `js/day-closing.js` | Day-closing RPCs and the detail-panel reads |
-
-The other scripts in `jsconfig.json` `files` are there only so tsc can see the globals they define. They are the scripts `day-closing.html` loads (from `_partials/app-pages.json`) plus `purchaseTaxUtils.js`. All classic scripts share one global scope, so loading every page script together gives false "cannot redeclare" errors (for example `isAdmin` in both `credit.js` and `day-closing.js`).
+| `js/meterReading.js` | Daily meter sheet: `dsr_petrol` / `dsr_diesel` reads, `save_dsr_meter_row` |
+| `js/expenses.js` | `add_expense` and the expense history |
+| `js/salary.js` | Salary payments and payroll reads |
+| `js/settings.js` | Settings writes (products, categories, staff, users) |
+| `js/creditCustomer.js` | Credit customer page (lazy-loaded by `credit.js`) |
 
 `types/globals.d.ts` types `supabaseClient` / `window.supabaseClient` as `SupabaseClient<Database>`, using `types/db.d.ts`. It also declares the globals that tsc cannot follow because they are assigned inside IIFEs (`AppError`, `PumpSettings`, …). These are typed `any` until the files that define them are checked too.
 
@@ -70,9 +83,9 @@ The script starts the same throwaway Postgres image as `check-schema-drift.sh`, 
 
 ## Widening the check
 
-1. Add `// @ts-check` as line 1 of the file.
-2. If it is a page script, swap it in for `js/day-closing.js` in `jsconfig.json` `files` with its page's script set, or add a second config. Shared scripts can be added directly.
-3. `npm run typecheck`, fix, and update the table above.
+1. Add `// @ts-check` as line 1 of the file. The runner picks it up from `_partials/app-pages.json`; a lazily loaded script also needs a `LAZY` entry in `scripts/typecheck.mjs`.
+2. `npm run typecheck -- <page>`, fix, and update the table above.
+3. A global another script assigns inside an IIFE (`global.X = …`) shows as "Cannot find name". Declare it in `types/globals.d.ts`.
 
 ## Dependabot
 

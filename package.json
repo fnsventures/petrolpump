@@ -15,8 +15,9 @@
     "minify": "node scripts/minify-assets.mjs",
     "lint:css": "node scripts/check-css-colors.mjs",
     "lint:js": "eslint js",
-    "typecheck": "tsc -p jsconfig.json",
-    "gen:types": "bash scripts/gen-db-types.sh"
+    "typecheck": "node scripts/typecheck.mjs",
+    "gen:types": "bash scripts/gen-db-types.sh",
+    "check:sql": "node scripts/sql-functions.mjs check"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

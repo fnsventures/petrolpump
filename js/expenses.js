@@ -1,3 +1,4 @@
+// @ts-check
 /* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, initPageSections, LOOKUP_ROW_LIMIT, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, escapeHtml, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
@@ -67,10 +68,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   await loadAndFillCategorySelect();
 
-  const form = document.getElementById("expense-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("expense-form"));
   const successEl = document.getElementById("expense-success");
   const errorEl = document.getElementById("expense-error");
-  const dateInput = document.getElementById("expense-date");
+  const dateInput = /** @type {HTMLInputElement | null} */ (document.getElementById("expense-date"));
 
   if (dateInput) {
     initPersistedDateInput(dateInput, RECORD_DATE_KEYS.expense);
@@ -83,7 +84,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       key: "expense.record",
       root: form,
       capture: () => omitDraftFields(captureDomDraftFields(form), ["date"]),
-      skipTarget: (target) => target?.name === "date",
+      skipTarget: (/** @type {any} */ target) => target?.name === "date",
     });
     draft.adoptServerState();
     if (draft.restore()) AppError.showToast("Restored an unsaved expense from this device.", "info");
@@ -92,7 +93,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (form) {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const submitBtn = form.querySelector('button[type="submit"]');
+      const submitBtn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
@@ -102,15 +103,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const formData = new FormData(form);
       const payload = {
-        date: formData.get("date"),
-        category: formData.get("category") || null,
-        description: formData.get("description") || null,
+        date: String(formData.get("date") ?? ""),
+        category: String(formData.get("category") ?? "") || null,
+        description: String(formData.get("description") ?? "") || undefined,
         amount: Number(formData.get("amount") || 0),
       };
-
-      if (auth.session?.user?.id) {
-        payload.created_by = auth.session.user.id;
-      }
 
       const failExpense = (message, field) => {
         AppError.showSaveError(message, { target: errorEl, field, form });
@@ -135,12 +132,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // Same id while the form is unchanged; a retried insert hits the unique index instead of duplicating.
-      payload.client_request_id = formRequestId(form, payload);
-      let { error } = await window.supabaseClient.from("expenses").insert(payload);
-      if (error?.code === "23505" && /client_request_id/.test(`${error.message} ${error.details || ""}`)) {
-        error = null; // the first attempt was saved; the response was lost
-      }
+      // Same id while the form is unchanged; a retry replays the first save instead of duplicating.
+      const { error } = await window.supabaseClient.rpc("add_expense", {
+        p_date: payload.date,
+        p_category: payload.category,
+        p_amount: payload.amount,
+        p_description: payload.description,
+        p_request_id: formRequestId(form, payload),
+      });
       if (!error) clearFormRequestId(form);
 
       if (submitBtn) {
@@ -177,7 +176,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function loadAndFillCategorySelect() {
-  const select = document.getElementById("expense-category");
+  const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("expense-category"));
   if (!select) return;
 
   const { data, error } = await window.supabaseClient
@@ -265,7 +264,7 @@ function initExpensesPaginationControls() {
  */
 async function loadExpenses(reset = false) {
   const tbody = document.getElementById("expense-table-body");
-  const loadMoreBtn = document.getElementById("expenses-load-more");
+  const loadMoreBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("expenses-load-more"));
   const paginationInfo = document.getElementById("expenses-pagination-info");
   const totalRow = document.getElementById("expense-total-row");
   const totalValue = document.getElementById("expense-total-value");
@@ -343,7 +342,8 @@ async function loadExpenses(reset = false) {
       if (tableEl) tableEl.classList.add("hidden");
       if (emptyCta) {
         emptyCta.classList.remove("hidden");
-        emptyCta.querySelector("p") && (emptyCta.querySelector("p").textContent = "No expenses recorded for this period.");
+        const emptyText = emptyCta.querySelector("p");
+        if (emptyText) emptyText.textContent = "No expenses recorded for this period.";
       }
       if (totalRow) totalRow.classList.add("hidden");
       expensesPagination.isLoading = false;
@@ -447,7 +447,7 @@ async function deleteExpense(btn) {
 function updateExpensesPaginationUI() {
   syncLoadMorePager({
     info: document.getElementById("expenses-pagination-info"),
-    button: document.getElementById("expenses-load-more"),
+    button: /** @type {HTMLButtonElement | null} */ (document.getElementById("expenses-load-more")),
     shown: Math.min(expensesPagination.offset, expensesPagination.totalCount || expensesPagination.offset),
     total: expensesPagination.totalCount,
     hasMore: expensesPagination.hasMore,

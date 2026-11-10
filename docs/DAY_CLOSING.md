@@ -15,6 +15,8 @@ A save that the page rejects, or a short that no longer matches the books: [When
 
 ## Finding the live definition
 
+The live body of each function is `supabase/functions-sql/<name>.sql`; edit that and `emit` it ([MIGRATIONS.md → Redefine a function](MIGRATIONS.md#redefine-a-function)). The history below is for tracing when a figure changed.
+
 These functions have been redefined many times with `create or replace`. The migration that sorts last by filename is the one running in prod. **Match `create function`, not the name.** `grant`, `comment on function`, and callers all contain `function public.<name>`, so a looser grep returns a file that does not hold the body. For `set_day_closing_certified` that file is `20260920120000` (a comment only); the body is still `20260817120000`.
 
 ```sh

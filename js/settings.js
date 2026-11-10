@@ -1,3 +1,4 @@
+// @ts-check
 /* global requireAuth, applyRoleVisibility, AppCache, invalidateUserRoleCache, AppError, AppDialog, formatCurrency, formatGstLabel, escapeHtml, PumpSettings, loadPumpSettings, AppConfig, AdminDelete, StaffEmployees, PayrollRules, initPageSections, LOOKUP_ROW_LIMIT, ActionProgress, passwordResetRedirectUrl, formatDateTime */
 
 let currentAuth = null;
@@ -68,11 +69,11 @@ function initSettingsNav() {
 }
 
 function populateGstAndUnitSelects() {
-  const unitSel = document.getElementById("prod-unit");
+  const unitSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("prod-unit"));
   if (unitSel) {
     unitSel.innerHTML = AppConfig.PRODUCT_UNITS.map((u) => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
   }
-  const gstSel = document.getElementById("prod-gst");
+  const gstSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("prod-gst"));
   if (gstSel) {
     gstSel.innerHTML = AppConfig.GST_SLABS.map((s) => {
       const label = s.pct < 0 ? "Non-GST" : s.pct === 0 ? "NIL (0%)" : s.pct + "%";
@@ -85,11 +86,11 @@ function populateGstAndUnitSelects() {
 // ─── Station ─────────────────────────────────────────────────────────────────
 
 function bindStationForm(auth) {
-  const form = document.getElementById("station-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("station-form"));
   if (!form) return;
   const s = PumpSettings.getCachedSync().station || {};
   const set = (id, val) => {
-    const el = document.getElementById(id);
+    const el = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
     if (el) el.value = val ?? "";
   };
   set("st-display-name", s.displayName);
@@ -114,26 +115,26 @@ function bindStationForm(auth) {
     const errorEl = document.getElementById("station-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       await PumpSettings.savePumpSettings({
         station: {
-          displayName: document.getElementById("st-display-name")?.value?.trim(),
-          legalName: document.getElementById("st-legal-name")?.value?.trim(),
-          retailOutletName: document.getElementById("st-retail-outlet")?.value?.trim(),
-          ccCode: document.getElementById("st-cc-code")?.value?.trim(),
-          brandShort: document.getElementById("st-brand-short")?.value?.trim(),
-          brandAccent: document.getElementById("st-brand-accent")?.value?.trim(),
-          tagline: document.getElementById("st-tagline")?.value?.trim(),
-          address: document.getElementById("st-address")?.value?.trim(),
-          email: document.getElementById("st-email")?.value?.trim(),
-          mobile: document.getElementById("st-mobile")?.value?.trim(),
-          gstin: document.getElementById("st-gstin")?.value?.trim(),
-          license: document.getElementById("st-license")?.value?.trim(),
-          pfEstablishmentCode: document.getElementById("st-pf-establishment")?.value?.trim() || "",
-          supportEmail: document.getElementById("st-support-email")?.value?.trim(),
-          supportWhatsapp: document.getElementById("st-support-whatsapp")?.value?.trim(),
+          displayName: /** @type {HTMLInputElement | null} */ (document.getElementById("st-display-name"))?.value?.trim(),
+          legalName: /** @type {HTMLInputElement | null} */ (document.getElementById("st-legal-name"))?.value?.trim(),
+          retailOutletName: /** @type {HTMLInputElement | null} */ (document.getElementById("st-retail-outlet"))?.value?.trim(),
+          ccCode: /** @type {HTMLInputElement | null} */ (document.getElementById("st-cc-code"))?.value?.trim(),
+          brandShort: /** @type {HTMLInputElement | null} */ (document.getElementById("st-brand-short"))?.value?.trim(),
+          brandAccent: /** @type {HTMLInputElement | null} */ (document.getElementById("st-brand-accent"))?.value?.trim(),
+          tagline: /** @type {HTMLInputElement | null} */ (document.getElementById("st-tagline"))?.value?.trim(),
+          address: /** @type {HTMLTextAreaElement | null} */ (document.getElementById("st-address"))?.value?.trim(),
+          email: /** @type {HTMLInputElement | null} */ (document.getElementById("st-email"))?.value?.trim(),
+          mobile: /** @type {HTMLInputElement | null} */ (document.getElementById("st-mobile"))?.value?.trim(),
+          gstin: /** @type {HTMLInputElement | null} */ (document.getElementById("st-gstin"))?.value?.trim(),
+          license: /** @type {HTMLInputElement | null} */ (document.getElementById("st-license"))?.value?.trim(),
+          pfEstablishmentCode: /** @type {HTMLInputElement | null} */ (document.getElementById("st-pf-establishment"))?.value?.trim() || "",
+          supportEmail: /** @type {HTMLInputElement | null} */ (document.getElementById("st-support-email"))?.value?.trim(),
+          supportWhatsapp: /** @type {HTMLInputElement | null} */ (document.getElementById("st-support-whatsapp"))?.value?.trim(),
         },
       }, auth.session?.user?.id);
       applyStationBranding();
@@ -149,11 +150,11 @@ function bindStationForm(auth) {
 // ─── Billing defaults & products ─────────────────────────────────────────────
 
 function bindBillingDefaultsForm(auth) {
-  const form = document.getElementById("billing-defaults-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("billing-defaults-form"));
   if (!form) return;
   const b = PumpSettings.getCachedSync().billing || {};
   const set = (id, val) => {
-    const el = document.getElementById(id);
+    const el = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
     if (el) el.value = val ?? "";
   };
   set("bill-invoice-prefix", b.invoicePrefix);
@@ -162,7 +163,7 @@ function bindBillingDefaultsForm(auth) {
   const r = PumpSettings.getCachedSync().reports || {};
   set("bill-petrol-vat", r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct);
   set("bill-diesel-vat", r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct);
-  const gstReportsEl = document.getElementById("bill-include-in-gst-reports");
+  const gstReportsEl = /** @type {HTMLInputElement | null} */ (document.getElementById("bill-include-in-gst-reports"));
   if (gstReportsEl) {
     const fromBilling = b.includeInGstReports;
     const fromReports = r.includeBillingInGst;
@@ -184,44 +185,44 @@ function bindBillingDefaultsForm(auth) {
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
     if (successEl) successEl.textContent = "Billing defaults saved.";
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Saving…";
     }
     try {
       const fuelGst = parseOptionalNumber(
-        document.getElementById("bill-fuel-gst")?.value,
+        /** @type {HTMLInputElement | null} */ (document.getElementById("bill-fuel-gst"))?.value,
         b.defaultFuelGstPct ?? AppConfig.DEFAULT_BILLING.defaultFuelGstPct
       );
       const includeInGstReports = Boolean(
-        document.getElementById("bill-include-in-gst-reports")?.checked
+        /** @type {HTMLInputElement | null} */ (document.getElementById("bill-include-in-gst-reports"))?.checked
       );
       await PumpSettings.savePumpSettings(
         {
           billing: {
-            invoicePrefix: document.getElementById("bill-invoice-prefix")?.value?.trim(),
-            defaultPartyName: document.getElementById("bill-default-party")?.value?.trim(),
+            invoicePrefix: /** @type {HTMLInputElement | null} */ (document.getElementById("bill-invoice-prefix"))?.value?.trim(),
+            defaultPartyName: /** @type {HTMLInputElement | null} */ (document.getElementById("bill-default-party"))?.value?.trim(),
             defaultFuelGstPct: fuelGst,
-            receiptHistoryStart: document.getElementById("bill-receipt-start")?.value,
+            receiptHistoryStart: /** @type {HTMLInputElement | null} */ (document.getElementById("bill-receipt-start"))?.value,
             includeInGstReports,
           },
           reports: {
             fuelGstPct: fuelGst,
             petrolPurchaseVatPct: parseOptionalNumber(
-              document.getElementById("bill-petrol-vat")?.value,
+              /** @type {HTMLInputElement | null} */ (document.getElementById("bill-petrol-vat"))?.value,
               r.petrolPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.petrolPurchaseVatPct
             ),
             dieselPurchaseVatPct: parseOptionalNumber(
-              document.getElementById("bill-diesel-vat")?.value,
+              /** @type {HTMLInputElement | null} */ (document.getElementById("bill-diesel-vat"))?.value,
               r.dieselPurchaseVatPct ?? AppConfig.DEFAULT_REPORTS.dieselPurchaseVatPct
             ),
             includeBillingInGst: includeInGstReports,
             fuelSupplierLabel:
-              document.getElementById("bill-fuel-supplier-label")?.value?.trim() ||
+              /** @type {HTMLInputElement | null} */ (document.getElementById("bill-fuel-supplier-label"))?.value?.trim() ||
               AppConfig.DEFAULT_REPORTS.fuelSupplierLabel,
             fuelSupplierGstin:
-              document.getElementById("bill-fuel-supplier-gstin")?.value?.trim().toUpperCase() || "",
+              /** @type {HTMLInputElement | null} */ (document.getElementById("bill-fuel-supplier-gstin"))?.value?.trim().toUpperCase() || "",
           },
         },
         auth.session?.user?.id
@@ -239,7 +240,7 @@ function bindBillingDefaultsForm(auth) {
 }
 
 function initProducts() {
-  const form = document.getElementById("product-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("product-form"));
   form?.addEventListener("submit", async (e) => {
     e.preventDefault();
     await saveProduct(form);
@@ -285,7 +286,7 @@ async function loadProducts() {
     )
     .join("");
 
-  tbody.querySelectorAll(".delete-product-btn").forEach((btn) => {
+  /** @type {NodeListOf<HTMLButtonElement>} */ (tbody.querySelectorAll(".delete-product-btn")).forEach((btn) => {
     btn.addEventListener("click", () => deleteProduct(btn.dataset.id));
   });
 }
@@ -298,8 +299,8 @@ async function saveProduct(form) {
   const fd = new FormData(form);
   const payload = {
     name: String(fd.get("name") || "").trim(),
-    hsn_code: fd.get("hsn_code") || null,
-    unit: fd.get("unit") || "Pcs",
+    hsn_code: String(fd.get("hsn_code") ?? "") || null,
+    unit: String(fd.get("unit") ?? "") || "Pcs",
     default_rate: Number(fd.get("default_rate") || 0),
     gst_percent: Number(fd.get("gst_percent") ?? 18),
     is_active: true,
@@ -314,7 +315,7 @@ async function saveProduct(form) {
     return;
   }
   form.reset();
-  const gstSel = document.getElementById("prod-gst");
+  const gstSel = /** @type {HTMLSelectElement | null} */ (document.getElementById("prod-gst"));
   if (gstSel) gstSel.value = "18";
   successEl?.classList.remove("hidden");
   await loadProducts();
@@ -339,13 +340,13 @@ async function deleteProduct(id) {
 // ─── Pumps ───────────────────────────────────────────────────────────────────
 
 function bindPumpsForm(auth) {
-  const form = document.getElementById("pumps-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("pumps-form"));
   if (!form) return;
   const pumps = PumpSettings.getCachedSync().pumps || AppConfig.DEFAULT_PUMP_CONFIG;
   const fill = (product, prefix) => {
     const p = pumps[product] || {};
     const set = (suffix, val) => {
-      const el = document.getElementById(`pump-${product}-${suffix}`);
+      const el = /** @type {HTMLInputElement | null} */ (document.getElementById(`pump-${product}-${suffix}`));
       if (el && val != null) el.value = val;
     };
     set("pumps", p.pumps);
@@ -362,8 +363,8 @@ function bindPumpsForm(auth) {
     const errorEl = document.getElementById("pumps-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const read = (product, suffix) => document.getElementById(`pump-${product}-${suffix}`)?.value;
-    const btn = form.querySelector('button[type="submit"]');
+    const read = (product, suffix) => /** @type {HTMLInputElement | null} */ (document.getElementById(`pump-${product}-${suffix}`))?.value;
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       await PumpSettings.savePumpSettings({
@@ -394,16 +395,16 @@ function bindPumpsForm(auth) {
 // ─── Shifts & alerts (DB-backed) ─────────────────────────────────────────────
 
 function bindShiftsForm(auth) {
-  const form = document.getElementById("shifts-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("shifts-form"));
   if (!form) return;
   const sh = PumpSettings.getCachedSync().shifts || AppConfig.DEFAULT_SHIFTS;
   const fields = {
-    morningName: document.getElementById("shift-morning-name"),
-    morningStart: document.getElementById("shift-morning-start"),
-    morningEnd: document.getElementById("shift-morning-end"),
-    afternoonName: document.getElementById("shift-afternoon-name"),
-    afternoonStart: document.getElementById("shift-afternoon-start"),
-    afternoonEnd: document.getElementById("shift-afternoon-end"),
+    morningName: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-morning-name")),
+    morningStart: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-morning-start")),
+    morningEnd: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-morning-end")),
+    afternoonName: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-afternoon-name")),
+    afternoonStart: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-afternoon-start")),
+    afternoonEnd: /** @type {HTMLInputElement | null} */ (document.getElementById("shift-afternoon-end")),
   };
   if (fields.morningName) fields.morningName.value = sh.morning?.name || "";
   if (fields.morningStart) fields.morningStart.value = sh.morning?.start || "";
@@ -418,7 +419,7 @@ function bindShiftsForm(auth) {
     const errorEl = document.getElementById("shifts-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       await PumpSettings.savePumpSettings({
@@ -445,15 +446,15 @@ function bindShiftsForm(auth) {
 }
 
 function bindPayrollForm(auth) {
-  const form = document.getElementById("payroll-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("payroll-form"));
   if (!form || typeof PayrollRules === "undefined") return;
 
-  const lopInput = document.getElementById("payroll-lop-enabled");
-  const leaveDaysInput = document.getElementById("payroll-paid-leave-days");
+  const lopInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payroll-lop-enabled"));
+  const leaveDaysInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payroll-paid-leave-days"));
   const leaveDaysField = document.getElementById("payroll-leave-days-field");
-  const odInput = document.getElementById("payroll-od-enabled");
-  const basisInput = document.getElementById("payroll-day-basis");
-  const fixedDaysInput = document.getElementById("payroll-fixed-days");
+  const odInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payroll-od-enabled"));
+  const basisInput = /** @type {HTMLSelectElement | null} */ (document.getElementById("payroll-day-basis"));
+  const fixedDaysInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payroll-fixed-days"));
   const fixedDaysField = document.getElementById("payroll-fixed-days-field");
   const exampleEl = document.getElementById("payroll-example");
   const def = AppConfig.DEFAULT_PAYROLL;
@@ -506,7 +507,7 @@ function bindPayrollForm(auth) {
     const errorEl = document.getElementById("payroll-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Saving…";
@@ -535,23 +536,23 @@ function setCheckboxState(el, on) {
 
 function applyAlertsFormValues() {
   const a = PumpSettings.getAlertThresholds();
-  const petrolInput = document.getElementById("low-stock-petrol");
-  const dieselInput = document.getElementById("low-stock-diesel");
-  const highCreditInput = document.getElementById("alert-high-credit");
-  const highVariationInput = document.getElementById("alert-high-variation");
-  const dayClosingShortageInput = document.getElementById("alert-day-closing-shortage");
-  const nightCashMinInput = document.getElementById("alert-night-cash-min");
-  const staleCreditDaysInput = document.getElementById("alert-stale-credit-days");
-  const expenseRatioPctInput = document.getElementById("alert-expense-ratio-pct");
-  const missingInvoiceDaysInput = document.getElementById("alert-missing-invoice-days");
+  const petrolInput = /** @type {HTMLInputElement | null} */ (document.getElementById("low-stock-petrol"));
+  const dieselInput = /** @type {HTMLInputElement | null} */ (document.getElementById("low-stock-diesel"));
+  const highCreditInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-high-credit"));
+  const highVariationInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-high-variation"));
+  const dayClosingShortageInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-day-closing-shortage"));
+  const nightCashMinInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-night-cash-min"));
+  const staleCreditDaysInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-stale-credit-days"));
+  const expenseRatioPctInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-expense-ratio-pct"));
+  const missingInvoiceDaysInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-missing-invoice-days"));
 
   if (petrolInput) petrolInput.value = a.petrol;
   if (dieselInput) dieselInput.value = a.diesel;
   if (highCreditInput) highCreditInput.value = a.highCredit || "";
-  const individualHighCreditInput = document.getElementById("alert-individual-high-credit");
+  const individualHighCreditInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-individual-high-credit"));
   if (individualHighCreditInput) individualHighCreditInput.value = a.individualHighCredit || "";
   if (highVariationInput) highVariationInput.value = a.highVariation || "";
-  const stockTolInput = document.getElementById("alert-stock-variance-pct");
+  const stockTolInput = /** @type {HTMLInputElement | null} */ (document.getElementById("alert-stock-variance-pct"));
   if (stockTolInput) stockTolInput.value = a.stockVarianceTolerancePct ?? 0.5;
   if (dayClosingShortageInput) dayClosingShortageInput.value = a.dayClosingShortage ?? 0;
   if (nightCashMinInput) nightCashMinInput.value = a.nightCashMinAmount ?? 0;
@@ -574,7 +575,7 @@ function applyAlertsFormValues() {
 }
 
 function bindAlertsForm(auth) {
-  const form = document.getElementById("alerts-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("alerts-form"));
   if (!form) return;
   applyAlertsFormValues();
 
@@ -584,42 +585,42 @@ function bindAlertsForm(auth) {
     const errorEl = document.getElementById("alerts-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       const curAlerts = PumpSettings.getCachedSync().alerts || {};
       const d = AppConfig.DEFAULT_ALERTS;
-      const isOn = (id) => document.getElementById(id)?.checked === true;
+      const isOn = (id) => /** @type {HTMLInputElement | null} */ (document.getElementById(id))?.checked === true;
       await PumpSettings.savePumpSettings({
         alerts: {
           lowStockPetrol: parseOptionalNumber(
-            document.getElementById("low-stock-petrol")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("low-stock-petrol"))?.value,
             curAlerts.lowStockPetrol ?? d.lowStockPetrol
           ),
           lowStockDiesel: parseOptionalNumber(
-            document.getElementById("low-stock-diesel")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("low-stock-diesel"))?.value,
             curAlerts.lowStockDiesel ?? d.lowStockDiesel
           ),
           // Empty number fields mean "disabled / zero" for these thresholds (see form help text).
-          highCredit: parseOptionalNumber(document.getElementById("alert-high-credit")?.value, 0),
+          highCredit: parseOptionalNumber(/** @type {HTMLInputElement | null} */ (document.getElementById("alert-high-credit"))?.value, 0),
           individualHighCredit: parseOptionalNumber(
-            document.getElementById("alert-individual-high-credit")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-individual-high-credit"))?.value,
             0
           ),
-          highVariation: parseOptionalNumber(document.getElementById("alert-high-variation")?.value, 0),
+          highVariation: parseOptionalNumber(/** @type {HTMLInputElement | null} */ (document.getElementById("alert-high-variation"))?.value, 0),
           stockVarianceTolerancePct: Math.max(
             0,
-            parseOptionalNumber(document.getElementById("alert-stock-variance-pct")?.value, d.stockVarianceTolerancePct)
+            parseOptionalNumber(/** @type {HTMLInputElement | null} */ (document.getElementById("alert-stock-variance-pct"))?.value, d.stockVarianceTolerancePct)
           ),
           dayClosingShortage: parseOptionalNumber(
-            document.getElementById("alert-day-closing-shortage")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-day-closing-shortage"))?.value,
             0
           ),
           shortageAlert: isOn("alert-shortage"),
           surplusAlert: isOn("alert-surplus"),
           nightCashAlert: isOn("alert-night-cash"),
           nightCashMinAmount: parseOptionalNumber(
-            document.getElementById("alert-night-cash-min")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-night-cash-min"))?.value,
             0
           ),
           missingMeterAlert: isOn("alert-missing-meter"),
@@ -627,19 +628,19 @@ function bindAlertsForm(auth) {
           missingDipAlert: isOn("alert-missing-dip"),
           staleCreditAlert: isOn("alert-stale-credit"),
           staleCreditDays: parseOptionalNumber(
-            document.getElementById("alert-stale-credit-days")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-stale-credit-days"))?.value,
             curAlerts.staleCreditDays ?? d.staleCreditDays
           ),
           unpaidSalaryAlert: isOn("alert-unpaid-salary"),
           attendanceAlert: isOn("alert-attendance"),
           expenseRatioAlert: isOn("alert-expense-ratio"),
           expenseRatioPct: parseOptionalNumber(
-            document.getElementById("alert-expense-ratio-pct")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-expense-ratio-pct"))?.value,
             curAlerts.expenseRatioPct ?? d.expenseRatioPct
           ),
           missingInvoiceAlert: isOn("alert-missing-invoice"),
           missingInvoiceLookbackDays: parseOptionalNumber(
-            document.getElementById("alert-missing-invoice-days")?.value,
+            /** @type {HTMLInputElement | null} */ (document.getElementById("alert-missing-invoice-days"))?.value,
             curAlerts.missingInvoiceLookbackDays ?? d.missingInvoiceLookbackDays
           ),
           dayClosingReminder: isOn("alert-day-closing"),
@@ -658,11 +659,11 @@ function bindAlertsForm(auth) {
 // ─── Integrations ────────────────────────────────────────────────────────────
 
 function bindIntegrationsForm(auth) {
-  const form = document.getElementById("integrations-drive-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("integrations-drive-form"));
   if (!form) return;
   const cfg = PumpSettings.getCachedSync().integrations?.googleDrive || AppConfig.DEFAULT_INTEGRATIONS.googleDrive;
-  const enabledEl = document.getElementById("gdrive-enabled");
-  const folderEl = document.getElementById("gdrive-root-folder");
+  const enabledEl = /** @type {HTMLInputElement | null} */ (document.getElementById("gdrive-enabled"));
+  const folderEl = /** @type {HTMLInputElement | null} */ (document.getElementById("gdrive-root-folder"));
   if (enabledEl) enabledEl.checked = cfg.enabled === true;
   if (folderEl) folderEl.value = cfg.rootFolderId || "";
 
@@ -672,7 +673,7 @@ function bindIntegrationsForm(auth) {
     const errorEl = document.getElementById("integrations-drive-error");
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
-    const btn = form.querySelector('button[type="submit"]');
+    const btn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
     try {
       const rootFolderId = (folderEl?.value || "").trim();
@@ -699,14 +700,14 @@ function bindIntegrationsForm(auth) {
 // ─── Users ───────────────────────────────────────────────────────────────────
 
 function initUsersForm() {
-  const form = document.getElementById("settings-form");
+  const form = /** @type {HTMLFormElement | null} */ (document.getElementById("settings-form"));
   const successEl = document.getElementById("settings-success");
   const errorEl = document.getElementById("settings-error");
   if (!form) return;
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const submitBtn = form.querySelector('button[type="submit"]');
+    const submitBtn = /** @type {HTMLButtonElement | null} */ (form.querySelector('button[type="submit"]'));
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Saving…"; }
     successEl?.classList.add("hidden");
     errorEl?.classList.add("hidden");
@@ -714,7 +715,7 @@ function initUsersForm() {
 
     const formData = new FormData(form);
     const email = String(formData.get("email") || "").trim().toLowerCase();
-    const role = formData.get("role");
+    const role = /** @type {string} */ (formData.get("role"));
     const password = String(formData.get("password") || "").trim();
 
     if (!email) {
@@ -758,7 +759,7 @@ function initUsersForm() {
       passwordNote = " Password reset email sent.";
     }
 
-    const displayName = formData.get("display_name")?.trim() || null;
+    const displayName = String(formData.get("display_name") ?? "").trim() || null;
     const { error } = await window.supabaseClient.rpc("upsert_staff", {
       p_email: email,
       p_role: role,
@@ -1005,7 +1006,8 @@ function createSortableCategoryManager(opts) {
     const name = btn.dataset.name;
     const label = btn.dataset.label || name;
     if (!id || !(await AppDialog.confirm(`Delete ${opts.noun} "${label}"?`, { title: `Delete ${opts.noun}`, confirmLabel: "Delete", danger: true }))) return;
-    const { count } = await window.supabaseClient
+    // opts.usageTable is a runtime table name; the typed client's union over every table is too deep for tsc.
+    const { count } = await /** @type {any} */ (window.supabaseClient)
       .from(opts.usageTable)
       .select("id", { count: "exact", head: true })
       .eq(opts.usageColumn, name);
@@ -1060,15 +1062,15 @@ function createSortableCategoryManager(opts) {
       }
     });
 
-    const addForm = document.getElementById(opts.addFormId);
-    const labelInput = document.getElementById(opts.labelInputId);
+    const addForm = /** @type {HTMLFormElement | null} */ (document.getElementById(opts.addFormId));
+    const labelInput = /** @type {HTMLInputElement | null} */ (document.getElementById(opts.labelInputId));
     const addError = document.getElementById(opts.addErrorId);
     const addSuccess = document.getElementById(opts.addSuccessId);
 
     if (addForm && labelInput) {
       addForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        const submitBtn = addForm.querySelector('button[type="submit"]');
+        const submitBtn = /** @type {HTMLButtonElement | null} */ (addForm.querySelector('button[type="submit"]'));
         if (submitBtn) {
           submitBtn.disabled = true;
           submitBtn.textContent = "Saving…";
@@ -1159,7 +1161,7 @@ function initDocumentTypeCategories() {
 // ─── Staff salaries ──────────────────────────────────────────────────────────
 
 function initStaffSalaries() {
-  const tbody = document.getElementById("emp-salaries-body");
+  const tbody = /** @type {HTMLElement} */ (document.getElementById("emp-salaries-body"));
   const successEl = document.getElementById("emp-salaries-success");
   const errorEl = document.getElementById("emp-salaries-error");
   if (!tbody) return;
@@ -1213,13 +1215,13 @@ function initStaffSalaries() {
   tbody.addEventListener("click", async (e) => {
     const t = e.target;
     if (!(t instanceof Element)) return;
-    const btn = t.closest(".save-emp-salary-btn");
+    const btn = /** @type {HTMLButtonElement | null} */ (t.closest(".save-emp-salary-btn"));
     if (!btn) return;
     e.preventDefault();
     const id = btn.getAttribute("data-id");
     const row = tbody.querySelector(`tr[data-employee-id="${id}"]`);
-    const salaryInput = row?.querySelector(".emp-salary-input");
-    const pfInput = row?.querySelector(".emp-pf-input");
+    const salaryInput = /** @type {HTMLInputElement | null | undefined} */ (row?.querySelector(".emp-salary-input"));
+    const pfInput = /** @type {HTMLInputElement | null | undefined} */ (row?.querySelector(".emp-pf-input"));
     const monthlySalary = Number(salaryInput?.value ?? 0);
     const pfRaw = pfInput?.value ?? "";
     const pfContribution = String(pfRaw).trim() === "" ? null : Number(pfRaw);
@@ -1246,7 +1248,7 @@ function initStaffSalaries() {
     const { error } = await window.supabaseClient
       .from("employees")
       .update({ monthly_salary: monthlySalary, pf_contribution: pfContribution })
-      .eq("id", id);
+      .eq("id", /** @type {string} */ (id));
     btn.disabled = false;
     btn.textContent = "Save";
     if (error) {
@@ -1369,7 +1371,8 @@ async function loadClientErrors() {
   }
   tbody.innerHTML = data
     .map((row) => {
-      const where = row.context?.context || row.context?.source || "";
+      const ctx = /** @type {any} */ (row.context);
+      const where = ctx?.context || ctx?.source || "";
       const detail = [row.code, where].filter(Boolean).join(" · ");
       return `
         <tr>

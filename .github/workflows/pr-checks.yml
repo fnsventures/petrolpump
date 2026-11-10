@@ -64,7 +64,7 @@ jobs:
         run: node scripts/check-doc-links.mjs
 
   migrations:
-    name: Migration names + order
+    name: Migration names + order + function sources
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,6 +75,10 @@ jobs:
         env:
           BASE_REF: origin/${{ github.base_ref }}
         run: bash scripts/check-migration-order.sh
+
+      # Plain Node, no npm deps (runner's preinstalled Node).
+      - name: functions-sql matches schema.sql and newest migration
+        run: node scripts/sql-functions.mjs check
 
   schema-drift:
     name: schema.sql matches migrations

@@ -1,3 +1,4 @@
+// @ts-check
 /* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, addMonthsToMonthValue, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
@@ -595,16 +596,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  const paymentForm = document.getElementById("salary-payment-form");
+  const paymentForm = /** @type {HTMLFormElement | null} */ (document.getElementById("salary-payment-form"));
   const paymentSuccess = document.getElementById("salary-payment-success");
   const paymentError = document.getElementById("salary-payment-error");
-  const paymentStaffSelect = document.getElementById("payment-staff");
-  const paymentDateInput = document.getElementById("payment-date");
-  const paymentAmountInput = document.getElementById("payment-amount");
+  const paymentStaffSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("payment-staff"));
+  const paymentDateInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payment-date"));
+  const paymentAmountInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payment-amount"));
   const paymentFillRemainingBtn = document.getElementById("payment-fill-remaining");
   const paymentMonthHint = document.getElementById("payment-month-hint");
-  const salaryMonthSelect = document.getElementById("salary-month-month");
-  const salaryYearSelect = document.getElementById("salary-month-year");
+  const salaryMonthSelect = /** @type {HTMLSelectElement} */ (document.getElementById("salary-month-month"));
+  const salaryYearSelect = /** @type {HTMLSelectElement} */ (document.getElementById("salary-month-year"));
   const recordFormSlot = document.getElementById("salary-record-form-slot");
   const detailPayHost = document.getElementById("salary-detail-pay-host");
 
@@ -612,8 +613,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const detailBackdrop = document.getElementById("salary-detail-backdrop");
   const detailClose = document.getElementById("salary-detail-close");
   const detailDismiss = document.getElementById("salary-detail-dismiss");
-  const detailPrintBtn = document.getElementById("salary-detail-print-slip");
-  const detailAddPaymentBtn = document.getElementById("salary-detail-add-payment");
+  const detailPrintBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("salary-detail-print-slip"));
+  const detailAddPaymentBtn = /** @type {HTMLButtonElement | null} */ (document.getElementById("salary-detail-add-payment"));
 
   if (paymentDateInput) {
     initPersistedDateInput(paymentDateInput, RECORD_DATE_KEYS.salaryPayment);
@@ -695,7 +696,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function setLopExcluded(staffId, monthValue, exclude) {
     const salaryMonth = normalizeSalaryMonth(monthValue);
-    const userId = auth.session?.user?.id;
+    const userId = /** @type {NonNullable<typeof auth>} */ (auth).session?.user?.id;
     if (!salaryMonth || !staffId || !userId) {
       throw new Error("Could not save the loss-of-pay exclusion.");
     }
@@ -994,7 +995,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         `;
         adjustEl.querySelector(".salary-lop-toggle")?.addEventListener("click", (e) => {
           e.stopPropagation();
-          const button = e.currentTarget;
+          const button = /** @type {HTMLButtonElement} */ (e.currentTarget);
           toggleLopExclusion(staffId, monthValue, button.getAttribute("data-exclude") === "1", button.getAttribute("data-amount"));
         });
       }
@@ -1333,10 +1334,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     tbody.innerHTML = summaryRows.join("");
 
-    tbody.querySelectorAll("tr[data-staff-id]").forEach((row) => {
+    /** @type {NodeListOf<HTMLTableRowElement>} */ (tbody.querySelectorAll("tr[data-staff-id]")).forEach((row) => {
       const staffId = row.getAttribute("data-staff-id");
       row.addEventListener("click", (e) => {
-        if (e.target.closest("button")) return;
+        if (/** @type {Element} */ (e.target).closest("button")) return;
         openDetailModal(staffId);
         tbody.querySelectorAll("tr.is-selected").forEach((tr) => tr.classList.remove("is-selected"));
         row.classList.add("is-selected");
@@ -1356,7 +1357,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     });
 
-    tbody.querySelectorAll(".salary-slip-btn").forEach((btn) => {
+    /** @type {NodeListOf<HTMLButtonElement>} */ (tbody.querySelectorAll(".salary-slip-btn")).forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         if (btn.disabled) return;
@@ -1382,7 +1383,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     });
 
-    tbody.querySelectorAll(".add-payment-btn").forEach((btn) => {
+    /** @type {NodeListOf<HTMLButtonElement>} */ (tbody.querySelectorAll(".add-payment-btn")).forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         if (btn.disabled) return;
@@ -1407,7 +1408,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (paymentStaffSelect) paymentStaffSelect.value = staffId;
     if (paymentDateInput) paymentDateInput.value = suggestPaymentDate(salaryMonth);
     if (paymentAmountInput) paymentAmountInput.value = "";
-    const noteInput = document.getElementById("payment-note");
+    const noteInput = /** @type {HTMLInputElement | null} */ (document.getElementById("payment-note"));
     if (noteInput) noteInput.value = "";
     paymentSuccess?.classList.add("hidden");
     paymentError?.classList.add("hidden");
@@ -1596,7 +1597,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (paymentForm) {
     paymentForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const submitBtn = paymentForm.querySelector('button[type="submit"]');
+      const submitBtn = /** @type {HTMLButtonElement | null} */ (paymentForm.querySelector('button[type="submit"]'));
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = "Saving…";
@@ -1607,7 +1608,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const staffId = paymentStaffSelect?.value;
       let date = paymentDateInput?.value;
       const amount = Number(paymentAmountInput?.value || 0);
-      const note = document.getElementById("payment-note")?.value?.trim() || null;
+      const note = /** @type {HTMLInputElement | null} */ (document.getElementById("payment-note"))?.value?.trim() || null;
       const salaryMonthVal = getPaymentSalaryMonth();
       const salaryMonth = normalizeSalaryMonth(salaryMonthVal || date?.slice(0, 7));
 
@@ -1907,7 +1908,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       key: "salary.payment",
       root: paymentForm,
       capture: () => omitDraftFields(captureDomDraftFields(paymentForm), ["date"]),
-      skipTarget: (target) => target?.name === "date",
+      skipTarget: (target) => /** @type {HTMLInputElement} */ (target)?.name === "date",
     });
     paymentDraft.adoptServerState();
     if (paymentDraft.restore()) {
