@@ -1,0 +1,10 @@
+"use strict";(function(d){async function l(t,e,n=null){const{data:s,error:r}=await supabaseClient.rpc("get_attendant_short_excess",{p_start:t,p_end:e,p_employee_id:n});if(r)throw r;return s??[]}function u(t){const e=new Map;for(const n of t){let s=e.get(n.employee_id);if(s||(s={employee_id:n.employee_id,name:n.employee_name||"Staff",shifts:0,unpriced:0,expected:0,handed_over:0,short:0,excess:0,net:0,rows:[]},e.set(n.employee_id,s)),s.shifts+=1,s.rows.push(n),n.short_excess==null){s.unpriced+=1;continue}const r=Number(n.short_excess);s.expected+=Number(n.expected)||0,s.handed_over+=Number(n.handed_over)||0,s.net+=r,r<-.5?s.short+=r:r>.5&&(s.excess+=r)}return[...e.values()].sort((n,s)=>n.net-s.net)}function a(t){return t==null?"":t<-.5?"stat-negative":t>.5?"stat-positive":""}function o(t){return t==null?"\u2014":`${t>0?"+":""}${formatCurrency(t)}`}function i(t){return t.length?`<div class="table-wrap"><table class="attendant-short-shifts">
+      <thead><tr><th>Date</th><th>Shift</th><th class="num">Litres</th><th class="num">Expected</th><th class="num">Handed over</th><th class="num">Short / excess</th></tr></thead>
+      <tbody>${t.map(e=>`<tr>
+          <td>${escapeHtml(formatDisplayDate(e.reading_date))}</td>
+          <td>${escapeHtml(e.shift)}</td>
+          <td class="num">${formatQuantity(Number(e.petrol_litres)+Number(e.diesel_litres))}</td>
+          <td class="num">${e.expected==null?'<span class="muted">No rate</span>':formatCurrency(e.expected)}</td>
+          <td class="num">${formatCurrency(e.handed_over)}</td>
+          <td class="num ${a(e.short_excess==null?null:Number(e.short_excess))}">${o(e.short_excess==null?null:Number(e.short_excess))}</td>
+        </tr>`).join("")}</tbody></table></div>`:'<p class="muted">No shifts recorded.</p>'}function c(t,e){return AppError.report(t,{context:e}),escapeHtml(AppError.getUserMessage(t))}d.AttendantShort={EPSILON:.5,load:l,summarise:u,toneClass:a,signed:o,shiftRowsHtml:i,reportError:c}})(typeof window<"u"?window:globalThis);

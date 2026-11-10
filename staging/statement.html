@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Credit statement · Bishnupriya Fuels</title>
+    <meta name="description" content="Your credit account statement from Bishnu Priya Fuels, BPCL dealer." />
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <meta name="theme-color" content="#0070c0" />
+    <script src="js/theme.js?v=785528b4cc"></script>
+    <link rel="stylesheet" href="css/fonts.css?v=9965543f7a" />
+    <link rel="stylesheet" href="css/tokens.css?v=e957fc4bc8" />
+    <link rel="stylesheet" href="css/statement.css?v=740932f34a" />
+    <script defer src="js/env.js"></script>
+    <script defer src="js/statement.js?v=575d599464"></script>
+  </head>
+  <body>
+    <main class="statement" role="main">
+      <p id="statement-status" class="statement-status" aria-live="polite">Loading statement…</p>
+      <article id="statement-body" class="statement-card" hidden>
+        <header class="statement-letterhead">
+          <img src="assets/logo-print.webp" alt="Bishnupriya Fuels" class="statement-logo" width="72" height="72" />
+          <div class="statement-letterhead-text">
+            <p id="statement-station" class="statement-station"></p>
+            <p id="statement-tagline" class="statement-tagline"></p>
+            <p id="statement-address" class="statement-small" hidden></p>
+            <p id="statement-contact" class="statement-small" hidden></p>
+          </div>
+        </header>
+
+        <div class="statement-title-row">
+          <h1>Statement of account</h1>
+          <p id="statement-period" class="statement-muted"></p>
+        </div>
+
+        <dl class="statement-party">
+          <div>
+            <dt>Customer</dt>
+            <dd id="statement-customer"></dd>
+          </div>
+          <div>
+            <dt>Statement date</dt>
+            <dd id="statement-date"></dd>
+          </div>
+        </dl>
+
+        <section class="statement-balance" aria-label="Balance">
+          <span id="statement-balance-label">Amount due</span>
+          <strong id="statement-balance"></strong>
+        </section>
+
+        <dl class="statement-summary" aria-label="Period summary">
+          <div>
+            <dt>Brought forward</dt>
+            <dd id="statement-sum-opening"></dd>
+          </div>
+          <div>
+            <dt>Fuel billed</dt>
+            <dd id="statement-sum-billed"></dd>
+          </div>
+          <div>
+            <dt>Payments received</dt>
+            <dd id="statement-sum-paid"></dd>
+          </div>
+        </dl>
+
+        <section aria-labelledby="statement-open-title">
+          <h2 id="statement-open-title">Unpaid bills</h2>
+          <div id="statement-open"></div>
+        </section>
+
+        <section aria-labelledby="statement-activity-title">
+          <h2 id="statement-activity-title">Account activity</h2>
+          <div id="statement-activity"></div>
+        </section>
+
+        <footer class="statement-foot">
+          <p>
+            Please clear the amount due at the earliest. For any query, contact the station<span id="statement-foot-contact"></span>.
+          </p>
+          <p class="statement-small">
+            Computer-generated statement; no signature required. <span id="statement-expiry"></span>
+          </p>
+          <button type="button" id="statement-print" class="statement-print">Download PDF / Print</button>
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

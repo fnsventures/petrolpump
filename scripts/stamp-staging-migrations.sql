@@ -1,0 +1,46 @@
+-- Mark repo migrations as already applied on staging when the database was bootstrapped
+-- from supabase/schema.sql (or otherwise already matches prod). Safe to re-run.
+-- Does not execute migration SQL — only updates supabase_migrations.schema_migrations.
+
+insert into supabase_migrations.schema_migrations (version, name, statements)
+values
+  ('20250129000000', 'add_dsr_receipts_buying_price', array[]::text[]),
+  ('20250130000000', 'fix_buying_price_update', array[]::text[]),
+  ('20250130100000', 'day_closing_and_credit_payments', array[]::text[]),
+  ('20250130110000', 'expense_categories', array[]::text[]),
+  ('20250131100000', 'day_closing_no_duplicate', array[]::text[]),
+  ('20250131110000', 'staff_attendance', array[]::text[]),
+  ('20250202100000', 'credit_customers_credit_date', array[]::text[]),
+  ('20250203100000', 'users_display_name_and_rename', array[]::text[]),
+  ('20250203110000', 'day_closing_accounting_snapshot', array[]::text[]),
+  ('20250210100000', 'credit_management_module', array[]::text[]),
+  ('20250211100000', 'add_credit_customers_amount_due', array[]::text[]),
+  ('20250211110000', 'fix_day_closing_credit_today', array[]::text[]),
+  ('20250214100000', 'customer_credit_summary_as_of', array[]::text[]),
+  ('20250214200000', 'customer_credit_breakdown_as_of', array[]::text[]),
+  ('20250214300000', 'customer_credit_detail_combined', array[]::text[]),
+  ('20250219100000', 'backfill_dsr_stock_from_dsr', array[]::text[]),
+  ('20250219110000', 'dsr_stock_closing_variation_formula', array[]::text[]),
+  ('20250220100000', 'employee_attendance_shift', array[]::text[]),
+  ('20250322100000', 'outstanding_list_last_credit_sale_date', array[]::text[]),
+  ('20250426120000', 'employees_mutation_admin_only', array[]::text[]),
+  ('20250526180000', 'split_dsr_petrol_diesel', array[]::text[]),
+  ('20250526200000', 'optimize_remove_redundant_tables', array[]::text[]),
+  ('20250526210000', 'billing_system', array[]::text[]),
+  ('20250527090000', 'fix_save_invoice_insert_order', array[]::text[]),
+  ('20250527100000', 'reports_page_access', array[]::text[]),
+  ('20250527110000', 'pump_settings', array[]::text[]),
+  ('20250527120000', 'purchase_vat_per_product', array[]::text[]),
+  ('20250527130000', 'backend_optimizations', array[]::text[]),
+  ('20250527140000', 'fix_backend_bugs', array[]::text[]),
+  ('20250527150000', 'fix_remaining_backend_issues', array[]::text[]),
+  ('20250602100000', 'credit_customer_contact', array[]::text[]),
+  ('20250602120000', 'salary_slip_pf', array[]::text[]),
+  ('20250602130000', 'employee_pf_contribution', array[]::text[]),
+  ('20260528100000', 'employee_personal_details', array[]::text[]),
+  ('20260528200000', 'security_hardening', array[]::text[]),
+  ('20260528300000', 'user_avatar', array[]::text[]),
+  ('20260528400000', 'employee_blood_group_and_staff_page', array[]::text[]),
+  ('20260528500000', 'employee_photo', array[]::text[]),
+  ('20260528600000', 'employee_dob_id_validity', array[]::text[])
+on conflict (version) do nothing;
