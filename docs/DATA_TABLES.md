@@ -647,7 +647,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| customer_name | text | Customer name |
+| customer_name | text | Customer name. Stored trimmed with inner whitespace collapsed to one space (`credit_customers_normalize_name` trigger), so names that differ only in spacing are the same customer |
 | vehicle_no | text | Optional |
 | mobile | text | Optional contact number |
 | address | text | Optional address |

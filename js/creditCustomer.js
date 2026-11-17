@@ -584,7 +584,8 @@ async function resolveCustomerIds(isCurrent) {
     return;
   }
   const needleNorm = normCustomerName(needle);
-  const pattern = `%${escapeIlikePattern(needle)}%`;
+  // Any run of spaces matches any run, so rows saved with a different spacing are found too.
+  const pattern = `%${needle.split(/\s+/).map(escapeIlikePattern).join("%")}%`;
   const { data: list, error } = await fetchAllRows(() =>
     window.supabaseClient
       .from("credit_customers")

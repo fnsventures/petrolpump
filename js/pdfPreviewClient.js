@@ -5,7 +5,7 @@
  * Pages outside the viewport stay as empty slots until scrolled into view, so
  * a long file does not allocate a canvas for every page at once.
  */
-import * as pdfjs from "pdfjs-dist";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
 const WORKER_SRC = "js/pdf/pdf.worker.min.js";
 const MAX_PIXEL_RATIO = 2;

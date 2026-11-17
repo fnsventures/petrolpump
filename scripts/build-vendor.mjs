@@ -44,7 +44,7 @@ await esbuild.build({
 });
 
 await copyFile(
-  path.join(root, "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"),
+  path.join(root, "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs"),
   path.join(pdfDir, "pdf.worker.min.js")
 );
 
