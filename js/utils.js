@@ -85,10 +85,11 @@ function escapeIlikePattern(s) {
   return String(s ?? "").replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-/** Normalize a credit customer name for case-insensitive comparison. */
+/** Normalize a credit customer name for case-insensitive comparison; inner whitespace runs count as one space. */
 function normCustomerName(s) {
   return String(s ?? "")
     .trim()
+    .replace(/\s+/g, " ")
     .toLowerCase();
 }
 

@@ -5211,7 +5211,8 @@ begin
     return v_replay;
   end if;
 
-  v_name := trim(p_customer_name);
+  -- Same form the credit_customers_normalize_name trigger stores, so extra spaces still match.
+  v_name := btrim(regexp_replace(p_customer_name, '\s+', ' ', 'g'));
   if v_name is null or v_name = '' then
     raise exception 'customer name is required';
   end if;
@@ -6834,6 +6835,26 @@ as $$
 $$;
 comment on function public.get_credit_overview_period(date, date) is
   'Portfolio credit activity for a date range (null p_from = all time): totals and per-customer breakdown.';
+
+create or replace function public.credit_customers_normalize_name()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.customer_name := btrim(regexp_replace(new.customer_name, '\s+', ' ', 'g'));
+  return new;
+end;
+$$;
+
+comment on function public.credit_customers_normalize_name() is
+  'Trigger: store credit_customers.customer_name trimmed with inner whitespace collapsed to one space.';
+
+revoke all on function public.credit_customers_normalize_name() from public, anon;
+
+drop trigger if exists credit_customers_normalize_name on public.credit_customers;
+create trigger credit_customers_normalize_name
+  before insert or update of customer_name on public.credit_customers
+  for each row execute function public.credit_customers_normalize_name();
 
 create or replace function public.credit_customers_guard_date()
 returns trigger

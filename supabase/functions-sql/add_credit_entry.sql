@@ -37,7 +37,8 @@ begin
     return v_replay;
   end if;
 
-  v_name := trim(p_customer_name);
+  -- Same form the credit_customers_normalize_name trigger stores, so extra spaces still match.
+  v_name := btrim(regexp_replace(p_customer_name, '\s+', ' ', 'g'));
   if v_name is null or v_name = '' then
     raise exception 'customer name is required';
   end if;
