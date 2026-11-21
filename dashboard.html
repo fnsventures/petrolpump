@@ -16,9 +16,9 @@
       <div class="settings-panels dashboard-primary">
         <header class="dashboard-primary-head no-print" aria-label="Welcome">
           <div class="dashboard-primary-head-inner">
-            <h1 class="dashboard-page-title">Dashboard</h1>
-            <p class="dashboard-page-greeting">
-              Welcome back, <span id="operator-name" class="dashboard-operator-name">Loading…</span>
+            <h2 class="dashboard-page-title">Dashboard</h2>
+            <p class="dashboard-page-greeting" id="dashboard-greeting" hidden>
+              <span id="operator-greeting-lead">Welcome back</span><span id="operator-name" class="dashboard-operator-name"></span>
               <span id="operator-role" class="dashboard-operator-role"></span>
             </p>
             <p class="dashboard-page-meta">
@@ -139,7 +139,7 @@
               <button type="button" id="dsr-next" class="button-secondary date-step" aria-label="Next period" title="Next period">
                 <span class="date-step-text">Next</span><span aria-hidden="true">›</span>
               </button>
-              <button type="submit" id="dsr-apply">Apply</button>
+              <button class="button-primary" type="submit" id="dsr-apply">Apply</button>
             </div>
           </form>
         </div>
@@ -244,7 +244,7 @@
               </div>
             </div>
             <div class="filter-actions">
-              <button type="submit" id="pl-apply">Apply</button>
+              <button class="button-primary" type="submit" id="pl-apply">Apply</button>
             </div>
           </form>
         </div>
@@ -261,7 +261,7 @@
 
         <p class="dashboard-muted-caption muted">
           Buying prices are entered on
-          <a href="meter-reading.html#purchase-cost">Meter Reading → Purchase cost</a>.
+          <a href="meter-reading.html#purchase-cost">Meter reading → Purchase cost</a>.
           Full breakdown:
           <a href="analysis.html">Analysis</a>
           ·
@@ -399,9 +399,7 @@
               Due reminders and urgent todos — credit calls, collections, and other work before it slips.
             </p>
           </div>
-          <button type="button" id="reminders-landing-close" class="app-modal-close reminders-landing-close" aria-label="Dismiss tasks">
-            ×
-          </button>
+          <button type="button" id="reminders-landing-close" class="app-modal-close reminders-landing-close" aria-label="Dismiss tasks"><span class="icon icon--close" aria-hidden="true"></span></button>
         </header>
         <div id="reminders-landing-list" class="reminders-landing-list" aria-live="polite"></div>
         <footer class="reminders-landing-actions">
@@ -411,9 +409,6 @@
       </div>
     </dialog>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

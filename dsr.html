@@ -44,9 +44,9 @@
               <h2 class="dashboard-section-title">Total</h2>
               <p class="muted panel-lead">Combined MS and HSD readings, sales, stock, and variation for the selected period.</p>
               <p class="muted dsr-panel-links">
-                <a href="meter-reading.html">Enter meter readings →</a>
-                <a href="meter-reading.html#shift-readings">Shift register →</a>
-                <a href="reports.html?tab=dsr" data-role="admin-only" id="dsr-panel-report-link">Tank-wise report →</a>
+                <a href="meter-reading.html">Enter meter readings<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a>
+                <a href="meter-reading.html#shift-readings">Shift register<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a>
+                <a href="reports.html?tab=dsr" data-role="admin-only" id="dsr-panel-report-link">Tank-wise report<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a>
               </p>
             </div>
             <div class="snapshot-controls">
@@ -300,7 +300,7 @@
               </p>
             </div>
           </div>
-          <form id="decant-form" class="decant-form" autocomplete="off" novalidate>
+          <form id="decant-form" data-enter-next class="decant-form" autocomplete="off" novalidate>
             <div class="form-grid">
               <div class="form-field">
                 <label for="decant-date">Date</label>
@@ -318,7 +318,7 @@
                 <input id="decant-invoice-no" type="text" maxlength="64" />
               </div>
               <div class="form-field">
-                <label for="decant-invoice-doc">Vault invoice</label>
+                <label for="decant-invoice-doc">Purchase invoice (Documents)</label>
                 <select id="decant-invoice-doc">
                   <option value="">Not linked</option>
                 </select>
@@ -329,7 +329,7 @@
               </div>
               <div class="form-field">
                 <label for="decant-invoice-qty">Invoice qty (L)</label>
-                <input id="decant-invoice-qty" type="text" inputmode="decimal" required />
+                <input id="decant-invoice-qty" type="text" inputmode="decimal" required data-unit="L" />
               </div>
               <div class="form-field">
                 <label for="decant-dip-before">Dip before (cm)</label>
@@ -337,7 +337,7 @@
               </div>
               <div class="form-field">
                 <label for="decant-stock-before">Stock before (L)</label>
-                <input id="decant-stock-before" type="text" inputmode="decimal" required />
+                <input id="decant-stock-before" type="text" inputmode="decimal" required data-unit="L" />
               </div>
               <div class="form-field">
                 <label for="decant-dip-after">Dip after (cm)</label>
@@ -345,7 +345,7 @@
               </div>
               <div class="form-field">
                 <label for="decant-stock-after">Stock after (L)</label>
-                <input id="decant-stock-after" type="text" inputmode="decimal" required />
+                <input id="decant-stock-after" type="text" inputmode="decimal" required data-unit="L" />
               </div>
               <div class="form-field">
                 <label for="decant-density">Density observed (kg/m³)</label>
@@ -367,7 +367,7 @@
             <p id="decant-preview" class="muted decant-preview" aria-live="polite"></p>
             <p id="decant-error" class="error hidden" role="alert"></p>
             <div class="form-actions">
-              <button type="submit" id="decant-save">Save decantation</button>
+              <button class="button-primary" type="submit" id="decant-save">Save decantation</button>
               <button type="button" id="decant-cancel" class="button-secondary hidden">Cancel edit</button>
             </div>
           </form>
@@ -409,9 +409,6 @@
         </section>
       </div>
     </main>
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

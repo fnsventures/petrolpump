@@ -183,7 +183,7 @@ limit 50;
 
 ## dsr_petrol
 
-**Purpose:** MS (petrol) meter readings — **one row per date**. Filled by the Meter Reading form (`js/dsr.js` → table `dsr_petrol`). Used for day closing, dashboard, analysis, and reports.
+**Purpose:** MS (petrol) meter readings — **one row per date**. Filled by the Meter reading form (`js/dsr.js` → table `dsr_petrol`). Used for day closing, dashboard, analysis, and reports.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -232,13 +232,13 @@ limit 50;
 
 **Unique:** `(reading_date, product, shift, pump_no, nozzle_no)`.
 
-**RPCs:** `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`. Shift credit and expenses on the same screen: `get_shift_staff_ledger`, `delete_shift_credit_entry`, `delete_shift_expense`. Lock checks used by those RPCs and by the daily-sheet policies: `meter_day_is_locked`, `meter_day_has_closing`, `meter_day_has_daily_entry`, `meter_shift_has_readings`, `require_meter_day_writable`, `dsr_meter_row_is_complete`.
+**RPCs:** `save_dsr_meter_row` (daily sheet upsert: meter, stock, rate and remarks columns only; a supervisor cannot change a locked day or a finished row; rate plus dip or stock required; retry-safe), `get_meter_shift_readings`, `save_meter_shift_readings`, `delete_meter_shift_readings` (admin), `get_meter_shift_prior_closings`, `get_shift_aggregated_daily_meters`, `apply_shift_aggregate_to_dsr`, `sync_shift_meters_from_dsr`, `meter_shift_lock_info`, `require_meter_shift_writable`, `get_meter_sales_breakdown`. Shift credit and expenses on the same screen: `get_shift_staff_ledger`, `delete_shift_credit_entry`, `delete_shift_expense`. Lock checks used by those RPCs and by the daily-sheet policies: `meter_day_is_locked`, `meter_day_has_closing`, `meter_day_has_daily_entry`, `meter_shift_has_readings`, `require_meter_day_writable`, `dsr_meter_row_is_complete`.
 
 **Ownership:** Shift save writes `meter_shift_*` (via RPC; clients have SELECT only) and refreshes meter columns on existing `dsr_*` rows via `apply_shift_aggregate_to_dsr` (never inserts stubs). Daily MS/HSD save writes dip/stock/rate on `dsr_*`. Shift meters also prefill the meter sheet via `get_shift_aggregated_daily_meters`. Daily layout is fixed **2 pumps × 2 nozzles** (matches `dsr_*` columns).
 
 **Lock:** Supervisors can re-save a shift with updated values until day closing is saved for that date; afterwards only an admin can change shifts. Certified day / night-cash collected also locks meter sync for supervisors.
 
-**UI:** Meter Reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
+**UI:** Meter reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
 
 ---
 
@@ -437,7 +437,7 @@ A single table with a `product` column would match today’s view plus two table
 
 **RLS:** SELECT supervisor/admin; INSERT own rows; DELETE admin only. Drive uploads insert via `drive-files` (service role).
 
-**Page:** `letterhead.html` (Letter Desk).
+**Page:** `letterhead.html` (Letter desk).
 
 ---
 
@@ -647,7 +647,7 @@ Defaults in `js/appConfig.js`. Edge function reads `integrations.googleDrive` fo
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid | Primary key |
-| customer_name | text | Customer name |
+| customer_name | text | Customer name. Stored trimmed with inner whitespace collapsed to one space (`credit_customers_normalize_name` trigger), so names that differ only in spacing are the same customer |
 | vehicle_no | text | Optional |
 | mobile | text | Optional contact number |
 | address | text | Optional address |
@@ -1020,7 +1020,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `billing_totals_by_date(start, end)` | Billing invoice totals grouped by date (jsonb) | — |
 | `purchase_totals_by_date(start, end)` | Purchase-document totals grouped by date (jsonb) | — |
 | `get_invoice_document_category_counts(start?, end?)` | Invoice vault outline: `category`, `doc_count`, `latest_date` per category. Security invoker, so `invoice_documents` RLS applies | — |
-| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
+| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
 | `save_invoice(..., request_id?)` | Atomic invoice + line items; rejects qty/rate ≤ 0, invalid GST, discount < 0 or > subtotal | — |
@@ -1040,6 +1040,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `record_credit_payment(..., request_id?)` | Payment + LIFO; locks the customer row; prepaid on overpay; rejects a certified day | — |
 | `batch_record_credit_settlements(..., request_id?)` | Multi-customer payment in one transaction; locks those rows; rejects a certified day | — |
 | `add_shift_expense(..., request_id?)` | Shift register expense; rejects a certified day | — |
+| `add_expense(date, category, amount, description?, request_id?)` | Book expense from the Expenses page (no staff or shift); rejects salary, unknown categories, future dates (IST) and a certified day | — |
 | `record_salary_payment(...)` | Salary payment + linked expense; server overpay check (admin-only override); rejects a certified payment date | — |
 | `delete_salary_payment(id)` | Payment + linked expense; rejects a certified payment date | admin |
 | `delete_credit_entry(id)` | Delete a sale (row is removed) and reallocate. Locks the customer first | admin |

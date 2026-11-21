@@ -33,13 +33,15 @@ jobs:
             echo "SUPABASE_URL / SUPABASE_ANON_KEY missing in environment ${{ matrix.target }}" >&2
             exit 1
           fi
-          status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+          status="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --retry 3 --retry-delay 10 --retry-all-errors \
             -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${SUPABASE_URL%/}/rest/v1/pump_settings?select=id&limit=1" || echo 000)"
+            "${SUPABASE_URL%/}/rest/v1/pump_settings?select=id&limit=1" || true)"
+          # curl already prints 000 via -w when the request fails; don't append another.
+          status="${status:-000}"
           echo "HTTP ${status}"
-          # 2xx/4xx: the database answered. 5xx/000: unreachable or paused.
-          if [[ "${status}" == 000 || "${status}" =~ ^5 ]]; then
+          # 2xx/4xx: the database answered. Anything else (5xx, 000, DNS failure): unreachable or paused.
+          if [[ ! "${status}" =~ ^[24][0-9]{2}$ ]]; then
             echo "Database did not answer. If the project is paused, restore it in the Supabase dashboard." >&2
             exit 1
           fi

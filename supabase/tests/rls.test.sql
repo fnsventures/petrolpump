@@ -10,7 +10,7 @@
 --
 -- When you add a table, policy, or page on purpose, add it here in the same PR.
 begin;
-select plan(199);
+select plan(203);
 
 select tests.seed_users();
 select tests.seed_books();
@@ -267,6 +267,14 @@ insert into matrix (who, op, tbl, stmt, expected) values
    $$delete from public.expenses where description = 'Pump repair'$$, '1'),
   ('supervisor', 'delete', 'credit_customers', $$delete from public.credit_customers where customer_name = 'Legacy Co'$$, '0'),
   ('admin', 'delete', 'credit_customers', $$delete from public.credit_customers where customer_name = 'Legacy Co'$$, '1'),
+  ('supervisor', 'update', 'credit_customers',
+   $$update public.credit_customers set customer_name = 'Legacy Co Ltd', mobile = '9876543210', address = 'Main Road' where customer_name = 'Legacy Co'$$, '1'),
+  ('admin', 'update', 'credit_customers',
+   $$update public.credit_customers set customer_name = 'Legacy Co Ltd', mobile = '9876543210', address = 'Main Road' where customer_name = 'Legacy Co'$$, '1'),
+  ('supervisor', 'update', 'credit_customers',
+   $$update public.credit_customers set credit_limit = 1000 where customer_name = 'Legacy Co'$$, 'P0001'),
+  ('supervisor', 'update', 'credit_customers',
+   $$update public.credit_customers set amount_due = 0 where customer_name = 'Legacy Co'$$, '42501'),
   ('supervisor', 'insert', 'credit_customers',
    $$insert into public.credit_customers (customer_name, created_by) values ('Spoof Co', tests.uid('admin'))$$, '42501'),
   ('supervisor', 'insert', 'credit_customers',

@@ -62,7 +62,8 @@ p {
 button {
   appearance: none;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
+  min-height: 2.75rem;
   padding: 0.65rem 1.25rem;
   font: inherit;
   font-weight: 600;

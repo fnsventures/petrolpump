@@ -109,7 +109,7 @@
           <div class="billing-totals-grid">
             <div class="form-field">
               <label for="discount">Discount (₹)</label>
-              <input inputmode="decimal" id="discount" name="discount" type="text" step="0.01" min="0" value="0" />
+              <input inputmode="decimal" id="discount" name="discount" type="text" step="0.01" min="0" value="0" data-unit="₹" />
             </div>
             <div class="billing-summary">
               <div class="billing-summary-row">
@@ -146,8 +146,8 @@
             <textarea id="notes" name="notes" rows="2" placeholder="Additional notes"></textarea>
           </div>
 
-          <div class="billing-actions">
-            <button type="submit" id="save-invoice-btn">Save &amp; Print Invoice</button>
+          <div class="billing-actions sticky-save">
+            <button class="button-primary" type="submit" id="save-invoice-btn">Save &amp; Print Invoice</button>
             <button type="button" id="save-only-btn" class="button-secondary">Save Only</button>
           </div>
           <p id="invoice-success" class="success hidden"></p>
@@ -183,7 +183,7 @@
               </div>
             </div>
             <div class="filter-actions">
-              <button type="button" id="invoice-apply-filter">Apply</button>
+              <button class="button-primary" type="button" id="invoice-apply-filter">Apply</button>
             </div>
           </div>
         </div>
@@ -222,7 +222,7 @@
               <img src="assets/logo-print.webp" alt="Bishnupriya Fuels" class="station-logo invoice-bpcl-logo" width="128" height="128" />
             </div>
             <div class="invoice-letterhead-body">
-              <h1 class="invoice-brand" id="print-station-brand">Bishnu Priya <span>Fuels</span></h1>
+              <h2 class="invoice-brand" id="print-station-brand">Bishnu Priya <span>Fuels</span></h2>
               <p class="invoice-tagline" id="print-station-tagline">Authorized Dealer — Bharat Petroleum Corporation Ltd.</p>
               <p class="invoice-address" id="print-station-address">Plot No. 1541, Khata No. 445/94, Mouza Padmanavpur, Taluka Balichandrapur</p>
               <div class="invoice-contact-grid">
@@ -416,9 +416,6 @@
       </div>
     </div>
 
-    <footer class="app-footer no-print">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer noPrint -->
   </body>
 </html>

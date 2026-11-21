@@ -10,6 +10,7 @@ How to write a schema change. Applying it is [OPERATIONS.md](OPERATIONS.md): sta
 |----------|------|
 | `supabase/migrations/*.sql` | **Incremental changes** — what CI/scripts apply with `supabase db push` |
 | `supabase/schema.sql` | **Full snapshot** for greenfield installs and human reading |
+| `supabase/functions-sql/<name>.sql` | **Current definition of each public function** (body, comment, grants). Edit here; `emit` copies it into the migration |
 
 **Ongoing work always adds a migration file.** After a meaningful schema change, update `supabase/schema.sql` (and [DATA_TABLES.md](DATA_TABLES.md) if tables/RPCs/RLS changed) so a new project from `schema.sql` stays aligned with migrations.
 
@@ -44,7 +45,7 @@ supabase db push --db-url "$DB_URL" --include-all
 
 1. Branch from `staging`.
 2. `supabase migration new <name>` — one focused SQL file.
-   - Redefining an existing function? Copy the **latest** definition: `grep -lE "create( or replace)? function public\.<name>\b" supabase/migrations/* | sort | tail -1`. A pattern of `function public.<name>` also matches `grant` and `comment on function`.
+   - Redefining an existing function? See [Redefine a function](#redefine-a-function).
 3. Prefer additive, safe changes:
    - New columns nullable or with defaults
    - New RPCs / views / indexes
@@ -53,6 +54,28 @@ supabase db push --db-url "$DB_URL" --include-all
 5. Update `supabase/schema.sql` and check with `./scripts/check-schema-drift.sh`. Run `./scripts/test-db.sh` ([Database tests](#database-tests)).
 6. Update docs if the public model changed: [DATA_TABLES.md](DATA_TABLES.md) (meter and stock model included); day-closing RPCs → [DAY_CLOSING.md](DAY_CLOSING.md).
 7. Test on staging, then ship with the [Operations](OPERATIONS.md#3-release-to-production) release order.
+
+---
+
+## Redefine a function
+
+`supabase/functions-sql/<name>.sql` holds the definition that is live after every migration has run. Do not copy from an old migration; most core functions have been redefined many times and older copies are stale.
+
+```bash
+supabase migration new fix_day_closing_upi
+$EDITOR supabase/functions-sql/compute_day_closing_components.sql
+node scripts/sql-functions.mjs emit compute_day_closing_components   # appends to the newest migration, updates schema.sql
+npm run check:sql
+```
+
+- `emit a b c` writes several functions; `--to supabase/migrations/<file>.sql` picks a migration other than the newest.
+- Changed arguments: add `drop function if exists public.<name>(<old arg types>);` above the emitted block. If the comment or grant names the new signature, fix it in `schema.sql` by hand too (`check:sql` reports a statement the snapshot lacks).
+- New function: create the file (one `create or replace function`, then its `comment on` / `grant`), emit it, and add it to `schema.sql` by hand.
+- Dropped function: delete its file.
+
+The Supabase CLI does not run psql meta-commands, so a migration cannot `\i` the file; `emit` copies it in. `npm run check:sql` (CI: *Migration names + order + function sources*) fails when a file, `schema.sql`, and the newest migration that defines the function disagree, ignoring comments and whitespace. One file per name assumes no overloads; the script refuses `schema.sql` if one appears.
+
+**Why not squash migrations into one baseline?** Prod and staging record every applied version in `supabase_migrations.schema_migrations`. Deleting those files means running `supabase migration repair --status reverted` on both remotes in lockstep with the merge, and the drift check and pgTAP harness (built from baseline `5383acd` + every migration) would need a new baseline. That is a planned release step, not a refactor; the function files remove the stale-copy risk without touching either database.
 
 ---
 

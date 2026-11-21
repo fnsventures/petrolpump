@@ -7,9 +7,14 @@ type PublicSchema = GeneratedDatabase["public"];
 
 // RPCs that return jsonb are built with jsonb_build_object in SQL, so Postgres has no shape for
 // them and the generator emits `Json`. Treat those results as `any`; names and Args stay checked.
+// Optional args are SQL params with a default; the client may also pass null (SQL NULL), which
+// the generator's `p_x?: T` does not allow. Widen them to `T | null`.
+type NullableOptionalArgs<A> = {
+  [P in keyof A]: undefined extends A[P] ? A[P] | null : A[P];
+};
 type LooseJsonReturns<F> = {
   [K in keyof F]: F[K] extends { Args: infer A; Returns: infer R }
-    ? { Args: A; Returns: Json extends R ? any : R }
+    ? { Args: NullableOptionalArgs<A>; Returns: Json extends R ? any : R }
     : F[K];
 };
 
@@ -32,6 +37,10 @@ declare global {
     ActionProgress: any;
     AppLoader: any;
     AppError: any;
+    DsrFuelNav: any;
+    MeterReadingForms: any;
+    CreditCustomer: any;
+    CreditPage: any;
   }
 
   // Assigned to window inside IIFEs, which tsc cannot follow. Loosely typed until their
@@ -42,4 +51,13 @@ declare global {
   var loadPumpSettings: (...args: any[]) => Promise<any>;
   var PrintUtils: any;
   var initPageSections: (...args: any[]) => any;
+  var AppConfig: any;
+  var PayrollRules: any;
+  var StaffEmployees: any;
+  var AttendantShort: any;
+  var BuyingPriceEntry: any;
+  var MeterShiftReading: any;
+  var DsrQueries: any;
+  var TaskUtils: any;
+  var CreditCustomerDetail: any;
 }

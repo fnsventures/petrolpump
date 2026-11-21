@@ -182,7 +182,7 @@
 
   /**
    * Receipt days needing purchase cost: missing pre-VAT rate and/or delivery/LFR.
-   * Matches the Purchase cost list on Meter Reading.
+   * Matches the Purchase cost list on Meter reading.
    */
   async function fetchMissingBuyingPriceRows(options = {}) {
     const force = Boolean(options.force);

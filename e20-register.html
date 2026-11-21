@@ -17,7 +17,7 @@
         <section class="settings-panel card dashboard-card e20-card is-visible" data-panel="record">
           <header class="panel-head e20-head">
             <div>
-              <h1 class="dashboard-section-title">Daily E-20 Testing Register</h1>
+              <h2 class="dashboard-section-title">Daily E-20 testing register</h2>
               <p class="muted panel-lead">
                 One register per day. Save through the shift, then certify at close.
               </p>
@@ -36,7 +36,7 @@
           <p id="e20-success" class="success hidden" role="status"></p>
           <p id="e20-error" class="error hidden" role="alert"></p>
 
-          <form id="e20-form" class="form e20-form" autocomplete="off">
+          <form id="e20-form" class="form e20-form" autocomplete="off" data-enter-next>
             <fieldset id="e20-fields" class="e20-fieldset">
             <legend class="sr-only">Register fields</legend>
             <div class="e20-meta form-grid">
@@ -201,7 +201,7 @@
                 </div>
               </div>
               <div class="filter-actions">
-                <button type="button" id="e20-apply-filter">Apply</button>
+                <button class="button-primary" type="button" id="e20-apply-filter">Apply</button>
               </div>
             </div>
           </header>
@@ -240,7 +240,7 @@
           <div id="e20-report-view" class="e20-report-view hidden" aria-label="E-20 register report" aria-hidden="true">
             <div class="e20-report-output-head">
               <div>
-                <h2 class="e20-report-title">Daily E-20 Testing Register</h2>
+                <h2 class="e20-report-title">Daily E-20 testing register</h2>
                 <p id="e20-report-subtitle" class="muted e20-report-subtitle"></p>
               </div>
               <div class="e20-report-actions">
@@ -256,8 +256,6 @@
       </div>
     </main>
 
-    <footer class="app-footer no-print">
-      <p>Bishnupriya Fuels · E-20 testing register</p>
-    </footer>
+    <!-- @partial app-footer noPrint -->
   </body>
 </html>

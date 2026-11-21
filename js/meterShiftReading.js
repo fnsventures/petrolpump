@@ -1066,13 +1066,13 @@
       return `<a class="shift-sheet-card shift-sheet-card--done" href="meter-reading.html#${escapeHtml(hash)}">
         <span class="shift-sheet-card-title">${escapeHtml(label)} sheet</span>
         <span class="shift-sheet-card-meta">Day ${formatQuantity(dailyLitres)} L · this shift ${formatQuantity(shiftLitres)} L${assignedNote}</span>
-        <span class="shift-sheet-card-action">Open ${escapeHtml(label)} →</span>
+        <span class="shift-sheet-card-action">Open ${escapeHtml(label)}<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></span>
       </a>`;
     }
     return `<a class="shift-sheet-card" href="meter-reading.html#${escapeHtml(hash)}">
       <span class="shift-sheet-card-title">${escapeHtml(label)} sheet</span>
       <span class="shift-sheet-card-meta">Not saved yet · this shift ${formatQuantity(shiftLitres)} L${assignedNote}</span>
-      <span class="shift-sheet-card-action">Open to enter dip / stock →</span>
+      <span class="shift-sheet-card-action">Open to enter dip / stock<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></span>
     </a>`;
   }
 
@@ -1119,7 +1119,7 @@
     parts.push("</div>");
 
     parts.push(
-      `<p class="muted shift-reconcile-footer"><a href="dsr.html#by-salesman">View salesman totals on DSR →</a></p>`
+      `<p class="muted shift-reconcile-footer"><a href="dsr.html#by-salesman">View salesman totals on DSR<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a></p>`
     );
 
     host.innerHTML = parts.join("");

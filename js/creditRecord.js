@@ -1,4 +1,4 @@
-/* global AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatRecordedBalance, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, CREDIT_CUSTOMER_SUGGEST_LIMIT, debounce, searchCreditCustomers */
+/* global AppCache, AppError, AppDialog, escapeHtml, normCustomerName, formatCurrency, formatRecordedBalance, formatMoneyInput, formatDisplayDate, getLocalDateString, initPersistedDateInput, finishRecordFormSave, savePersistedDate, RECORD_DATE_KEYS, syncFuelSelectStyle, formRequestId, clearFormRequestId, pickCreditCustomerContact, confirmCreditOverpayment, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, CREDIT_CUSTOMER_SUGGEST_LIMIT, debounce, searchCreditCustomers, highlightSavedEntry */
 
 (function () {
   const page = () => window.CreditPage;
@@ -672,6 +672,7 @@ async function handleCreditSubmit(event) {
       successEl.textContent = recorded;
       successEl.classList.remove("hidden");
     }
+    highlightSavedEntry(document.getElementById("credit-table-body"), [customerNameInput]);
     page().invalidateAndRefreshCreditPortfolio();
     loadCustomerNames().then(() => {
       syncQuickPaymentPanel(form.querySelector("#customer")?.value || "");

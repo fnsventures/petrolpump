@@ -2,7 +2,7 @@
 
 /**
  * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.
- * Meter Reading → Purchase cost.
+ * Meter reading → Purchase cost.
  */
 (function (global) {
   async function findVaultDocumentIdForInvoice(invoiceNo, receiptDate) {

@@ -82,6 +82,7 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 | `./scripts/check-dns-siblings.sh` | Sibling Pages DNS and `/js/env.js`. `--fix` restores CNAMEs (needs `GODADDY_*`) |
 | `./scripts/check-schema-drift.sh` | `schema.sql` matches migrations (Docker) |
 | `./scripts/check-migration-order.sh` | New migrations sort last |
+| `node scripts/sql-functions.mjs check \| emit <name> \| extract` | `supabase/functions-sql/` matches `schema.sql` and the newest migration; copy a function file into a migration |
 | `node scripts/check-doc-links.mjs` | Markdown links and anchors |
 
 ## Files

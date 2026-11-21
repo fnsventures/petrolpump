@@ -10,14 +10,17 @@ Copy the list into your PR description and tick it off. Every item names the exa
 
 Example: `widgets.html` with script `js/widgets.js`.
 
-- [ ] **HTML** — copy the shell of a similar page (e.g. `reminders.html`). Keep only the body markup; the head and topbar are partials:
+- [ ] **HTML** — copy the shell of a similar page (e.g. `reminders.html`). Keep only the body markup; the head, topbar and footer are partials:
   ```html
   <head>
     <!-- @partial app-head -->
   </head>
   <body class="widgets-page">
     <!-- @partial app-topbar title="Widgets" -->
+    …
+    <!-- @partial app-footer -->
   ```
+  Page names are sentence case ("Credit ledger", not "Credit Ledger"); use the same name in `app-pages.json`, `NAV_GROUPS` and `PAGE_HELP`. Icons: `<span class="icon icon--close" aria-hidden="true"></span>` (also `chevron-right`, `chevron-down`, `external`; `createIcon()` in JS), not "×" / "→" glyphs.
 - [ ] **Assets** — add a `"widgets.html"` entry to `_partials/app-pages.json` (`title`, `pageTitle`, `bodyClass`, `css`, `beforeAuth`, `page`). The build fails if a page uses `@partial app-head` without an entry. Never add `?v=` — hashes are stamped at build.
 - [ ] **CSS** — `css/app-widgets.css` (listed in `css` above).
 - [ ] **Script** — `js/widgets.js` lists every cross-script global it uses in a `/* global … */` header (`npm run lint:js`). It starts with `requireAuth({ allowedRoles: [...], onDenied: "dashboard.html", pageName: "widgets" })`, then `applyRoleVisibility(auth.role)`. See `js/reminders.js`.
@@ -34,8 +37,8 @@ Example: `widgets.html` with script `js/widgets.js`.
 - [ ] `supabase migration new short_snake_description` — never hand-type a timestamp; the file must sort after every existing one ([MIGRATIONS.md → Naming](MIGRATIONS.md#naming)).
 - [ ] Additive and safe: nullable/defaulted columns, `create or replace` functions, `if not exists` indexes. Destructive change → plan the rollback first ([RECOVERY.md → Schema rollback](RECOVERY.md#schema-rollback)).
 - [ ] New function the client calls? Add `grant execute on function public.<name>(<args>) to authenticated;`. Anon/PUBLIC have no EXECUTE ([DATA_TABLES.md](DATA_TABLES.md#rls-conventions)).
-- [ ] Redefining a function? Start from the **latest** migration that defines it (`grep -lE "create( or replace)? function public\.<name>\b" … | sort | tail -1`), not `schema.sql`, a `grant`, or a `comment on function`. Day-closing RPCs: [DAY_CLOSING.md](DAY_CLOSING.md).
-- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. `authenticated` has no insert or update on `credit_entries` or `credit_payments`, and none on `amount_due`, `prepaid_balance`, or `amount_settled`. `day_closing` insert, update, and delete are denied on the client (`save_day_closing` / `delete_day_closing`). See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
+- [ ] Redefining a function? Edit `supabase/functions-sql/<name>.sql`, then `node scripts/sql-functions.mjs emit <name>`; never copy from an old migration. `npm run check:sql` passes ([MIGRATIONS.md → Redefine a function](MIGRATIONS.md#redefine-a-function)). Day-closing RPCs: [DAY_CLOSING.md](DAY_CLOSING.md).
+- [ ] A money-writing RPC (`add_credit_entry`, `record_credit_payment`, `save_invoice`, `add_shift_expense`, `add_expense`, `save_dsr_meter_row`, `record_salary_payment`, and the batch settlement RPC) keeps optional `p_request_id` and calls `write_request_replay` / `write_request_store`. Future-date checks use `meter_station_today()`, not `current_date`. `add_credit_entry` and `record_credit_payment` lock the customer row (`for update`) before reading prepaid or allocating. Ledger and meter writes call `raise_if_day_closing_certified`. `authenticated` has no insert or update on `credit_entries` or `credit_payments`, and none on `amount_due`, `prepaid_balance`, or `amount_settled`. `day_closing` insert, update, and delete are denied on the client (`save_day_closing` / `delete_day_closing`). See [DATA_TABLES.md → write_requests](DATA_TABLES.md#write_requests).
 - [ ] Changing a function's arguments? `drop function if exists public.fn(<old arg types>);` in the same migration, or the old version stays callable.
 - [ ] New table → enable RLS and add policies; grant RPCs to `authenticated` only.
 - [ ] Mirror the change in `supabase/schema.sql`; `./scripts/check-schema-drift.sh` passes (needs Docker).
