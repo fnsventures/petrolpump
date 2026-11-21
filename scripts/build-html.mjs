@@ -5,6 +5,7 @@
  * Authenticated pages:
  *   <!-- @partial app-head -->     ← assets from _partials/app-pages.json
  *   <!-- @partial app-topbar title="Dashboard" noPrint -->
+ *   <!-- @partial app-footer noPrint -->        ← copyright + support (also footer-legal on landing pages)
  *
  * Cache-busting ?v= hashes are added afterwards by scripts/stamp-assets.mjs.
  *
@@ -22,6 +23,8 @@ const CATALOG_FILE = path.join(PARTIALS_DIR, "app-pages.json");
 const PARTIAL_RE = /<!--\s*@partial\s+([\w.-]+)([\s\S]*?)-->/g;
 const BUILD_TOPBAR_RE =
   /<header\s+class="topbar(?: no-print)?"[^>]*\bdata-build-topbar\b[^>]*>[\s\S]*?<\/header>/g;
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -132,7 +135,9 @@ function expandPartials(source, { fileName, catalog }) {
       }
       return env.render(template, buildHeadContext(page)).trim();
     }
-    return env.render(template, { ...pageDefaults, ...attrCtx }).trim();
+    const ctx = { ...pageDefaults, ...attrCtx, currentYear: CURRENT_YEAR };
+    if (name === "app-footer") ctx.noPrint = Boolean(attrCtx.topbarNoPrint);
+    return env.render(template, ctx).trim();
   });
 
   output = output.replace(BUILD_TOPBAR_RE, (headerHtml) =>

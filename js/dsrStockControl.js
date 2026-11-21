@@ -1,4 +1,4 @@
-/* global AppError, AppDialog, escapeHtml, formatQuantity, formatCurrency, formatDisplayDate, getLocalDateString, addDaysToDateString, PumpSettings, supabaseClient */
+/* global AppError, AppDialog, escapeHtml, formatQuantity, formatCurrency, formatDisplayDate, getLocalDateString, addDaysToDateString, PumpSettings, supabaseClient, highlightSavedEntry */
 
 /**
  * DSR → Stock control sections (loaded by dsr.html after dsr.js wires the nav):
@@ -328,7 +328,7 @@
         return `<tr>
           <td>${escapeHtml(formatDisplayDate(r.decant_date))}</td>
           <td>${PRODUCT_LABEL[r.product] || escapeHtml(r.product)}</td>
-          <td>${escapeHtml(r.invoice_no || "—")}${r.invoice_document_id ? ' <small class="muted">vault</small>' : ""}</td>
+          <td>${escapeHtml(r.invoice_no || "—")}${r.invoice_document_id ? ' <small class="muted">in Documents</small>' : ""}</td>
           <td>${formatQuantity(r.invoice_qty_litres)}</td>
           <td>${formatQuantity(r.stock_before_litres)}</td>
           <td>${formatQuantity(r.stock_after_litres)}</td>
@@ -364,6 +364,10 @@
         : await supabaseClient.from("tanker_decantations").insert({ ...row, created_by: auth?.user?.id });
       if (error) throw error;
       AppError.showToast(editingDecantId ? "Decantation updated." : "Decantation saved.", "success");
+      highlightSavedEntry(el("decant-body"), [
+        formatDisplayDate(row.decant_date),
+        formatQuantity(row.invoice_qty_litres),
+      ]);
       resetDecantForm();
       loaded["stock-variance"] = false;
       await loadDecantations();

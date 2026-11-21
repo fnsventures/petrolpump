@@ -11,6 +11,14 @@
   "use strict";
 
   const CONFIG = (typeof window !== "undefined" && window.__APP_CONFIG__) || {};
+
+  /** Close icon from css/components.css (this file loads before utils.js). */
+  function closeIcon() {
+    const icon = document.createElement("span");
+    icon.className = "icon icon--close";
+    icon.setAttribute("aria-hidden", "true");
+    return icon;
+  }
   const REPORT_URL = CONFIG.ERROR_REPORT_URL || null;
   const APP_ENV = CONFIG.APP_ENV || "staging";
 
@@ -565,7 +573,7 @@
       close.type = "button";
       close.className = "app-error-banner-close";
       close.setAttribute("aria-label", "Dismiss");
-      close.textContent = "×";
+      close.appendChild(closeIcon());
       close.addEventListener("click", function () {
         banner.classList.add("hidden");
       });
@@ -668,6 +676,22 @@
   }
 
   /**
+   * A short buzz on a successful save, felt even in a noisy forecourt. Android only in
+   * practice (iOS Safari has no vibrate). Needs a recent tap, so background toasts stay silent.
+   */
+  function confirmBuzz() {
+    try {
+      const nav = typeof navigator !== "undefined" ? navigator : null;
+      if (!nav || typeof nav.vibrate !== "function") return;
+      if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+      if (nav.userActivation && !nav.userActivation.hasBeenActive) return;
+      nav.vibrate(35);
+    } catch {
+      /* not allowed here: no buzz */
+    }
+  }
+
+  /**
    * Toast notification system for user-facing messages.
    * Error toasts stay until dismissed. Pass duration 0 to keep any toast up.
    * @param {string} message
@@ -681,6 +705,7 @@
     if (!text) return;
     const options = extras && typeof extras === "object" ? extras : null;
     const sticky = type === "error" || !duration;
+    if (type === "success") confirmBuzz();
 
     let container = document.getElementById("app-toast-container");
     if (!container) {
@@ -730,7 +755,7 @@
     closeBtn.type = "button";
     closeBtn.className = "app-toast-close";
     closeBtn.setAttribute("aria-label", "Dismiss");
-    closeBtn.textContent = "×";
+    closeBtn.appendChild(closeIcon());
     closeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       dismiss();

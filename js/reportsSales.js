@@ -142,7 +142,7 @@ function renderTankWiseDsr(data, range) {
     sections += buildTankDsrSection(tank.product, tank.label, tank.capacity, rows, rateField);
   });
   if (!any) {
-    sections += `<p class="muted">No meter readings in this period. Enter data on Meter Reading.</p>`;
+    sections += `<p class="muted">No meter readings in this period. Enter data on Meter reading.</p>`;
   } else {
     sections += `<p class="report-note muted">One section per physical tank (HSD and MS). Short = max(0, book − dip); Total = open + buy − short; Actual = meter − testing; Var = actual − sale by dip (open + buy − close); TVA = tank capacity − closing dip.</p>`;
   }
@@ -226,7 +226,7 @@ function renderFuelIncome(data, range) {
   const totalIncome = totalPetrolInc + totalDieselInc;
   const missingNote =
     missingBuyDays > 0
-      ? `<p class="report-note warning">${missingBuyDays} day(s) have sale litres but no landed buying rate — P.Rate / P.Income blank for those products. Enter buying price on Meter Reading → Purchase cost for receipt days.</p>`
+      ? `<p class="report-note warning">${missingBuyDays} day(s) have sale litres but no landed buying rate — P.Rate / P.Income blank for those products. Enter buying price on Meter reading → Purchase cost for receipt days.</p>`
       : "";
 
   return `
@@ -343,7 +343,7 @@ function renderPumpSalesReport(data, range) {
   if (!body) {
     return `${reportHeader("Pump-wise sales", range.start, range.end)}
       <p class="muted">No pump sales in this period.</p>
-      <p class="muted">Enter meters on <a href="meter-reading.html">Meter Reading</a> or shift nozzle assignments.</p>`;
+      <p class="muted">Enter meters on <a href="meter-reading.html">Meter reading</a> or shift nozzle assignments.</p>`;
   }
 
   return `
@@ -376,7 +376,7 @@ function renderShiftSalesReport(data, range) {
   if (!rows.length) {
     return `${reportHeader("Shift-wise sales", range.start, range.end)}
       <p class="muted">No shift register entries in this period.</p>
-      <p class="muted">Enter data under <a href="meter-reading.html#shift-readings">Meter Reading → Shift register</a>.</p>`;
+      <p class="muted">Enter data under <a href="meter-reading.html#shift-readings">Meter reading → Shift register</a>.</p>`;
   }
 
   let total = 0;

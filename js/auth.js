@@ -489,7 +489,7 @@ const PAGE_HELP = {
     ],
   },
   "meter-reading.html": {
-    title: "Meter Reading",
+    title: "Meter reading",
     why: "Meter readings are the source of truth for litres sold. Accurate shift and purchase entries keep DSR, stock, and profit correct.",
     contains: [
       "Shift opening and closing meter readings by pump",
@@ -503,7 +503,7 @@ const PAGE_HELP = {
     ],
   },
   "dsr.html": {
-    title: "Daily Sales Report",
+    title: "DSR",
     why: "DSR is the official daily sales picture for the outlet. Use it to verify volume, value, and product mix before day closing.",
     contains: [
       "Petrol and diesel sales by pump",
@@ -541,7 +541,7 @@ const PAGE_HELP = {
     ],
   },
   "credit.html": {
-    title: "Credit",
+    title: "Credit ledger",
     why: "Credit sales and collections drive cash and overdue risk. This is the ledger for customers who lift fuel on account.",
     contains: ["Credit customers and balances", "New credit sales and receipts", "Ageing / overdue view"],
     how: [
@@ -631,8 +631,8 @@ const PAGE_HELP = {
     ],
   },
   "invoices.html": {
-    title: "Vault",
-    why: "Vault stores official documents (invoices, letters, scans) so the station is not hunting paper during audits.",
+    title: "Documents",
+    why: "Documents stores official papers (invoices, letters, scans) so the station is not hunting paper during audits.",
     contains: ["Uploaded files", "Folders / tags", "Download access"],
     how: [
       "Upload a copy the day a document arrives.",
@@ -641,7 +641,7 @@ const PAGE_HELP = {
     ],
   },
   "letterhead.html": {
-    title: "Letter Desk",
+    title: "Letter desk",
     why: "Official station letters on BPCL letterhead: notices, certificates, and correspondence.",
     contains: ["Compose on letterhead", "Saved history", "Print layout"],
     how: [
@@ -656,7 +656,7 @@ const PAGE_HELP = {
     contains: ["Charts and comparisons", "Product and period filters", "Profit / purchase checks"],
     how: [
       "Set the date range before reading any chart.",
-      "Drill into a dip by opening DSR or Meter Reading for that day.",
+      "Drill into a dip by opening DSR or Meter reading for that day.",
       "Fix missing buying prices if profit looks empty.",
     ],
   },
@@ -686,7 +686,7 @@ const PAGE_HELP = {
     contains: ["Sales by product for a date", "Links back to DSR / meters"],
     how: [
       "Select the date.",
-      "If a number is wrong, correct it in Meter Reading, not here.",
+      "If a number is wrong, correct it in Meter reading, not here.",
       "Return to Dashboard for alerts and snapshot context.",
     ],
   },
@@ -1177,7 +1177,7 @@ function ensureTopbarUserMenu() {
   const initialsEl = document.createElement("span");
   initialsEl.className = "topbar-user-initials";
   initialsEl.id = "topbar-user-initials";
-  initialsEl.textContent = "?";
+  initialsEl.textContent = "";
   toggle.append(photoEl, initialsEl);
   ensureTopbarUserIdentity(toggle);
 
@@ -1722,6 +1722,7 @@ function showAccessRetry() {
   const button = document.createElement("button");
   button.type = "button";
   button.id = "access-check-retry";
+  button.className = "button-primary";
   button.textContent = "Retry";
   button.addEventListener("click", () => {
     window.location.reload();

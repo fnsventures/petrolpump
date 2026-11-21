@@ -10,14 +10,17 @@ Copy the list into your PR description and tick it off. Every item names the exa
 
 Example: `widgets.html` with script `js/widgets.js`.
 
-- [ ] **HTML** — copy the shell of a similar page (e.g. `reminders.html`). Keep only the body markup; the head and topbar are partials:
+- [ ] **HTML** — copy the shell of a similar page (e.g. `reminders.html`). Keep only the body markup; the head, topbar and footer are partials:
   ```html
   <head>
     <!-- @partial app-head -->
   </head>
   <body class="widgets-page">
     <!-- @partial app-topbar title="Widgets" -->
+    …
+    <!-- @partial app-footer -->
   ```
+  Page names are sentence case ("Credit ledger", not "Credit Ledger"); use the same name in `app-pages.json`, `NAV_GROUPS` and `PAGE_HELP`. Icons: `<span class="icon icon--close" aria-hidden="true"></span>` (also `chevron-right`, `chevron-down`, `external`; `createIcon()` in JS), not "×" / "→" glyphs.
 - [ ] **Assets** — add a `"widgets.html"` entry to `_partials/app-pages.json` (`title`, `pageTitle`, `bodyClass`, `css`, `beforeAuth`, `page`). The build fails if a page uses `@partial app-head` without an entry. Never add `?v=` — hashes are stamped at build.
 - [ ] **CSS** — `css/app-widgets.css` (listed in `css` above).
 - [ ] **Script** — `js/widgets.js` lists every cross-script global it uses in a `/* global … */` header (`npm run lint:js`). It starts with `requireAuth({ allowedRoles: [...], onDenied: "dashboard.html", pageName: "widgets" })`, then `applyRoleVisibility(auth.role)`. See `js/reminders.js`.

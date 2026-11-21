@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, loadPumpSettings, initPageSections, PrintUtils, AppError, escapeHtml, formatDisplayDate, formatQuantity, bindLiveRefresh, DsrStockControl */
+/* global requireAuth, applyRoleVisibility, loadPumpSettings, initPageSections, PrintUtils, AppError, escapeHtml, formatDisplayDate, formatQuantity, bindLiveRefresh, DsrStockControl, createIcon */
 
 const DS = window.DsrSections;
 const DSR_SUMMARY_SECTIONS = DS?.SUMMARY ?? new Set(["filters", "dsr-petrol", "dsr-diesel"]);
@@ -97,8 +97,10 @@ function initDsrSummaryPage({ isAdmin = false, dateFromDashboard, urlDateParam }
           ? `?tab=${tab}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
           : `?tab=${tab}`;
       layoutEls.reportLink.href = `reports.html${qs}`;
-      layoutEls.reportLink.textContent =
-        tab === "dsr" ? "Tank-wise report →" : "Full report →";
+      layoutEls.reportLink.replaceChildren(
+        tab === "dsr" ? "Tank-wise report" : "Full report",
+        createIcon("chevron-right", "icon-after")
+      );
     }
   }
 

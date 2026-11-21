@@ -36,7 +36,7 @@ Verify UI by building (`npm run build:site`), `node --check` on edited JS, and c
 ## Frontend conventions
 
 - One script per page (`meter-reading.html` → `js/meterReading.js`); shared code in `js/utils.js`, `js/auth.js`, `js/dsrQueries.js`, `js/errorHandler.js`, `js/cache.js`, `js/pageSections.js`.
-- Pages contain body markup only. `<!-- @partial app-head -->` / `<!-- @partial app-topbar title="…" -->` are expanded at build by `scripts/build-html.mjs` from `_partials/`. Add CSS/JS to `_partials/app-pages.json`, never as copied `<script>` tags.
+- Pages contain body markup only. `<!-- @partial app-head -->` / `<!-- @partial app-topbar title="…" -->` / `<!-- @partial app-footer -->` are expanded at build by `scripts/build-html.mjs` from `_partials/`. Add CSS/JS to `_partials/app-pages.json`, never as copied `<script>` tags.
 - Never add `?v=` to asset URLs, or edit `CACHE_VERSION` / `STATIC_ASSET_PATHS` in `sw.js` — `scripts/stamp-assets.mjs` generates them at deploy.
 - No framework, no bundler for app code (esbuild only builds `js/vendor/` and minifies at deploy). Scripts are classic globals (`/* global … */` headers), not ES modules — except `js/supabaseLoginClient.js`, the esbuild entry for `js/vendor/supabase-login.min.js`.
 - Every global a script uses from another script goes in its `/* global … */` header (plain names; `window.x` is not valid there). `npm run lint:js` fails otherwise.

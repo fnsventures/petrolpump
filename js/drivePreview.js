@@ -35,7 +35,7 @@
             <h2 id="drive-preview-title"></h2>
             <p id="drive-preview-subtitle" class="muted drive-preview-subtitle"></p>
           </div>
-          <button type="button" class="app-modal-close" data-drive-preview-close aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" data-drive-preview-close aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
         <div id="drive-preview-body" class="drive-preview-body"></div>
         <div id="drive-preview-actions" class="drive-preview-actions"></div>

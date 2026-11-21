@@ -1,4 +1,4 @@
-/* Meter Reading page — data entry forms and history */
+/* Meter reading page — data entry forms and history */
 /* DSR / meter reading data entry */
 /* DSR layout */
 body.meter-reading-page .dsr-card {
@@ -103,7 +103,7 @@ body.meter-reading-page .dsr-table .calc-field[readonly] {
   color: var(--text-secondary);
 }
 
-/* ─── Wide data-entry layout (Meter Reading, Sales daily) ───────────────── */
+/* ─── Wide data-entry layout (Meter reading, Sales daily) ───────────────── */
 /* Shell width matches dashboard (app-core settings-layout); tables scroll inside panels. */
 
 body.meter-reading-page .page-layout-wide .settings-panels {
@@ -224,7 +224,7 @@ body.meter-reading-page .dsr-card--petrol .meter-table thead th {
 }
 
 body.meter-reading-page .dsr-card--diesel .meter-table thead th {
-  background: rgba(255, 204, 0, 0.18);
+  background: var(--fuel-diesel-bg-strong);
   color: var(--fuel-diesel-text);
 }
 
@@ -696,7 +696,7 @@ body.meter-reading-page .shift-product-head .fuel-rate-icon {
   letter-spacing: 0.04em;
   color: var(--bpcl-blue-dark);
   background: var(--bpcl-blue-soft);
-  border-radius: 5px;
+  border-radius: var(--radius-xs);
 }
 
 body.meter-reading-page .shift-product-head .fuel-rate-icon--diesel {
@@ -724,7 +724,7 @@ body.meter-reading-page .shift-product-block--petrol .shift-nozzle-table thead t
 }
 
 body.meter-reading-page .shift-product-block--diesel .shift-nozzle-table thead th {
-  background: rgba(255, 204, 0, 0.18);
+  background: var(--fuel-diesel-bg-strong);
   color: var(--fuel-diesel-text);
 }
 
@@ -810,7 +810,7 @@ body.meter-reading-page .shift-staff-card {
   max-width: none;
   padding: 0.55rem 0.7rem;
   border: 1px solid #e8edf3;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.03);
   box-sizing: border-box;
@@ -963,7 +963,7 @@ body.meter-reading-page .shift-phone-pay {
   margin: 0;
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -985,7 +985,7 @@ body.meter-reading-page .shift-coll-ledger-box {
   margin: 0;
   padding: 0.28rem 0.3rem 0.28rem 0.4rem;
   border: 1px solid var(--fuel-petrol-border);
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: #eef6fc;
   overflow: hidden;
 }
@@ -1038,7 +1038,7 @@ body.meter-reading-page .shift-coll-add-btn {
   height: 1.3rem;
   padding: 0 0.35rem;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--color-primary);
   color: var(--text-on-accent);
   font: inherit;
@@ -1076,7 +1076,7 @@ body.meter-reading-page .shift-coll-result {
   justify-content: space-between;
   gap: 0.4rem;
   padding: 0.35rem 0.5rem;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--surface-muted);
 }
 
@@ -1785,7 +1785,7 @@ body.meter-reading-page .shift-ledger-tabs {
   gap: 0.35rem;
   margin: 0 0 0.85rem;
   padding: 0.25rem;
-  border-radius: 0.45rem;
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
 

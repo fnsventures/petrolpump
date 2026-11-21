@@ -48,7 +48,7 @@
                     <input id="reports-end" type="date" required />
                   </div>
                   <div class="filter-actions">
-                    <button type="submit">Load data</button>
+                    <button class="button-primary" type="submit">Load data</button>
                   </div>
                 </div>
                 <p id="reports-date-label" class="filter-summary">—</p>
@@ -135,7 +135,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Meter Reading → Purchase cost). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
+                      <p>Receipt-wise inward fuel register with BPCL invoice no and supplier GSTIN (entered on Meter reading → Purchase cost). Place of supply compares supplier GSTIN to station GSTIN. VAT/LST from pre-VAT buying rates plus delivery.</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -146,7 +146,7 @@
                       </span>
                     </summary>
                     <div class="reports-about-item-body">
-                      <p>Period trading view with opening/closing stock at cost, fuel purchases, and lube sales. Optional vault purchase amounts appear as Lube / other purchases. Produces <strong>gross income c/d</strong> as the balancing figure (Sales + Closing − Opening − Purchases).</p>
+                      <p>Period trading view with opening/closing stock at cost, fuel purchases, and lube sales. Optional purchase invoice amounts from Documents appear as Lube / other purchases. Produces <strong>gross income c/d</strong> as the balancing figure (Sales + Closing − Opening − Purchases).</p>
                     </div>
                   </details>
                   <details class="reports-about-item reports-about-item--nested">
@@ -255,12 +255,12 @@
                 <p>
                   Margin-based P&amp;L for the period. Identical calculation on <strong>Analysis</strong>,
                   <strong>Dashboard → Net profit</strong> (glance), and this report when the date range and buying prices match.
-                  Enter buying prices on <strong>Meter Reading → Purchase cost</strong>.
+                  Enter buying prices on <strong>Meter reading → Purchase cost</strong>.
                 </p>
                 <div class="reports-about-formula" role="note">
                   <span class="reports-about-formula-label">Formula</span>
                   Fuel gross profit = net litres × (selling rate − landed buying rate)<br />
-                  Gross profit = fuel gross profit + (lube/billing sales − vault purchases)<br />
+                  Gross profit = fuel gross profit + (lube/billing sales − Documents purchases)<br />
                   Net profit = gross profit − operating expenses
                 </div>
                 <dl class="reports-about-rules">
@@ -340,7 +340,7 @@
                 <p class="muted">
                   The Dashboard <strong>Day summary</strong> is a single-date cash reconciliation: total sale ₹ includes testing litres;
                   expenses include all categories. It supports day closing and in-hand cash — not margin-based net profit.
-                  Enter buying prices on Meter Reading → Purchase cost. Use Analysis or Reports P&amp;L for profit calculations; Dashboard shows a Net profit glance only.
+                  Enter buying prices on Meter reading → Purchase cost. Use Analysis or Reports P&amp;L for profit calculations; Dashboard shows a Net profit glance only.
                 </p>
               </div>
             </details>
@@ -352,9 +352,6 @@
     <!-- Print-only output -->
     <div id="reports-print-root" class="reports-print-root" aria-hidden="true"></div>
 
-    <footer class="app-footer no-print">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer noPrint -->
   </body>
 </html>

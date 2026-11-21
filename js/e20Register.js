@@ -202,6 +202,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       delete dip.dataset.autoDip;
       applyMeterDipToRow(dip.closest("tr"), { onlyIfEmpty: true });
     });
+    dom.qualityBody?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-slot-toggle]");
+      const tr = btn?.closest("tr");
+      if (!tr) return;
+      const opening = tr.classList.contains("is-collapsed");
+      setQualityRowCollapsed(tr, !opening);
+      if (opening) tr.querySelector("select, input:not([type=\"hidden\"])")?.focus({ preventScroll: true });
+    });
+    dom.qualityBody?.addEventListener("change", (e) => {
+      const tr = e.target.closest("tr");
+      if (tr) updateQualitySummary(tr);
+    });
     dom.printBtn?.addEventListener("click", () => void printRegister());
     dom.reportPrintBtn?.addEventListener("click", () => void printHistoryReport());
     dom.deleteBtn?.addEventListener("click", () => void deleteRegister());
@@ -708,14 +720,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   function waterRowHtml(row = {}) {
     return `<tr>
       <td><input type="time" name="check_time" value="${escapeHtml(timeInputValue(row.check_time) || "06:00")}" /></td>
-      <td>${tankSelectHtml(row.tank_no)}</td>
+      <td class="e20-cell-tank">${tankSelectHtml(row.tank_no)}</td>
       <td><input type="text" name="opening_dip_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.opening_dip_mm)}" /></td>
       <td><input type="text" name="water_finding_mm" inputmode="decimal" step="0.1" min="0" value="${escapeAttrNum(row.water_finding_mm)}" /></td>
       <td>${yesNoSelect("water_present", row.water_present)}</td>
       <td><input type="text" name="corrective_action" maxlength="500" value="${escapeHtml(row.corrective_action || "")}" /></td>
       <td>${testedByField(row.tested_by)}</td>
       <td class="e20-cell-check"><input type="checkbox" name="manager_signed" ${isSignedFlag(row.manager_signed) ? "checked" : ""} aria-label="Manager signed" /></td>
-      <td class="e20-col-actions"><button type="button" class="e20-row-remove" data-remove-water title="Remove row" aria-label="Remove row">×</button></td>
+      <td class="e20-col-actions"><button type="button" class="e20-row-remove" data-remove-water title="Remove row" aria-label="Remove row"><span class="icon icon--close" aria-hidden="true"></span></button></td>
     </tr>`;
   }
 
@@ -744,11 +756,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   function renderQualityRows(savedRows) {
     if (!dom.qualityBody) return;
     const bySlot = new Map((savedRows || []).map((r) => [Number(r.slot_no), r]));
-    dom.qualityBody.innerHTML = getQualitySlots().map((slot) => {
+    const slots = getQualitySlots();
+    const openSlot = openQualitySlotNo(slots, (no) => isQualityFilled(bySlot.get(no) || {}));
+    dom.qualityBody.innerHTML = slots.map((slot) => {
       const row = bySlot.get(slot.no) || {};
-      return `<tr data-slot="${slot.no}">
+      const collapsed = slot.no !== openSlot;
+      return `<tr data-slot="${slot.no}"${collapsed ? ' class="is-collapsed"' : ""}>
         <td class="e20-slot-no">${slot.no}</td>
-        <td class="e20-slot-time">${slot.time}<input type="hidden" name="check_time" value="${slot.time}" /></td>
+        <td class="e20-slot-time"><span class="e20-slot-time-text">${slot.time}</span><button type="button" class="e20-slot-toggle" data-slot-toggle aria-expanded="${collapsed ? "false" : "true"}"><span class="e20-slot-toggle-time">${slot.time}</span><span class="e20-slot-summary"></span></button><input type="hidden" name="check_time" value="${slot.time}" /></td>
         <td>${appearanceSelect(row.visual_appearance)}</td>
         <td>${yesNoSelect("water_separation", row.water_separation)}</td>
         <td><input type="text" name="action_taken" maxlength="500" value="${escapeHtml(row.action_taken || "")}" /></td>
@@ -756,6 +771,82 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td class="e20-cell-check"><input type="checkbox" name="tester_signed" ${isSignedFlag(row.tester_signed) ? "checked" : ""} aria-label="Signed" /></td>
       </tr>`;
     }).join("");
+    dom.qualityBody.querySelectorAll("tr").forEach((tr) => updateQualitySummary(/** @type {HTMLTableRowElement} */ (tr)));
+  }
+
+  /**
+   * On a phone each Part B slot is a tall card, so only one stays open: today's
+   * current slot (latest time already reached), or the first unfilled slot on other days.
+   * Locked registers open none. Filled slots show a one-line summary.
+   */
+  function openQualitySlotNo(slots, isFilled) {
+    if (formLocked) return 0;
+    const dateStr = dom.dateInput?.value?.trim() || loadedDate;
+    if (dateStr && dateStr === getLocalDateString()) {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(new Date());
+      const part = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
+      const now = part("hour") * 60 + part("minute");
+      const reached = slots.filter((slot) => hmToMinutes(slot.time, 0) <= now);
+      const current = reached[reached.length - 1] || slots[0];
+      return current?.no || 0;
+    }
+    return slots.find((slot) => !isFilled(slot.no))?.no || 0;
+  }
+
+  function qualityRowValues(tr) {
+    const g = (name) => fieldValue(tr, name);
+    return {
+      visual_appearance: g("visual_appearance")?.value || "",
+      water_separation: yesNoValue(g("water_separation")?.value),
+      action_taken: g("action_taken")?.value?.trim() || "",
+      tested_by: g("tested_by")?.value?.trim() || "",
+      tester_signed: g("tester_signed")?.checked ? "yes" : "no",
+    };
+  }
+
+  function updateQualitySummary(tr) {
+    const out = tr?.querySelector(".e20-slot-summary");
+    if (!out) return;
+    const row = qualityRowValues(tr);
+    if (!isQualityFilled(row)) {
+      out.textContent = "Not checked";
+      out.classList.add("is-empty");
+      return;
+    }
+    const water = row.water_separation === "yes" ? "Water found" : row.water_separation === "no" ? "No water" : "";
+    const parts = [formatAppearance(row.visual_appearance), water, row.tested_by].filter(Boolean);
+    out.textContent = `${parts.join(" · ") || "Partly filled"}${isSignedFlag(row.tester_signed) ? " ✓" : ""}`;
+    out.classList.remove("is-empty");
+  }
+
+  function setQualityRowCollapsed(tr, collapsed) {
+    tr.classList.toggle("is-collapsed", collapsed);
+    tr.querySelector("[data-slot-toggle]")?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (collapsed) updateQualitySummary(tr);
+  }
+
+  /** Locked: every slot collapsed (read-only summaries). Editable: keep one slot open. */
+  function syncQualityCollapse() {
+    const rows = Array.from(dom.qualityBody?.querySelectorAll("tr[data-slot]") || []);
+    if (!rows.length) return;
+    if (formLocked) {
+      rows.forEach((tr) => setQualityRowCollapsed(tr, true));
+      return;
+    }
+    if (rows.some((tr) => !tr.classList.contains("is-collapsed"))) return;
+    const byNo = new Map(rows.map((tr) => [Number(tr.getAttribute("data-slot")), tr]));
+    const slots = rows.map((tr) => ({
+      no: Number(tr.getAttribute("data-slot")),
+      time: /** @type {HTMLInputElement | null} */ (tr.querySelector('input[name="check_time"]'))?.value || "",
+    }));
+    const open = openQualitySlotNo(slots, (no) => isQualityFilled(qualityRowValues(byNo.get(no))));
+    const tr = byNo.get(open);
+    if (tr) setQualityRowCollapsed(tr, false);
   }
 
   function applyNewDayDefaults() {
@@ -837,6 +928,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       dom.fillSlotsBtn.classList.toggle("hidden", formLocked);
       dom.fillSlotsBtn.disabled = formLocked;
     }
+    syncQualityCollapse();
   }
 
   function refreshLockUi() {
@@ -997,6 +1089,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         signedCount += 1;
       });
     }
+
+    dom.qualityBody?.querySelectorAll("tr").forEach((tr) => updateQualitySummary(/** @type {HTMLTableRowElement} */ (tr)));
 
     if (!filledCount && !signedCount) {
       setFeedback(true, "All slots already have data.");
@@ -1476,7 +1570,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     return `
       <div class="e20-sheet">
-        <h1 class="e20-sheet-title">Daily E-20 Testing Register</h1>
+        <h1 class="e20-sheet-title">Daily E-20 testing register</h1>
         <div class="e20-sheet-meta">
           <div>
             <span class="e20-meta-label">Retail outlet name</span>

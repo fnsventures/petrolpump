@@ -36,7 +36,7 @@
             </div>
           </div>
           <div class="staff-empty-body">
-            <button type="button" id="staff-empty-add-btn">Add staff member</button>
+            <button class="button-primary" type="button" id="staff-empty-add-btn">Add staff member</button>
           </div>
         </section>
 
@@ -48,7 +48,7 @@
             </div>
             <button type="button" id="staff-form-close" class="link">Cancel</button>
           </div>
-          <form id="emp-member-form" class="form" autocomplete="off">
+          <form id="emp-member-form" data-enter-next class="form" autocomplete="off">
             <input type="hidden" id="emp-member-id" value="" />
             <div class="form-grid">
               <div class="form-field">
@@ -130,7 +130,7 @@
               </div>
               <div class="form-field" data-role="admin-only">
                 <label for="emp-monthly-salary">Monthly salary (₹) <span class="optional-label">(opt.)</span></label>
-                <input id="emp-monthly-salary" type="text" inputmode="decimal" placeholder="0" />
+                <input id="emp-monthly-salary" type="text" inputmode="decimal" placeholder="0" data-unit="₹" />
               </div>
               <div class="form-field" data-role="admin-only">
                 <label for="emp-pf-contribution">PF contribution (₹ / month) <span class="optional-label">(opt.)</span></label>
@@ -141,7 +141,7 @@
                 <textarea id="emp-address" rows="2" maxlength="500"></textarea>
               </div>
             </div>
-            <button type="submit" id="emp-submit-btn">Save staff</button>
+            <button class="button-primary" type="submit" id="emp-submit-btn">Save staff</button>
             <p id="emp-form-success" class="success hidden">Saved.</p>
             <p id="emp-form-error" class="error hidden"></p>
           </form>
@@ -237,13 +237,13 @@
             <h2 id="staff-id-modal-title">ID card preview</h2>
             <p class="muted staff-id-modal-subtitle">Front · back · portrait PVC size</p>
           </div>
-          <button type="button" id="staff-id-modal-close" class="app-modal-close" aria-label="Close preview">×</button>
+          <button type="button" id="staff-id-modal-close" class="app-modal-close" aria-label="Close preview"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
         <div id="id-card-preview-wrap" class="staff-id-preview-wrap">
           <div id="id-card-preview" class="staff-id-preview-mount" role="group" aria-label="Staff ID card preview"></div>
         </div>
         <div class="staff-id-modal-actions">
-          <button type="button" id="id-card-print-btn" disabled>Print ID card</button>
+          <button class="button-primary" type="button" id="id-card-print-btn" disabled>Print ID card</button>
         </div>
       </div>
     </dialog>
@@ -256,7 +256,7 @@
             <h2 id="staff-aadhaar-modal-title">Aadhaar card</h2>
             <p id="staff-aadhaar-modal-subtitle" class="muted staff-id-modal-subtitle"></p>
           </div>
-          <button type="button" id="staff-aadhaar-modal-close" class="app-modal-close" aria-label="Close">×</button>
+          <button type="button" id="staff-aadhaar-modal-close" class="app-modal-close" aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
         <div id="staff-aadhaar-modal-body" class="staff-aadhaar-preview">
           <p class="staff-id-modal-loading">Opening…</p>
@@ -269,9 +269,6 @@
 
     <div id="staff-id-print-root" class="staff-id-print-root" hidden aria-hidden="true"></div>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

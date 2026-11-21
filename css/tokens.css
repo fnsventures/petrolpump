@@ -95,6 +95,7 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   /* Radius */
+  --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 10px;
   --radius-lg: 14px;

@@ -13,8 +13,10 @@
     <title>Login · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <!-- @partial ios-splash -->
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111a27" />
     <meta name="application-name" content="Bishnupriya Fuels" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
@@ -89,7 +91,7 @@
           />
         </div>
 
-        <button type="submit" id="login-button">Sign in</button>
+        <button class="button-primary" type="submit" id="login-button">Sign in</button>
         <p class="login-forgot">
           <a href="#" id="forgot-password-link">Forgot password?</a>
         </p>
@@ -122,15 +124,13 @@
             required
           />
         </div>
-        <button type="submit" id="reset-password-button">Set new password</button>
+        <button class="button-primary" type="submit" id="reset-password-button">Set new password</button>
         <p class="login-forgot">
           <a href="login.html" id="reset-password-back">Back to sign in</a>
         </p>
         <p id="reset-password-error" class="login-error hidden" role="alert" aria-live="polite"></p>
       </form>
     </main>
-    <footer class="app-footer app-footer--minimal">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-    </footer>
+    <!-- @partial app-footer minimal -->
   </body>
 </html>

@@ -1105,7 +1105,7 @@ function initReadingForm(product) {
             'Entry saved. Receipts recorded — <a href="#purchase-cost">Enter pre-VAT ₹/KL under Purchase cost</a> to calculate profit from this day until the next receipt.';
         } else if (hasReceipts) {
           successEl.textContent =
-            "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL under Meter Reading → Purchase cost to calculate profit.";
+            "Entry saved. Receipts recorded — an admin can enter pre-VAT ₹/KL under Meter reading → Purchase cost to calculate profit.";
         } else {
           successEl.textContent = "Entry saved successfully.";
         }

@@ -200,7 +200,7 @@
       ? `<ul class="shift-ledger-list">${creditRows
           .map((r) => {
             const del = canDeleteCredit(r)
-              ? `<button type="button" class="shift-ledger-remove shift-ledger-del-credit" data-id="${escapeHtml(r.id)}" aria-label="Remove">×</button>`
+              ? `<button type="button" class="shift-ledger-remove shift-ledger-del-credit" data-id="${escapeHtml(r.id)}" aria-label="Remove"><span class="icon icon--close" aria-hidden="true"></span></button>`
               : "";
             return `<li>
               <div class="shift-ledger-item-main">
@@ -220,7 +220,7 @@
       ? `<ul class="shift-ledger-list">${expenseRows
           .map((r) => {
             const del = canDeleteExpense(r)
-              ? `<button type="button" class="shift-ledger-remove shift-ledger-del-expense" data-id="${escapeHtml(r.id)}" aria-label="Remove">×</button>`
+              ? `<button type="button" class="shift-ledger-remove shift-ledger-del-expense" data-id="${escapeHtml(r.id)}" aria-label="Remove"><span class="icon icon--close" aria-hidden="true"></span></button>`
               : "";
             return `<li>
               <div class="shift-ledger-item-main">
