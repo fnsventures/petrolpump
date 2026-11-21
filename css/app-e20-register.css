@@ -912,9 +912,12 @@ body.e20-register-page .sr-only {
   }
 }
 
-/* The toggle only exists for phone cards; tables keep the plain slot time. */
-body.e20-register-page .e20-table--quality:not(.table-cards) .e20-slot-toggle {
-  display: none;
+/* The toggle only exists for phone cards; the desktop table keeps the plain slot time.
+ * (.table-cards is set at every width — the card layout itself is phone-only.) */
+@media (min-width: 769px) {
+  body.e20-register-page .e20-table--quality .e20-slot-toggle {
+    display: none;
+  }
 }
 
 /* Save stays in reach after each 2-hour check instead of sitting below every slot.
