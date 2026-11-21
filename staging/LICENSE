@@ -1,0 +1,390 @@
+PROPRIETARY SOFTWARE LICENSE AGREEMENT
+
+Copyright (c) 2024–2026 F&S Ventures. All rights reserved.
+
+Software:  Bishnupriya Fuels — fuel station operations platform
+           (web application, scripts, schemas, documentation, and related assets)
+Owner:     F&S Ventures (“Licensor”)
+           https://fnsventures.in/
+Effective: Upon access to, download of, or use of the Software
+
+
+──────────────────────────────────────────────────────────────────────────────
+1. DEFINITIONS
+──────────────────────────────────────────────────────────────────────────────
+
+1.1  “Software” means the Bishnupriya Fuels operations platform and all related
+     materials, including without limitation: source code, object code, HTML/CSS/JS,
+     configuration, database schemas and migrations, edge functions, scripts,
+     documentation, diagrams, designs, logos owned by Licensor, build tooling,
+     and any updates, patches, or derivative works thereof.
+
+1.2  “Licensee” means any individual or entity authorized by Licensor to access
+     or use the Software, including employees, contractors, and affiliated
+     operating entities (including Bishnupriya Fuels).
+
+1.3  “Authorized User” means a natural person granted credentials by Licensee
+     or Licensor to use the Software in the ordinary course of internal operations.
+
+1.4  “Confidential Information” means the Software and all non-public technical,
+     business, operational, financial, or customer information disclosed in
+     connection with the Software, whether in written, electronic, or oral form.
+
+1.5  “Production Data” means live business data processed by the Software,
+     including sales, meter readings, credit ledgers, invoices, payroll-related
+     records, and backups thereof.
+
+
+──────────────────────────────────────────────────────────────────────────────
+2. ACCEPTANCE
+──────────────────────────────────────────────────────────────────────────────
+
+By accessing, cloning, downloading, installing, deploying, or using the Software
+(or any portion thereof), Licensee agrees to be bound by this Agreement. If you
+do not agree, do not access or use the Software and destroy any copies in your
+possession.
+
+
+──────────────────────────────────────────────────────────────────────────────
+3. OWNERSHIP AND INTELLECTUAL PROPERTY
+──────────────────────────────────────────────────────────────────────────────
+
+3.1  The Software is and remains the exclusive property of Licensor. No title,
+     ownership interest, or intellectual property right is transferred to
+     Licensee under this Agreement.
+
+3.2  All rights not expressly granted herein are reserved by Licensor.
+
+3.3  Trademarks, trade names, and service marks of Licensor (including “F&S
+     Ventures” and related branding) remain Licensor’s property. Third-party
+     marks (including BPCL and related dealer branding) remain the property of
+     their respective owners and are used only as authorized by those owners.
+     Nothing in this Agreement grants rights in such third-party marks.
+
+3.4  Any feedback, suggestions, or improvements submitted regarding the Software
+     become the exclusive property of Licensor without obligation or compensation,
+     and Licensee hereby assigns all rights therein to Licensor.
+
+
+──────────────────────────────────────────────────────────────────────────────
+4. LICENSE GRANT
+──────────────────────────────────────────────────────────────────────────────
+
+4.1  Subject to continuous compliance with this Agreement, Licensor grants
+     Licensee a limited, non-exclusive, non-transferable, non-sublicensable,
+     revocable license to use the Software solely for internal business
+     operations of F&S Ventures and its affiliated operating entities
+     (including Bishnupriya Fuels).
+
+4.2  The license is for Authorized Users only, and solely in environments
+     approved by Licensor (development, staging, and production as designated).
+
+4.3  No other rights are granted, whether by implication, estoppel, or otherwise.
+
+
+──────────────────────────────────────────────────────────────────────────────
+5. AUTHORIZED USE
+──────────────────────────────────────────────────────────────────────────────
+
+5.1  Licensee shall ensure that only Authorized Users access the Software, and
+     that access credentials are unique, confidential, and not shared.
+
+5.2  Licensee shall promptly disable access for personnel who leave or no longer
+     require access, and shall notify Licensor of any suspected unauthorized use.
+
+5.3  Use of staging and production environments must follow Licensor’s operational
+     procedures (including change control, migration, backup, and release practices
+     as documented for the Software).
+
+5.4  Licensee shall not use the Software in any manner that violates applicable law,
+     regulation, or dealer/franchise obligations.
+
+
+──────────────────────────────────────────────────────────────────────────────
+6. RESTRICTIONS
+──────────────────────────────────────────────────────────────────────────────
+
+Except as expressly permitted in a separate written agreement signed by Licensor,
+Licensee and Authorized Users shall not:
+
+  (a) copy, reproduce, modify, adapt, translate, localize, or create derivative
+      works of the Software;
+  (b) distribute, publish, sublicense, sell, lease, rent, lend, assign, or
+      otherwise transfer the Software (or any part of it) to any third party;
+  (c) host, offer, or operate the Software as a service for unrelated third parties,
+      or use it to provide competing products or services;
+  (d) reverse engineer, decompile, disassemble, or attempt to derive source code
+      or underlying ideas, except to the limited extent such restriction is
+      prohibited by applicable law;
+  (e) remove, alter, or obscure any copyright, trademark, proprietary, or other
+      notices;
+  (f) circumvent, disable, or interfere with security, authentication, access
+      control, audit logging, or rate-limiting mechanisms;
+  (g) perform unauthorized penetration testing, scraping, or load testing against
+      production systems without prior written approval;
+  (h) introduce malware, time bombs, or other harmful code;
+  (i) use Production Data outside approved environments, or copy Production Data
+      to personal devices, public repositories, or unsecured storage;
+  (j) disclose repository access tokens, API keys, database credentials, OAuth
+      secrets, or encryption keys;
+  (k) commit secrets, credentials, or personal data of customers/staff into public
+      or unauthorized repositories; or
+  (l) use the Software in any way that harms Licensor’s reputation, security, or
+      legal compliance.
+
+
+──────────────────────────────────────────────────────────────────────────────
+7. DATA, PRIVACY, AND CONFIDENTIALITY
+──────────────────────────────────────────────────────────────────────────────
+
+7.1  Confidential Information shall be kept confidential and used only as needed
+     to perform authorized duties. Licensee shall protect it with at least the
+     same degree of care used for its own confidential information of like
+     importance, and in no event less than reasonable care.
+
+7.2  Obligations of confidentiality survive termination of this Agreement for a
+     period of five (5) years, or longer for trade secrets for so long as they
+     remain trade secrets under applicable law.
+
+7.3  Production Data and customer/staff personal data processed via the Software
+     shall be handled in accordance with applicable Indian law (including the
+     Information Technology Act, 2000 and the Digital Personal Data Protection
+     Act, 2023, as applicable) and Licensor’s internal policies.
+
+7.4  Licensee shall not exfiltrate, sell, or misuse Production Data. Backups and
+     exports (including Google Drive backups) may be created only through
+     approved procedures and stored only in approved locations.
+
+7.5  Upon request or termination, Licensee shall return or securely destroy
+     Confidential Information and Production Data in its possession, except where
+     retention is required by law (in which case such materials remain subject to
+     confidentiality).
+
+
+──────────────────────────────────────────────────────────────────────────────
+8. SECURITY
+──────────────────────────────────────────────────────────────────────────────
+
+8.1  Licensee is responsible for safeguarding devices, accounts, and credentials
+     used to access the Software and related cloud services (including GitHub,
+     Supabase, and Google Drive).
+
+8.2  Suspected or actual security incidents (credential leak, unauthorized access,
+     data breach, ransomware, or similar) must be reported to Licensor without
+     undue delay, and Licensee shall reasonably cooperate in investigation and
+     remediation.
+
+8.3  Licensor may suspend access immediately where it reasonably believes there
+     is a security risk, policy violation, or legal exposure.
+
+
+──────────────────────────────────────────────────────────────────────────────
+9. THIRD-PARTY COMPONENTS AND SERVICES
+──────────────────────────────────────────────────────────────────────────────
+
+9.1  The Software may depend on third-party libraries, fonts, icons, cloud
+     platforms, or APIs. Those components remain subject to their own licenses
+     and terms. Nothing in this Agreement grants rights beyond those licenses.
+
+9.2  Licensor does not warrant uninterrupted availability of third-party services
+     (including hosting, authentication, database, storage, or CI/CD providers).
+
+9.3  Licensee’s use of third-party services in connection with the Software must
+     comply with those providers’ acceptable-use and security requirements.
+
+
+──────────────────────────────────────────────────────────────────────────────
+10. UPDATES, MAINTENANCE, AND SUPPORT
+──────────────────────────────────────────────────────────────────────────────
+
+10.1 Licensor may provide updates, migrations, or fixes at its discretion.
+     Updated Software remains subject to this Agreement unless accompanied by
+     different written terms.
+
+10.2 Unless a separate support agreement exists, Licensor has no obligation to
+     provide support, training, uptime commitments, or specific feature delivery.
+
+10.3 Licensee shall not obstruct or refuse critical security updates directed by
+     Licensor for approved environments under Licensee’s control.
+
+
+──────────────────────────────────────────────────────────────────────────────
+11. COMPLIANCE AND AUDIT
+──────────────────────────────────────────────────────────────────────────────
+
+11.1 Licensee shall use the Software in compliance with all applicable laws,
+     including tax, labour, petroleum retail, GST invoicing, and record-keeping
+     obligations relevant to its operations. The Software is a tool; Licensee
+     remains solely responsible for legal and regulatory compliance of its business.
+
+11.2 Upon reasonable notice, Licensor may audit Licensee’s use of the Software
+     (including access logs and deployment practices) to verify compliance with
+     this Agreement. Licensee shall cooperate in good faith.
+
+11.3 Export, re-export, and cross-border transfer of the Software or controlled
+     technical data (if any) must comply with applicable law.
+
+
+──────────────────────────────────────────────────────────────────────────────
+12. INDEMNIFICATION
+──────────────────────────────────────────────────────────────────────────────
+
+Licensee shall indemnify, defend, and hold harmless Licensor and its affiliates,
+officers, employees, and agents from and against any claims, damages, losses,
+liabilities, costs, and expenses (including reasonable legal fees) arising out of
+or related to: (a) Licensee’s misuse of the Software; (b) unauthorized disclosure
+of Confidential Information or Production Data; (c) Licensee’s violation of law
+or third-party rights; or (d) Licensee’s breach of this Agreement.
+
+
+──────────────────────────────────────────────────────────────────────────────
+13. DISCLAIMER OF WARRANTIES
+──────────────────────────────────────────────────────────────────────────────
+
+THE SOFTWARE IS PROVIDED “AS IS” AND “AS AVAILABLE”, WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, ACCURACY, OR QUIET
+ENJOYMENT. LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED,
+ERROR-FREE, SECURE, OR FREE OF HARMFUL COMPONENTS, OR THAT DEFECTS WILL BE
+CORRECTED. LICENSEE ASSUMES ALL RISK ARISING FROM USE OF THE SOFTWARE.
+
+
+──────────────────────────────────────────────────────────────────────────────
+14. LIMITATION OF LIABILITY
+──────────────────────────────────────────────────────────────────────────────
+
+14.1 TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR AND ITS AFFILIATES SHALL
+     NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL,
+     EXEMPLARY, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, GOODWILL,
+     DATA, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATED TO THE SOFTWARE
+     OR THIS AGREEMENT, WHETHER IN CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT
+     LIABILITY, OR OTHERWISE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+14.2 TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR’S TOTAL AGGREGATE LIABILITY
+     UNDER THIS AGREEMENT SHALL NOT EXCEED THE AMOUNTS (IF ANY) PAID BY LICENSEE
+     TO LICENSOR SPECIFICALLY FOR THE SOFTWARE IN THE TWELVE (12) MONTHS
+     PRECEDING THE CLAIM, OR ONE THOUSAND INDIAN RUPEES (INR 1,000), WHICHEVER
+     IS GREATER.
+
+14.3 The limitations in this section apply even if any remedy fails of its
+     essential purpose, except where prohibited by mandatory applicable law.
+
+
+──────────────────────────────────────────────────────────────────────────────
+15. INJUNCTIVE RELIEF
+──────────────────────────────────────────────────────────────────────────────
+
+Licensee acknowledges that unauthorized use or disclosure of the Software or
+Confidential Information may cause irreparable harm for which monetary damages
+are inadequate. Licensor is entitled to seek injunctive or other equitable relief
+without the necessity of proving actual damages or posting a bond, in addition to
+any other remedies available at law or equity.
+
+
+──────────────────────────────────────────────────────────────────────────────
+16. TERM AND TERMINATION
+──────────────────────────────────────────────────────────────────────────────
+
+16.1 This Agreement remains in effect until terminated.
+
+16.2 Licensor may terminate this Agreement (and revoke access) immediately upon:
+     (a) breach of any term; (b) security risk; (c) cessation of Licensee’s
+     authorized relationship with Licensor; or (d) written notice at Licensor’s
+     convenience.
+
+16.3 Upon termination, Licensee shall immediately: (a) cease all use of the
+     Software; (b) destroy or return all copies as directed; and (c) certify
+     destruction upon request.
+
+16.4 Sections that by their nature should survive (including Ownership,
+     Restrictions, Confidentiality, Indemnification, Disclaimers, Limitation of
+     Liability, Injunctive Relief, Governing Law, and General Provisions) shall
+     survive termination.
+
+
+──────────────────────────────────────────────────────────────────────────────
+17. ASSIGNMENT
+──────────────────────────────────────────────────────────────────────────────
+
+Licensee may not assign or transfer this Agreement or any rights hereunder
+without Licensor’s prior written consent. Licensor may assign this Agreement
+to an affiliate or successor in connection with a corporate reorganization,
+merger, or sale of assets. Any attempted assignment in violation of this
+section is void.
+
+
+──────────────────────────────────────────────────────────────────────────────
+18. FORCE MAJEURE
+──────────────────────────────────────────────────────────────────────────────
+
+Neither party shall be liable for delay or failure to perform due to causes
+beyond its reasonable control, including acts of God, natural disasters,
+war, terrorism, riots, embargoes, acts of civil or military authorities,
+fire, floods, accidents, strikes, shortages, or failures of utilities,
+internet, or third-party cloud providers; provided that the affected party
+uses reasonable efforts to mitigate and resume performance.
+
+
+──────────────────────────────────────────────────────────────────────────────
+19. GENERAL PROVISIONS
+──────────────────────────────────────────────────────────────────────────────
+
+19.1 Entire Agreement. This Agreement constitutes the entire agreement between
+     the parties concerning the Software and supersedes prior or contemporaneous
+     proposals, representations, and agreements relating to the same subject
+     matter (except any separate written commercial agreement that expressly
+     states it controls).
+
+19.2 Amendments. Licensor may update this Agreement by publishing a revised
+     LICENSE in the repository or providing notice. Continued use after the
+     effective date of changes constitutes acceptance, except where a signed
+     commercial agreement requires mutual written amendment.
+
+19.3 Severability. If any provision is held unenforceable, it shall be modified
+     to the minimum extent necessary to make it enforceable, and the remaining
+     provisions shall continue in full force.
+
+19.4 Waiver. Failure to enforce any provision is not a waiver of future
+     enforcement of that or any other provision. Waivers must be in writing
+     to be effective.
+
+19.5 Relationship. Nothing in this Agreement creates a partnership, joint
+     venture, employment, or agency relationship between the parties.
+
+19.6 Notices. Notices under this Agreement may be delivered by email or written
+     notice to the contacts designated by each party, and via the contact method
+     in Section 21.
+
+19.7 Language. The controlling language of this Agreement is English.
+
+19.8 Headings. Section headings are for convenience only and do not affect
+     interpretation.
+
+
+──────────────────────────────────────────────────────────────────────────────
+20. GOVERNING LAW AND DISPUTE RESOLUTION
+──────────────────────────────────────────────────────────────────────────────
+
+20.1 This Agreement is governed by the laws of India, without regard to
+     conflict-of-law principles.
+
+20.2 The parties shall first attempt in good faith to resolve disputes through
+     informal negotiation for thirty (30) days after written notice of the dispute.
+
+20.3 Subject to Section 15 (Injunctive Relief), exclusive jurisdiction and venue
+     lie with the competent courts in India. Licensee consents to such
+     jurisdiction and venue.
+
+
+──────────────────────────────────────────────────────────────────────────────
+21. CONTACT
+──────────────────────────────────────────────────────────────────────────────
+
+For licensing inquiries, written permission requests, security incident reports,
+or legal notices:
+
+  F&S Ventures
+  Web: https://fnsventures.in/
+
+
+END OF AGREEMENT
