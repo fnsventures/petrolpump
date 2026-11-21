@@ -502,6 +502,20 @@ function formatNumberPlain(value, fractionDigits = 2) {
  * @param {string|null|undefined} nameOrEmail
  * @returns {string}
  */
+/**
+ * Icon from the shared set in css/components.css (close, chevron-right, chevron-down, external).
+ * Decorative: give the button or link its own aria-label / text.
+ * @param {"close" | "chevron-right" | "chevron-down" | "external"} name
+ * @param {string} [extraClass]
+ * @returns {HTMLSpanElement}
+ */
+function createIcon(name, extraClass = "") {
+  const icon = document.createElement("span");
+  icon.className = `icon icon--${name}${extraClass ? ` ${extraClass}` : ""}`;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 function getAvatarInitial(nameOrEmail) {
   const raw = String(nameOrEmail ?? "").trim();
   if (!raw) return "?";
@@ -1484,12 +1498,39 @@ const AppLoader = (function () {
 
   function syncBusy(el) {
     if (!el || el.nodeType !== 1) return;
+    // A full-width table cell: loading shows shimmer rows, "No …" shows the shared empty state.
+    // Text inside a link in the cell counts too ("No staff yet. Add staff…").
+    const cell = el.tagName === "TD" ? el : el.parentElement?.closest?.("td[colspan]");
+    if (cell && cell.hasAttribute("colspan")) {
+      const cellText = (cell.textContent || "").trim();
+      syncTableCell(/** @type {HTMLElement} */ (cell), cellText, BUSY_TEXT_RE.test(cellText));
+      if (cell === el) return;
+    }
     const text = el.childElementCount === 0 ? el.textContent.trim() : "";
     const busy = BUSY_TEXT_RE.test(text);
     if (busy !== el.classList.contains(BUSY_CLASS)) el.classList.toggle(BUSY_CLASS, busy);
     // Bare "…" placeholders show only the logo.
     const iconOnly = busy && text === "…";
     if (iconOnly !== el.classList.contains(ICON_ONLY_CLASS)) el.classList.toggle(ICON_ONLY_CLASS, iconOnly);
+  }
+
+  const EMPTY_TEXT_RE = /^No\b[^\n]{0,120}$/;
+
+  /** @param {HTMLElement} cell */
+  function syncTableCell(cell, text, busy) {
+    // Printed reports keep plain text rows.
+    const inReport = Boolean(cell.closest(".report-table, .reports-output, [data-cell-state='off']"));
+    const loading = busy && !inReport;
+    const empty = !busy && !inReport && EMPTY_TEXT_RE.test(text);
+    cell.classList.toggle("cell-loading", loading);
+    cell.classList.toggle("cell-empty", empty);
+    // A stale colspan (e.g. admin-only column added) would leave the box half-width.
+    if (loading || empty) {
+      const cols = cell.closest("table")?.querySelector("thead tr:last-child")?.children.length || 0;
+      if (cols > Number(cell.getAttribute("colspan") || 1)) cell.setAttribute("colspan", String(cols));
+    }
+    if (loading) cell.setAttribute("aria-busy", "true");
+    else cell.removeAttribute("aria-busy");
   }
 
   function scan(root) {
@@ -1499,6 +1540,9 @@ const AppLoader = (function () {
       return;
     }
     if (root.nodeType !== 1) return;
+    // Inserted rows: tag full-width cells (loading / empty) even without a "…".
+    if (/** @type {Element} */ (root).matches?.("td[colspan]")) syncBusy(root);
+    /** @type {Element} */ (root).querySelectorAll?.("td[colspan]").forEach((td) => syncBusy(td));
     // Fast path: most inserted subtrees have no busy label at all.
     if (!root.textContent.includes("…")) {
       syncBusy(root);
@@ -1751,6 +1795,7 @@ function createRequestGuard() {
 }
 
 window.escapeHtml = escapeHtml;
+window.createIcon = createIcon;
 window.html = html;
 window.trustedHtml = trustedHtml;
 window.setHtml = setHtml;
@@ -1822,6 +1867,8 @@ window.captureDomDraftFields = captureDomDraftFields;
 window.omitDraftFields = omitDraftFields;
 window.saveDraftsForReload = saveDraftsForReload;
 window.unsavedWorkWouldBeLost = unsavedWorkWouldBeLost;
+window.unsavedWorkPending = unsavedWorkPending;
+window.highlightSavedEntry = highlightSavedEntry;
 window.trackUnsavedWork = trackUnsavedWork;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
@@ -2529,6 +2576,86 @@ function annotateWideTables(root) {
   scope.querySelectorAll?.(".table-wrap table, .table-scroll table, .e20-grid table").forEach(annotateWideTable);
 }
 
+/**
+ * Inputs with data-unit="₹" | "L" | "mm" show the unit inside the field, so it stays
+ * visible while typing (a placeholder disappears on the first keypress).
+ * @param {ParentNode} [root]
+ */
+function applyInputUnits(root) {
+  const scope = root || document;
+  scope.querySelectorAll?.("input[data-unit]").forEach((node) => {
+    const input = /** @type {HTMLInputElement} */ (node);
+    if (input.parentElement?.classList.contains("input-unit")) return;
+    const unit = String(input.dataset.unit || "").trim();
+    if (!unit) return;
+    const wrap = document.createElement("span");
+    wrap.className = unit === "₹" ? "input-unit input-unit--prefix" : "input-unit input-unit--suffix";
+    const badge = document.createElement("span");
+    badge.className = "input-unit-badge";
+    badge.setAttribute("aria-hidden", "true");
+    badge.textContent = unit;
+    input.replaceWith(wrap);
+    wrap.append(input, badge);
+  });
+}
+
+function installInputUnits() {
+  if (document.documentElement.dataset.bpfInputUnits === "1") return;
+  document.documentElement.dataset.bpfInputUnits = "1";
+  applyInputUnits(document);
+  let timer = 0;
+  new MutationObserver(() => {
+    if (timer) return;
+    timer = window.setTimeout(() => {
+      timer = 0;
+      applyInputUnits(document);
+    }, 60);
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * After a save, briefly highlight the new row in the list below the form, so staff see
+ * where it went. Call before the list reloads; the row is found by its visible values
+ * (e.g. formatted date and amount) once it renders, wherever the sort order puts it.
+ * Rows already on screen before the save are ignored. Gives up after 8 s.
+ * @param {Element | null} list - the <tbody> or list element that re-renders
+ * @param {string[]} values - text the new row contains (all must match)
+ */
+function highlightSavedEntry(list, values) {
+  if (!list || !values?.length) return;
+  const needles = values.map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (!needles.length) return;
+  const rowSelector = ":scope > tr, :scope > li";
+  const before = new Set(Array.from(list.querySelectorAll(rowSelector)).map((row) => row.textContent));
+  const matches = (row) => {
+    const text = row.textContent || "";
+    return !before.has(text) && needles.every((needle) => text.includes(needle));
+  };
+  let done = false;
+  const finish = () => {
+    done = true;
+    observer.disconnect();
+    window.clearTimeout(giveUp);
+  };
+  const tryFind = () => {
+    if (done) return;
+    const row = Array.from(list.querySelectorAll(rowSelector)).find(matches);
+    if (!row) return;
+    finish();
+    row.classList.remove("row-just-saved");
+    void (/** @type {HTMLElement} */ (row).offsetWidth);
+    row.classList.add("row-just-saved");
+    const rect = row.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    window.setTimeout(() => row.classList.remove("row-just-saved"), 2600);
+  };
+  const observer = new MutationObserver(tryFind);
+  observer.observe(list, { childList: true, subtree: true });
+  const giveUp = window.setTimeout(finish, 8000);
+}
+
 function installResponsiveTables() {
   if (document.documentElement.dataset.bpfResponsiveTables === "1") return;
   document.documentElement.dataset.bpfResponsiveTables = "1";
@@ -2589,6 +2716,7 @@ if (typeof document !== "undefined") {
     installFieldValidation();
     installEnterMovesToNextField();
     installResponsiveTables();
+    installInputUnits();
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", startUiHelpers, { once: true });

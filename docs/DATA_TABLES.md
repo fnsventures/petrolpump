@@ -183,7 +183,7 @@ limit 50;
 
 ## dsr_petrol
 
-**Purpose:** MS (petrol) meter readings — **one row per date**. Filled by the Meter Reading form (`js/dsr.js` → table `dsr_petrol`). Used for day closing, dashboard, analysis, and reports.
+**Purpose:** MS (petrol) meter readings — **one row per date**. Filled by the Meter reading form (`js/dsr.js` → table `dsr_petrol`). Used for day closing, dashboard, analysis, and reports.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -238,7 +238,7 @@ limit 50;
 
 **Lock:** Supervisors can re-save a shift with updated values until day closing is saved for that date; afterwards only an admin can change shifts. Certified day / night-cash collected also locks meter sync for supervisors.
 
-**UI:** Meter Reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
+**UI:** Meter reading → **Shift register** (`js/meterShiftReading.js`). Period views on **DSR** → Sales detail (`js/dsrSalesBreakdown.js`). Reports: pump / shift / salesman sales.
 
 ---
 
@@ -437,7 +437,7 @@ A single table with a `product` column would match today’s view plus two table
 
 **RLS:** SELECT supervisor/admin; INSERT own rows; DELETE admin only. Drive uploads insert via `drive-files` (service role).
 
-**Page:** `letterhead.html` (Letter Desk).
+**Page:** `letterhead.html` (Letter desk).
 
 ---
 
@@ -1020,7 +1020,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `billing_totals_by_date(start, end)` | Billing invoice totals grouped by date (jsonb) | — |
 | `purchase_totals_by_date(start, end)` | Purchase-document totals grouped by date (jsonb) | — |
 | `get_invoice_document_category_counts(start?, end?)` | Invoice vault outline: `category`, `doc_count`, `latest_date` per category. Security invoker, so `invoice_documents` RLS applies | — |
-| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter Reading → Purchase cost) | — |
+| `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter reading → Purchase cost) | — |
 | `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
 | `save_invoice(..., request_id?)` | Atomic invoice + line items; rejects qty/rate ≤ 0, invalid GST, discount < 0 or > subtotal | — |

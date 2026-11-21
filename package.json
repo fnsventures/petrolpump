@@ -5,6 +5,7 @@
   "scripts": {
     "build:vendor": "node scripts/build-vendor.mjs",
     "build:images": "node scripts/optimize-images.mjs",
+    "build:splash": "node scripts/build-ios-splash.mjs",
     "build:html": "node scripts/build-html.mjs",
     "stamp": "node scripts/stamp-assets.mjs",
     "dev": "node scripts/dev-server.mjs",

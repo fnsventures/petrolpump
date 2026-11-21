@@ -2,7 +2,7 @@
 /**
  * Nested sidebar (layers 1–2). Desktop: hover expands the rail and opens only the section under the pointer.
  *   layer 1 — Operations / Finance / HR / Admin
- *   layer 2 — Dashboard / Meter Reading / …
+ *   layer 2 — Dashboard / Meter reading / …
  * Layer 3 (Daily snapshot, DSR summary, …) stays in the in-page section nav.
  * Nav items: NAV_GROUPS below. Page CSS/JS: _partials/app-pages.json
  */
@@ -77,7 +77,7 @@
       icon: "operations",
       links: [
         { href: "dashboard.html", label: "Dashboard", icon: "dashboard" },
-        { href: "meter-reading.html#shift-readings", file: "meter-reading.html", label: "Meter Reading", icon: "meter" },
+        { href: "meter-reading.html#shift-readings", file: "meter-reading.html", label: "Meter reading", icon: "meter" },
         { href: "dsr.html", label: "DSR", icon: "dsr" },
         { href: "e20-register.html", label: "E-20 testing", icon: "flask" },
         { href: "reminders.html", label: "Tasks", icon: "tasks" },
@@ -88,11 +88,11 @@
       label: "Finance",
       icon: "finance",
       links: [
-        { href: "credit.html", label: "Credit", icon: "credit" },
+        { href: "credit.html", label: "Credit ledger", icon: "credit" },
         { href: "expenses.html", label: "Expenses", icon: "expenses" },
         { href: "day-closing.html", label: "Day closing & short", icon: "closing" },
         { href: "billing.html", label: "Billing", icon: "billing" },
-        { href: "invoices.html", label: "Purchase vault", icon: "vault" },
+        { href: "invoices.html", label: "Documents", icon: "vault" },
         { href: "letterhead.html", label: "Letter desk", icon: "letter" },
       ],
     },
@@ -280,11 +280,18 @@
     }, 280);
   }
 
-  function setSectionsOpen(open) {
-    try {
-      localStorage.setItem(SECTIONS_KEY, open ? "1" : "0");
-    } catch {
-      /* ignore quota */
+  /**
+   * @param {boolean} open
+   * @param {{ persist?: boolean }} [opts] Phone toggles are not saved: the band starts collapsed
+   *   on every phone page load, and the saved desktop drawer choice is left alone.
+   */
+  function setSectionsOpen(open, opts = {}) {
+    if (opts.persist !== false && isDesktop()) {
+      try {
+        localStorage.setItem(SECTIONS_KEY, open ? "1" : "0");
+      } catch {
+        /* ignore quota */
+      }
     }
     document.documentElement.classList.toggle("app-sections-collapsed", !open);
     document.body.classList.toggle("app-sections-collapsed", !open);
@@ -297,6 +304,28 @@
     btn?.setAttribute("aria-expanded", String(open));
     btn?.setAttribute("title", open ? "Collapse sections" : "Show sections");
     btn?.setAttribute("aria-label", open ? "Collapse sections" : "Show sections");
+    syncSectionsHeading();
+  }
+
+  /** Name of the active in-page section, for the collapsed phone band. */
+  function activeSectionLabel(drawer) {
+    const item = drawer.querySelector(
+      ".app-section-item.is-active:not([hidden]), .settings-nav-item.is-active:not([hidden])"
+    );
+    if (!item) return "";
+    const label = item.querySelector(".settings-nav-item-label") || item;
+    return (label.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  /** Phone, collapsed: the band shows the current section name instead of "Sections". */
+  function syncSectionsHeading() {
+    const drawer = document.getElementById("app-sections-drawer");
+    const heading = drawer?.querySelector(".app-sections-heading");
+    if (!drawer || !heading) return;
+    const current = !isDesktop() && drawer.classList.contains("is-collapsed") ? activeSectionLabel(drawer) : "";
+    const text = current || "Sections";
+    if (heading.textContent !== text) heading.textContent = text;
+    heading.classList.toggle("is-current-section", Boolean(current));
   }
 
   function initSectionDrawer() {
@@ -352,8 +381,24 @@
       if (e.target.closest("a, button")) return;
       setSectionsOpen(true);
     });
+    // Phone: picking a section closes the band so the page content is back in view.
+    bodyEl.addEventListener("click", (e) => {
+      if (isDesktop() || !e.target.closest(".app-section-item, .settings-nav-item")) return;
+      window.setTimeout(() => setSectionsOpen(false, { persist: false }), 0);
+    });
 
-    setSectionsOpen(isSectionsOpen());
+    // Pages mark the active item (js/pageSections.js and page scripts); follow it.
+    new MutationObserver(syncSectionsHeading).observe(bodyEl, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "hidden"],
+    });
+
+    const desktopQuery = window.matchMedia("(min-width: 961px)");
+    const applyDefault = () => setSectionsOpen(isDesktop() ? isSectionsOpen() : false, { persist: false });
+    if (desktopQuery.addEventListener) desktopQuery.addEventListener("change", applyDefault);
+    else if (desktopQuery.addListener) desktopQuery.addListener(applyDefault);
+    applyDefault();
   }
 
   function renderLink(link) {

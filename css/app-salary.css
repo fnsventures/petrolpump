@@ -115,7 +115,11 @@
   width: min(100%, 36rem);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Scroll when content is taller than the panel (phone sheet, short landscape screens). */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: var(--space-4) var(--salary-detail-pad-x) 0;
   margin-bottom: 0;
 }
@@ -196,23 +200,60 @@
   margin-left: auto;
 }
 
-.salary-detail-payments .table-wrap {
+.salary-payment-lines {
   flex: 1 1 auto;
-  min-height: 8rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
 
-.salary-detail-payments .table-wrap table {
-  margin: 0;
+.salary-payment-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
 }
 
-.salary-detail-payments .table-wrap th.table-actions,
-.salary-detail-payments .table-wrap td.table-actions {
-  width: 5.5rem;
-  padding-right: var(--space-2);
+.salary-payment-line + .salary-payment-line {
+  border-top: 1px solid var(--border);
+}
+
+.salary-payment-line--empty {
+  justify-content: center;
+}
+
+.salary-payment-date {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-payment-amount {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-payment-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.salary-payment-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .salary-detail-payments .num {
@@ -260,7 +301,6 @@
 @media (max-width: 768px) {
   .salary-detail-card {
     --salary-detail-pad-x: var(--space-3);
-    overflow-x: hidden;
   }
 
   .salary-detail-meta {
@@ -274,11 +314,12 @@
     overflow: visible;
   }
 
-  .salary-detail-payments .table-wrap {
+  /* One scroll area on a phone: a nested scroller inside the sheet traps the swipe. */
+  .salary-payment-lines {
     flex: 0 0 auto;
-    min-height: 0;
-    max-height: min(calc(var(--viewport-height) * 0.4), 14rem);
+    overflow-y: visible;
   }
+
 
   .salary-detail-payments-head {
     flex-wrap: wrap;

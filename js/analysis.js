@@ -287,11 +287,11 @@ function renderBuyingAlert(pl) {
     alertEl.classList.remove("hidden");
     alertEl.textContent =
       n > 0
-        ? `${n} sale/receipt day(s) have no resolvable buying rate (no prior receipt rate available). Enter pre-VAT ₹/KL on Meter Reading → Purchase cost.`
-        : "Some days have no resolvable buying rate. Enter pre-VAT ₹/KL on Meter Reading → Purchase cost.";
+        ? `${n} sale/receipt day(s) have no resolvable buying rate (no prior receipt rate available). Enter pre-VAT ₹/KL on Meter reading → Purchase cost.`
+        : "Some days have no resolvable buying rate. Enter pre-VAT ₹/KL on Meter reading → Purchase cost.";
   } else if (pl?.usingProvisionalBuying && missing.length > 0) {
     alertEl.classList.remove("hidden");
-    alertEl.textContent = `${missing.length} receipt day(s) still need an entered buying price — figures use the previous receipt rate until you save ₹/KL on Meter Reading → Purchase cost.`;
+    alertEl.textContent = `${missing.length} receipt day(s) still need an entered buying price — figures use the previous receipt rate until you save ₹/KL on Meter reading → Purchase cost.`;
   } else {
     alertEl.classList.add("hidden");
     alertEl.textContent = "";
@@ -428,10 +428,10 @@ function renderInsights(series, totals, insights) {
     items.push(`Includes ${formatCurrency(totals.lubeSalesRupees)} lube/billing in sales and net profit.`);
   }
   if (totals.lubeCogsRupees > 0) {
-    items.push(`Vault purchase amounts ${formatCurrency(totals.lubeCogsRupees)} counted as lube COGS.`);
+    items.push(`Documents purchase invoice amounts ${formatCurrency(totals.lubeCogsRupees)} counted as lube COGS.`);
   }
   if (!totals.canCalculate) {
-    items.push("Net profit unavailable — enter buying prices on receipt days in Meter Reading → Purchase cost.");
+    items.push("Net profit unavailable — enter buying prices on receipt days in Meter reading → Purchase cost.");
   }
   if (insights.profitGrowthPercent != null && Number.isFinite(insights.profitGrowthPercent)) {
     const dir = insights.profitGrowthPercent >= 0 ? "up" : "down";

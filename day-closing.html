@@ -99,7 +99,7 @@
                     <span class="dc-row-label">Night cash <span class="badge badge--sm badge--info dc-input-badge" data-dc-input-badge>Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
-                    <input id="dc-night-cash" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Night cash — hard cash counted at close" />
+                    <input id="dc-night-cash" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Night cash — hard cash counted at close" data-unit="₹" />
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-night-cash-hint" aria-live="polite"></div>
                 </div>
@@ -108,7 +108,7 @@
                     <span class="dc-row-label">Phone pay <span class="badge badge--sm badge--info dc-input-badge" data-dc-input-badge>Enter</span></span>
                   </dt>
                   <dd class="dc-input-cell">
-                    <input id="dc-phone-pay" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Phone pay — PhonePe and UPI collections" />
+                    <input id="dc-phone-pay" type="text" inputmode="decimal" autocomplete="off" placeholder="Enter amount" aria-label="Phone pay — PhonePe and UPI collections" data-unit="₹" />
                   </dd>
                   <div class="dc-channel-breakdown dc-channel-breakdown--full" id="dc-phone-pay-hint" aria-live="polite"></div>
                 </div>
@@ -161,9 +161,9 @@
               Short <strong id="dc-sticky-short">—</strong>
               <span id="dc-unsaved-chip" class="unsaved-chip hidden">Not saved</span>
             </p>
-            <button type="button" id="day-closing-refresh">Refresh</button>
+            <button class="button-primary" type="button" id="day-closing-refresh">Refresh</button>
             <button type="button" id="day-closing-print" class="button-secondary">Print statement</button>
-            <button type="submit" id="day-closing-save">Save day closing</button>
+            <button class="button-primary" type="submit" id="day-closing-save">Save day closing</button>
           </div>
           <p id="day-closing-already-saved" class="muted hidden">Day closing already saved for this date.</p>
           <p id="day-closing-success" class="success hidden">Day closing saved. Short computed and stored for next day.</p>
@@ -219,7 +219,7 @@
                   </select>
                 </div>
                 <div class="filter-actions">
-                  <button type="button" id="dc-register-load">Load</button>
+                  <button class="button-primary" type="button" id="dc-register-load">Load</button>
                   <button type="button" id="dc-register-print" class="button-secondary">Print register</button>
                 </div>
               </div>
@@ -400,9 +400,6 @@
         </section>
       </div>
     </main>
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

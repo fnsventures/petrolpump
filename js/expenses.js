@@ -1,5 +1,5 @@
 // @ts-check
-/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, initPageSections, LOOKUP_ROW_LIMIT, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, escapeHtml, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, formRequestId, clearFormRequestId, mountLoadMorePager, syncLoadMorePager, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, initPageSections, LOOKUP_ROW_LIMIT, runAppRequest, supabaseClient, renderTableRetryRow, resetPaginationLoading, escapeHtml, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive, highlightSavedEntry */
 
 // Category labels: loaded from expense_categories; legacy fallbacks for old DB values
 let CATEGORY_LABEL_MAP = {};
@@ -157,6 +157,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       finishRecordFormSave(form, { date: savedDate, category: payload.category }, { date: RECORD_DATE_KEYS.expense });
       draft?.markClean();
       successEl?.classList.remove("hidden");
+      highlightSavedEntry(document.getElementById("expense-table-body"), [savedDate, formatCurrency(payload.amount)]);
       loadExpenses(true);
       try {
         localStorage.setItem("expenses-updated", String(Date.now()));

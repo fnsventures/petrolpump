@@ -1186,7 +1186,7 @@
           type: "info",
           label: "Invoice upload",
           message: `${rows.length} receipt row${rows.length === 1 ? "" : "s"} across ${uniqueDays} day${uniqueDays === 1 ? "" : "s"} missing a linked invoice PDF.`,
-          cta: "Open vault",
+          cta: "Open Documents",
           href: "invoices.html",
         });
       }

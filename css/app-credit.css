@@ -343,7 +343,8 @@ body.credit-customer-view #customer-period-toolbar[hidden] {
   gap: var(--space-4) var(--space-5);
 }
 
-.customer-balance-name {
+h2.customer-balance-name,
+.card h2.customer-balance-name {
   margin: 0 0 0.35rem;
   font-size: clamp(1.35rem, 3vw, 1.75rem);
   font-weight: 700;

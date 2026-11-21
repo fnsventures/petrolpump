@@ -289,6 +289,11 @@ body.login-page main.login-card {
   font-size: var(--text-xs);
 }
 
+.login-page .app-footer--minimal .footer-support {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+}
+
 @media (max-width: 480px) {
   body.login-page main.login-card {
     width: min(26rem, calc(100vw - 1.5rem));

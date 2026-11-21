@@ -53,8 +53,8 @@
       "page": "js/dashboard.js"
     },
     "meter-reading.html": {
-      "title": "Meter Reading · Bishnupriya Fuels",
-      "pageTitle": "Meter Reading",
+      "title": "Meter reading · Bishnupriya Fuels",
+      "pageTitle": "Meter reading",
       "bodyClass": "meter-reading-page",
       "css": ["css/app-dsr.css", "css/app-meter-reading.css"],
       "beforeAuth": [
@@ -81,7 +81,7 @@
       "page": "js/dsr.js"
     },
     "e20-register.html": {
-      "title": "E-20 testing register · Bishnupriya Fuels",
+      "title": "E-20 testing · Bishnupriya Fuels",
       "pageTitle": "E-20 testing",
       "bodyClass": "e20-register-page",
       "noPrint": true,
@@ -99,8 +99,8 @@
       "page": "js/reminders.js"
     },
     "credit.html": {
-      "title": "Credit · Bishnupriya Fuels",
-      "pageTitle": "Credit Ledger",
+      "title": "Credit ledger · Bishnupriya Fuels",
+      "pageTitle": "Credit ledger",
       "bodyClass": "credit-list-view",
       "css": ["css/app-credit.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
@@ -133,8 +133,8 @@
       "page": "js/billing.js"
     },
     "invoices.html": {
-      "title": "Vault · Bishnupriya Fuels",
-      "pageTitle": "Vault",
+      "title": "Documents · Bishnupriya Fuels",
+      "pageTitle": "Documents",
       "bodyClass": "invoices-page",
       "css": ["css/app-invoices.css"],
       "beforeAuth": ["js/dateRangeFilter.js", "js/pageSections.js"],
@@ -168,8 +168,8 @@
       "page": "js/staff.js"
     },
     "letterhead.html": {
-      "title": "Letterhead · Bishnupriya Fuels",
-      "pageTitle": "Letterhead",
+      "title": "Letter desk · Bishnupriya Fuels",
+      "pageTitle": "Letter desk",
       "bodyClass": "letterhead-page",
       "noPrint": true,
       "css": ["css/app-letterhead.css"],

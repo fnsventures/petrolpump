@@ -64,7 +64,7 @@ body.meter-reading-page main.settings-layout.page-layout-wide {
   color: var(--fuel-diesel-text);
 }
 
-/* MS / HSD fuel sidebar (DSR + Meter Reading) */
+/* MS / HSD fuel sidebar (DSR + Meter reading) */
 body.dsr-page .dsr-fuel-nav .settings-nav-item,
 body.meter-reading-page .dsr-fuel-nav .settings-nav-item {
   display: flex;
@@ -149,7 +149,7 @@ body.dsr-page [data-dsr-stat][hidden] {
 }
 
 .dsr-card--diesel {
-  border-color: rgba(230, 184, 0, 0.45);
+  border-color: var(--fuel-diesel-border);
 }
 
 .dsr-period-stats {
@@ -183,7 +183,7 @@ body.dsr-page .dc-register-period-stats .dc-stat-card {
 
 body.dsr-page .dc-stat-card {
   padding: 0.9rem 1rem;
-  border-radius: 0.65rem;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--surface-muted);
 }
@@ -248,7 +248,7 @@ body.dsr-page .dc-stat-meta {
 .dsr-daily-block {
   margin-top: 1.25rem;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: var(--radius-md);
   background: var(--surface);
   overflow: hidden;
 }
@@ -258,7 +258,7 @@ body.dsr-page .dc-stat-meta {
 }
 
 .dsr-daily-block.dsr-card--diesel {
-  border-color: rgba(230, 184, 0, 0.45);
+  border-color: var(--fuel-diesel-border);
 }
 
 .dsr-daily-block .dsr-card-head {

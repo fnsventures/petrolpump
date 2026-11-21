@@ -13,8 +13,10 @@
     <title>Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <!-- @partial ios-splash -->
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111a27" />
     <meta name="application-name" content="Bishnupriya Fuels" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
@@ -69,7 +71,7 @@
             </div>
           </div>
           <nav class="hero-nav">
-            <a class="nav-link" href="#about-popup">About Us</a>
+            <a class="nav-link" href="#about-popup">About us</a>
             <a class="nav-link landing-button-outline" href="login.html">Operator Login</a>
           </nav>
         </div>
@@ -81,7 +83,7 @@
             service, and dependable fueling for every traveler.
           </p>
           <div class="hero-actions">
-            <a class="landing-button-primary" href="#about-popup">About Us</a>
+            <a class="landing-button-primary" href="#about-popup">About us</a>
           </div>
         </div>
 
@@ -144,7 +146,9 @@
         </a>
         <nav class="footer-icon-bar" aria-label="Contact and social links"></nav>
       </div>
-      <div class="footer-copyright-bar">© 2025 F&S Ventures. All rights reserved.</div>
+      <div class="footer-copyright-bar">
+        <!-- @partial footer-legal -->
+      </div>
     </footer>
   </body>
 </html>

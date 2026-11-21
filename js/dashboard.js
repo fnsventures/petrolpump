@@ -573,19 +573,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   window.AppNotifications?.mount?.();
 
+  // The greeting stays hidden until auth resolves, so it never shows a placeholder name.
+  const greetingEl = document.getElementById("dashboard-greeting");
+  const greetingLeadEl = document.getElementById("operator-greeting-lead");
   const operatorNameEl = document.getElementById("operator-name");
   const operatorRoleEl = document.getElementById("operator-role");
-  if (operatorNameEl) {
-    const nameToShow = auth.display_name?.trim() || (() => {
-      const email = session.user?.email ?? "";
-      return email.includes("@") ? email.split("@")[0] : email || "User";
-    })();
-    operatorNameEl.textContent = nameToShow;
+  const nameToShow = auth.display_name?.trim() || (() => {
+    const email = session.user?.email ?? "";
+    return email.includes("@") ? email.split("@")[0] : email;
+  })();
+  if (greetingLeadEl) greetingLeadEl.textContent = nameToShow ? "Welcome back, " : "Welcome back";
+  if (operatorNameEl) operatorNameEl.textContent = nameToShow;
+  if (operatorRoleEl) {
+    operatorRoleEl.textContent = role ? `(${role.charAt(0).toUpperCase() + role.slice(1)})` : "";
   }
-  if (operatorRoleEl && role) {
-    const roleLabel = role.charAt(0).toUpperCase() + role.slice(1);
-    operatorRoleEl.textContent = `(${roleLabel})`;
-  }
+  if (greetingEl) greetingEl.hidden = false;
 
   const snapshotDateInput = document.getElementById("snapshot-date");
   const yesterdayStr = getYesterdayDateString();
@@ -1977,7 +1979,7 @@ function renderProfitLossFromData(plData, { plValueEl, plLabelEl, plProfitHintEl
       plValueEl.textContent = "—";
       if (plProfitHintEl) {
         plProfitHintEl.innerHTML =
-          'Enter pre-VAT ₹/KL on <a href="meter-reading.html#purchase-cost">Meter Reading → Purchase cost</a>. No prior receipt rate is available yet, so net profit cannot be calculated.';
+          'Enter pre-VAT ₹/KL on <a href="meter-reading.html#purchase-cost">Meter reading → Purchase cost</a>. No prior receipt rate is available yet, so net profit cannot be calculated.';
         plProfitHintEl.classList.remove("hidden");
       }
       plValueEl.classList.remove("stat-negative", "stat-positive");
@@ -1997,7 +1999,7 @@ function renderProfitLossFromData(plData, { plValueEl, plLabelEl, plProfitHintEl
   const plMethodologyEl = document.getElementById("pl-methodology-note");
   if (plMethodologyEl) {
     plMethodologyEl.textContent =
-      "Nett Profit = fuel gross + (lube sales − vault purchases) − operating expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit.";
+      "Nett Profit = fuel gross + (lube sales − Documents purchases) − operating expenses. Trading Account “Gross income c/d” is a different stock-based figure — do not use it as take-home profit.";
   }
   scheduleAutoFitStats();
 }

@@ -48,7 +48,7 @@
                   min="0.01"
                   step="0.01"
                   placeholder="0"
-                  required
+                  required data-unit="₹"
                 />
                 <button type="button" id="payment-fill-remaining" class="button-secondary button-small payment-fill-remaining">Fill remaining</button>
               </div>
@@ -64,7 +64,9 @@
               </div>
             </div>
             <p id="payment-month-hint" class="muted hidden" aria-live="polite"></p>
-            <button type="submit">Save payment</button>
+            <div class="sticky-save">
+              <button class="button-primary" type="submit">Save payment</button>
+            </div>
             <p id="salary-payment-success" class="success hidden">Payment recorded.</p>
             <p id="salary-payment-error" class="error hidden"></p>
           </form>
@@ -212,7 +214,7 @@
             <h2 id="salary-detail-title">Staff salary</h2>
             <p id="salary-detail-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="app-modal-close" id="salary-detail-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="salary-detail-close" aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
 
         <dl class="salary-detail-meta" id="salary-detail-stats"></dl>
@@ -222,36 +224,21 @@
           <div class="salary-detail-payments-head">
             <h3 class="salary-detail-section-title">Payments this month</h3>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th class="num">Amount (₹)</th>
-                  <th>Note</th>
-                  <th class="table-actions" id="salary-detail-actions-head" hidden>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="salary-detail-payments-body">
-                <tr><td colspan="3" class="muted">—</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <ul id="salary-detail-payments-body" class="salary-payment-lines" aria-label="Payments this month">
+            <li class="salary-payment-line salary-payment-line--empty muted">—</li>
+          </ul>
         </div>
 
         <div id="salary-detail-pay-host" hidden></div>
 
         <div class="salary-detail-actions">
           <button type="button" id="salary-detail-add-payment" class="button-secondary">Add payment</button>
-          <button type="button" id="salary-detail-print-slip">Print salary slip</button>
+          <button class="button-primary" type="button" id="salary-detail-print-slip">Print salary slip</button>
           <button type="button" id="salary-detail-dismiss" class="button-secondary">Close</button>
         </div>
       </div>
     </dialog>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

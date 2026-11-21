@@ -12,7 +12,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Offline · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
-    <meta name="theme-color" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111a27" />
     <meta name="robots" content="noindex" />
     <script src="js/theme.js"></script>
     <link rel="stylesheet" href="css/tokens.css" />
@@ -25,7 +26,7 @@
         BPFuels needs a network connection for live pump data. Reconnect, then try again.
         Pages you already opened may still work from cache.
       </p>
-      <button type="button" id="retry-btn">Try again</button>
+      <button class="button-primary" type="button" id="retry-btn">Try again</button>
       <p class="links">
         <a href="dashboard.html">Dashboard</a>
         ·

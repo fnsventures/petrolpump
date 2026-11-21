@@ -888,7 +888,7 @@ function renderGstPurchaseSummary(data, range) {
     getFuelPurchaseRows(data, range);
   const missingNote =
     missingBuyingCount > 0
-      ? `<p class="report-note warning">${missingBuyingCount} receipt(s) in this period have no buying price — excluded. Enter buying price on Meter Reading → Purchase cost.</p>`
+      ? `<p class="report-note warning">${missingBuyingCount} receipt(s) in this period have no buying price — excluded. Enter buying price on Meter reading → Purchase cost.</p>`
       : "";
   const emptyNote =
     detailRows.length === 0
@@ -967,7 +967,7 @@ function renderGstPurchaseDetail(data, range) {
           <th>Party</th>
           <th>Invoice No</th>
           <th>GSTIN</th>
-          <th>Vault</th>
+          <th>Document</th>
           <th class="num">Qty (L)</th>
           <th class="num">Rate (${escapeHtml(getBuyingPriceUnitLabel())})</th>
           <th class="num">Taxable</th>
@@ -980,8 +980,8 @@ function renderGstPurchaseDetail(data, range) {
     </table>
     ${
       missingBuyingCount > 0
-        ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on Meter Reading → Purchase cost.</p>`
+        ? `<p class="report-note warning">${missingBuyingCount} receipt(s) excluded — buying price not set on Meter reading → Purchase cost.</p>`
         : ""
     }
-    <p class="report-note muted">Vault PDF links match DSR receipt → Invoices (purchase) by document id or invoice title. Enter invoice no with buying price on Meter Reading → Purchase cost. ${escapeHtml(getPurchaseGstDetailNote())}</p>`;
+    <p class="report-note muted">Document PDF links match DSR receipt → purchase invoice in Documents by document id or invoice title. Enter invoice no with buying price on Meter reading → Purchase cost. ${escapeHtml(getPurchaseGstDetailNote())}</p>`;
 }

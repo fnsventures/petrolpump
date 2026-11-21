@@ -13,7 +13,7 @@ How a feature writes data, and in what order a normal day is entered. The table 
 | DSR & stock | §4 | dsr_petrol, dsr_diesel, dsr_stock view |
 | Billing | §5 | products, invoices, save_invoice, Google Drive archive |
 | Invoice documents | §5b | invoice_documents, invoice-documents edge function, Google Drive |
-| Letter Desk | §5c | letterhead_letters, drive-files, Google Drive |
+| Letter desk | §5c | letterhead_letters, drive-files, Google Drive |
 | Reports | §6 | reports.html (admin); DSR, GST, trading/P&amp;L catalog |
 | Analysis | §6b | analysis.html (admin); KPIs, charts, insights |
 | HR | §7 | staff.html, employees, attendance, salary, Google Drive staff files |
@@ -59,7 +59,7 @@ Open dashboard.html
 
     snapshot (all roles)
         → Total sale L/₹, MS/HSD split, open credit (get_open_credit_as_of)
-        → Links to Meter Reading / DSR listing
+        → Links to Meter reading / DSR listing
 
     dsr (all roles)
         → Date range filter
@@ -68,7 +68,7 @@ Open dashboard.html
 
     pl (admin only — hidden for supervisor)
         → Net profit range filter (quick glance)
-        → Links to Analysis / Reports P&L and Meter Reading → Purchase cost
+        → Links to Analysis / Reports P&L and Meter reading → Purchase cost
 
     notifications (all roles)
         → Tasks due today / overdue + high-priority undated todos (Done / +3 days / More… / Call)
@@ -82,14 +82,14 @@ Open dashboard.html
           high variation, cash shortage/surplus, uncollected night cash, missing meter/rate/dip,
           unpaid salary (admin), attendance after shift end,
           MTD expense ratio, receipt without invoice upload (Drive on)
-        → Admin: missing buying-price banner → Meter Reading → Purchase cost
+        → Admin: missing buying-price banner → Meter reading → Purchase cost
 
     At a glance (aside rail)
         → MS/HSD selling rates (today's DSR or last known)
         → Animated tank meters (% of pump_settings.config.pumps tank capacity)
 ```
 
-Meter Reading also has an admin-only **Purchase cost** section (`#purchase-cost`) for pre-VAT ₹/KL entry (feeds P&L / GST purchase register).
+Meter reading also has an admin-only **Purchase cost** section (`#purchase-cost`) for pre-VAT ₹/KL entry (feeds P&L / GST purchase register).
 
 ---
 
@@ -98,7 +98,7 @@ Meter Reading also has an admin-only **Purchase cost** section (`#purchase-cost`
 A typical daily sequence:
 
 ```
-1. Meter Reading (meter-reading.html)
+1. Meter reading (meter-reading.html)
    → save_dsr_meter_row(product, date, row, request_id?) upserts dsr_petrol or dsr_diesel (IST "today"; a supervisor cannot change a finished row or a locked day; rejected when that day is certified, including for admin)
    → Nozzle readings, total_sales, testing, dip/stock, receipts, rates
    → Optional: Shift register — staff per nozzle, shift meters, cash + phone pay, short (₹)
@@ -251,7 +251,7 @@ Library (invoices.html → Library tab)
 
 ---
 
-## 5c. Letter Desk (letterhead.html)
+## 5c. Letter desk (letterhead.html)
 
 ```
 Compose (letterhead.html)
@@ -322,7 +322,7 @@ Analysis (analysis.html)
    → Data via DsrQueries + expenses (same sources as dashboard/reports, different presentation)
 ```
 
-**Note:** Analysis is a **business intelligence dashboard** (KPIs + charts). Printable P&amp;L register is on **Reports** (`pl`). Buying-price entry is on **Meter Reading → Purchase cost**. Dashboard → Net profit is a quick glance only.
+**Note:** Analysis is a **business intelligence dashboard** (KPIs + charts). Printable P&amp;L register is on **Reports** (`pl`). Buying-price entry is on **Meter reading → Purchase cost**. Dashboard → Net profit is a quick glance only.
 
 ## 7. HR flow (staff, attendance, salary)
 
@@ -419,7 +419,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 - **Analysis (`analysis.html`):** BI dashboard — see §6b.
 - **Reports (`reports.html`):** Printable registers — see §6.
 - **Dashboard Net profit:** Quick glance — see §1b.
-- **Meter Reading → Purchase cost:** Inline buying price — see §1b.
+- **Meter reading → Purchase cost:** Inline buying price — see §1b.
 - **Audit log:** Admins read `audit_log`; writes via triggers only. Production drops rows older than 6 months in a weekly job. Staging does not store an audit log ([STORAGE_RETENTION.md](STORAGE_RETENTION.md)).
 - **App errors:** Every page writes `client_errors` through `AppError.report` (batched, any login). Admins read them in Settings → App errors ([DATA_TABLES.md](DATA_TABLES.md#client_errors)).
 
@@ -431,13 +431,13 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 |------|------------------------|
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
-| Meter Reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price |
+| Meter reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price |
 | DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman), get_stock_variance, tanker_decantations |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
 | Billing | products, invoices, save_invoice, drive-files (sales invoice archive) |
 | Invoice documents | invoice_documents, edge function invoice-documents, pump_settings.integrations.googleDrive |
-| Letter Desk | letterhead_letters, drive-files |
+| Letter desk | letterhead_letters, drive-files |
 | Expenses | expenses, expense_categories |
 | Day closing | day_closing, night_cash_collections, get_day_closing_breakdown, save_day_closing, set_day_closing_certified, collect_night_cash, delete_day_closing |
 | E-20 testing (`e20-register.html`) | e20_testing_registers, e20_water_checks, e20_quality_checks, save_e20_testing_register |

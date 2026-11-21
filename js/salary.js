@@ -1,5 +1,5 @@
 // @ts-check
-/* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, addMonthsToMonthValue, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort */
+/* global requireAuth, applyRoleVisibility, formatCurrency, formatRecordedBalance, formatMonthLabel, AppCache, AppError, AppDialog, getLocalDateString, toLocalDateString, escapeHtml, formatDisplayDate, PumpSettings, loadPumpSettings, AppConfig, initPageSections, populateMonthYearSelects, readMonthYearValue, writeMonthYearValue, StaffEmployees, CacheInvalidation, AdminDelete, getMonthRange, initPersistedDateInput, finishRecordFormSave, RECORD_DATE_KEYS, PrintUtils, PayrollRules, formRequestId, clearFormRequestId, mountMonthStepper, addMonthsToMonthValue, bindUnsavedDraft, captureDomDraftFields, omitDraftFields, ActionProgress, fetchAllRows, AttendantShort, highlightSavedEntry */
 
 /** YYYY-MM or YYYY-MM-DD → YYYY-MM-01 (pay period key stored in DB). */
 function normalizeSalaryMonth(monthValue) {
@@ -789,12 +789,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   const historyActionsHead = document.getElementById("salary-history-actions-head");
-  const detailActionsHead = document.getElementById("salary-detail-actions-head");
   if (historyActionsHead) {
     historyActionsHead.textContent = isAdmin ? "Actions" : "Slip";
-  }
-  if (detailActionsHead) {
-    detailActionsHead.hidden = !isAdmin;
   }
 
   async function deleteSalaryPayment(payment, staff) {
@@ -1002,20 +998,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     if (tbody) {
-      const colSpan = isAdmin ? 4 : 3;
+      // One line per payment (date · amount · note), so the list scans quickly on a phone.
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="${colSpan}" class="muted">No payments recorded for this month.</td></tr>`;
+        tbody.innerHTML = '<li class="salary-payment-line salary-payment-line--empty muted">No payments recorded for this month.</li>';
       } else {
         tbody.innerHTML = list
-          .map(
-            (p) => `
-          <tr>
-            <td>${escapeHtml(formatDisplayDate(p.date))}</td>
-            <td class="num">${formatCurrency(p.amount)}</td>
-            <td>${escapeHtml(p.note ?? "—")}</td>
-            ${isAdmin ? `<td class="table-actions">${salaryDeleteButtonHtml(p, staff, true)}</td>` : ""}
-          </tr>`
-          )
+          .map((p) => {
+            const note = String(p.note ?? "").trim();
+            return `
+          <li class="salary-payment-line">
+            <span class="salary-payment-date">${escapeHtml(formatDisplayDate(p.date))}</span>
+            <span class="salary-payment-amount">${formatCurrency(p.amount)}</span>
+            <span class="salary-payment-note${note ? "" : " muted"}" title="${escapeHtml(note)}">${escapeHtml(note || "—")}</span>
+            ${isAdmin ? `<span class="salary-payment-actions">${salaryDeleteButtonHtml(p, staff, true)}</span>` : ""}
+          </li>`;
+          })
           .join("");
       }
     }
@@ -1784,6 +1781,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         paymentSuccess.classList.remove("hidden");
       }
       AppError.showToast(recorded, "success");
+      const savedValues = [formatDisplayDate(savedDate), formatCurrency(amount)];
+      highlightSavedEntry(document.getElementById("salary-payments-body"), [...savedValues, staffName]);
+      highlightSavedEntry(document.getElementById("salary-detail-payments-body"), savedValues);
       await refreshAll();
 
       if (paymentStaffSelect && savedStaffId && staffList.some((s) => s.id === savedStaffId)) {
