@@ -3653,7 +3653,8 @@ html.app-booting::after {
 }
 
 /* Expand-to-explain rows and text links used as actions: a thumb-sized target on touch screens. */
-/* Height only: summaries keep their own display and markers. */
+/* Height only: summaries keep their own display and markers. Dashboard card-body links wrap
+   whole blocks (heading + stat grid) and stay display:block, or the card lays out as a row. */
 @media (max-width: 768px), (pointer: coarse) {
   summary {
     min-height: 2.75rem;
@@ -3662,7 +3663,7 @@ html.app-booting::after {
   }
 
   a.stat-link,
-  a.card-link,
+  a.card-link:not(.dashboard-metric-card-body-link),
   .dsr-panel-links > a {
     display: inline-flex;
     align-items: center;

@@ -50,23 +50,33 @@
             aria-live="polite"
           ></p>
           <div class="meter-stack">
+            <div class="meter-date-bar">
+              <div class="meter-date-field">
+                <label class="meter-date-label" for="petrol-reading-date">Reading date</label>
+                <input
+                  id="petrol-reading-date"
+                  name="date"
+                  type="date"
+                  required
+                />
+              </div>
+              <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+            </div>
+
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
                 <div class="meter-block-actions">
-                  <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
                   <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
                 </div>
               </div>
               <div class="table-scroll">
               <table class="dsr-table meter-table compact">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Date</th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -75,15 +85,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>
-                      <label class="sr-only" for="petrol-reading-date">Petrol reading date</label>
-                      <input
-                        id="petrol-reading-date"
-                        name="date"
-                        type="date"
-                        required
-                      />
-                    </td>
                     <td>
                       <label class="sr-only" for="petrol-opening-p1n1">Petrol opening, pump 1 nozzle 1</label>
                       <input
@@ -147,12 +148,10 @@
               <div class="table-scroll">
               <table class="dsr-table meter-table compact meter-table--closing">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -161,7 +160,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <label class="sr-only" for="petrol-closing-p1n1">Petrol closing, pump 1 nozzle 1</label>
                       <input
@@ -485,23 +483,33 @@
             aria-live="polite"
           ></p>
           <div class="meter-stack">
+            <div class="meter-date-bar">
+              <div class="meter-date-field">
+                <label class="meter-date-label" for="diesel-reading-date">Reading date</label>
+                <input
+                  id="diesel-reading-date"
+                  name="date"
+                  type="date"
+                  required
+                />
+              </div>
+              <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+            </div>
+
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
                 <div class="meter-block-actions">
-                  <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
                   <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
                 </div>
               </div>
               <div class="table-scroll">
               <table class="dsr-table meter-table compact">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Date</th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -510,15 +518,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>
-                      <label class="sr-only" for="diesel-reading-date">Diesel reading date</label>
-                      <input
-                        id="diesel-reading-date"
-                        name="date"
-                        type="date"
-                        required
-                      />
-                    </td>
                     <td>
                       <label class="sr-only" for="diesel-opening-p1n1">Diesel opening, pump 1 nozzle 1</label>
                       <input
@@ -582,12 +581,10 @@
               <div class="table-scroll">
               <table class="dsr-table meter-table compact meter-table--closing">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -596,7 +593,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <label class="sr-only" for="diesel-closing-p1n1">Diesel closing, pump 1 nozzle 1</label>
                       <input
