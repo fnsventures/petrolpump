@@ -46,19 +46,13 @@ jobs:
           set -euo pipefail
           git ls-files 'js/*.js' 'scripts/*.mjs' ':!js/vendor/**' | xargs -n1 node --check
 
+      # Same script and file list as Deploy, so a green PR build means the deploy build works.
       - name: Build like deploy (no secrets)
         run: |
           set -euo pipefail
           cp js/env.example.js js/env.js
-          npm run build:vendor
-          mkdir -p "$RUNNER_TEMP/site"
-          rsync -a --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs \
-            --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json \
-            --exclude types --exclude jsconfig.json --exclude eslint.config.mjs \
-            ./ "$RUNNER_TEMP/site/"
-          npm run build:html -- "$RUNNER_TEMP/site"
-          npm run stamp -- "$RUNNER_TEMP/site"
-          npm run minify -- "$RUNNER_TEMP/site"
+          node scripts/build-deploy.mjs prod "$RUNNER_TEMP/site"
+          node scripts/build-deploy.mjs staging "$RUNNER_TEMP/site"
 
       - name: Doc links
         run: node scripts/check-doc-links.mjs
@@ -80,8 +74,36 @@ jobs:
       - name: functions-sql matches schema.sql and newest migration
         run: node scripts/sql-functions.mjs check
 
-  schema-drift:
-    name: schema.sql matches migrations
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: No secret or dump files tracked
+        run: bash scripts/check-forbidden-files.sh
+
+      # Scans every commit in this PR (base..head), not only the final tree, so a key
+      # added and then deleted in a later commit is still caught. Config: .gitleaks.toml.
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "${base}/${tarball}"
+          curl -sSfL "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep " ${tarball}\$" | sha256sum -c -
+          tar -xzf "${tarball}" gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner --log-opts="${RANGE}" --config .gitleaks.toml
+
+  db:
+    name: Database (schema drift, pgTAP, types)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -93,50 +115,23 @@ jobs:
             db:
               - 'supabase/migrations/**'
               - 'supabase/schema.sql'
+              - 'supabase/tests/**'
+              - 'types/db.d.ts'
               - 'scripts/check-schema-drift.sh'
+              - 'scripts/test-db.sh'
+              - 'scripts/gen-db-types.sh'
 
-      - name: Diff migrations vs schema.sql
+      # Each step starts its own throwaway Postgres in Docker (same image, pulled once);
+      # no Supabase project or secrets. Steps run in this order so the first failure is the
+      # most basic one: schema.sql wrong → tests → generated types.
+      - name: schema.sql matches migrations
         if: steps.changes.outputs.db == 'true'
         run: bash scripts/check-schema-drift.sh
 
-  db-tests:
-    name: pgTAP (day closing, credit, RLS)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: dorny/paths-filter@v4
-        id: changes
-        with:
-          filters: |
-            db:
-              - 'supabase/migrations/**'
-              - 'supabase/tests/**'
-              - 'scripts/test-db.sh'
-              - 'scripts/check-schema-drift.sh'
-
-      # Throwaway Postgres in Docker; no Supabase project or secrets.
-      - name: Migrations + supabase/tests
+      - name: pgTAP (day closing, credit, RLS)
         if: steps.changes.outputs.db == 'true'
         run: bash scripts/test-db.sh
 
-  db-types:
-    name: types/db.d.ts matches schema.sql
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: dorny/paths-filter@v4
-        id: changes
-        with:
-          filters: |
-            db:
-              - 'supabase/migrations/**'
-              - 'supabase/schema.sql'
-              - 'types/db.d.ts'
-              - 'scripts/gen-db-types.sh'
-
-      # Throwaway Postgres + postgres-meta in Docker; no Supabase project or secrets.
-      - name: Regenerate and diff
+      - name: types/db.d.ts matches schema.sql
         if: steps.changes.outputs.db == 'true'
         run: bash scripts/gen-db-types.sh --check

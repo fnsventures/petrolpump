@@ -48,7 +48,7 @@ Example: `widgets.html` with script `js/widgets.js`.
 - [ ] Never edit a migration that is already on `staging`/`main`.
 - [ ] PR template: tick **Needs `./scripts/db.sh migrate --apply`**.
 - [ ] Staging first: `supabase db push --db-url "$STAGING_DB_URL"` ([MIGRATIONS.md → Staging schema only](MIGRATIONS.md#staging-schema-only)), or `./scripts/db.sh sync` if you also want prod data copied over.
-- [ ] Release: test `/staging/` → `./scripts/db.sh migrate` → quiet window → `./scripts/db.sh migrate --apply` → merge to `main` ([OPERATIONS.md §3](OPERATIONS.md#3-release-to-production)).
+- [ ] Release: test `/staging/` → merge to `main` → approve **prod-migrations** in the Deploy run during a quiet window ([OPERATIONS.md §3](OPERATIONS.md#3-release-to-production)).
 
 ---
 
@@ -58,7 +58,7 @@ Example: `get-widgets-data`.
 
 - [ ] `supabase functions new get-widgets-data` → `supabase/functions/get-widgets-data/index.ts`. Copy CORS + auth handling from `supabase/functions/get-pl-data/index.ts`; Drive helpers live in `supabase/functions/_shared/`.
 - [ ] Create the Supabase client with the **caller's** `Authorization` header so RLS still applies. Use the service-role key only when unavoidable, and check the caller's role first.
-- [ ] **Register for deploy** — add the name to the `for fn in …` list in `.github/workflows/deploy-supabase-functions.yml`. Functions not in that list are never deployed.
+- [ ] Deploy needs no registration: `.github/workflows/deploy-supabase-functions.yml` deploys every `supabase/functions/<name>/index.ts` (folders starting with `_` are shared code).
 - [ ] Function secrets → Supabase Dashboard → **Edge Functions → Secrets** on **both** projects; record them in [SECRETS.md](SECRETS.md).
 - [ ] Client: call with `supabaseClient.functions.invoke("get-widgets-data", …)` and keep a direct-query fallback, as the dashboard does.
 - [ ] Docs: function table in [ARCHITECTURE.md → Edge functions](ARCHITECTURE.md#65-edge-functions) and the tree in [§3.5](ARCHITECTURE.md#35-backend-supabase).

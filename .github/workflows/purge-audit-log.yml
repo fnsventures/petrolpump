@@ -37,28 +37,11 @@ permissions:
   contents: read
 
 jobs:
-  purge-weekly:
-    name: Delete audit rows older than 6 months
-    if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    environment: prod
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
-      - name: Purge audit log older than 6 months
-        env:
-          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
-          AUDIT_KEEP_MONTHS: "6"
-          CONFIRM_PURGE_AUDIT: yes
-        run: bash scripts/purge-audit-log.sh
-
   purge:
-    name: Purge audit log
-    if: github.event_name == 'workflow_dispatch'
+    # Schedule: older than 6 months, delete. Manual: the chosen age, dry run unless "delete".
+    name: >-
+      ${{ github.event_name == 'schedule' && 'Delete audit rows older than 6 months' ||
+          format('Audit rows older than {0} month(s) · {1}', inputs.keep_months, inputs.confirm) }}
     runs-on: ubuntu-latest
     environment: prod
     steps:
@@ -71,6 +54,6 @@ jobs:
       - name: Purge audit log
         env:
           PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
-          AUDIT_KEEP_MONTHS: ${{ inputs.keep_months }}
-          CONFIRM_PURGE_AUDIT: ${{ inputs.confirm == 'delete' && 'yes' || '' }}
+          AUDIT_KEEP_MONTHS: ${{ github.event_name == 'schedule' && '6' || inputs.keep_months }}
+          CONFIRM_PURGE_AUDIT: ${{ (github.event_name == 'schedule' || inputs.confirm == 'delete') && 'yes' || '' }}
         run: bash scripts/purge-audit-log.sh

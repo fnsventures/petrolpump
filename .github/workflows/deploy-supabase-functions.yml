@@ -9,6 +9,9 @@ on:
       - "supabase/functions/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: supabase-functions-${{ github.ref }}
   cancel-in-progress: false
@@ -21,9 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Pinned: "latest" makes runs unreproducible and hits the GitHub API rate limit.
       - uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: "2.122.1"
 
       - name: Deploy edge functions
         env:
@@ -35,9 +39,13 @@ jobs:
             echo "SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_REF must be set in the GitHub environment." >&2
             exit 1
           fi
-          for fn in get-reports-data get-pl-data invoice-documents drive-files credit-statement weekly-credit-sms; do
-            if [ -d "supabase/functions/${fn}" ]; then
-              echo "Deploying ${fn}…"
-              supabase functions deploy "${fn}" --project-ref "${SUPABASE_PROJECT_REF}"
-            fi
+          # Every folder with an index.ts is a function; _shared is imported code, not a function.
+          deployed=0
+          for dir in supabase/functions/*/; do
+            fn="$(basename "$dir")"
+            [[ "$fn" == _* || ! -f "${dir}index.ts" ]] && continue
+            echo "Deploying ${fn}…"
+            supabase functions deploy "${fn}" --project-ref "${SUPABASE_PROJECT_REF}"
+            deployed=$((deployed + 1))
           done
+          echo "Deployed ${deployed} function(s)." >> "$GITHUB_STEP_SUMMARY"
