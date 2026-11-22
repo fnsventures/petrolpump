@@ -707,6 +707,38 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadAttendanceForDate(date).then(() => renderAttendanceTable(date));
   }
 
+  /**
+   * Staff to show for a history month. Past months: only staff who have attendance
+   * rows that month (so later joiners are hidden, and staff who left still appear).
+   * Current or future month: the active roster plus anyone with rows (e.g. someone
+   * deactivated mid-month).
+   */
+  async function staffForHistoryMonth(monthValue, rows) {
+    const ids = new Set(rows.map((r) => r.employee_id).filter(Boolean));
+    const todayMonth = getLocalDateString().slice(0, 7);
+    const byId = new Map();
+    const activeById = new Map(staffList.map((s) => [s.id, s]));
+    if (monthValue >= todayMonth) staffList.forEach((s) => byId.set(s.id, s));
+    const missing = [];
+    ids.forEach((id) => {
+      if (byId.has(id)) return;
+      const active = activeById.get(id);
+      if (active) byId.set(id, active);
+      else missing.push(id);
+    });
+    if (missing.length) {
+      const resolved = await StaffEmployees.resolveEmployeesByIds(window.supabaseClient, missing);
+      missing.forEach((id) => {
+        byId.set(id, resolved.get(id) ?? { id, name: StaffEmployees.displayName(undefined), monthly_salary: 0, display_order: 0 });
+      });
+    }
+    return [...byId.values()].sort(
+      (a, b) =>
+        (Number(a.display_order) || 0) - (Number(b.display_order) || 0) ||
+        String(a.name ?? "").localeCompare(String(b.name ?? "")),
+    );
+  }
+
   async function loadHistoryMonth(monthValue) {
     if (!historyMatrixWrap) return;
 
@@ -731,10 +763,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    if (!staffList.length) {
+    let monthStaff;
+    try {
+      monthStaff = await staffForHistoryMonth(monthValue, bundle.rows ?? []);
+    } catch (error) {
       if (historyMatrixSummary) historyMatrixSummary.textContent = "";
-      historyMatrixWrap.innerHTML =
-        '<p class="muted att-matrix-placeholder">Add staff in <a href="staff.html">HR → Staff</a> first.</p>';
+      historyMatrixWrap.innerHTML = `<p class="error att-matrix-placeholder">${escapeHtml(AppError.getUserMessage(error))}</p>`;
+      AppError.report(error, { context: "loadHistoryMonth.staff" });
+      return;
+    }
+
+    if (!monthStaff.length) {
+      if (historyMatrixSummary) historyMatrixSummary.textContent = "";
+      historyMatrixWrap.innerHTML = staffList.length
+        ? `<p class="muted att-matrix-placeholder">No attendance recorded for ${escapeHtml(formatMonthLabel(monthValue))}.</p>`
+        : '<p class="muted att-matrix-placeholder">Add staff in <a href="staff.html">HR → Staff</a> first.</p>';
       const panel = document.getElementById("attendance-pay-panel");
       if (panel) panel.innerHTML = "";
       return;
@@ -748,7 +791,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const dayMetas = monthDayMetas(year, month);
-    const totalCells = staffList.length * dayMetas.length;
+    const totalCells = monthStaff.length * dayMetas.length;
     const counts = PayrollRules.countAttendance(list);
     const nPresent = counts.present;
     const nHalf = counts.half;
@@ -758,7 +801,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const monthLabel = formatMonthLabel(`${year}-${String(month).padStart(2, "0")}`);
     if (historyMatrixSummary) {
-      historyMatrixSummary.textContent = `${monthLabel} · ${staffList.length} staff × ${dayMetas.length} days — Present ${nPresent}, half-day ${nHalf}, leave ${nLeave}, over duty ${nOver}, not marked ${nUnmarked}.`;
+      historyMatrixSummary.textContent = `${monthLabel} · ${monthStaff.length} staff × ${dayMetas.length} days — Present ${nPresent}, half-day ${nHalf}, leave ${nLeave}, over duty ${nOver}, not marked ${nUnmarked}.`;
     }
 
     const shiftCfg = getShiftConfig();
@@ -773,10 +816,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     const headerDays = headerParts.join("");
 
-    const bodyParts = new Array(staffList.length);
-    for (let si = 0; si < staffList.length; si++) {
-      const s = staffList[si];
-      const name = escapeHtml(s.name);
+    const bodyParts = new Array(monthStaff.length);
+    for (let si = 0; si < monthStaff.length; si++) {
+      const s = monthStaff[si];
+      const name = escapeHtml(StaffEmployees.displayName(s));
       const role = s.role_display
         ? ` <span class="muted att-matrix-role">(${escapeHtml(s.role_display)})</span>`
         : "";
@@ -795,10 +838,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const bodyRows = bodyParts.join("");
 
     historyMatrixWrap.innerHTML = `<table class="attendance-matrix"><thead><tr><th scope="col" class="att-matrix-staff-col">Staff</th>${headerDays}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-    renderHistoryPayPanel(year, month, bundle.byEmployee);
+    renderHistoryPayPanel(year, month, bundle.byEmployee, monthStaff);
   }
 
-  function renderHistoryPayPanel(year, month, byEmployee) {
+  function renderHistoryPayPanel(year, month, byEmployee, monthStaff) {
     const panel = document.getElementById("attendance-pay-panel");
     if (!panel || typeof PayrollRules === "undefined") return;
     const cfg = PayrollRules.getPayrollConfig();
@@ -807,7 +850,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let lopTotal = 0;
     let odTotal = 0;
     let excessPeople = 0;
-    const body = staffList
+    const body = monthStaff
       .map((staff) => {
         const pay = payWithExclusion(staff, byEmployee.get(staff.id) || [], monthValue);
         lopTotal += pay.lopAmount;
