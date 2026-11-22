@@ -1,0 +1,17 @@
+# Secret scan for PR checks (.github/workflows/pr-checks.yml → secrets job).
+# Default gitleaks rules, minus files that hold placeholders or throwaway local passwords.
+# Never allowlist a real key here: rotate it (docs/SECRETS.md) and remove it instead.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Templates, local Docker test databases, built vendor bundles"
+paths = [
+  '''^scripts/.*\.env\.example$''',
+  '''^js/env\.example\.js$''',
+  '''^js/vendor/''',
+  '''^package-lock\.json$''',
+  '''^scripts/(gen-db-types|restore-dump|test-db|check-schema-drift)\.sh$''',
+  '''^docs/RECOVERY\.md$''',
+]

@@ -6,6 +6,11 @@ load_db_env() {
   local sync_env="${ROOT}/scripts/sync-prod-to-staging.env"
   local migrate_env="${ROOT}/scripts/migrate-prod.env"
 
+  # CI (GitHub Actions) passes the URL from an environment secret; there is no file.
+  if [[ -n "${GITHUB_ACTIONS:-}" && -n "${PROD_DB_URL:-}" && "${require_staging}" != "true" ]]; then
+    return 0
+  fi
+
   if [[ -f "${env_file}" ]]; then
     # shellcheck disable=SC1090
     source "${env_file}"

@@ -49,7 +49,14 @@ Guide: [docs/MIGRATIONS.md](docs/MIGRATIONS.md) · Recipes: [docs/CHECKLISTS.md]
 
 ## PR checks
 
-`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`: deploy-style build, `node --check` on all JS, ESLint (undeclared globals), `tsc` on `// @ts-check` files against the DB types, Markdown link check, migration name/order check, and (when `supabase/` changes) the schema-drift check, pgTAP tests and a `types/db.d.ts` freshness check. Dependabot opens weekly npm and Actions update PRs into `staging`. Run the same locally:
+`.github/workflows/pr-checks.yml` runs on every PR into `staging`/`main`. Four jobs, all required before merge ([repository rules](docs/OPERATIONS.md#github-setup)):
+
+- **Build site + JS syntax + doc links**: unit tests, CSS colours, ESLint (undeclared globals), `tsc` on `// @ts-check` files against the DB types, `node --check`, the same build Deploy runs (`scripts/build-deploy.mjs`), Markdown links.
+- **Migration names + order + function sources.**
+- **Secret scan**: no `env.js` / `db.env` / dumps tracked (`scripts/check-forbidden-files.sh`), and gitleaks over every commit in the PR (`.gitleaks.toml`).
+- **Database**: when migrations, `schema.sql`, tests or types change, schema drift, pgTAP and a `types/db.d.ts` freshness check, all in throwaway Docker Postgres.
+
+ Dependabot opens weekly npm and Actions update PRs into `staging`. Run the same locally:
 
 ```bash
 npm run lint:js
@@ -57,6 +64,7 @@ npm run typecheck
 node scripts/check-doc-links.mjs
 ./scripts/check-migration-order.sh
 ./scripts/check-schema-drift.sh   # Docker
+./scripts/check-forbidden-files.sh
 ```
 
 ---

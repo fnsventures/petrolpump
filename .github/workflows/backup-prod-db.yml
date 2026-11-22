@@ -19,6 +19,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 concurrency:
   group: prod-db-backup
   cancel-in-progress: false
@@ -71,7 +74,7 @@ jobs:
         if: steps.plan.outputs.full == 'yes' || steps.plan.outputs.year == 'yes'
         uses: supabase/setup-cli@v3
         with:
-          version: latest
+          version: "2.122.1"
 
       - name: Archive the finished month to Google Drive
         if: steps.plan.outputs.month == 'yes'

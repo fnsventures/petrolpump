@@ -19,13 +19,14 @@ node scripts/check-doc-links.mjs     # Markdown links/anchors
 ./scripts/check-migration-order.sh   # new migrations sort after origin/staging's newest
 ./scripts/check-schema-drift.sh      # migrations vs supabase/schema.sql (Docker)
 ./scripts/test-db.sh                 # pgTAP in supabase/tests: day-closing totals, locks, request ids, RLS (Docker)
+./scripts/check-forbidden-files.sh   # no env.js / db.env / dumps tracked
 ```
 
-Verify UI by building (`npm run build:site`), `node --check` on edited JS, and clicking through `npm run dev` as admin and supervisor.
+Site files that ship are decided by `scripts/lib/site-files.mjs` (used by `build:site` and `scripts/build-deploy.mjs`). Verify UI by building (`npm run build:site`), `node --check` on edited JS, and clicking through `npm run dev` as admin and supervisor.
 
 ## Rules
 
-- **Never run against prod or staging without being asked:** `./scripts/db.sh sync`, `migrate --apply`, `supabase db push`, `backup-prod-to-drive.sh`. `./scripts/db.sh migrate` (dry run) is read-only but still needs explicit OK.
+- **Never run against prod or staging without being asked:** `./scripts/db.sh sync`, `migrate --apply`, `supabase db push`, `backup-prod-to-drive.sh`, `APPLY=yes ./scripts/setup-github.sh`. Prod migrations normally run from the Deploy workflow after a **prod-migrations** approval. `./scripts/db.sh migrate` (dry run) is read-only but still needs explicit OK.
 - **Never read, print or commit** `scripts/db.env`, `js/env.js`, `scripts/.prod-backups/`, `scripts/.sync-dumps/` (real customer data and credentials).
 - **Migrations:** create with `supabase migration new <name>`; never edit one already on `staging`/`main`; mirror changes into `supabase/schema.sql`. Details: [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
 - **Redefining an SQL function:** edit `supabase/functions-sql/<name>.sql` (the current definition, with its comment and grants), create the migration, then `node scripts/sql-functions.mjs emit <name>` — it appends the file to the newest migration and updates `schema.sql`. Never copy a body from an old migration: many are redefined repeatedly (`get_day_closing_breakdown` 23 times) and older copies are stale. `npm run check:sql` fails if a file, `schema.sql` and the newest defining migration disagree. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md#redefine-a-function).

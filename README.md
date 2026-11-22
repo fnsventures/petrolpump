@@ -26,7 +26,7 @@ Pages flow `index.html` → `login.html` → `dashboard.html`. Access comes from
 |------|------------------|---------|
 | Sync prod data into staging (prod is read-only; staging data is **replaced**; neither site is deployed) | `./scripts/db.sh sync` | [OPERATIONS §1](docs/OPERATIONS.md#1-sync-staging-with-production-data) |
 | Apply migrations on staging only (staging data kept) | `supabase db push --db-url "$STAGING_DB_URL"` | [OPERATIONS](docs/OPERATIONS.md#apply-migrations-to-staging-only) |
-| Release | A sync *(optional)* → B push/merge to `staging` → C `./scripts/db.sh migrate --apply` *(if schema changed)* → D merge `staging` → `main` | [OPERATIONS §3](docs/OPERATIONS.md#3-release-to-production) |
+| Release | A sync *(optional)* → B push/merge to `staging` → C staging schema *(if changed)* → D merge `staging` → `main`, approve **prod-migrations** if asked | [OPERATIONS §3](docs/OPERATIONS.md#3-release-to-production) |
 | Backup to Drive | Actions → **Backup production database** | [OPERATIONS](docs/OPERATIONS.md#4-backup-production-database), [RECOVERY](docs/RECOVERY.md) |
 | Backup locally | `./scripts/db.sh backup` | [RECOVERY](docs/RECOVERY.md) |
 

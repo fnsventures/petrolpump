@@ -1,5 +1,14 @@
 name: Deploy
 
+# Push to staging → /staging/. Push to main → live site, after any pending production
+# migrations are approved and applied. Manual runs can deploy any ref (rollback).
+#
+#   setup ─┬─────────────────────────────────────────────┬─ deploy ─ smoke test ─ release tag (prod)
+#          └─ plan migrations ─ approve ─ migrate (prod) ─┘
+#
+# "approve" uses the prod-migrations environment, whose only purpose is a required reviewer.
+# It runs only when prod has migrations the commit adds. Setup: docs/OPERATIONS.md#github-setup.
+
 run-name: >-
   ${{
     github.event_name == 'workflow_dispatch' &&
@@ -24,113 +33,204 @@ on:
         type: string
         description: Branch, tag, or commit SHA (default — branch selected below when starting the run)
 
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
-
 permissions:
-  contents: write
+  contents: read
+
+env:
+  SUPABASE_CLI_VERSION: "2.122.1"
 
 jobs:
-  deploy:
-    name: >-
-      ${{
-        (github.event_name == 'workflow_dispatch' && inputs.target == 'staging' ||
-          github.ref_name == 'staging') && 'Staging' || 'Prod'
-      }}
+  setup:
+    name: Resolve target and commit
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
-    env:
-      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
-      REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || github.ref) || github.sha }}
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      sha: ${{ steps.resolve.outputs.sha }}
     steps:
-      - name: >-
-          ${{ env.TARGET == 'staging' && 'Scout' || 'Pull' }}
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || github.ref) || github.sha }}
+          fetch-depth: 1
+
+      - id: resolve
+        env:
+          TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (github.ref_name == 'staging' && 'staging' || 'prod') }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in staging|prod) ;; *) echo "invalid target: $TARGET" >&2; exit 1 ;; esac
+          echo "target=${TARGET}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Deploying \`$(git rev-parse --short HEAD)\` to **${TARGET}**" >> "$GITHUB_STEP_SUMMARY"
+
+  plan-migrations:
+    name: Pending prod migrations
+    needs: setup
+    if: needs.setup.outputs.target == 'prod'
+    runs-on: ubuntu-latest
+    environment: prod
+    outputs:
+      pending: ${{ steps.plan.outputs.pending }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Compare repo migrations with prod
+        id: plan
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+        run: |
+          set -euo pipefail
+          applied="$(psql "$PROD_DB_URL" -v ON_ERROR_STOP=1 -At \
+            -c "select version from supabase_migrations.schema_migrations" | sort)"
+          pending_files="$(ls supabase/migrations/*.sql | xargs -n1 basename | sort \
+            | while read -r f; do grep -qx "${f:0:14}" <<<"$applied" || echo "$f"; done)"
+          count="$(grep -c . <<<"$pending_files" || true)"
+          echo "pending=${count}" >> "$GITHUB_OUTPUT"
+          echo "### Pending production migrations: ${count}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$count" -gt 0 ]; then
+            {
+              sed 's/^/- `/; s/$/`/' <<<"$pending_files"
+              echo
+              echo "Approve **prod-migrations** only in a quiet window (nobody entering DSR or day closing)."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  approve-migrations:
+    name: Approve prod migrations
+    needs: plan-migrations
+    if: needs.plan-migrations.outputs.pending != '0'
+    runs-on: ubuntu-latest
+    environment: prod-migrations
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # If prod-migrations was never set up, GitHub creates it on first use with no reviewer,
+      # and this job would pass without anyone approving. Refuse in that case.
+      - name: Require a reviewer on prod-migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          approvals="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" --jq 'length')"
+          if [ "${approvals}" = "0" ]; then
+            echo "::error::prod-migrations has no required reviewer, so nobody approved these migrations. Run scripts/setup-github.sh (docs/OPERATIONS.md#github-setup), then re-run."
+            exit 1
+          fi
+          echo "Approved. Pending migrations: ${{ needs.plan-migrations.outputs.pending }}."
+
+  migrate:
+    name: Migrate prod (Drive backup first)
+    needs: [setup, approve-migrations]
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: prod-db-backup
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.setup.outputs.sha }}
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client jq
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # The runner disk is thrown away, so the restorable copy is the Drive one.
+      - name: Full backup to Google Drive
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
+          SHA: ${{ needs.setup.outputs.sha }}
+        run: |
+          export DRIVE_BACKUP_SUBPATH="Manual/pre-migrate-$(date -u +%Y%m%d-%H%M%S)-${SHA::7}"
+          bash scripts/backup-prod-to-drive.sh
+
+      - name: Preflight, apply, verify
+        env:
+          PROD_DB_URL: ${{ secrets.PROD_DB_URL }}
+          CONFIRM_PROD_MIGRATE: "yes"
+        run: bash scripts/migrate-prod.sh
+
+  deploy:
+    name: Deploy ${{ needs.setup.outputs.target }}
+    needs: [setup, plan-migrations, approve-migrations, migrate]
+    # Runs when migrations were applied or not needed (or the target is staging).
+    # A rejected approval or a failed migration leaves the live site as it was.
+    if: >-
+      always() && needs.setup.result == 'success' &&
+      contains(fromJSON('["success","skipped"]'), needs.plan-migrations.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.approve-migrations.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.migrate.result)
+    runs-on: ubuntu-latest
+    environment: ${{ needs.setup.outputs.target }}
+    permissions:
+      contents: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ needs.setup.outputs.target }}
+      SHA: ${{ needs.setup.outputs.sha }}
+    steps:
+      - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.REF }}
+          ref: ${{ needs.setup.outputs.sha }}
           fetch-depth: 1
 
       - name: Install Node
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
 
-      - name: Build vendor bundles
-        run: npm run build:vendor
-
-      - name: >-
-          ${{ env.TARGET == 'staging' && 'Patch' || 'Compile' }}
+      - name: Write js/env.js
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           set -euo pipefail
-          target="$TARGET"
-
-          case "$target" in
-            staging|prod) ;;
-            *) echo "invalid target: $target" >&2; exit 1 ;;
-          esac
-
           cat > js/env.js <<EOF
           window.__APP_CONFIG__ = {
             SUPABASE_URL: "${SUPABASE_URL}",
             SUPABASE_ANON_KEY: "${SUPABASE_ANON_KEY}",
-            APP_ENV: "${target}",
+            APP_ENV: "${TARGET}",
           };
           EOF
 
-          [ "$target" = "staging" ] && rm -f CNAME
-
+      # Start from the live gh-pages tree so a prod deploy keeps /staging/ and vice versa.
+      - name: Build site
+        run: |
+          set -euo pipefail
           mkdir -p _site
           git fetch origin gh-pages --depth=1 2>/dev/null || true
           if git rev-parse origin/gh-pages >/dev/null 2>&1; then
             git archive origin/gh-pages | tar -x -C _site
           fi
+          node scripts/build-deploy.mjs "$TARGET" _site
+          site_root="_site"; [ "$TARGET" = "staging" ] && site_root="_site/staging"
+          printf '{"sha":"%s","target":"%s","built_at":"%s"}\n' \
+            "$SHA" "$TARGET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${site_root}/version.json"
 
-          touch _site/.nojekyll
-          excludes=(--exclude _site --exclude .git --exclude .github --exclude supabase --exclude scripts --exclude docs --exclude _partials --exclude node_modules --exclude package.json --exclude package-lock.json --exclude types --exclude jsconfig.json --exclude eslint.config.mjs)
-
-          if [ "$target" = "staging" ]; then
-            mkdir -p _site/staging
-            rsync -a "${excludes[@]}" ./ _site/staging/
-          else
-            staging_backup=""
-            if [ -d _site/staging ]; then
-              staging_backup="$(mktemp -d)"
-              mv _site/staging "$staging_backup/staging"
-            fi
-            rsync -a "${excludes[@]}" ./ _site/
-            if [ -n "$staging_backup" ]; then
-              mv "$staging_backup/staging" _site/staging
-              rmdir "$staging_backup"
-            fi
-          fi
-
-          if [ "$target" = "staging" ]; then
-            npm run build:html -- _site/staging
-            npm run stamp -- _site/staging
-            npm run minify -- _site/staging
-          else
-            npm run build:html -- _site --exclude staging
-            npm run stamp -- _site --exclude staging
-            npm run minify -- _site --exclude staging
-          fi
-
-      - name: >-
-          ${{ env.TARGET == 'staging' && 'Preview' || 'Release' }}
+      - name: Publish to gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
-          target="$TARGET"
-          commit_sha="$(git rev-parse HEAD)"
-
           cd _site
           git init -q
           git config user.name "github-actions[bot]"
@@ -146,7 +246,7 @@ jobs:
             echo "gh-pages unchanged, skipping push"
             exit 0
           fi
-          git commit -q -m "deploy ${target}: ${commit_sha}"
+          git commit -q -m "deploy ${TARGET}: ${SHA}"
           git branch -M gh-pages
           git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           for attempt in 1 2 3; do
@@ -156,3 +256,50 @@ jobs:
           done
           echo "gh-pages push failed after 3 attempts" >&2
           exit 1
+
+      # Waits for GitHub Pages to serve this commit, then checks the pages and config load
+      # and Supabase answers. Fails the run (red badge) if the live site is broken.
+      - name: Smoke test live site
+        run: |
+          set -euo pipefail
+          base="https://$(cat CNAME)"; [ "$TARGET" = "staging" ] && base="${base}/staging"
+          echo "Waiting for ${base}/version.json to report ${SHA::7}…"
+          for i in $(seq 1 40); do
+            live="$(curl -sSf --max-time 10 "${base}/version.json?t=$(date +%s)" | jq -r .sha 2>/dev/null || true)"
+            [ "$live" = "$SHA" ] && break
+            [ "$i" = 40 ] && { echo "Pages still serving ${live:-nothing} after 10 minutes" >&2; exit 1; }
+            sleep 15
+          done
+          for page in index.html login.html dashboard.html meter-reading.html sw.js manifest.json; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "${base}/${page}?t=$(date +%s)")"
+            echo "${code} ${page}"; [ "$code" = 200 ]
+          done
+          env_js="$(curl -sSf --max-time 15 "${base}/js/env.js?t=$(date +%s)")"
+          # env.js is minified on deploy (KEY:"value"), so match with optional spaces.
+          cfg() { sed -nE "s/.*${1}[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\\1/p" <<<"$env_js"; }
+          [ "$(cfg APP_ENV)" = "$TARGET" ] || { echo "js/env.js APP_ENV is '$(cfg APP_ENV)', want ${TARGET}" >&2; exit 1; }
+          if grep -q "YOUR-PROJECT-ID" <<<"$env_js"; then echo "js/env.js has placeholder values" >&2; exit 1; fi
+          supabase_url="$(cfg SUPABASE_URL)"
+          anon="$(cfg SUPABASE_ANON_KEY)"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 --retry 2 \
+            -H "apikey: ${anon}" "${supabase_url%/}/auth/v1/health")"
+          echo "${code} Supabase auth health"; [ "$code" = 200 ]
+          echo "Live ${TARGET} site OK at ${base}/ (${SHA::7})" >> "$GITHUB_STEP_SUMMARY"
+
+      # One release per prod commit: v<IST date>.<n>, notes generated from merged PRs.
+      # Rollback = Actions → Deploy → Run workflow, target prod, ref = an earlier tag.
+      - name: Tag release
+        if: env.TARGET == 'prod'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch -q --tags origin
+          if git tag --points-at "$SHA" | grep -q '^v'; then
+            echo "Commit already released as $(git tag --points-at "$SHA" | grep '^v' | head -1)"
+            exit 0
+          fi
+          day="v$(TZ=Asia/Kolkata date +%Y.%m.%d)"
+          n=1; while git rev-parse -q --verify "refs/tags/${day}.${n}" >/dev/null; do n=$((n + 1)); done
+          gh release create "${day}.${n}" --target "$SHA" --generate-notes --title "${day}.${n}"
+          echo "Released **${day}.${n}**" >> "$GITHUB_STEP_SUMMARY"
