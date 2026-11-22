@@ -19,9 +19,9 @@ jobs:
     name: Build site + JS syntax + doc links
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
@@ -64,10 +64,10 @@ jobs:
         run: node scripts/check-doc-links.mjs
 
   migrations:
-    name: Migration names + order
+    name: Migration names + order + function sources
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -76,13 +76,17 @@ jobs:
           BASE_REF: origin/${{ github.base_ref }}
         run: bash scripts/check-migration-order.sh
 
+      # Plain Node, no npm deps (runner's preinstalled Node).
+      - name: functions-sql matches schema.sql and newest migration
+        run: node scripts/sql-functions.mjs check
+
   schema-drift:
     name: schema.sql matches migrations
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -99,9 +103,9 @@ jobs:
     name: pgTAP (day closing, credit, RLS)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -120,9 +124,9 @@ jobs:
     name: types/db.d.ts matches schema.sql
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |

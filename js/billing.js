@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId, syncLoadMorePager, bindUnsavedDraft, initPageSections, LOOKUP_ROW_LIMIT, debounce, formatGstLabel, runAppRequest, renderTableRetryRow, resetPaginationLoading, fetchAllRows, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive */
+/* global requireAuth, applyRoleVisibility, formatCurrency, AppCache, AppError, showProgress, hideProgress, ActionProgress, escapeHtml, PumpSettings, loadPumpSettings, readDateRangeFromControls, createDateRangeFilter, getMonthRange, AdminDelete, CacheInvalidation, formatNumericDate, initPersistedDateInput, finishRecordFormSave, getLocalDateString, RECORD_DATE_KEYS, PrintUtils, AppConfig, DriveFiles, formRequestId, clearFormRequestId, syncLoadMorePager, bindUnsavedDraft, initPageSections, LOOKUP_ROW_LIMIT, debounce, formatGstLabel, runAppRequest, renderTableRetryRow, resetPaginationLoading, fetchAllRows, isCancelledRequestError, bindLiveRefresh, isSettingsPanelActive, highlightSavedEntry */
 
 let productsCache = [];
 let billingDraft = null;
@@ -651,6 +651,7 @@ async function saveInvoice() {
     }
 
     resetForm();
+    highlightSavedEntry(document.getElementById("invoices-table-body"), [data.invoice_number]);
     loadInvoices(true);
 
     if (typeof CacheInvalidation !== "undefined") {
@@ -918,7 +919,7 @@ async function loadInvoices(reset = false) {
           })}`
         : "";
       const driveLink = inv.drive_web_view_link
-        ? ` <a class="link" href="${escapeHtml(inv.drive_web_view_link)}" target="_blank" rel="noopener">Drive</a>`
+        ? ` <a class="link" href="${escapeHtml(inv.drive_web_view_link)}" target="_blank" rel="noopener">Drive<span class="icon icon--external icon-after" aria-hidden="true"></span><span class="sr-only"> (opens in a new tab)</span></a>`
         : "";
       tr.innerHTML = `
         <td><strong>${escapeHtml(inv.invoice_number)}</strong></td>

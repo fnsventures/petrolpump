@@ -4,7 +4,7 @@
     <!-- @partial app-head -->
   </head>
   <body class="credit-list-view">
-    <!-- @partial app-topbar title="Credit Ledger" -->
+    <!-- @partial app-topbar title="Credit ledger" -->
 
     <main class="app-layout settings-layout">
         <nav id="credit-list-nav" class="settings-nav card" aria-label="Credit sections">
@@ -17,7 +17,7 @@
 
         <nav id="credit-customer-nav" class="settings-nav card hidden" aria-label="Customer sections" hidden>
           <p class="settings-nav-title">Customer</p>
-          <a class="settings-nav-back" href="credit.html#outstanding">← Back to list</a>
+          <a class="settings-nav-back" href="credit.html#outstanding">All customers</a>
           <button type="button" class="settings-nav-item is-active" data-section="summary">Activity</button>
           <button type="button" class="settings-nav-item" data-section="settle">Record payment</button>
           <button type="button" class="settings-nav-item" data-section="credit">Credit taken</button>
@@ -43,7 +43,7 @@
             </div>
             <div class="stat-card">
               <span class="stat-label">Quick link</span>
-              <a href="#outstanding" class="stat-link">View outstanding list →</a>
+              <a href="#outstanding" class="stat-link">View outstanding list<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a>
             </div>
           </div>
 
@@ -75,7 +75,7 @@
                   </div>
                 </div>
                 <div class="filter-actions">
-                  <button type="button" id="credit-overview-apply-filter">Apply</button>
+                  <button class="button-primary" type="button" id="credit-overview-apply-filter">Apply</button>
                   <button
                     type="button"
                     id="credit-overview-print-btn"
@@ -218,7 +218,7 @@
                 min="0.01"
                 placeholder="0"
                 required
-                inputmode="decimal"
+                inputmode="decimal" data-unit="₹"
               />
             </div>
 
@@ -250,7 +250,7 @@
                 step="0.001"
                 min="0"
                 placeholder="1"
-                inputmode="decimal"
+                inputmode="decimal" data-unit="L"
               />
             </div>
           </div>
@@ -305,7 +305,7 @@
           </details>
 
           <div class="form-actions credit-form-actions">
-            <button type="submit">Save sale</button>
+            <button class="button-primary" type="submit">Save sale</button>
           </div>
           <p id="credit-success" class="success hidden">Credit entry saved.</p>
           <p id="credit-error" class="error hidden"></p>
@@ -333,7 +333,7 @@
             </div>
             <div class="form-field">
               <label for="quick-settle-amount">Amount (₹)</label>
-              <input type="text" min="0" step="0.01" id="quick-settle-amount" class="settle-amount" placeholder="Amount" inputmode="decimal" />
+              <input type="text" min="0" step="0.01" id="quick-settle-amount" class="settle-amount" placeholder="Amount" inputmode="decimal" data-unit="₹" />
             </div>
             <div class="form-field form-field-checkbox credit-same-day-field">
               <label class="checkbox-label" for="quick-settle-same-day">
@@ -447,7 +447,7 @@
                 tabindex="-1"
                 aria-label="Edit customer details"
               >
-                <h1 id="customer-title" class="customer-balance-name">Loading…</h1>
+                <h2 id="customer-title" class="customer-balance-name">Loading…</h2>
                 <span class="customer-name-edit-hint" aria-hidden="true">Edit</span>
               </div>
               <div class="contact-line" id="customer-contact-line">
@@ -590,7 +590,7 @@
                 </div>
               </div>
               <div class="filter-actions">
-                <button type="button" id="customer-apply-filter">Apply</button>
+                <button class="button-primary" type="button" id="customer-apply-filter">Apply</button>
               </div>
             </div>
           </div>
@@ -662,7 +662,7 @@
                   class="settle-amount"
                   id="settle-amount"
                   placeholder="0"
-                  inputmode="decimal"
+                  inputmode="decimal" data-unit="₹"
                 />
               </div>
             </div>
@@ -741,11 +741,9 @@
       <div class="card app-modal-panel customer-edit-card">
         <div class="app-modal-head">
           <h2 id="customer-edit-title">Customer details</h2>
-          <button type="button" class="app-modal-close" id="customer-edit-close" aria-label="Close">
-            ×
-          </button>
+          <button type="button" class="app-modal-close" id="customer-edit-close" aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
-        <form id="customer-info-form" class="form customer-edit-form">
+        <form id="customer-info-form" data-enter-next class="form customer-edit-form">
           <div class="form-field">
             <label for="edit-customer-name">Customer name</label>
             <input
@@ -770,7 +768,7 @@
           </div>
           <div class="form-field">
             <label for="edit-customer-limit">Credit limit (₹) <span class="optional-label">(opt.)</span></label>
-            <input id="edit-customer-limit" name="credit_limit" type="text" min="0" step="0.01" inputmode="decimal" placeholder="No limit" />
+            <input id="edit-customer-limit" name="credit_limit" type="text" min="0" step="0.01" inputmode="decimal" placeholder="No limit" data-unit="₹" />
           </div>
           <div class="form-field">
             <label for="edit-customer-address">Address</label>
@@ -783,7 +781,7 @@
             ></textarea>
           </div>
           <div class="form-actions customer-edit-actions">
-            <button type="submit">Save details</button>
+            <button class="button-primary" type="submit">Save details</button>
             <button type="button" id="customer-info-cancel-btn" class="button-secondary">Cancel</button>
           </div>
           <p id="customer-info-msg" class="muted hidden" aria-live="polite"></p>
@@ -791,9 +789,6 @@
       </div>
     </dialog>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

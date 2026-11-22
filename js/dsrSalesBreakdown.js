@@ -227,7 +227,7 @@
 
     const merged = mergePumpRows(rows, dailyPump);
     if (!merged.length) {
-      host.innerHTML = emptyHtml("No pump sales", 'Add meters in <a href="meter-reading.html">Meter Reading</a>.');
+      host.innerHTML = emptyHtml("No pump sales", 'Add meters in <a href="meter-reading.html">Meter reading</a>.');
       return;
     }
 

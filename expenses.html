@@ -43,7 +43,7 @@
                 min="0.01"
                 step="0.01"
                 placeholder="0"
-                required
+                required data-unit="₹"
               />
             </div>
 
@@ -58,7 +58,9 @@
             </div>
           </div>
 
-          <button type="submit">Save expense</button>
+          <div class="sticky-save">
+            <button class="button-primary" type="submit">Save expense</button>
+          </div>
           <p id="expense-success" class="success hidden">Expense saved.</p>
           <p id="expense-error" class="error hidden"></p>
         </form>
@@ -90,7 +92,7 @@
               </div>
             </div>
             <div class="filter-actions">
-              <button type="button" id="expense-apply-filter">Apply</button>
+              <button class="button-primary" type="button" id="expense-apply-filter">Apply</button>
             </div>
           </div>
         </div>
@@ -120,9 +122,6 @@
         </section>
       </div>
     </main>
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

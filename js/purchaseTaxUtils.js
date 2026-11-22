@@ -398,7 +398,7 @@ function getPlBuyingPricePlaceholder() {
 
 function getPlBuyingPriceHint() {
   if (!usesPreVatBuyingPriceModel()) {
-    return "Enter tax-inclusive purchase rate per kilolitre (1000 L). Selling rates come from Meter Reading.";
+    return "Enter tax-inclusive purchase rate per kilolitre (1000 L). Selling rates come from Meter reading.";
   }
   return `Copy figures from the BPCL invoices for that load only. VAT/LST (${getPurchaseTaxPctLabel()}) and LFR GST (${getPurchaseLfrGstPct()}%) are applied automatically. Each saved receipt keeps its own delivery/LFR — past days are unchanged.`;
 }
@@ -407,9 +407,9 @@ function getPurchaseGstSummaryNote() {
   const unit = getBuyingPriceUnitLabel();
   const vatLabel = getPurchaseTaxPctLabel();
   if (usesPreVatBuyingPriceModel()) {
-    return `Based on stock receipts (L) and pre-VAT buying price (${unit} on Meter Reading → Purchase cost). VAT/LST: ${vatLabel}. Delivery from that receipt’s DLY totals; LFR (incl. ${getPurchaseLfrGstPct()}% GST) from the LFR invoice — stored per receipt day.`;
+    return `Based on stock receipts (L) and pre-VAT buying price (${unit} on Meter reading → Purchase cost). VAT/LST: ${vatLabel}. Delivery from that receipt’s DLY totals; LFR (incl. ${getPurchaseLfrGstPct()}% GST) from the LFR invoice — stored per receipt day.`;
   }
-  return `Based on stock receipts (L) and tax-inclusive buying price (${unit} on Meter Reading → Purchase cost). VAT/LST: ${vatLabel}.`;
+  return `Based on stock receipts (L) and tax-inclusive buying price (${unit} on Meter reading → Purchase cost). VAT/LST: ${vatLabel}.`;
 }
 
 function getPurchaseGstDetailNote() {

@@ -1,4 +1,4 @@
-/* Daily E-20 Testing Register — screen layout */
+/* Daily E-20 testing register — screen layout */
 
 body.e20-register-page .settings-panels {
   min-width: 0;
@@ -752,44 +752,227 @@ body.e20-register-page .sr-only {
     overflow: visible;
   }
 
+  /* As a table, the <colgroup> widths squeeze the flex card rows into the first
+   * column (~36px), so every field is too narrow to tap. Lay the cards out as blocks. */
   body.e20-register-page .e20-table--water.table-cards,
   body.e20-register-page .e20-table--quality.table-cards {
+    display: block;
     min-width: 0;
+    table-layout: auto;
   }
 
-  body.e20-register-page .e20-table--water.table-cards th,
-  body.e20-register-page .e20-table--water.table-cards td {
+  body.e20-register-page .e20-table.table-cards colgroup {
+    display: none;
+  }
+
+  body.e20-register-page .e20-table.table-cards th,
+  body.e20-register-page .e20-table.table-cards td {
     overflow: visible;
+    width: auto;
+  }
+
+  body.e20-register-page .e20-table.table-cards tbody td {
+    border: 0;
+    padding: 0.35rem 0.75rem;
+    min-height: 3.25rem;
+  }
+
+  body.e20-register-page .e20-table.table-cards tbody td::before {
+    flex: 0 0 38%;
+  }
+
+  body.e20-register-page .e20-table.table-cards td :is(input:not([type="checkbox"]), select) {
+    flex: 1 1 0;
+    text-align: left;
+  }
+
+  /* Signature boxes: a thumb-sized target instead of a 13px box. */
+  body.e20-register-page .e20-table.table-cards .e20-cell-check {
+    width: auto;
+  }
+
+  body.e20-register-page .e20-table.table-cards .e20-cell-check input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: 0;
+  }
+
+  body.e20-register-page .e20-table.table-cards .e20-slot-time {
+    white-space: normal;
+  }
+
+  /* Part A: the remove button sits in the card's top corner, beside the tank name. */
+  body.e20-register-page .e20-table--water.table-cards tbody tr {
+    position: relative;
+  }
+
+  body.e20-register-page .e20-table.table-cards .e20-col-actions {
+    position: absolute;
+    top: 0.3rem;
+    right: 0.3rem;
+    min-height: 0;
+    padding: 0;
+  }
+
+  body.e20-register-page .e20-table.table-cards .e20-col-actions::before {
+    content: none;
+  }
+
+  body.e20-register-page .e20-table--water.table-cards tbody td.e20-cell-tank {
+    padding-right: 3.5rem;
+  }
+
+  body.e20-register-page .e20-form-locked .e20-table--water.table-cards tbody td.e20-cell-tank {
+    padding-right: 0.75rem;
+  }
+
+  /* Part B: one slot open at a time; the rest collapse to a tappable one-line summary. */
+  body.e20-register-page .e20-table--quality.table-cards td.e20-slot-no {
+    display: none;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards td.e20-slot-time {
+    padding: 0;
+    min-height: 0;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards td.e20-slot-time::before,
+  body.e20-register-page .e20-table--quality.table-cards .e20-slot-time-text {
+    display: none;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards .e20-slot-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 3rem;
+    padding: 0.35rem 0.75rem;
+    border: 0;
+    background: transparent;
+    color: var(--text-heading);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards .e20-slot-toggle::after {
+    content: "▾";
+    margin-left: auto;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards .e20-slot-toggle[aria-expanded="true"]::after {
+    transform: rotate(180deg);
+  }
+
+  body.e20-register-page .e20-slot-toggle-time {
+    flex: 0 0 auto;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  body.e20-register-page .e20-slot-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-sm);
+    font-weight: 400;
+    color: var(--text-secondary);
+  }
+
+  body.e20-register-page .e20-slot-summary.is-empty {
+    color: var(--text-muted);
+    font-style: italic;
+  }
+
+  body.e20-register-page .e20-slot-toggle[aria-expanded="true"] .e20-slot-summary {
+    display: none;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards tbody tr.is-collapsed {
+    padding: 0;
+  }
+
+  body.e20-register-page .e20-table--quality.table-cards tbody tr.is-collapsed td:not(.e20-slot-time) {
+    display: none;
+  }
+
+  /* Locked: summaries are read-only, so the disabled toggle should not look greyed out. */
+  body.e20-register-page .e20-form-locked .e20-slot-toggle {
+    cursor: default;
+    opacity: 1;
+  }
+
+  body.e20-register-page .e20-form-locked .e20-slot-toggle::after {
+    content: none;
   }
 }
 
+/* The toggle only exists for phone cards; the desktop table keeps the plain slot time.
+ * (.table-cards is set at every width — the card layout itself is phone-only.) */
+@media (min-width: 769px) {
+  body.e20-register-page .e20-table--quality .e20-slot-toggle {
+    display: none;
+  }
+}
+
+/* Save stays in reach after each 2-hour check instead of sitting below every slot.
+ * Fixed, like the meter-reading save bar: <main> scrolls on x, so sticky would not stick. */
 @media (max-width: 768px) {
-  body.e20-register-page .e20-head-actions {
-    width: 100%;
+  body.e20-register-page .e20-form:not(.e20-form-locked) .e20-actions {
+    position: fixed;
+    z-index: 6;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding:
+      0.5rem
+      max(0.75rem, var(--safe-right))
+      calc(0.5rem + var(--safe-bottom))
+      max(0.75rem, var(--safe-left));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(var(--shadow-rgb), 0.08);
   }
 
-  body.e20-register-page .e20-date-field {
-    flex: 1;
+  body.has-app-tabbar.e20-register-page .e20-form:not(.e20-form-locked) .e20-actions {
+    bottom: calc(var(--app-tabbar-offset) + var(--safe-bottom));
+    padding-bottom: 0.5rem;
   }
 
-  body.e20-register-page .e20-hist-actions {
+  body:has(.app-network-status:not(.hidden)).e20-register-page .e20-form:not(.e20-form-locked) .e20-actions {
+    bottom: calc(2.75rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
+  }
+
+  body.e20-register-page:has(.settings-panel[data-panel="record"]:not([hidden]) .e20-form:not(.e20-form-locked)) {
+    padding-bottom: calc(4.5rem + var(--safe-bottom) + var(--app-tabbar-offset, 0px));
+  }
+
+  body.e20-register-page .e20-actions #e20-save-btn {
+    flex: 1 1 auto;
+    min-height: 3rem;
+  }
+}
+
+/* Small phones: label above a full-width field, so time, tank and staff values are not cut off. */
+@media (max-width: 420px) {
+  body.e20-register-page .e20-table.table-cards tbody td:has(input:not([type="checkbox"]):not([type="hidden"]), select) {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.25rem;
   }
 
-  body.e20-register-page .e20-sheet-preview {
-    padding: 0.65rem;
+  body.e20-register-page .e20-table.table-cards tbody td:has(input:not([type="checkbox"]):not([type="hidden"]), select)::before {
+    flex: none;
   }
 
-  body.e20-register-page .e20-preview-inner {
-    padding: 0.65rem;
-  }
-
-  body.e20-register-page .e20-preview-inner .e20-sheet-meta {
-    grid-template-columns: 1fr;
-  }
-
-  body.e20-register-page .e20-preview-inner .e20-cert-sign {
-    grid-template-columns: 1fr;
+  body.e20-register-page .e20-table.table-cards td :is(input:not([type="checkbox"]), select) {
+    flex: none;
+    width: 100%;
   }
 }

@@ -1,5 +1,5 @@
 // @ts-check
-/* global AppDialog, storedToLandedBuyingRatePerLitre, AppError, AppCache */
+/* global AppDialog, AppError, AppCache */
 /**
  * Shared utilities for the app.
  */
@@ -20,23 +20,85 @@ function escapeHtml(str) {
     .replace(/'/g, "&#39;");
 }
 
+/** Markup that is already safe: built by `html`, or wrapped on purpose with `trustedHtml`. */
+class SafeHtml {
+  /** @param {string} value */
+  constructor(value) {
+    this.value = value;
+  }
+  toString() {
+    return this.value;
+  }
+}
+
+/**
+ * @param {*} value
+ * @returns {string}
+ */
+function htmlValue(value) {
+  if (value instanceof SafeHtml) return value.value;
+  if (Array.isArray(value)) return value.map(htmlValue).join("");
+  if (value == null || value === false) return "";
+  return escapeHtml(value);
+}
+
+/**
+ * Tagged template that escapes every interpolated value.
+ * Nested `html` results and `trustedHtml` values pass through; arrays are joined;
+ * null, undefined and false render as nothing.
+ *   setHtml(el, html`<li>${row.name}</li>`);
+ * @param {TemplateStringsArray} strings
+ * @param {...*} values
+ * @returns {SafeHtml}
+ */
+function html(strings, ...values) {
+  let out = strings[0];
+  for (let i = 0; i < values.length; i++) {
+    out += htmlValue(values[i]) + strings[i + 1];
+  }
+  return new SafeHtml(out);
+}
+
+/**
+ * Mark a string as safe markup. Only for markup built elsewhere that already escapes its data.
+ * @param {*} markup
+ * @returns {SafeHtml}
+ */
+function trustedHtml(markup) {
+  return markup instanceof SafeHtml ? markup : new SafeHtml(String(markup ?? ""));
+}
+
+/**
+ * Replace an element's content. A plain string is escaped (shown as text), so only
+ * `html` / `trustedHtml` values become markup. The one sanctioned innerHTML write.
+ * @param {Element | null | undefined} el
+ * @param {*} content
+ */
+function setHtml(el, content) {
+  if (!el) return;
+  // eslint-disable-next-line no-restricted-syntax
+  el.innerHTML = htmlValue(content);
+}
+
 /** Literal text for a Postgres ILIKE pattern. % and _ stay characters, not wildcards. */
 function escapeIlikePattern(s) {
   return String(s ?? "").replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-/** Normalize a credit customer name for case-insensitive comparison. */
+/** Normalize a credit customer name for case-insensitive comparison; inner whitespace runs count as one space. */
 function normCustomerName(s) {
   return String(s ?? "")
     .trim()
+    .replace(/\s+/g, " ")
     .toLowerCase();
 }
 
 /**
  * Debounce a function — waits until calls stop for `waitMs`.
- * @param {Function} fn
+ * @template {(...args: any[]) => void} F
+ * @param {F} fn
  * @param {number} waitMs
- * @returns {Function & { cancel: () => void }}
+ * @returns {F & { cancel: () => void }}
  */
 function debounce(fn, waitMs = 150) {
   let timer = null;
@@ -49,7 +111,7 @@ function debounce(fn, waitMs = 150) {
     clearTimeout(timer);
     timer = null;
   };
-  return debounced;
+  return /** @type {any} */ (debounced);
 }
 
 /**
@@ -440,6 +502,20 @@ function formatNumberPlain(value, fractionDigits = 2) {
  * @param {string|null|undefined} nameOrEmail
  * @returns {string}
  */
+/**
+ * Icon from the shared set in css/components.css (close, chevron-right, chevron-down, external).
+ * Decorative: give the button or link its own aria-label / text.
+ * @param {"close" | "chevron-right" | "chevron-down" | "external"} name
+ * @param {string} [extraClass]
+ * @returns {HTMLSpanElement}
+ */
+function createIcon(name, extraClass = "") {
+  const icon = document.createElement("span");
+  icon.className = `icon icon--${name}${extraClass ? ` ${extraClass}` : ""}`;
+  icon.setAttribute("aria-hidden", "true");
+  return icon;
+}
+
 function getAvatarInitial(nameOrEmail) {
   const raw = String(nameOrEmail ?? "").trim();
   if (!raw) return "?";
@@ -879,7 +955,7 @@ function resetFormKeepingFields(form, fieldValues) {
  * expenses). The same id is reused while the submitted values are unchanged, so a retry after
  * a timeout or a lost response is recognised by the server instead of writing twice.
  * Call clearFormRequestId(form) after a successful save.
- * @param {HTMLFormElement|Element} form
+ * @param {HTMLFormElement|Element|null} form - null: no form to remember the id on (fresh id)
  * @param {unknown} values - submitted values; a change starts a new request
  * @returns {string}
  */
@@ -1422,12 +1498,39 @@ const AppLoader = (function () {
 
   function syncBusy(el) {
     if (!el || el.nodeType !== 1) return;
+    // A full-width table cell: loading shows shimmer rows, "No …" shows the shared empty state.
+    // Text inside a link in the cell counts too ("No staff yet. Add staff…").
+    const cell = el.tagName === "TD" ? el : el.parentElement?.closest?.("td[colspan]");
+    if (cell && cell.hasAttribute("colspan")) {
+      const cellText = (cell.textContent || "").trim();
+      syncTableCell(/** @type {HTMLElement} */ (cell), cellText, BUSY_TEXT_RE.test(cellText));
+      if (cell === el) return;
+    }
     const text = el.childElementCount === 0 ? el.textContent.trim() : "";
     const busy = BUSY_TEXT_RE.test(text);
     if (busy !== el.classList.contains(BUSY_CLASS)) el.classList.toggle(BUSY_CLASS, busy);
     // Bare "…" placeholders show only the logo.
     const iconOnly = busy && text === "…";
     if (iconOnly !== el.classList.contains(ICON_ONLY_CLASS)) el.classList.toggle(ICON_ONLY_CLASS, iconOnly);
+  }
+
+  const EMPTY_TEXT_RE = /^No\b[^\n]{0,120}$/;
+
+  /** @param {HTMLElement} cell */
+  function syncTableCell(cell, text, busy) {
+    // Printed reports keep plain text rows.
+    const inReport = Boolean(cell.closest(".report-table, .reports-output, [data-cell-state='off']"));
+    const loading = busy && !inReport;
+    const empty = !busy && !inReport && EMPTY_TEXT_RE.test(text);
+    cell.classList.toggle("cell-loading", loading);
+    cell.classList.toggle("cell-empty", empty);
+    // A stale colspan (e.g. admin-only column added) would leave the box half-width.
+    if (loading || empty) {
+      const cols = cell.closest("table")?.querySelector("thead tr:last-child")?.children.length || 0;
+      if (cols > Number(cell.getAttribute("colspan") || 1)) cell.setAttribute("colspan", String(cols));
+    }
+    if (loading) cell.setAttribute("aria-busy", "true");
+    else cell.removeAttribute("aria-busy");
   }
 
   function scan(root) {
@@ -1437,6 +1540,9 @@ const AppLoader = (function () {
       return;
     }
     if (root.nodeType !== 1) return;
+    // Inserted rows: tag full-width cells (loading / empty) even without a "…".
+    if (/** @type {Element} */ (root).matches?.("td[colspan]")) syncBusy(root);
+    /** @type {Element} */ (root).querySelectorAll?.("td[colspan]").forEach((td) => syncBusy(td));
     // Fast path: most inserted subtrees have no busy label at all.
     if (!root.textContent.includes("…")) {
       syncBusy(root);
@@ -1689,6 +1795,10 @@ function createRequestGuard() {
 }
 
 window.escapeHtml = escapeHtml;
+window.createIcon = createIcon;
+window.html = html;
+window.trustedHtml = trustedHtml;
+window.setHtml = setHtml;
 window.debounce = debounce;
 window.throttle = throttle;
 window.toLocalDateString = toLocalDateString;
@@ -1757,6 +1867,8 @@ window.captureDomDraftFields = captureDomDraftFields;
 window.omitDraftFields = omitDraftFields;
 window.saveDraftsForReload = saveDraftsForReload;
 window.unsavedWorkWouldBeLost = unsavedWorkWouldBeLost;
+window.unsavedWorkPending = unsavedWorkPending;
+window.highlightSavedEntry = highlightSavedEntry;
 window.trackUnsavedWork = trackUnsavedWork;
 window.showProgress = showProgress;
 window.hideProgress = hideProgress;
@@ -1835,398 +1947,11 @@ function calculateDsrSaleRupees(rows, { includeTesting = false } = {}) {
   return total;
 }
 
-/**
- * Receipt-rate lookup + landed-rate cache for P&L, analysis, and trading account.
- * Builds receipt indexes once; memoizes stored and landed rates per product/date.
- * Per-receipt delivery/LFR (from Purchase cost) ride with the carried pre-VAT rate.
- * @param {Array<{ date: string, product: string, buying_price_per_litre: number, purchase_delivery_per_kl?: number, purchase_lfr_per_kl?: number }>} receiptRows
- */
-function createBuyingRateContext(receiptRows) {
-  const byProduct = new Map();
-  (receiptRows ?? []).forEach((row) => {
-    const p = normalizeProduct(row.product);
-    if (!byProduct.has(p)) byProduct.set(p, []);
-    byProduct.get(p).push({
-      date: row.date,
-      buying_price_per_litre: Number(row.buying_price_per_litre),
-      purchase_delivery_per_kl: row.purchase_delivery_per_kl,
-      purchase_lfr_per_kl: row.purchase_lfr_per_kl,
-    });
-  });
-  byProduct.forEach((list) => list.sort((a, b) => b.date.localeCompare(a.date)));
-
-  const storedCache = new Map();
-  const receiptCache = new Map();
-  const landedCache = new Map();
-
-  function findReceipt(product, date) {
-    const p = normalizeProduct(product);
-    const cacheKey = `${p}\0${date}`;
-    if (receiptCache.has(cacheKey)) return receiptCache.get(cacheKey);
-
-    const list = byProduct.get(p);
-    let found = null;
-    if (list?.length) {
-      let lo = 0;
-      let hi = list.length - 1;
-      let foundIdx = -1;
-      while (lo <= hi) {
-        const mid = (lo + hi) >> 1;
-        if (list[mid].date <= date) {
-          foundIdx = mid;
-          hi = mid - 1;
-        } else {
-          lo = mid + 1;
-        }
-      }
-      const candidate = foundIdx >= 0 ? list[foundIdx] : null;
-      if (
-        candidate != null &&
-        Number.isFinite(candidate.buying_price_per_litre) &&
-        candidate.buying_price_per_litre > 0
-      ) {
-        found = candidate;
-      }
-    }
-    receiptCache.set(cacheKey, found);
-    return found;
-  }
-
-  function getStored(product, date) {
-    const p = normalizeProduct(product);
-    const cacheKey = `${p}\0${date}`;
-    if (storedCache.has(cacheKey)) return storedCache.get(cacheKey);
-    const found = findReceipt(product, date);
-    const stored = found?.buying_price_per_litre ?? null;
-    storedCache.set(cacheKey, stored);
-    return stored;
-  }
-
-  function chargeOverridesFromReceipt(receipt) {
-    if (!receipt) return { deliveryPerKl: 0, lfrPerKl: 0 };
-    const deliveryPerKl = Number(receipt.purchase_delivery_per_kl);
-    const lfrPerKl = Number(receipt.purchase_lfr_per_kl);
-    return {
-      deliveryPerKl: Number.isFinite(deliveryPerKl) && deliveryPerKl >= 0 ? deliveryPerKl : 0,
-      lfrPerKl: Number.isFinite(lfrPerKl) && lfrPerKl >= 0 ? lfrPerKl : 0,
-    };
-  }
-
-  function getLanded(stored, product, date, overrides) {
-    if (stored == null || !Number.isFinite(stored) || stored <= 0) return null;
-    const p = normalizeProduct(product);
-    const day = date ? String(date).slice(0, 10) : "";
-    const dOv = overrides?.deliveryPerKl;
-    const lOv = overrides?.lfrPerKl;
-    const cacheKey = `${p}\0${stored}\0${day}\0${dOv ?? ""}\0${lOv ?? ""}`;
-    if (landedCache.has(cacheKey)) return landedCache.get(cacheKey);
-    const landed = toLandedBuyingRatePerLitre(stored, p, day || null, overrides);
-    landedCache.set(cacheKey, landed);
-    return landed;
-  }
-
-  function getLandedForRow(row) {
-    const date = row?.date;
-    const receipt = findReceipt(row?.product, date);
-    const stored = resolveStoredBuyingRate(row, getStored);
-    const overrides = chargeOverridesFromReceipt(
-      receipt || {
-        purchase_delivery_per_kl: row?.purchase_delivery_per_kl,
-        purchase_lfr_per_kl: row?.purchase_lfr_per_kl,
-      }
-    );
-    return getLanded(stored, row?.product, date, overrides);
-  }
-
-  function getLandedForDate(product, date) {
-    const receipt = findReceipt(product, date);
-    return getLanded(
-      getStored(product, date),
-      product,
-      date,
-      chargeOverridesFromReceipt(receipt)
-    );
-  }
-
-  return { getStored, getLandedForRow, getLandedForDate, getBuying: getStored };
-}
-
-/**
- * Stored pre-VAT buying rate for a sale day.
- * Uses the latest receipt on or before that date (see createBuyingRateContext).
- * Row value is only a fallback on receipt days — sale-only rows may carry stale
- * buying_price_per_litre from imports and must not override receipt history.
- */
-function resolveStoredBuyingRate(row, getBuying) {
-  const fromMap = getBuying?.(row?.product, row?.date);
-  if (fromMap != null && Number.isFinite(fromMap) && fromMap > 0) return fromMap;
-  const isReceiptDay = Number(row?.receipts ?? 0) > 0;
-  const rowRate = Number(row?.buying_price_per_litre);
-  if (isReceiptDay && Number.isFinite(rowRate) && rowRate > 0) return rowRate;
-  return null;
-}
-
-/**
- * Landed buying rate (₹/L) for margin/cost: pre-VAT + delivery + VAT/LST + LFR.
- * Delivery/LFR come from the receipt that owns the pre-VAT rate (Purchase cost).
- * Missing receipt delivery/LFR → 0 (does not use Settings).
- * Never returns the raw stored pre-VAT rate — purchaseTaxUtils.js is required.
- */
-function toLandedBuyingRatePerLitre(storedRatePerLitre, product, date, chargeOverrides) {
-  const stored = Number(storedRatePerLitre);
-  if (!Number.isFinite(stored) || stored <= 0) return null;
-  if (typeof storedToLandedBuyingRatePerLitre !== "function") return null;
-  return storedToLandedBuyingRatePerLitre(stored, product, date, chargeOverrides);
-}
-
-/** Landed rate from latest receipt on or before a date (opening/closing stock, trading account). */
-function getLandedBuyingRateForDate(product, date, getBuyingOrCtx) {
-  if (getBuyingOrCtx?.getLandedForDate) return getBuyingOrCtx.getLandedForDate(product, date);
-  const stored = getBuyingOrCtx?.(product, date);
-  return toLandedBuyingRatePerLitre(stored, product, date);
-}
-
-function getEffectiveBuyingRate(row, getBuyingOrCtx) {
-  if (getBuyingOrCtx?.getLandedForRow) return getBuyingOrCtx.getLandedForRow(row);
-  const stored = resolveStoredBuyingRate(row, getBuyingOrCtx);
-  if (stored == null) return null;
-  return toLandedBuyingRatePerLitre(stored, row?.product, row?.date);
-}
-
-/** Per-row fuel P&L: net litres × selling/buying rates (petrol & diesel only). */
-function computeFuelRowMargin(row, getBuyingOrCtx) {
-  const product = normalizeProduct(row?.product);
-  if (product !== "petrol" && product !== "diesel") {
-    return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
-  }
-  const litres = getDsrNetSaleLitres(row);
-  if (!Number.isFinite(litres) || litres <= 0) {
-    return { revenue: 0, cost: 0, grossProfit: 0, litres: 0 };
-  }
-  const sellingRate = getDsrSaleRate(row);
-  const buyingRate = getBuyingOrCtx ? getEffectiveBuyingRate(row, getBuyingOrCtx) : null;
-  const revenue =
-    Number.isFinite(sellingRate) && sellingRate > 0 ? litres * sellingRate : 0;
-  const cost = buyingRate != null ? litres * buyingRate : 0;
-  const grossProfit =
-    revenue > 0 && buyingRate != null ? litres * (sellingRate - buyingRate) : 0;
-  return { revenue, cost, grossProfit, litres };
-}
-
-/** Single pass: fuel revenue, cost, and gross profit from DSR rows. */
-function accumulateFuelPnL(dsrRows, getBuyingOrCtx) {
-  let revenue = 0;
-  let missingRates = 0;
-  let costOfGoods = 0;
-  let fuelGrossProfit = 0;
-  for (const row of dsrRows ?? []) {
-    const { revenue: rowRevenue, cost, grossProfit, litres } = computeFuelRowMargin(
-      row,
-      getBuyingOrCtx
-    );
-    if (litres <= 0) continue;
-    revenue += rowRevenue;
-    costOfGoods += cost;
-    fuelGrossProfit += grossProfit;
-    const sellingRate = getDsrSaleRate(row);
-    if (!Number.isFinite(sellingRate) || sellingRate <= 0) missingRates += 1;
-  }
-  return { revenue, missingRates, costOfGoods, fuelGrossProfit };
-}
-
-/** Net sale revenue (₹) from fuel DSR rows. */
-function computeFuelRevenue(dsrRows) {
-  const { revenue, missingRates } = accumulateFuelPnL(dsrRows, null);
-  return { total: revenue, missingRates };
-}
-
-/** Fuel cost at effective buying rates (₹). */
-function computeFuelCostOfGoods(dsrRows, getBuyingOrCtx) {
-  return accumulateFuelPnL(dsrRows, getBuyingOrCtx).costOfGoods;
-}
-
-/** Fuel gross profit: net litres × (selling rate − effective buying rate). */
-function computeFuelGrossProfit(dsrRows, getBuyingOrCtx) {
-  return accumulateFuelPnL(dsrRows, getBuyingOrCtx).fuelGrossProfit;
-}
-
-function sumExpenseAmounts(expenseRows, { excludeTesting = false, testingOnly = false, categoryMap = null } = {}) {
-  return (expenseRows ?? []).reduce((sum, row) => {
-    const isTesting = isTestingExpenseRow(row, categoryMap);
-    if (testingOnly && !isTesting) return sum;
-    if (excludeTesting && isTesting) return sum;
-    const amount = Number(row.amount ?? 0);
-    return sum + (Number.isFinite(amount) ? amount : 0);
-  }, 0);
-}
-
-/** MS/HS and density fuel testing — excluded from P&L net profit (tracked separately in day closing). */
-const TESTING_EXPENSE_CATEGORY_SLUGS = new Set([
-  "mstest",
-  "hsdtest",
-  "ms_testing",
-  "hs_testing",
-  "ms-test",
-  "hs-test",
-  "ms_test",
-  "hs_test",
-  "densitytest",
-  "density_test",
-  "density-test",
-  "density_testing",
-]);
-
-function isTestingExpenseCategory(category, label) {
-  const slug = String(category ?? "").toLowerCase();
-  if (TESTING_EXPENSE_CATEGORY_SLUGS.has(slug)) return true;
-  const normalizedLabel = String(label ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-  return (
-    normalizedLabel === "ms testing" ||
-    normalizedLabel === "hs testing" ||
-    normalizedLabel === "hsd testing" ||
-    normalizedLabel === "density test" ||
-    normalizedLabel === "density testing"
-  );
-}
-
-/**
- * Display / detection label for an expense row.
- * When categoryMap is provided (Reports), use Settings label — same as books bucketing.
- * Otherwise fall back to row.label, then description (Dashboard / Analysis).
- */
-function getExpenseCategoryLabel(row, categoryMap) {
-  const key = row?.category || "misc";
-  if (categoryMap && Object.prototype.hasOwnProperty.call(categoryMap, key)) {
-    return categoryMap[key] || key || "Miscellaneous";
-  }
-  if (row?.label) return String(row.label);
-  if (!categoryMap && row?.description) return String(row.description);
-  if (categoryMap) return key || "Miscellaneous";
-  return key || "Miscellaneous";
-}
-
-/** Single rule for testing vs operating expense (Reports, Dashboard, Analysis). */
-function isTestingExpenseRow(row, categoryMap) {
-  return isTestingExpenseCategory(row?.category, getExpenseCategoryLabel(row, categoryMap));
-}
-
-/** name → label map from expense_categories rows (Settings). Empty → null (use description fallback). */
-function buildExpenseCategoryMap(categories) {
-  const categoryMap = {};
-  (categories ?? []).forEach((c) => {
-    if (c?.name == null) return;
-    categoryMap[c.name] = c.label ?? c.name;
-  });
-  return Object.keys(categoryMap).length > 0 ? categoryMap : null;
-}
-
-/**
- * Receipt days with no buying price entered on the row itself.
- * Used for the warning UI; calculations may still use the previous receipt rate.
- */
-function findMissingBuyingPriceRows(dsrRows) {
-  return (dsrRows ?? []).filter((row) => {
-    if (Number(row.receipts ?? 0) <= 0) return false;
-    const rate = Number(row.buying_price_per_litre);
-    return !Number.isFinite(rate) || rate <= 0;
-  });
-}
-
-/**
- * Sale / receipt rows that cannot resolve any landed buying rate even via prior receipts.
- * @param {Function|object} getBuyingOrCtx - buying context or getStored fn
- */
-function findUnresolvedBuyingRateRows(dsrRows, getBuyingOrCtx) {
-  return (dsrRows ?? []).filter((row) => {
-    const product = normalizeProduct(row?.product);
-    if (product !== "petrol" && product !== "diesel") return false;
-    const needsRate =
-      getDsrNetSaleLitres(row) > 0 || Number(row?.receipts ?? 0) > 0;
-    if (!needsRate) return false;
-    const rate = getEffectiveBuyingRate(row, getBuyingOrCtx);
-    return rate == null || !Number.isFinite(rate) || rate <= 0;
-  });
-}
-
-/**
- * Unified P&L for dashboard, reports, and analysis.
- * Fuel cost uses landed buying rate per litre: (pre-VAT + delivery/L) × (1 + VAT%) + LFR/L.
- * Missing receipt-day rates fall back to the previous receipt rate for calculation;
- * missingBuyingPrice lists rows that still need an entered rate (warning only).
- * Net profit = fuel gross profit + lube sales − lube COGS − operating expenses
- * (MS/HS and density testing excluded). Requires purchaseTaxUtils.js (loaded before utils.js).
- * @param {{ dsrRows?: any[], receiptRows?: any[], expenseRows?: any[], lubeSales?: number, lubeCogs?: number,
- *   requireAllBuying?: boolean, buyingContext?: any, categoryMap?: any }} params
- */
-function computeProfitLossSummary({
-  dsrRows,
-  receiptRows,
-  expenseRows,
-  lubeSales = 0,
-  lubeCogs = 0,
-  requireAllBuying = true,
-  buyingContext = null,
-  categoryMap = null,
-} = {}) {
-  const ctx = buyingContext ?? createBuyingRateContext(receiptRows ?? []);
-  const missingBuyingPrice = findMissingBuyingPriceRows(dsrRows);
-  const unresolvedBuying = findUnresolvedBuyingRateRows(dsrRows, ctx);
-  // Calculate whenever a prior (or own) rate can be resolved; warn separately for unentered rows.
-  const canCalculate = !requireAllBuying || unresolvedBuying.length === 0;
-  const fuelPnL = accumulateFuelPnL(dsrRows, canCalculate ? ctx : null);
-  const lube = Number(lubeSales ?? 0);
-  const lubeCost = Math.max(0, Number(lubeCogs ?? 0));
-  const testingExpenses = sumExpenseAmounts(expenseRows, { testingOnly: true, categoryMap });
-  const totalExpenses = sumExpenseAmounts(expenseRows, { excludeTesting: true, categoryMap });
-  const fuelGrossProfit = canCalculate ? fuelPnL.fuelGrossProfit : null;
-  const lubeGrossProfit = lube - lubeCost;
-  const grossProfit = fuelGrossProfit != null ? fuelGrossProfit + lubeGrossProfit : null;
-  const netProfit = grossProfit != null ? grossProfit - totalExpenses : null;
-
-  return {
-    revenue: fuelPnL.revenue,
-    missingRates: fuelPnL.missingRates,
-    costOfGoods: canCalculate ? fuelPnL.costOfGoods + lubeCost : lubeCost,
-    fuelGrossProfit,
-    lubeSales: lube,
-    lubeCogs: lubeCost,
-    lubeGrossProfit,
-    grossProfit,
-    testingExpenses,
-    totalExpenses,
-    netProfit,
-    missingBuyingPrice,
-    unresolvedBuying,
-    usingProvisionalBuying: canCalculate && missingBuyingPrice.length > 0,
-    canCalculate,
-  };
-}
-
 window.sumByProduct = sumByProduct;
 window.resolveDayFuelStock = resolveDayFuelStock;
 window.getDsrNetSaleLitres = getDsrNetSaleLitres;
 window.getDsrSaleRate = getDsrSaleRate;
 window.calculateDsrSaleRupees = calculateDsrSaleRupees;
-window.createBuyingRateContext = createBuyingRateContext;
-window.resolveStoredBuyingRate = resolveStoredBuyingRate;
-window.toLandedBuyingRatePerLitre = toLandedBuyingRatePerLitre;
-window.getLandedBuyingRateForDate = getLandedBuyingRateForDate;
-window.getEffectiveBuyingRate = getEffectiveBuyingRate;
-window.computeFuelRowMargin = computeFuelRowMargin;
-window.computeFuelRevenue = computeFuelRevenue;
-window.computeFuelCostOfGoods = computeFuelCostOfGoods;
-window.computeFuelGrossProfit = computeFuelGrossProfit;
-window.sumExpenseAmounts = sumExpenseAmounts;
-window.isTestingExpenseCategory = isTestingExpenseCategory;
-window.getExpenseCategoryLabel = getExpenseCategoryLabel;
-window.isTestingExpenseRow = isTestingExpenseRow;
-window.buildExpenseCategoryMap = buildExpenseCategoryMap;
-window.findMissingBuyingPriceRows = findMissingBuyingPriceRows;
-window.findUnresolvedBuyingRateRows = findUnresolvedBuyingRateRows;
-window.computeProfitLossSummary = computeProfitLossSummary;
 
 /** MS/HSD or petrol/diesel → product key for styling. */
 function normalizeFuelType(value) {
@@ -2851,6 +2576,86 @@ function annotateWideTables(root) {
   scope.querySelectorAll?.(".table-wrap table, .table-scroll table, .e20-grid table").forEach(annotateWideTable);
 }
 
+/**
+ * Inputs with data-unit="₹" | "L" | "mm" show the unit inside the field, so it stays
+ * visible while typing (a placeholder disappears on the first keypress).
+ * @param {ParentNode} [root]
+ */
+function applyInputUnits(root) {
+  const scope = root || document;
+  scope.querySelectorAll?.("input[data-unit]").forEach((node) => {
+    const input = /** @type {HTMLInputElement} */ (node);
+    if (input.parentElement?.classList.contains("input-unit")) return;
+    const unit = String(input.dataset.unit || "").trim();
+    if (!unit) return;
+    const wrap = document.createElement("span");
+    wrap.className = unit === "₹" ? "input-unit input-unit--prefix" : "input-unit input-unit--suffix";
+    const badge = document.createElement("span");
+    badge.className = "input-unit-badge";
+    badge.setAttribute("aria-hidden", "true");
+    badge.textContent = unit;
+    input.replaceWith(wrap);
+    wrap.append(input, badge);
+  });
+}
+
+function installInputUnits() {
+  if (document.documentElement.dataset.bpfInputUnits === "1") return;
+  document.documentElement.dataset.bpfInputUnits = "1";
+  applyInputUnits(document);
+  let timer = 0;
+  new MutationObserver(() => {
+    if (timer) return;
+    timer = window.setTimeout(() => {
+      timer = 0;
+      applyInputUnits(document);
+    }, 60);
+  }).observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * After a save, briefly highlight the new row in the list below the form, so staff see
+ * where it went. Call before the list reloads; the row is found by its visible values
+ * (e.g. formatted date and amount) once it renders, wherever the sort order puts it.
+ * Rows already on screen before the save are ignored. Gives up after 8 s.
+ * @param {Element | null} list - the <tbody> or list element that re-renders
+ * @param {string[]} values - text the new row contains (all must match)
+ */
+function highlightSavedEntry(list, values) {
+  if (!list || !values?.length) return;
+  const needles = values.map((v) => String(v ?? "").trim()).filter(Boolean);
+  if (!needles.length) return;
+  const rowSelector = ":scope > tr, :scope > li";
+  const before = new Set(Array.from(list.querySelectorAll(rowSelector)).map((row) => row.textContent));
+  const matches = (row) => {
+    const text = row.textContent || "";
+    return !before.has(text) && needles.every((needle) => text.includes(needle));
+  };
+  let done = false;
+  const finish = () => {
+    done = true;
+    observer.disconnect();
+    window.clearTimeout(giveUp);
+  };
+  const tryFind = () => {
+    if (done) return;
+    const row = Array.from(list.querySelectorAll(rowSelector)).find(matches);
+    if (!row) return;
+    finish();
+    row.classList.remove("row-just-saved");
+    void (/** @type {HTMLElement} */ (row).offsetWidth);
+    row.classList.add("row-just-saved");
+    const rect = row.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+    window.setTimeout(() => row.classList.remove("row-just-saved"), 2600);
+  };
+  const observer = new MutationObserver(tryFind);
+  observer.observe(list, { childList: true, subtree: true });
+  const giveUp = window.setTimeout(finish, 8000);
+}
+
 function installResponsiveTables() {
   if (document.documentElement.dataset.bpfResponsiveTables === "1") return;
   document.documentElement.dataset.bpfResponsiveTables = "1";
@@ -2911,6 +2716,7 @@ if (typeof document !== "undefined") {
     installFieldValidation();
     installEnterMovesToNextField();
     installResponsiveTables();
+    installInputUnits();
   };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", startUiHelpers, { once: true });

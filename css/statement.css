@@ -154,7 +154,7 @@ h2 {
 .statement-summary div {
   padding: 0.625rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
 
@@ -166,7 +166,7 @@ h2 {
   margin-top: 1rem;
   padding: 0.875rem 1rem;
   border: 1px solid var(--warning-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--warning-soft);
   color: var(--warning-text);
   font-weight: 600;
@@ -249,7 +249,7 @@ td.is-total {
 .statement-print {
   margin-top: 0.75rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.65rem 1.1rem;
   font: inherit;
   font-weight: 600;

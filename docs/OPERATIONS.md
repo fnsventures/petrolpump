@@ -148,7 +148,7 @@ Then, when the pump is quiet (nobody entering DSR or day closing):
 ./scripts/db.sh migrate --apply   # local backup, then production schema
 ```
 
-**D. Go live.** Merge `staging` → `main`. Wait for **Deploy**. Smoke-test the live site: login → dashboard → one real page (Meter Reading).
+**D. Go live.** Merge `staging` → `main`. Wait for **Deploy**. Smoke-test the live site: login → dashboard → one real page (Meter reading).
 
 - [ ] Sync (optional)
 - [ ] Staging schema applied if there are new migrations

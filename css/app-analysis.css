@@ -468,7 +468,7 @@
 }
 
 .analysis-kpi--fuel-diesel {
-  border-color: rgba(230, 184, 0, 0.45);
+  border-color: var(--fuel-diesel-border);
   background: linear-gradient(165deg, var(--warning-soft) 0%, rgba(255, 255, 255, 0.92) 100%);
 }
 

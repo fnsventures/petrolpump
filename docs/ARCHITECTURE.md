@@ -57,7 +57,7 @@ petrolPump/
 ├── attendance.html         # Employee attendance (status, check-in/out)
 ├── salary.html             # Salary payments, pay-period tracking, printable slips
 ├── staff.html              # Employee roster, profile, photo, BPCL ID card (admin only)
-├── letterhead.html         # Letter Desk: letters on station letterhead (print + Drive archive)
+├── letterhead.html         # Letter desk: letters on station letterhead (print + Drive archive)
 ├── analysis.html           # Business intelligence: KPIs, charts, insights (admin only)
 ├── reports.html            # Printable reports: DSR, GST, trading/P&L (admin only)
 ├── settings.html           # Station config, users, salaries, products, integrations (admin only)
@@ -116,9 +116,11 @@ _partials/
 <body class="{page}-page">
   <!-- @partial app-topbar title="Dashboard" -->
   <main class="app-layout settings-layout">
+  …
+  <!-- @partial app-footer -->
 ```
 
-`npm run dev` / CI run `scripts/build-html.mjs`, which fills head + topbar from `_partials/app-pages.json`. To add a page: create the HTML body, add an entry to `app-pages.json`, and add a link in `js/appNav.js` (`NAV_GROUPS`).
+`npm run dev` / CI run `scripts/build-html.mjs`, which fills head + topbar + footer (copyright year set at build) from `_partials/app-pages.json`. To add a page: create the HTML body, add an entry to `app-pages.json`, and add a link in `js/appNav.js` (`NAV_GROUPS`).
 
 `settings-*` class names are legacy aliases of `app-layout` / `app-sections` / `app-panel`. New markup may use either; both are styled.
 
@@ -139,6 +141,7 @@ js/
 ├── roleBootstrap.js    # Early role visibility from cache (FOUC prevention)
 ├── pumpSettings.js     # Load/cache pump_settings.config
 ├── utils.js            # Shared utilities (formatting, debounce, DSR/fuel stock helpers, …)
+├── fuelPnl.js          # Buying rates, fuel margin, P&L summary (dashboard, analysis, reports only)
 ├── dsrQueries.js       # Shared DSR fetch/select helpers; receipt-history split
 ├── dsrSummary.js       # DSR summary section (lazy-loaded from dsr.js)
 ├── dsrSections.js      # DSR summary section ids and copy
@@ -154,7 +157,7 @@ js/
 ├── driveFiles.js       # Client for the drive-files edge function
 ├── taskUtils.js        # Shared Tasks helpers (reminders.js + dashboard.js)
 ├── purchaseTaxUtils.js # Fuel purchase VAT/LST helpers for reports
-├── buyingPriceEntry.js # Admin receipt-day ₹/KL entry (Meter Reading → Purchase cost)
+├── buyingPriceEntry.js # Admin receipt-day ₹/KL entry (Meter reading → Purchase cost)
 ├── landing.js          # Landing page
 ├── dashboard.js        # Dashboard snapshot, lazy DSR/Net profit sections, alerts
 ├── dsr.js              # DSR listing / stock summary page
@@ -162,8 +165,8 @@ js/
 ├── dsrStockControl.js  # DSR stock variance, tanker decantation
 ├── statementCsv.js     # Bank / UPI statement CSV parsing (pure; tests/statementCsv.test.mjs)
 ├── attendantShort.js   # Short / excess per attendant (salary + staff pages)
-├── meterReading.js     # Meter Reading form (MS/HSD upserts) + Purchase cost
-├── meterShiftReading.js # Shift register: nozzles, staff, cash (Meter Reading)
+├── meterReading.js     # Meter reading form (MS/HSD upserts) + Purchase cost
+├── meterShiftReading.js # Shift register: nozzles, staff, cash (Meter reading)
 ├── dsrLegacyRedirect.js # dsr.html#meter → meter-reading.html
 ├── credit.js           # Credit list view, lazy tab modules
 ├── creditOverview.js   # Credit overview tab (lazy)
@@ -182,7 +185,7 @@ js/
 ├── payrollRules.js     # Leave allowance, loss of pay, over-duty pay
 ├── staff.js            # Employee roster CRUD, photo upload, ID card (admin)
 ├── staffEmployees.js   # Cached employee loader (admin table vs supervisor RPCs)
-├── letterhead.js       # Letter Desk
+├── letterhead.js       # Letter desk
 ├── analysis.js         # BI dashboard: KPIs, charts, insights (admin)
 ├── reports.js          # Report catalog, data load, and print (admin)
 ├── reportsGst.js       # GST sales and purchase reports
@@ -210,9 +213,9 @@ Three layers, all role-aware (`js/auth.js` → `applyRoleVisibility()`). Links m
 
 | Group | Pages | Supervisor | Admin |
 |-------|-------|------------|-------|
-| **Operations** | Dashboard, Meter Reading, DSR, E-20 testing, Tasks | ✓ | ✓ |
+| **Operations** | Dashboard, Meter reading, DSR, E-20 testing, Tasks | ✓ | ✓ |
 | **Finance** | Credit, Expenses, Day closing, Billing | ✓ | ✓ |
-| **HR** | Attendance, Salary, Staff, Vault, Letter Desk | ✓ (Staff hidden unless permitted) | ✓ |
+| **HR** | Attendance, Salary, Staff, Documents, Letter desk | ✓ (Staff hidden unless permitted) | ✓ |
 | **Admin** | Analysis, Reports, Settings | ✗ | ✓ |
 
 Legacy URLs `credit-customer.html` and `credit-overdue.html` redirect into `credit.html` with query/hash preserved.
@@ -421,12 +424,12 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 
 | Capability | Admin | Supervisor |
 |------------|-------|------------|
-| Operations + Finance pages (Meter Reading, DSR, credit, expenses, day closing, billing, invoices) | ✓ | ✓ |
+| Operations + Finance pages (Meter reading, DSR, credit, expenses, day closing, billing, invoices) | ✓ | ✓ |
 | Attendance + salary recording | ✓ | ✓ |
 | Staff roster / ID cards (`staff.html`) | ✓ | ✗ |
 | Settings, Analysis, Reports | ✓ | ✗ |
 | Dashboard Net profit glance | ✓ | ✗ |
-| Meter Reading → Purchase cost (buying price entry) | ✓ | ✗ |
+| Meter reading → Purchase cost (buying price entry) | ✓ | ✗ |
 | Product catalog edit (Settings → Billing) | ✓ | ✗ (can bill using existing products) |
 | Employee master mutations (`employees` table) | ✓ | ✗ (reads via `list_employees_*` RPCs) |
 | Day closing overwrite after save | ✓ until certified | ✓ until certified or night cash collected |
@@ -440,7 +443,7 @@ Full RPC and table reference: [Data Tables](DATA_TABLES.md).
 - **Default policy pattern (operational tables):** SELECT for provisioned staff; INSERT with `is_supervisor_or_admin()` and `created_by = auth.uid()`; UPDATE for provisioned staff on own row or admin; DELETE admin only. Admin-only tables (e.g. `expense_categories`, `products`, `employees`) and exceptions are documented in [Data Tables](DATA_TABLES.md).
 - **Admin bootstrap:** When no admin exists, the first user may self-provision via `upsert_staff` or the matching RLS INSERT — only their own JWT email, role must be `admin`. Prevents arbitrary email escalation before an admin is established.
 - **Admin delete pattern:** `js/utils.js` → `AdminDelete` shows destructive actions only for admins (credit entries, day closing register, salary payments, etc.).
-- **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`).
+- **Shared client helpers:** `js/utils.js` exposes `formatNumericDate`, `formatNumberPlain`, `sumByProduct`, and `resolveDayFuelStock` for consistent report/dashboard formatting and fuel-stock resolution (prefer `dsr_stock.dip_stock` when present, else meter `stock`). Buying-rate and profit helpers (`createBuyingRateContext`, `computeFuelRowMargin`, `computeProfitLossSummary`, testing-expense split) are in `js/fuelPnl.js`, which only dashboard, analysis and reports load; add it to a page's `beforeAuth` in `_partials/app-pages.json` before using them.
 
 ---
 

@@ -4,7 +4,7 @@
     <!-- @partial app-head -->
   </head>
   <body class="meter-reading-page">
-    <!-- @partial app-topbar title="Meter Reading" -->
+    <!-- @partial app-topbar title="Meter reading" -->
 
     <main class="app-layout settings-layout page-layout-wide" id="meter-page-main">
       <nav class="settings-nav card dsr-fuel-nav" id="meter-sidebar-nav" aria-label="Meter reading sections">
@@ -38,11 +38,11 @@
               <p class="muted panel-lead">
                 Fill the reading sheet exactly like the physical DSR register.
               </p>
-              <p class="muted"><a href="dsr.html">Period summary (DSR) →</a></p>
+              <p class="muted"><a href="dsr.html">Period summary (DSR)<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a></p>
             </div>
           </div>
         </div>
-        <form id="dsr-form-petrol" class="sheet-form" autocomplete="off">
+        <form id="dsr-form-petrol" data-enter-next class="sheet-form" autocomplete="off">
           <p
             id="dsr-meter-locked-banner-petrol"
             class="dsr-meter-locked-banner hidden"
@@ -50,23 +50,33 @@
             aria-live="polite"
           ></p>
           <div class="meter-stack">
+            <div class="meter-date-bar">
+              <div class="meter-date-field">
+                <label class="meter-date-label" for="petrol-reading-date">Reading date</label>
+                <input
+                  id="petrol-reading-date"
+                  name="date"
+                  type="date"
+                  required
+                />
+              </div>
+              <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+            </div>
+
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
                 <div class="meter-block-actions">
-                  <button type="button" class="button-secondary dsr-refresh-form" data-product="petrol" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
                   <button type="button" class="button-secondary dsr-copy-prev" data-product="petrol" aria-label="Copy from previous day">Copy from previous day</button>
                 </div>
               </div>
               <div class="table-scroll">
               <table class="dsr-table meter-table compact">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Date</th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -75,15 +85,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>
-                      <label class="sr-only" for="petrol-reading-date">Petrol reading date</label>
-                      <input
-                        id="petrol-reading-date"
-                        name="date"
-                        type="date"
-                        required
-                      />
-                    </td>
                     <td>
                       <label class="sr-only" for="petrol-opening-p1n1">Petrol opening, pump 1 nozzle 1</label>
                       <input
@@ -147,12 +148,10 @@
               <div class="table-scroll">
               <table class="dsr-table meter-table compact meter-table--closing">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -161,7 +160,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <label class="sr-only" for="petrol-closing-p1n1">Petrol closing, pump 1 nozzle 1</label>
                       <input
@@ -427,7 +425,7 @@
           </div>
 
           <div class="sheet-actions">
-            <button type="submit">Save meter entry</button>
+            <button class="button-primary" type="submit">Save meter entry</button>
             <p id="dsr-success-petrol" class="success hidden">
               Entry saved successfully.
             </p>
@@ -473,11 +471,11 @@
               <p class="muted panel-lead">
                 Fill the reading sheet exactly like the physical DSR register.
               </p>
-              <p class="muted"><a href="dsr.html">Period summary (DSR) →</a></p>
+              <p class="muted"><a href="dsr.html">Period summary (DSR)<span class="icon icon--chevron-right icon-after" aria-hidden="true"></span></a></p>
             </div>
           </div>
         </div>
-        <form id="dsr-form-diesel" class="sheet-form" autocomplete="off">
+        <form id="dsr-form-diesel" data-enter-next class="sheet-form" autocomplete="off">
           <p
             id="dsr-meter-locked-banner-diesel"
             class="dsr-meter-locked-banner hidden"
@@ -485,23 +483,33 @@
             aria-live="polite"
           ></p>
           <div class="meter-stack">
+            <div class="meter-date-bar">
+              <div class="meter-date-field">
+                <label class="meter-date-label" for="diesel-reading-date">Reading date</label>
+                <input
+                  id="diesel-reading-date"
+                  name="date"
+                  type="date"
+                  required
+                />
+              </div>
+              <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
+            </div>
+
             <div class="meter-block">
               <div class="meter-block-head">
                 <h3 class="meter-title">Opening meter reading</h3>
                 <div class="meter-block-actions">
-                  <button type="button" class="button-secondary dsr-refresh-form" data-product="diesel" title="Reload this date (clears stale closings when no entry exists)" aria-label="Refresh form for selected date">Refresh</button>
                   <button type="button" class="button-secondary dsr-copy-prev" data-product="diesel" aria-label="Copy from previous day">Copy from previous day</button>
                 </div>
               </div>
               <div class="table-scroll">
               <table class="dsr-table meter-table compact">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th>Date</th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -510,15 +518,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td>
-                      <label class="sr-only" for="diesel-reading-date">Diesel reading date</label>
-                      <input
-                        id="diesel-reading-date"
-                        name="date"
-                        type="date"
-                        required
-                      />
-                    </td>
                     <td>
                       <label class="sr-only" for="diesel-opening-p1n1">Diesel opening, pump 1 nozzle 1</label>
                       <input
@@ -582,12 +581,10 @@
               <div class="table-scroll">
               <table class="dsr-table meter-table compact meter-table--closing">
                 <colgroup>
-                  <col class="meter-col-date" />
                   <col class="meter-col-nozzle" span="4" />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th class="meter-col-date--spacer" aria-hidden="true"><span class="sr-only">Date</span></th>
                     <th title="Pump 1, nozzle 1">P1 · N1</th>
                     <th title="Pump 1, nozzle 2">P1 · N2</th>
                     <th title="Pump 2, nozzle 1">P2 · N1</th>
@@ -596,7 +593,6 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td class="meter-col-date--spacer" aria-hidden="true"></td>
                     <td>
                       <label class="sr-only" for="diesel-closing-p1n1">Diesel closing, pump 1 nozzle 1</label>
                       <input
@@ -862,7 +858,7 @@
           </div>
 
           <div class="sheet-actions">
-            <button type="submit">Save meter entry</button>
+            <button class="button-primary" type="submit">Save meter entry</button>
             <p id="dsr-success-diesel" class="success hidden">
               Entry saved successfully.
             </p>
@@ -1055,14 +1051,14 @@
             <h2 id="shift-view-title">Shift register</h2>
             <p id="shift-view-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="app-modal-close" id="shift-view-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="shift-view-close" aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
         <div id="shift-view-body" class="shift-view-body">
           <p class="muted">Loading…</p>
         </div>
         <div class="shift-view-actions">
           <button type="button" id="shift-view-open-editor" class="button-secondary">Open in editor</button>
-          <button type="button" id="shift-view-dismiss">Close</button>
+          <button class="button-primary" type="button" id="shift-view-dismiss">Close</button>
         </div>
       </div>
     </dialog>
@@ -1080,20 +1076,17 @@
             <h2 id="shift-ledger-title">Staff</h2>
             <p id="shift-ledger-subtitle" class="muted"></p>
           </div>
-          <button type="button" class="app-modal-close" id="shift-ledger-close" aria-label="Close">×</button>
+          <button type="button" class="app-modal-close" id="shift-ledger-close" aria-label="Close"><span class="icon icon--close" aria-hidden="true"></span></button>
         </div>
         <div id="shift-ledger-body" class="shift-view-body shift-ledger-body">
           <p class="muted">Loading…</p>
         </div>
         <div class="shift-view-actions">
-          <button type="button" id="shift-ledger-dismiss">Done</button>
+          <button class="button-primary" type="button" id="shift-ledger-dismiss">Done</button>
         </div>
       </div>
     </dialog>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

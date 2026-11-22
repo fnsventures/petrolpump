@@ -179,7 +179,7 @@ function renderTradingAccount(data, range) {
 
   const provisionalNote =
     t.usingProvisionalBuying && t.missingBuyingPrice?.length
-      ? `<p class="report-note warning">${t.missingBuyingPrice.length} receipt day(s) use the previous buying rate for stock/purchases — enter pre-VAT ${escapeHtml(getBuyingPriceUnitLabel())} on Meter Reading → Purchase cost to lock the correct rate.</p>`
+      ? `<p class="report-note warning">${t.missingBuyingPrice.length} receipt day(s) use the previous buying rate for stock/purchases — enter pre-VAT ${escapeHtml(getBuyingPriceUnitLabel())} on Meter reading → Purchase cost to lock the correct rate.</p>`
       : !t.canCalculate
         ? formatUnresolvedBuyingWarning(t)
         : "";
@@ -191,8 +191,8 @@ function renderTradingAccount(data, range) {
 
   const vaultNote =
     t.vaultPurchaseTotal > 0
-      ? `<p class="report-note muted">Lube / other purchases = sum of vault <strong>Purchase invoice</strong> amounts in this period (Invoices page). Fuel inward remains on MS/HSD purchase lines from DSR.</p>`
-      : `<p class="report-note muted">No vault purchase amounts in this period — lube stock/COGS is not tracked separately. Add purchase PDFs with amounts on Invoices to populate Lube purchases.</p>`;
+      ? `<p class="report-note muted">Lube / other purchases = sum of <strong>Purchase invoice</strong> amounts in Documents for this period. Fuel inward remains on MS/HSD purchase lines from DSR.</p>`
+      : `<p class="report-note muted">No purchase invoice amounts in Documents this period — lube stock/COGS is not tracked separately. Add purchase PDFs with amounts in Documents to populate Lube purchases.</p>`;
 
   return `
     ${reportHeader("Trading account", range.start, range.end)}
@@ -219,10 +219,10 @@ function formatUnresolvedBuyingWarning(t) {
         : "Some days have no resolvable buying rate";
     const ownNote =
       missingOwn > 0 ? ` (${missingOwn} receipt day(s) also have no entered ₹/KL yet)` : "";
-    return `<p class="report-note warning">${dayNote}${ownNote}. Enter pre-VAT ${unit} on Meter Reading → Purchase cost before net profit can be calculated.</p>`;
+    return `<p class="report-note warning">${dayNote}${ownNote}. Enter pre-VAT ${unit} on Meter reading → Purchase cost before net profit can be calculated.</p>`;
   }
   if (t.usingProvisionalBuying && missingOwn > 0) {
-    return `<p class="report-note warning">${missingOwn} receipt day(s) still need an entered buying price — figures below use the previous receipt rate until you save ${unit} on Meter Reading → Purchase cost.</p>`;
+    return `<p class="report-note warning">${missingOwn} receipt day(s) still need an entered buying price — figures below use the previous receipt rate until you save ${unit} on Meter reading → Purchase cost.</p>`;
   }
   return "";
 }
@@ -303,7 +303,7 @@ function renderProfitLoss(data, range) {
 
   const breakdownNote = `<p class="report-note muted">Gross profit = fuel gross <strong>${formatCurrency(t.fuelGrossProfit)}</strong>${
     t.lubeCogs > 0 || t.products.lube.sales > 0
-      ? ` + lube gross <strong>${formatCurrency(t.lubeGrossProfit)}</strong> (sales − vault purchases)`
+      ? ` + lube gross <strong>${formatCurrency(t.lubeGrossProfit)}</strong> (sales − Documents purchases)`
       : ""
   }. Same formula as Analysis and the Dashboard Net profit glance.</p>`;
 

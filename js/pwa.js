@@ -4,6 +4,8 @@
  * - Controlled SW updates (logo popup, or a slim "New version — Reload" strip mid-entry)
  * - Offline / online status with cache invalidation on reconnect
  * - Throttled app-resume for ops pages (desktop focus thrash safe)
+ * - Screen stays awake during long entry (meter rounds, E-20 checks, day closing)
+ * - Android pull-to-refresh is off while a form has unsaved edits
  */
 (function () {
   const INSTALL_DISMISS_KEY = "bpf-pwa-install-dismissed";
@@ -17,6 +19,14 @@
   const UPDATE_SNOOZE_MS = 5 * 60 * 1000;
   const MIN_RESUME_GAP_MS = 5000;
   const MIN_HIDDEN_FOR_RESUME_MS = 2000;
+
+  /** Close icon from css/components.css (pwa.js also runs on pages without utils.js). */
+  function closeIcon() {
+    const icon = document.createElement("span");
+    icon.className = "icon icon--close";
+    icon.setAttribute("aria-hidden", "true");
+    return icon;
+  }
 
   let deferredInstallPrompt = null;
   let registrationRef = null;
@@ -249,7 +259,7 @@
     later.type = "button";
     later.className = "app-update-toast-dismiss";
     later.setAttribute("aria-label", "Remind me later");
-    later.textContent = "×";
+    later.appendChild(closeIcon());
     later.addEventListener("click", () => dismissUpdateSheet(true));
 
     root.append(text, reloadBtn, later);
@@ -287,7 +297,7 @@
     close.type = "button";
     close.className = "app-update-sheet-close";
     close.setAttribute("aria-label", "Remind me later");
-    close.textContent = "×";
+    close.appendChild(closeIcon());
     close.addEventListener("click", () => dismissUpdateSheet(true));
 
     const logo = document.createElement("img");
@@ -486,7 +496,7 @@
     close.type = "button";
     close.className = "app-install-sheet-close";
     close.setAttribute("aria-label", "Not now");
-    close.textContent = "×";
+    close.appendChild(closeIcon());
     close.addEventListener("click", () => dismissInstallSheet(true));
 
     const icon = document.createElement("img");
@@ -862,13 +872,126 @@
     });
   }
 
+  /** Pages where staff type for minutes at a time with the phone in one hand. */
+  const WAKE_LOCK_PAGES = new Set([
+    "meter-reading.html",
+    "e20-register.html",
+    "day-closing.html",
+    "dsr.html",
+    "attendance.html",
+    "billing.html",
+  ]);
+  /** Let the screen sleep again after this long without a tap or keypress. */
+  const WAKE_IDLE_MS = 3 * 60 * 1000;
+
+  function currentPageFile() {
+    return (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
+  }
+
+  function hasUnsavedEdits() {
+    try {
+      return typeof window.unsavedWorkPending === "function" && window.unsavedWorkPending() === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Keep the screen on while someone is entering data, so a meter round or a
+   * 2-hour E-20 check is not interrupted by the phone locking. Released after a
+   * few idle minutes, and the browser drops it whenever the app is hidden.
+   */
+  function initEntryWakeLock() {
+    if (!("wakeLock" in navigator) || !isMobileClient() || !WAKE_LOCK_PAGES.has(currentPageFile())) return;
+    let lock = null;
+    let requesting = false;
+    let lastActivity = 0;
+    let idleTimer = 0;
+
+    const release = () => {
+      const held = lock;
+      lock = null;
+      if (held) held.release().catch(() => {});
+    };
+
+    const acquire = async () => {
+      if (lock || requesting || document.visibilityState !== "visible") return;
+      requesting = true;
+      try {
+        lock = await navigator.wakeLock.request("screen");
+        lock.addEventListener("release", () => {
+          lock = null;
+        });
+      } catch {
+        /* Battery saver or permissions policy: the screen sleeps as usual. */
+      } finally {
+        requesting = false;
+      }
+    };
+
+    const scheduleIdle = () => {
+      window.clearTimeout(idleTimer);
+      idleTimer = window.setTimeout(() => {
+        if (Date.now() - lastActivity >= WAKE_IDLE_MS && !hasUnsavedEdits()) release();
+        else scheduleIdle();
+      }, WAKE_IDLE_MS);
+    };
+
+    const onActivity = (event) => {
+      const el = /** @type {Element | null} */ (event.target instanceof Element ? event.target : null);
+      if (!el?.closest?.("form, [data-panel], .app-modal-panel")) return;
+      lastActivity = Date.now();
+      void acquire();
+      scheduleIdle();
+    };
+
+    document.addEventListener("focusin", onActivity, true);
+    document.addEventListener("input", onActivity, true);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastActivity < WAKE_IDLE_MS || hasUnsavedEdits()) void acquire();
+    });
+  }
+
+  /**
+   * Chrome on Android reloads the page on a pull-down at the top. Turn that off
+   * only while there are unsaved edits, so a stray swipe cannot drop typed input.
+   * (iOS standalone apps have no pull-to-refresh.)
+   */
+  function initPullToRefreshGuard() {
+    if (!isMobileClient() || isIos() || isPublicLandingPage()) return;
+    const root = document.documentElement;
+    let pending = 0;
+    const sync = () => {
+      pending = 0;
+      root.classList.toggle("bpf-no-pull-refresh", hasUnsavedEdits());
+    };
+    const schedule = () => {
+      if (!pending) pending = window.setTimeout(sync, 150);
+    };
+    document.addEventListener("input", schedule, true);
+    document.addEventListener("change", schedule, true);
+    document.addEventListener("submit", () => window.setTimeout(sync, 600), true);
+  }
+
+  /** Footers carry the build year; keep it right on a page cached across New Year. */
+  function refreshFooterYear() {
+    const year = String(new Date().getFullYear());
+    document.querySelectorAll("[data-current-year]").forEach((el) => {
+      if (el.textContent !== year) el.textContent = year;
+    });
+  }
+
   function init() {
     try {
+      refreshFooterYear();
       injectAppMeta();
       initNetworkStatus();
       registerServiceWorker();
       initInstallPrompt();
       initAppResumeBroadcast();
+      initEntryWakeLock();
+      initPullToRefreshGuard();
       if (isStandalone()) {
         document.documentElement.classList.add("bpf-standalone");
       }

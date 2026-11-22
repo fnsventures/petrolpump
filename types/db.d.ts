@@ -1969,6 +1969,16 @@ export type Database = {
         }
         Returns: Json
       }
+      add_expense: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_date: string
+          p_description?: string
+          p_request_id?: string
+        }
+        Returns: Json
+      }
       add_shift_expense: {
         Args: {
           p_amount: number
@@ -2432,6 +2442,15 @@ export type Database = {
           p_night_cash: number
           p_phone_pay: number
           p_remarks?: string
+        }
+        Returns: Json
+      }
+      save_dsr_meter_row: {
+        Args: {
+          p_date: string
+          p_product: string
+          p_request_id?: string
+          p_row: Json
         }
         Returns: Json
       }

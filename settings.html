@@ -28,7 +28,7 @@
         <section id="settings-panel-station" class="settings-panel card is-visible" data-panel="station">
           <h2>Station &amp; branding</h2>
           <p class="muted">Used on invoices, reports, salary slips, and page titles. Saved to the server for all devices.</p>
-          <form id="station-form" class="form">
+          <form id="station-form" data-enter-next class="form">
             <div class="form-grid">
               <div class="form-field">
                 <label for="st-display-name">Display name (nav / titles)</label>
@@ -91,7 +91,7 @@
                 <input id="st-support-whatsapp" type="text" maxlength="30" />
               </div>
             </div>
-            <button type="submit">Save station details</button>
+            <button class="button-primary" type="submit">Save station details</button>
             <p id="station-success" class="success hidden">Station details saved.</p>
             <p id="station-error" class="error hidden"></p>
           </form>
@@ -101,7 +101,7 @@
         <section id="settings-panel-billing" class="settings-panel card" data-panel="billing" hidden>
           <h2>Billing</h2>
           <p class="muted">Invoice defaults and product master for billing.</p>
-          <form id="billing-defaults-form" class="form margin-bottom">
+          <form id="billing-defaults-form" data-enter-next class="form margin-bottom">
             <h3 class="settings-subheading">Defaults</h3>
             <div class="form-grid">
               <div class="form-field">
@@ -130,7 +130,7 @@
               <div class="form-field form-field-full">
                 <p class="muted m-0">
                   Delivery (DLY) and LFR are entered per load on
-                  <a href="meter-reading.html#purchase-cost">Meter Reading → Purchase cost</a>
+                  <a href="meter-reading.html#purchase-cost">Meter reading → Purchase cost</a>
                   from the invoices. That does not change past receipt days.
                 </p>
               </div>
@@ -156,14 +156,14 @@
                 <input id="bill-receipt-start" type="date" />
               </div>
             </div>
-            <button type="submit">Save billing defaults</button>
+            <button class="button-primary" type="submit">Save billing defaults</button>
             <p id="billing-defaults-success" class="success hidden">Billing defaults saved.</p>
             <p id="billing-defaults-error" class="error hidden"></p>
           </form>
 
           <h3 class="settings-subheading">Product master</h3>
           <p class="muted">Products available when creating invoices.</p>
-          <form id="product-form" class="form">
+          <form id="product-form" data-enter-next class="form">
             <div class="form-grid">
               <div class="form-field">
                 <label for="prod-name">Product name</label>
@@ -179,14 +179,14 @@
               </div>
               <div class="form-field">
                 <label for="prod-rate">Default rate (₹)</label>
-                <input inputmode="decimal" id="prod-rate" name="default_rate" type="text" step="0.01" min="0" value="0" required />
+                <input inputmode="decimal" id="prod-rate" name="default_rate" type="text" step="0.01" min="0" value="0" required data-unit="₹" />
               </div>
               <div class="form-field">
                 <label for="prod-gst">GST %</label>
                 <select id="prod-gst" name="gst_percent"></select>
               </div>
             </div>
-            <button type="submit">Add product</button>
+            <button class="button-primary" type="submit">Add product</button>
             <p id="product-success" class="success hidden">Product added.</p>
             <p id="product-error" class="error hidden"></p>
           </form>
@@ -214,7 +214,7 @@
           <h2>Pumps &amp; tanks</h2>
           <p class="muted">Daily meter sheets support up to 2 pumps × 2 nozzles per product (MS / HSD schema).</p>
           <p class="muted">Meter reading layout and tank labels. Changing pump/nozzle counts may require HTML form updates until dynamic forms are enabled.</p>
-          <form id="pumps-form" class="form">
+          <form id="pumps-form" data-enter-next class="form">
             <div class="settings-fuel-block settings-fuel-block--petrol">
             <h3 class="settings-subheading">Petrol (MS)</h3>
             <div class="form-grid">
@@ -257,7 +257,7 @@
               </div>
             </div>
             </div>
-            <button type="submit">Save pump configuration</button>
+            <button class="button-primary" type="submit">Save pump configuration</button>
             <p id="pumps-success" class="success hidden">Pump configuration saved.</p>
             <p id="pumps-error" class="error hidden"></p>
           </form>
@@ -267,7 +267,7 @@
         <section id="settings-panel-users" class="settings-panel card" data-panel="users" hidden>
           <h2>Users &amp; roles</h2>
           <p class="muted">Assign app login roles. Create the login in the Supabase dashboard first (Authentication → Users). Public sign-up stays off, so this page only saves the role.</p>
-          <form id="settings-form" class="form">
+          <form id="settings-form" data-enter-next class="form">
             <div class="form-grid">
               <div class="form-field">
                 <label for="staff-email">Email</label>
@@ -290,7 +290,7 @@
               </div>
             </div>
             <p class="muted">Leave the password empty to save the role. For someone who already has a login, a password here sends a reset link. New logins are created in the Supabase dashboard, not here.</p>
-            <button type="submit">Save role</button>
+            <button class="button-primary" type="submit">Save role</button>
             <p id="settings-success" class="success hidden">Role saved.</p>
             <p id="settings-error" class="error hidden"></p>
           </form>
@@ -318,7 +318,7 @@
         <section id="settings-panel-attendance" class="settings-panel card" data-panel="attendance" hidden>
           <h2>Attendance &amp; pay</h2>
           <p class="muted">Shift names appear on the Attendance page. Leave and over-duty rules below adjust monthly salary from marked attendance.</p>
-          <form id="shifts-form" class="form">
+          <form id="shifts-form" data-enter-next class="form">
             <div class="form-grid">
               <div class="form-field">
                 <label for="shift-morning-name">Morning name</label>
@@ -345,14 +345,14 @@
                 <input id="shift-afternoon-end" type="time" />
               </div>
             </div>
-            <button type="submit">Save shifts</button>
+            <button class="button-primary" type="submit">Save shifts</button>
             <p id="shifts-success" class="success hidden">Shifts saved.</p>
             <p id="shifts-error" class="error hidden"></p>
           </form>
 
           <h3 class="settings-subheading">Leave and over duty</h3>
           <p class="muted">Turn each rule on or off. The day rate is monthly salary divided by the days you choose. Only marked attendance changes pay — a day left blank is ignored.</p>
-          <form id="payroll-form" class="form">
+          <form id="payroll-form" data-enter-next class="form">
             <div class="payroll-rule-grid">
               <div class="payroll-rule-card">
                 <label class="checkbox-label" for="payroll-lop-enabled">
@@ -389,7 +389,7 @@
               </div>
             </div>
             <p id="payroll-example" class="payroll-example" aria-live="polite"></p>
-            <button type="submit">Save pay rules</button>
+            <button class="button-primary" type="submit">Save pay rules</button>
             <p id="payroll-success" class="success hidden">Pay rules saved.</p>
             <p id="payroll-error" class="error hidden"></p>
           </form>
@@ -399,23 +399,23 @@
         <section id="settings-panel-alerts" class="settings-panel card" data-panel="alerts" hidden>
           <h2>Alerts &amp; thresholds</h2>
           <p class="muted">Dashboard reminders. Set a threshold to 0 to disable that alert.</p>
-          <form id="alerts-form" class="form">
+          <form id="alerts-form" data-enter-next class="form">
             <h3 class="settings-subheading">Low stock</h3>
             <div class="form-grid">
               <div class="form-field form-field--fuel form-field--fuel-petrol">
                 <label for="low-stock-petrol">Petrol minimum (L)</label>
-                <input inputmode="decimal" id="low-stock-petrol" type="text" min="0" step="100" />
+                <input inputmode="decimal" id="low-stock-petrol" type="text" min="0" step="100" data-unit="L" />
               </div>
               <div class="form-field form-field--fuel form-field--fuel-diesel">
                 <label for="low-stock-diesel">Diesel minimum (L)</label>
-                <input inputmode="decimal" id="low-stock-diesel" type="text" min="0" step="100" />
+                <input inputmode="decimal" id="low-stock-diesel" type="text" min="0" step="100" data-unit="L" />
               </div>
             </div>
             <h3 class="settings-subheading">Day closing short</h3>
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-day-closing-shortage">Shortage / surplus threshold (₹)</label>
-                <input inputmode="numeric" id="alert-day-closing-shortage" type="text" min="0" step="1" />
+                <input inputmode="numeric" id="alert-day-closing-shortage" type="text" min="0" step="1" data-unit="₹" />
                 <small class="muted">Short or surplus beyond this amount is flagged. Use 0 to flag any imbalance.</small>
               </div>
             </div>
@@ -435,7 +435,7 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-night-cash-min">Minimum uncollected (₹)</label>
-                <input inputmode="decimal" id="alert-night-cash-min" type="text" min="0" step="100" />
+                <input inputmode="decimal" id="alert-night-cash-min" type="text" min="0" step="100" data-unit="₹" />
                 <small class="muted">Alert when uncollected night cash is at or above this amount. Use 0 for any positive total.</small>
               </div>
             </div>
@@ -468,12 +468,12 @@
             <div class="form-grid">
               <div class="form-field">
                 <label for="alert-high-credit">Total high credit limit (₹)</label>
-                <input inputmode="decimal" id="alert-high-credit" type="text" min="0" step="1000" />
+                <input inputmode="decimal" id="alert-high-credit" type="text" min="0" step="1000" data-unit="₹" />
                 <small class="muted">Alert when portfolio outstanding exceeds this. Use 0 to disable.</small>
               </div>
               <div class="form-field">
                 <label for="alert-individual-high-credit">Individual high credit limit (₹)</label>
-                <input inputmode="decimal" id="alert-individual-high-credit" type="text" min="0" step="1000" />
+                <input inputmode="decimal" id="alert-individual-high-credit" type="text" min="0" step="1000" data-unit="₹" />
                 <small class="muted">List customers whose balance exceeds this. Use 0 to disable.</small>
               </div>
             </div>
@@ -485,7 +485,7 @@
               </div>
               <div class="form-field">
                 <label for="alert-high-variation">High variation (L)</label>
-                <input inputmode="decimal" id="alert-high-variation" type="text" min="0" step="10" />
+                <input inputmode="decimal" id="alert-high-variation" type="text" min="0" step="10" data-unit="L" />
                 <small class="muted">Alert when |stock variation| exceeds this. Use 0 to disable.</small>
               </div>
             </div>
@@ -546,7 +546,7 @@
                 Remind if day closing is not done (today and last 7 days)
               </label>
             </div>
-            <button type="submit">Save alerts</button>
+            <button class="button-primary" type="submit">Save alerts</button>
             <p id="alerts-success" class="success hidden">Alert settings saved.</p>
             <p id="alerts-error" class="error hidden"></p>
           </form>
@@ -563,7 +563,7 @@
                 <input id="expense-category-label" type="text" maxlength="80" required />
               </div>
               <div class="form-field">
-                <button type="submit">Add</button>
+                <button class="button-primary" type="submit">Add</button>
               </div>
             </div>
             <p id="expense-category-add-error" class="error hidden"></p>
@@ -582,7 +582,7 @@
         <!-- Document types -->
         <section id="settings-panel-documents" class="settings-panel card" data-panel="documents" hidden>
           <h2>Document types</h2>
-          <p class="muted">Types and order shown in Vault upload and library filters. Drag rows to reorder; Edit changes the display name only. Cannot delete if used by existing documents.</p>
+          <p class="muted">Types and order shown in Documents upload and library filters. Drag rows to reorder; Edit changes the display name only. Cannot delete if used by existing documents.</p>
           <form id="document-category-add-form" class="form">
             <div class="form-grid form-grid--inline-button">
               <div class="form-field">
@@ -590,7 +590,7 @@
                 <input id="document-category-label" type="text" maxlength="80" required />
               </div>
               <div class="form-field">
-                <button type="submit">Add</button>
+                <button class="button-primary" type="submit">Add</button>
               </div>
             </div>
             <p id="document-category-add-error" class="error hidden"></p>
@@ -609,7 +609,7 @@
         <!-- Integrations -->
         <section id="settings-panel-integrations" class="settings-panel card" data-panel="integrations" hidden>
           <h2>Google Drive</h2>
-          <p class="muted">Created billing invoices and Letter Desk letters are archived as station-letterhead <strong>PDFs</strong> (same layout as print). Staff photos stay as images for ID cards, with a letterhead PDF copy. Aadhaar scans are filed as letterhead PDFs. Vault documents use:</p>
+          <p class="muted">Created billing invoices and Letter desk letters are archived as station-letterhead <strong>PDFs</strong> (same layout as print). Staff photos stay as images for ID cards, with a letterhead PDF copy. Aadhaar scans are filed as letterhead PDFs. Vault documents use:</p>
           <ul class="muted">
             <li><code>Billing invoices / 2026 / {invoice name}</code></li>
             <li><code>Letters / {letter name}</code></li>
@@ -622,14 +622,14 @@
           <ol class="muted margin-bottom">
             <li>Google Cloud Console → <strong>APIs &amp; Services → Credentials</strong> → create <strong>OAuth client ID</strong> (Web application).</li>
             <li>Add redirect URI: <code>https://developers.google.com/oauthplayground</code></li>
-            <li>Open <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener noreferrer">OAuth Playground</a> → gear icon → check <em>Use your own OAuth credentials</em> → enter Client ID &amp; Secret.</li>
+            <li>Open <a href="https://developers.google.com/oauthplayground" target="_blank" rel="noopener noreferrer">OAuth Playground<span class="icon icon--external icon-after" aria-hidden="true"></span><span class="sr-only"> (opens in a new tab)</span></a> → gear icon → check <em>Use your own OAuth credentials</em> → enter Client ID &amp; Secret.</li>
             <li>Select scope <code>https://www.googleapis.com/auth/drive</code> → Authorize with your Gmail → <strong>Exchange authorization code for tokens</strong> → copy the <strong>Refresh token</strong>.</li>
             <li>In Supabase → Edge Functions → Secrets, set:
               <code>GOOGLE_OAUTH_CLIENT_ID</code>, <code>GOOGLE_OAUTH_CLIENT_SECRET</code>, <code>GOOGLE_OAUTH_REFRESH_TOKEN</code>.
             </li>
             <li>Create a folder in Drive, copy its ID from the URL (<code>…/folders/FOLDER_ID</code>), paste below.</li>
           </ol>
-          <form id="integrations-drive-form" class="form">
+          <form id="integrations-drive-form" data-enter-next class="form">
             <div class="form-field form-field-checkbox">
               <label class="checkbox-label">
                 <input id="gdrive-enabled" type="checkbox" />
@@ -640,7 +640,7 @@
               <label for="gdrive-root-folder">Root folder ID</label>
               <input id="gdrive-root-folder" type="text" maxlength="120" placeholder="e.g. 1abcXYZ…" />
             </div>
-            <button type="submit">Save integration settings</button>
+            <button class="button-primary" type="submit">Save integration settings</button>
             <p id="integrations-drive-success" class="success hidden">Integration settings saved.</p>
             <p id="integrations-drive-error" class="error hidden"></p>
           </form>
@@ -682,9 +682,6 @@
       </div>
     </main>
 
-    <footer class="app-footer">
-      <p class="footer-copyright">© 2025 F&S Ventures. All rights reserved.</p>
-      <p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
-    </footer>
+    <!-- @partial app-footer -->
   </body>
 </html>

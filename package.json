@@ -5,6 +5,7 @@
   "scripts": {
     "build:vendor": "node scripts/build-vendor.mjs",
     "build:images": "node scripts/optimize-images.mjs",
+    "build:splash": "node scripts/build-ios-splash.mjs",
     "build:html": "node scripts/build-html.mjs",
     "stamp": "node scripts/stamp-assets.mjs",
     "dev": "node scripts/dev-server.mjs",
@@ -15,19 +16,20 @@
     "minify": "node scripts/minify-assets.mjs",
     "lint:css": "node scripts/check-css-colors.mjs",
     "lint:js": "eslint js",
-    "typecheck": "tsc -p jsconfig.json",
-    "gen:types": "bash scripts/gen-db-types.sh"
+    "typecheck": "node scripts/typecheck.mjs",
+    "gen:types": "bash scripts/gen-db-types.sh",
+    "check:sql": "node scripts/sql-functions.mjs check"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@supabase/supabase-js": "^2.118.0",
-    "chart.js": "^4.4.1",
-    "esbuild": "^0.25.0",
-    "eslint": "^9.39.5",
+    "chart.js": "^4.6.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
     "globals": "^17.13.0",
     "nunjucks": "^3.2.4",
-    "pdfjs-dist": "^4.10.38",
-    "stylelint": "^16.26.1",
+    "pdfjs-dist": "^6.4.299",
+    "stylelint": "^18.0.0",
     "typescript": "^5.9.3"
   }
 }

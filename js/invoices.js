@@ -37,8 +37,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!auth) return;
   currentAuth = auth;
   applyRoleVisibility(auth.role);
-  const footerYear = document.getElementById("invoice-footer-year");
-  if (footerYear) footerYear.textContent = String(new Date().getFullYear());
   await loadPumpSettings();
   applyInvoicesBranding();
   applyLocalDriveBanner();

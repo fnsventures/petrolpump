@@ -254,7 +254,7 @@
   padding-left: 0.5rem;
   background: var(--surface);
   border: 1px solid rgba(0, 112, 192, 0.2);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px rgba(0, 90, 156, 0.15);
   display: none;
   flex-direction: column;
@@ -276,7 +276,7 @@
   margin: 0;
   color: var(--bpcl-blue-dark);
   white-space: nowrap;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   text-decoration: none;
 }
 
@@ -583,6 +583,11 @@
   border-radius: 50%;
   object-fit: cover;
   display: block;
+}
+
+/* Until the profile loads the avatar is an empty circle, not a "?" that looks broken. */
+.topbar-user-avatar:has(.topbar-user-initials:empty):not(:has(.topbar-user-photo:not(.hidden))) {
+  background: var(--surface-sunken);
 }
 
 .topbar-user-initials {
@@ -1518,7 +1523,7 @@
 .metric-box {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.55rem 0.85rem;
   min-width: 120px;
 }
@@ -1558,14 +1563,14 @@
 .stat-positive {
   color: var(--color-success);
   background: rgba(16, 185, 129, 0.12);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.1rem 0.35rem;
 }
 
 .stat-negative {
   color: var(--color-danger);
   background: rgba(239, 68, 68, 0.12);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.1rem 0.35rem;
 }
 
@@ -1757,7 +1762,8 @@ select:focus {
   box-shadow: none;
 }
 
-/* Primary actions are unmarked <button>s, or an explicit primary class.
+/* Primary actions use class="button-primary" (markup and scripts). Unmarked <button>s are a
+   fallback only: adding any other class to one would silently drop the primary look.
    Icon, tab, and chrome buttons style themselves and are not listed here. */
 :is(
   button:not([class]),
@@ -1975,7 +1981,7 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 }
 
 .badge--square {
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
 }
 
 .badge--neutral {
@@ -2108,6 +2114,78 @@ body:not(.login-page):not(.landing-page) .app-footer::before {
 @media (prefers-reduced-motion: reduce) {
   .skeleton-row {
     animation: none;
+  }
+}
+
+/* Full-width table cells tagged by AppLoader (js/utils.js).
+ * Loading: three shimmer bars instead of a "Loading…" line; the text stays for screen readers. */
+td.cell-loading {
+  position: relative;
+  height: 8.5rem;
+  padding: 0.75rem;
+  color: transparent !important;
+  font-size: 0;
+}
+
+td.cell-loading::before,
+td.cell-loading::after {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--border) 25%, var(--surface-sunken) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shine 1.2s ease-in-out infinite;
+}
+
+td.cell-loading::before {
+  top: 0.75rem;
+  box-shadow: 0 2.75rem 0 var(--surface-sunken);
+}
+
+td.cell-loading::after {
+  top: 5.5rem;
+  right: 35%;
+}
+
+/* Empty: the shared empty-state look, sized for a table row. */
+td.cell-empty {
+  padding: 2rem 1rem !important;
+  text-align: center !important;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  background: linear-gradient(180deg, var(--surface-muted) 0%, var(--surface) 100%);
+}
+
+td.cell-empty::before {
+  content: "";
+  display: block;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin: 0 auto 0.65rem;
+  border-radius: 50%;
+  background: var(--color-primary-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%230070c0' viewBox='0 0 24 24'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z'/%3E%3C/svg%3E") center / 1.15rem no-repeat;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  td.cell-loading::before,
+  td.cell-loading::after {
+    animation: none;
+  }
+}
+
+@media print {
+  td.cell-empty {
+    background: none;
+    padding: 0.5rem !important;
+  }
+
+  td.cell-empty::before,
+  td.cell-loading::before,
+  td.cell-loading::after {
+    display: none;
   }
 }
 
@@ -3021,7 +3099,7 @@ network status (js/pwa.js + js/supabase.js) */
   font-size: 0.85em;
   background: rgba(0, 0, 0, 0.06);
   padding: 0.1em 0.35em;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 
 .app-update-sheet {
@@ -3049,7 +3127,7 @@ network status (js/pwa.js + js/supabase.js) */
   position: relative;
   width: min(24rem, 100%);
   padding: 1.35rem 1.25rem max(1.25rem, var(--safe-bottom));
-  border-radius: 1.15rem 1.15rem 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: var(--surface);
   text-align: center;
   box-shadow: 0 -16px 40px rgba(0, 64, 112, 0.24);
@@ -3060,7 +3138,7 @@ network status (js/pwa.js + js/supabase.js) */
   display: block;
   height: 4px;
   margin: -1.35rem -1.25rem 1rem;
-  border-radius: 1.15rem 1.15rem 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: linear-gradient(90deg, var(--bpcl-blue) 0 62%, var(--bpcl-yellow) 62% 100%);
 }
 
@@ -3198,12 +3276,12 @@ body.has-update-sheet {
   }
 
   .app-update-sheet-panel {
-    border-radius: 1.15rem;
+    border-radius: var(--radius-xl);
     box-shadow: 0 18px 48px rgba(0, 64, 112, 0.28);
   }
 
   .app-update-sheet-panel::before {
-    border-radius: 1.15rem 1.15rem 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
 }
 
@@ -3232,7 +3310,7 @@ body.has-update-sheet {
   position: relative;
   width: min(28rem, 100%);
   padding: 1.15rem 1.15rem max(1.15rem, var(--safe-bottom));
-  border-radius: 1.15rem 1.15rem 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: var(--surface);
   box-shadow: 0 -16px 40px rgba(0, 64, 112, 0.24);
 }
@@ -3242,7 +3320,7 @@ body.has-update-sheet {
   display: block;
   height: 4px;
   margin: -1.15rem -1.15rem 1rem;
-  border-radius: 1.15rem 1.15rem 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background: linear-gradient(90deg, var(--bpcl-blue) 0 62%, var(--bpcl-yellow) 62% 100%);
 }
 
@@ -3345,7 +3423,7 @@ body.has-install-sheet {
 
   .app-install-sheet-panel {
     padding-bottom: 1.15rem;
-    border-radius: 1.15rem;
+    border-radius: var(--radius-xl);
   }
 }
 
@@ -3574,9 +3652,40 @@ html.app-booting::after {
   }
 }
 
+/* Expand-to-explain rows and text links used as actions: a thumb-sized target on touch screens. */
+/* Height only: summaries keep their own display and markers. Dashboard card-body links wrap
+   whole blocks (heading + stat grid) and stay display:block, or the card lays out as a row. */
+@media (max-width: 768px), (pointer: coarse) {
+  summary {
+    min-height: 2.75rem;
+    padding-block: 0.6rem;
+    box-sizing: border-box;
+  }
+
+  a.stat-link,
+  a.card-link:not(.dashboard-metric-card-body-link),
+  .dsr-panel-links > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+
+  .checkbox-label {
+    min-height: 2.75rem;
+  }
+
+  .checkbox-label input[type="checkbox"] {
+    width: 1.35rem;
+    height: 1.35rem;
+    flex-shrink: 0;
+  }
+}
+
+/* Entry forms keep Save on screen while scrolling a long form on a phone. */
 @media (max-width: 768px) {
   .shift-save-row,
-  #day-closing-form .form-actions {
+  #day-closing-form .form-actions,
+  .sticky-save {
     position: sticky;
     bottom: 0;
     z-index: 5;
@@ -3586,10 +3695,31 @@ html.app-booting::after {
     border-top: 1px solid var(--border);
     box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.08);
   }
+
+  .sticky-save {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .sticky-save > button {
+    flex: 1 1 8rem;
+  }
+
+  /* Stacked buttons (billing): the basis would become each button's height. */
+  .sticky-save.billing-actions > button {
+    flex: 0 0 auto;
+  }
+
+  /* In a bottom-sheet dialog the panel already ends at the screen edge. */
+  .app-modal-panel .sticky-save {
+    position: static;
+    box-shadow: none;
+  }
 }
 
 /* The offline bar is also fixed to the bottom, so lift sticky save bars above it. */
-body:has(.app-network-status:not(.hidden)) :is(.shift-save-row, #day-closing-form .form-actions) {
+body:has(.app-network-status:not(.hidden)) :is(.shift-save-row, #day-closing-form .form-actions, .sticky-save) {
   bottom: calc(2.75rem + var(--safe-bottom));
 }
 
@@ -3792,4 +3922,162 @@ table[data-table-layout="scroll"] tbody td[colspan]:first-child {
     min-width: 0;
     max-width: 100%;
   }
+}
+
+/* js/pwa.js: unsaved edits on the page, so a pull-down at the top must not reload it. */
+html.bpf-no-pull-refresh,
+html.bpf-no-pull-refresh body {
+  overscroll-behavior-y: contain;
+}
+
+/* Phone card tables hide colspan ::before; loading bars and the empty icon must still show.
+ * Kept last so it wins over table.table-cards tbody td[colspan]::before. */
+table.table-cards tbody td[colspan].cell-loading {
+  display: block;
+  position: relative;
+}
+
+table.table-cards tbody td[colspan].cell-loading::before,
+table.table-cards tbody td[colspan].cell-loading::after {
+  content: "";
+  flex: none;
+}
+
+table.table-cards tbody td[colspan].cell-empty {
+  display: block;
+  text-align: center;
+}
+
+table.table-cards tbody td[colspan].cell-empty::before {
+  content: "";
+  display: block;
+  flex: none;
+}
+
+/* Unit inside a field (js/utils.js applyInputUnits): "₹" before money, "L" / "mm" after. */
+.input-unit {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.input-unit > input {
+  width: 100%;
+}
+
+.input-unit--prefix > input {
+  padding-left: 2rem;
+}
+
+.input-unit--suffix > input {
+  padding-right: 2.6rem;
+}
+
+.input-unit-badge {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.input-unit--prefix > .input-unit-badge {
+  left: 0.8rem;
+}
+
+.input-unit--suffix > .input-unit-badge {
+  right: 0.8rem;
+}
+
+.input-unit > input:disabled + .input-unit-badge,
+.input-unit > input[readonly] + .input-unit-badge {
+  opacity: 0.6;
+}
+
+/* Icons: one SVG set instead of "×" / "→" glyphs, which render differently on Android,
+ * iOS and Windows. Masked, so the icon takes the text colour (currentColor).
+ * <span class="icon icon--close" aria-hidden="true"></span> — also icon--chevron-right,
+ * icon--chevron-down, icon--external. Size follows font-size (1em) unless overridden. */
+.icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  background-color: currentColor;
+  -webkit-mask: var(--icon-mask) center / contain no-repeat;
+  mask: var(--icon-mask) center / contain no-repeat;
+}
+
+.icon--close {
+  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M6 6l12 12M18 6L6 18'/%3E%3C/svg%3E");
+}
+
+.icon--chevron-right {
+  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E");
+}
+
+.icon--chevron-down {
+  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+}
+
+.icon--external {
+  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5'/%3E%3C/svg%3E");
+}
+
+/* Trailing chevron on "Go to …" links. */
+.icon-after {
+  margin-left: 0.25em;
+  font-size: 0.85em;
+  vertical-align: -0.05em;
+}
+
+/* Close buttons hold an icon, not a glyph: size it to the button instead of the font. */
+:is(.app-modal-close, .app-toast-close, .app-error-banner-close, .app-update-toast-dismiss,
+  .app-update-sheet-close, .app-install-sheet-close, .e20-row-remove, .shift-ledger-remove) > .icon--close {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* highlightSavedEntry (js/utils.js): the row just saved glows, then fades back. */
+@keyframes row-just-saved {
+  0%,
+  35% {
+    background-color: var(--success-soft);
+    box-shadow: inset 3px 0 0 var(--color-success);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+.row-just-saved,
+.row-just-saved > td {
+  animation: row-just-saved 2.4s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-just-saved,
+  .row-just-saved > td {
+    animation: none;
+    background-color: var(--success-soft);
+  }
+}
+
+/* Visually hidden, still read by screen readers (e.g. "opens in a new tab"). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

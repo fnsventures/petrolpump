@@ -10,11 +10,13 @@
       }
     </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>About Us · Bishnupriya Fuels</title>
+    <title>About us · Bishnupriya Fuels</title>
     <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <!-- @partial ios-splash -->
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111a27" />
     <meta name="application-name" content="Bishnupriya Fuels" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="BPFuels" />
@@ -61,7 +63,7 @@
         </div>
 
         <div class="hero-main">
-          <h1>About Us</h1>
+          <h1>About us</h1>
           <p class="hero-sub">
             Trusted Bharat Petroleum retail outlet serving quality fuel, lubricants,
             and vehicle care essentials.
@@ -95,7 +97,9 @@
       </div>
     </section>
     <footer class="landing-footer">
-      <div class="footer-copyright-bar">© 2025 F&S Ventures. All rights reserved.</div>
+      <div class="footer-copyright-bar">
+        <!-- @partial footer-legal -->
+      </div>
     </footer>
   </body>
 </html>

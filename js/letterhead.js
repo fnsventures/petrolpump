@@ -1,4 +1,4 @@
-/* global requireAuth, applyRoleVisibility, escapeHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce, bindUnsavedDraft, runAppRequest, renderTableRetryRow, isCancelledRequestError, resetPaginationLoading, bindLiveRefresh, isSettingsPanelActive */
+/* global requireAuth, applyRoleVisibility, escapeHtml, trustedHtml, escapeIlikePattern, PumpSettings, loadPumpSettings, PrintUtils, AppError, AppConfig, initPageSections, formatNumericDate, getLocalDateString, readDateRangeFromControls, createDateRangeFilter, getYearRange, AdminDelete, DriveFiles, ActionProgress, syncLoadMorePager, preloadPdfPreview, DrivePreview, debounce, bindUnsavedDraft, runAppRequest, renderTableRetryRow, isCancelledRequestError, resetPaginationLoading, bindLiveRefresh, isSettingsPanelActive */
 
 (function () {
   const PRINT_CSS = "css/letterhead-print.css";
@@ -787,7 +787,8 @@
           const { blob, fileName } = await DriveFiles.download({ kind: "letter", id: row.id });
           return { blob, fileName: fileName || row.drive_file_name || "letter.pdf" };
         }
-        if (letterHasBody(row)) return { html: letterSheetHtml(row) };
+        // buildSheetHtml escapes every field.
+        if (letterHasBody(row)) return { html: trustedHtml(letterSheetHtml(row)) };
         return {
           html: `<p class="muted">This letter is stored in Google Drive, and the file could not be opened.</p>`,
         };

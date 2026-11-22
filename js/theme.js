@@ -22,14 +22,29 @@
     return media && media.matches ? "dark" : "light";
   }
 
+  /**
+   * Status bar colour. Pages ship two theme-color metas, media="(prefers-color-scheme: light|dark)",
+   * so the system setting picks the right one before any script runs. "system" restores each
+   * meta to its own colour; an explicit light or dark choice gives both metas that colour, so
+   * the status bar follows the app even when it differs from the phone's setting.
+   */
+  function syncThemeColor(choice, theme) {
+    var metas = document.querySelectorAll('meta[name="theme-color"]');
+    for (var i = 0; i < metas.length; i++) {
+      var meta = metas[i];
+      var mediaAttr = meta.getAttribute("media") || "";
+      var own = /dark/.test(mediaAttr) ? "dark" : /light/.test(mediaAttr) ? "light" : theme;
+      meta.setAttribute("content", THEME_COLORS[choice === "system" ? own : theme]);
+    }
+  }
+
   function apply() {
     var choice = readChoice();
     var theme = resolve(choice);
     var root = document.documentElement;
     root.setAttribute("data-theme", theme);
     root.setAttribute("data-theme-choice", choice);
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", THEME_COLORS[theme]);
+    syncThemeColor(choice, theme);
     document.dispatchEvent(new CustomEvent("bpf:themechange", { detail: { theme: theme, choice: choice } }));
   }
 
