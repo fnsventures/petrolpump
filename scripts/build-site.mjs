@@ -7,6 +7,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { rsyncExcludeArgs } from "./lib/site-files.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SITE_DIR = path.join(REPO_ROOT, "_site");
@@ -22,23 +23,7 @@ function run(command, args) {
   });
 }
 
-const excludes = [
-  "_site",
-  ".git",
-  "node_modules",
-  ".github",
-  "supabase",
-  "docs",
-  "scripts",
-  "_partials",
-  "package.json",
-  "package-lock.json",
-  "types",
-  "jsconfig.json",
-  "eslint.config.mjs",
-].map((name) => `--exclude=${name}`);
-
-await run("rsync", ["-a", "--delete", ...excludes, `${REPO_ROOT}/`, `${SITE_DIR}/`]);
+await run("rsync", ["-a", "--delete", ...rsyncExcludeArgs(), `${REPO_ROOT}/`, `${SITE_DIR}/`]);
 await run("node", ["scripts/build-html.mjs", SITE_DIR]);
 await run("node", ["scripts/stamp-assets.mjs", SITE_DIR]);
 console.log(`Built preview site at ${SITE_DIR}`);

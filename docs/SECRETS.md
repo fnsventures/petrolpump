@@ -13,7 +13,7 @@ One map of every credential this app needs, where it lives, and how to rotate it
 | `SUPABASE_URL` | GitHub env **prod** / **staging** | Deploy → `js/env.js` | Supabase → Project Settings → API |
 | `SUPABASE_ANON_KEY` | GitHub env **prod** / **staging** | Deploy → `js/env.js` | Same (anon/public key) |
 | Local `js/env.js` | Laptop only (gitignored) | `npm run dev` | Copy from `js/env.example.js` |
-| `PROD_DB_URL` | GitHub **prod** + local `scripts/db.env` | Backup, migrate, sync (read) | Supabase → Connect → **Session pooler** `:5432` |
+| `PROD_DB_URL` | GitHub **prod** + local `scripts/db.env` | Backup, purge, Deploy (pending check + migrate), local migrate, sync (read) | Supabase → Connect → **Session pooler** `:5432` |
 | `STAGING_DB_URL` | Local `scripts/db.env` only | Sync (write) | Staging project → Session pooler |
 | `SUPABASE_ACCESS_TOKEN` | GitHub env **prod** / **staging** | Deploy Edge Functions | [Account → Access Tokens](https://supabase.com/dashboard/account/tokens) |
 | `SUPABASE_PROJECT_REF` | GitHub env **prod** / **staging** | Deploy Edge Functions | Project Settings → General |
@@ -58,7 +58,9 @@ Templates: `js/env.example.js`, `scripts/db.env.example`.
 | `GOOGLE_OAUTH_*` (3) | | ✓ |
 | `GOOGLE_DRIVE_BACKUP_FOLDER_ID` | | ✓ |
 
-Repo-level (required on `petrolpump` for the hourly DNS job; optional on `fns-cashline` for manual runs): `GODADDY_API_KEY`, `GODADDY_API_SECRET` — see [OPERATIONS.md](OPERATIONS.md#dns-safety-net-fnsventuresin).
+**prod-migrations** holds no secrets. It exists only for its required reviewer ([OPERATIONS.md → Repository rules](OPERATIONS.md#github-setup)).
+
+Repo-level (required on `petrolpump` for the daily DNS job; optional on `fns-cashline` for manual runs): `GODADDY_API_KEY`, `GODADDY_API_SECRET` — see [OPERATIONS.md](OPERATIONS.md#dns-safety-net-fnsventuresin).
 
 ### C. Supabase Edge Function secrets
 

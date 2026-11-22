@@ -302,10 +302,10 @@ Then look for unexpected `auth.users` rows, changed `public.users.role` values, 
 
 The live site is whatever Actions → **Deploy** last wrote to `gh-pages`. This puts an older commit back on the site. It does not change the database. A bad migration is [Schema rollback](#schema-rollback).
 
-1. Find the last good commit. Open a green **Deploy** run for prod and copy its SHA, or use `git log origin/main`.
-2. Actions → **Deploy** → **Run workflow**. Set **target** to `prod`. Set **ref** to that SHA (a branch, tag, or full SHA also works).
+1. Find the last good release. Every green prod Deploy creates a tag such as `v2026.11.22.1` (GitHub → **Releases**, or `git tag -l 'v*' --sort=-creatordate | head`). A commit SHA from `git log origin/main` also works.
+2. Actions → **Deploy** → **Run workflow**. Set **target** to `prod`. Set **ref** to that tag (a branch or full SHA also works). A rollback deploy runs no migrations unless that ref adds some that prod lacks, which an older ref never does.
 3. If **ref** is left empty, the branch selected next to **Run workflow** is what deploys. That is usually the current `main`, which is the commit you are trying to leave.
-4. Wait until **Deploy** is green. Hard-refresh. The service worker can keep the previous page.
+4. Wait until **Deploy** is green (it checks the live site serves that commit: `/version.json`). Hard-refresh. The service worker can keep the previous page.
 5. Target `staging` rewrites `/staging/` only. A prod rollback leaves `/staging/` as it was.
 6. `main` still contains the bad commit. The next push to `main` deploys `main` again. Revert that commit on `main` if the rolled-back site should stay.
 

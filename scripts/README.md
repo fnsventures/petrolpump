@@ -91,7 +91,11 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 |------|------|
 | `db.sh` | sync / migrate / backup |
 | `sync-prod-to-staging.sh` | Prod → staging data copy |
-| `migrate-prod.sh` | Prod schema migration |
+| `migrate-prod.sh` | Prod schema migration (laptop, or the Deploy workflow after approval) |
+| `build-deploy.mjs` | Build the Pages tree for `staging` or `prod` (Deploy + PR checks) |
+| `lib/site-files.mjs` | Paths that never ship to Pages (shared by both builds) |
+| `check-forbidden-files.sh` | Fail if `env.js`, `db.env` or dumps are tracked |
+| `setup-github.sh` | One-time branch protection, environments, secret scanning (admin) |
 | `backup-prod.sh` | Local backup |
 | `backup-month-to-drive.sh` | One finished month, uploaded to Drive |
 | `backup-prod-to-drive.sh` | Whole database, uploaded to Drive `Manual/` |
@@ -104,7 +108,7 @@ Contents, setup, and the tested restore: [docs/RECOVERY.md](../docs/RECOVERY.md)
 | `lib/backup.sh` | `supabase db dump` |
 | `lib/google-drive.sh` | OAuth and upload |
 | `lib/db-client.sh` | psql / Docker |
-| `lib/env.sh` | Load `db.env` |
+| `lib/env.sh` | Load `db.env` (in Actions, `PROD_DB_URL` comes from the environment) |
 | `lib/constants.sh` | Dump exclude lists |
 | `stamp-staging-migrations.sql` | Staging only — mark history applied |
 | `stamp-prod-migrations.sql` | Legacy prod only — mark pre-DSR-split history applied |

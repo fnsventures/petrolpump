@@ -31,7 +31,16 @@ Format: [SECRETS.md → Laptop](SECRETS.md#a-laptop-gitignored).
 
 **Pages source (once):** Settings → Pages → **Deploy from a branch** → branch `gh-pages` → `/ (root)`.
 
-Only `.github/workflows/deploy-pages.yml` deploys the frontend. A push to `staging` or `main` deploys that commit. **Actions → Deploy → Run workflow** can deploy any ref: pick the branch that contains the code, set **target** to `staging` or `prod`, and optionally set **ref** to a branch, tag, or SHA. Staging writes `/staging/` only. Prod writes the root and leaves `/staging/` in place.
+<a id="github-setup"></a>
+
+**Repository rules (once, as a repo admin):** `./scripts/setup-github.sh` shows the changes and `APPLY=yes ./scripts/setup-github.sh` applies them:
+
+- `main` and `staging` accept changes only through a PR whose [PR checks](../CONTRIBUTING.md#pr-checks) pass, with code-owner review and no force push. If you are the only maintainer and open your own PRs, run it with `APPROVALS=0` (GitHub does not let you approve your own PR).
+- The environment **prod-migrations** has one required reviewer. It holds no secrets. Its only job is to pause a prod deploy until someone approves the migrations.
+- The **prod** environment's secrets are available only to workflows running on `main`.
+- Secret scanning and push protection are on, and the default workflow token is read-only.
+
+Only `.github/workflows/deploy-pages.yml` deploys the frontend. A push to `staging` or `main` deploys that commit. A prod deploy first applies any pending production migrations, after an approval (see [Release to production](#3-release-to-production)). After every deploy it smoke-tests the live site, and a prod deploy then creates a release tag such as `v2026.11.22.1`. **Actions → Deploy → Run workflow** can deploy any ref: pick the branch that contains the code, set **target** to `staging` or `prod`, and optionally set **ref** to a branch, tag, or SHA. Staging writes `/staging/` only. Prod writes the root and leaves `/staging/` in place.
 
 ### DNS safety net
 
@@ -46,7 +55,7 @@ At the registrar (GoDaddy):
 
 - Account has 2FA, and domain-change alerts go to the account email.
 - Before an edit, screenshot or export the DNS table. After the edit, add a row. Do not overwrite a sibling host.
-- Optional auto-fix: a Production key from [developer.godaddy.com/keys](https://developer.godaddy.com/keys), then repository secrets `GODADDY_API_KEY` and `GODADDY_API_SECRET` on `petrolpump` (required for the hourly job). Optional on `fns-cashline` for manual runs.
+- Optional auto-fix: a Production key from [developer.godaddy.com/keys](https://developer.godaddy.com/keys), then repository secrets `GODADDY_API_KEY` and `GODADDY_API_SECRET` on `petrolpump` (required for the daily job). Optional on `fns-cashline` for manual runs.
 
 After any DNS change, check every sibling:
 
@@ -60,7 +69,7 @@ Or open both configs and confirm they are real, not placeholders:
 - `https://bishnupriyafuels.fnsventures.in/js/env.js`
 - `https://fnscashline.fnsventures.in/js/env.js`
 
-**Check DNS siblings** runs hourly from this repo and calls `scripts/check-dns-siblings.sh`. `fns-cashline` is manual only and reuses the same workflow. If a CNAME is missing or wrong, the job rewrites it to `fnsventures.github.io`, waits up to about 12 minutes, rechecks, and opens a GitHub issue when it restored records. Without `GODADDY_*` it still checks and fails.
+**Check DNS siblings** runs daily (00:20 UTC, 05:50 IST) from this repo and calls `scripts/check-dns-siblings.sh`. `fns-cashline` is manual only and reuses the same workflow. If a CNAME is missing or wrong, the job rewrites it to `fnsventures.github.io`, waits up to about 12 minutes, rechecks, and opens a GitHub issue when it restored records. Without `GODADDY_*` it still checks and fails.
 
 **Keep Supabase awake** (`.github/workflows/keep-supabase-awake.yml`) runs every 3 days and sends one anonymous REST read to prod and staging so neither free project pauses after an idle week. It uses each environment's `SUPABASE_URL` / `SUPABASE_ANON_KEY`. A red run means the project did not answer; restore it in the Supabase dashboard.
 
@@ -130,31 +139,31 @@ Do these in order.
 ```
 Code on staging  →  test on /staging/
         ↓
-Database migrate (only if schema changed)
-        ↓
-Merge staging → main  →  live website
+Merge staging → main  →  approve migrations (if any)  →  live website
 ```
 
 **A. Real data on staging (recommended).** `./scripts/db.sh sync`, then confirm `/staging/` works with that data.
 
 **B. Code on staging.** Merge or push to `staging`. Wait for Deploy. Test `/staging/` again.
 
-**C. Database, only if `supabase/migrations/` has new files.** Apply them on staging first ([Staging schema](#apply-migrations-to-staging-only)) and test. A fresh sync already pushes schema before it replaces staging data.
+**C. Database, only if `supabase/migrations/` has new files.** Apply them on staging first ([Staging schema](#apply-migrations-to-staging-only)) and test. A fresh sync already pushes schema before it replaces staging data. Optionally preview prod with `./scripts/db.sh migrate` (dry run, no change).
 
-Then, when the pump is quiet (nobody entering DSR or day closing):
+**D. Go live.** Merge `staging` → `main`. Actions → **Deploy** then runs:
 
-```bash
-./scripts/db.sh migrate           # review. No production change
-./scripts/db.sh migrate --apply   # local backup, then production schema
-```
+1. **Pending prod migrations** compares `supabase/migrations/` with prod and lists the new files in the run summary.
+2. If there are any, **Approve prod migrations** waits. Approve it (Actions → the run → **Review deployments**) only when the pump is quiet, with nobody entering DSR or day closing. Rejecting it stops the run. The live site and database stay as they were.
+3. **Migrate prod** uploads a full backup to Drive under `Manual/pre-migrate-<time>-<sha>`, then runs `scripts/migrate-prod.sh` (preflight, `supabase db push`, verify).
+4. **Deploy prod** publishes the site, waits until Pages serves the new commit, checks key pages, `js/env.js` and Supabase, then tags the release.
 
-**D. Go live.** Merge `staging` → `main`. Wait for **Deploy**. Smoke-test the live site: login → dashboard → one real page (Meter reading).
+If a step fails, the site is not updated (or the smoke test turns the run red). Fix forward, or roll back the frontend: [RECOVERY.md → Frontend rollback](RECOVERY.md#frontend-rollback). Then do a manual check: log in → dashboard → one real page (Meter reading).
+
+`./scripts/db.sh migrate --apply` from a laptop still works for an emergency or out-of-band fix. The next Deploy then finds nothing pending.
 
 - [ ] Sync (optional)
 - [ ] Staging schema applied if there are new migrations
 - [ ] Code on `staging` and tested
-- [ ] `migrate` then `migrate --apply` if any migrations
-- [ ] Merged to `main`
+- [ ] Merged to `main`, migrations approved in a quiet window (if any)
+- [ ] Deploy green (smoke test + release tag)
 - [ ] Live site checked
 
 <a id="4-backup-production-database"></a>
@@ -167,7 +176,7 @@ The commands are in [Which command](#which-command).
 
 The scheduled run uploads the finished month. A separate weekly workflow, **Purge audit log**, deletes production audit rows older than 6 months. On 1 January it also writes `Yearly/<previous year>/` and, only after that upload succeeds, trashes that year’s month folders. The procedure, the file list, and a folder example: [STORAGE_RETENTION.md](STORAGE_RETENTION.md).
 
-`migrate --apply` writes a local backup before it changes schema. It does not upload to Drive.
+`migrate --apply` from a laptop writes a local backup before it changes schema. A migration from the Deploy workflow uploads a full backup to Drive first.
 
 Free-tier size, indexes, and archiving old years: [STORAGE_RETENTION.md](STORAGE_RETENTION.md). Back up before any archive or index drop.
 
@@ -179,7 +188,7 @@ Free-tier size, indexes, and archiving old years: [STORAGE_RETENTION.md](STORAGE
 | Apply SQL on staging and keep its rows | [Staging schema](#apply-migrations-to-staging-only) |
 | Publish the test website | Push or merge to `staging` |
 | See pending production migrations | `./scripts/db.sh migrate` |
-| Upgrade the live schema | `./scripts/db.sh migrate --apply` |
+| Upgrade the live schema | Merge to `main` and approve **prod-migrations** in the Deploy run (laptop fallback: `./scripts/db.sh migrate --apply`) |
 | Publish the live website | Merge `staging` → `main` |
 | Put the live website back | [Recovery → Frontend rollback](RECOVERY.md#frontend-rollback) |
 | Save the finished month to Drive | Actions → **Backup production database**, mode **month**, or `./scripts/backup-month-to-drive.sh` |

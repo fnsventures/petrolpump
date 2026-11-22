@@ -6,7 +6,7 @@ name: Check DNS siblings
 
 on:
   schedule:
-    # Hourly — catch registrar mistakes before the next shift, not next day
+    # Daily at 00:20 UTC (05:50 IST), before the morning shift
     - cron: "20 0 * * *"
   workflow_dispatch:
 
