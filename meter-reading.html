@@ -1013,27 +1013,44 @@
           id="purchase-cost"
           hidden
         >
-          <div class="panel-head">
-            <h2 class="dashboard-section-title">Purchase cost</h2>
-            <p class="muted panel-lead">
-              Enter amounts exactly as on the BPCL invoices for that receipt day. The app calculates delivery ₹/KL, LFR ₹/KL, and landed buying price.
-              Each save applies from that receipt onward only — earlier days stay as they were.
-            </p>
+          <div class="panel-head pl-panel-head">
+            <div>
+              <h2 class="dashboard-section-title">Purchase cost</h2>
+              <p class="muted panel-lead">
+                Enter figures exactly as printed on the BPCL invoices for each receipt day. Delivery ₹/KL, LFR ₹/KL and the
+                landed buying price are calculated for you. A save applies from that receipt onward; earlier days are unchanged.
+              </p>
+            </div>
+            <span id="purchase-cost-count" class="badge badge--warning pl-pending-count hidden" role="status"></span>
           </div>
           <p id="purchase-cost-error" class="error hidden" role="alert"></p>
-          <p id="purchase-cost-hint" class="muted"></p>
           <div id="purchase-cost-alert" class="pl-buying-price-alert hidden">
-            <p class="pl-alert-message">
-              <strong>Fuel invoice:</strong> Rate per Unit, DLY/TAXABLE CHARGE, Quantity (KL).<br />
-              <strong>LFR invoice:</strong> TAXABLE AMT and total KL for the load (MS+HSD). GST on LFR is applied automatically.
-            </p>
-            <ul id="purchase-cost-missing-list" class="pl-missing-buying-list"></ul>
+            <aside class="pl-guide" aria-label="Where to find each figure">
+              <div class="pl-guide-item">
+                <span class="pl-guide-step" aria-hidden="true">1</span>
+                <div>
+                  <p class="pl-guide-title">LFR tax invoice (once per day)</p>
+                  <p class="pl-guide-text">TAXABLE AMT and total KL for the whole load (MS + HSD). GST is added automatically.</p>
+                </div>
+              </div>
+              <div class="pl-guide-item">
+                <span class="pl-guide-step" aria-hidden="true">2</span>
+                <div>
+                  <p class="pl-guide-title">Fuel tax invoice (per product)</p>
+                  <p class="pl-guide-text">Rate per Unit, DLY/TAXABLE CHARGE and Quantity (KL), then save that product.</p>
+                </div>
+              </div>
+            </aside>
+            <p id="purchase-cost-hint" class="pl-hint muted"></p>
+            <ul id="purchase-cost-missing-list" class="pl-missing-buying-list" aria-label="Receipt days needing a buying price"></ul>
           </div>
-          <p id="purchase-cost-empty" class="muted hidden" role="status">
-            All receipt days in the lookback window have rate, delivery, and LFR. Full P&amp;L is on
-            <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a>
-            and <a href="analysis.html">Analysis</a>.
-          </p>
+          <div id="purchase-cost-empty" class="empty-state pl-empty hidden" role="status">
+            <p><strong>All caught up.</strong> Every receipt day in the lookback window has rate, delivery and LFR.</p>
+            <p>
+              See profit on <a href="reports.html?tab=pl">Reports → Profit &amp; Loss</a> or
+              <a href="analysis.html">Analysis</a>.
+            </p>
+          </div>
         </section>
       </div>
     </main>

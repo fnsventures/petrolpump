@@ -339,6 +339,7 @@ function getPurchaseCostEntryOpts() {
     alertEl: document.getElementById("purchase-cost-alert"),
     emptyEl: document.getElementById("purchase-cost-empty"),
     errorEl: document.getElementById("purchase-cost-error"),
+    countEl: document.getElementById("purchase-cost-count"),
     onSaved: async () => {
       purchaseCostLoaded = false;
       await ensurePurchaseCostLoaded({ force: true });
