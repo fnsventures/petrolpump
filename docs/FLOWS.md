@@ -431,7 +431,7 @@ Persists to `pump_settings.config` (and direct table writes for `users`, `employ
 |------|------------------------|
 | Login | Supabase Auth, public.users (role), forgot password |
 | Dashboard | dsr_petrol, dsr_diesel, dsr_stock, day_closing, expenses, credit_entries, pump_settings, get_dsr_stock_range, get_open_credit_as_of, get_day_closing_breakdown |
-| Meter reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price |
+| Meter reading (`meter-reading.html`) | dsr_petrol, dsr_diesel, meter_shift_readings, meter_shift_cash, get/save/delete_meter_shift_readings, get_shift_aggregated_daily_meters, sync_shift_meters_from_dsr, meter_shift_lock_info, update_dsr_buying_price, update_dsr_purchase_lfr |
 | DSR (`dsr.html`) | dsr view, dsr_stock, get_dsr_stock_range, get_meter_sales_breakdown (pump / shift / salesman), get_stock_variance, tanker_decantations |
 | Credit | credit_*, add_credit_entry, record_credit_payment, batch_record_credit_settlements, prepaid_balance |
 | Outstanding | get_outstanding_credit_list_as_of (credit.html#outstanding) |
