@@ -749,22 +749,76 @@ tr.is-editing .expense-cat-drag-handle {
   color: var(--text-muted);
 }
 
-/* Shared: fuel buying-price entry (Meter reading → Purchase cost) */
+/* Shared: fuel buying-price entry (Meter reading → Purchase cost, js/buyingPriceEntry.js) */
+.pl-panel-head .pl-pending-count {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  font-size: var(--text-sm);
+  padding: 0.25rem 0.7rem;
+}
+
 .pl-buying-price-alert {
-  margin-bottom: 1rem;
-  padding: 1rem;
-  background: var(--warning-soft);
-  border: 1px solid var(--warning-border);
-  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
 
 .pl-buying-price-alert.hidden {
   display: none;
 }
 
-.pl-alert-message {
-  margin: 0 0 0.75rem 0;
-  font-size: var(--text-base);
+.pl-guide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--info-soft);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius-md);
+}
+
+.pl-guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.pl-guide-step {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--text-on-accent);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.pl-guide-title {
+  margin: 0;
+  font-size: var(--heading-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pl-guide-text {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.pl-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.pl-hint:empty {
+  display: none;
 }
 
 .pl-missing-buying-list {
@@ -773,85 +827,247 @@ tr.is-editing .expense-cat-drag-handle {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
-.pl-day-card {
-  list-style: none;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
+.pl-loading {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--space-2);
+}
+
+.pl-loading .skeleton-row {
+  height: 9rem;
+  border-radius: var(--radius-lg);
+}
+
+/* One receipt day */
+.pl-day-card {
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
 }
 
 .pl-day-head {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.pl-day-eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .pl-day-title {
-  margin: 0;
-  font-size: var(--text-md);
+  margin: 0.1rem 0 0;
+  font-size: var(--heading-lg);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
 }
 
-.pl-day-sub {
-  margin: 0;
-  font-size: var(--heading-sm);
-}
-
-.pl-lfr-block,
-.pl-product-block {
-  padding: 0.75rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.pl-product-head {
+.pl-day-badges {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.75rem;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* LFR + product sections inside a day */
+.pl-lfr-block,
+.pl-product-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.pl-day-head + .pl-lfr-block {
+  border-top: 0;
+}
+
+.pl-lfr-block {
+  background: var(--surface-muted);
+}
+
+.pl-product-block {
+  border-left: 3px solid transparent;
+}
+
+.pl-product-block--petrol {
+  border-left-color: var(--fuel-petrol-border);
+}
+
+.pl-product-block--diesel {
+  border-left-color: var(--fuel-diesel-border);
+}
+
+.pl-block-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+}
+
+.pl-block-head > .badge--square {
+  min-width: 2.5rem;
+  justify-content: center;
+  padding: 0.3rem 0.45rem;
+}
+
+.pl-block-titles {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.pl-block-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pl-block-sub {
+  margin: 0.1rem 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .pl-field-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-  gap: 0.5rem 0.65rem;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.pl-field-grid--2 {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
 }
 
 .pl-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  font-size: var(--text-sm);
-}
-
-.pl-field span {
-  color: var(--muted);
+  min-width: 0;
 }
 
 .pl-field input {
-  width: 100%;
-  padding: 0.35rem 0.5rem;
-  font-size: var(--heading-sm);
-  box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
 }
 
-.pl-computed strong {
+.pl-field abbr {
+  color: var(--color-danger);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.pl-field-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.pl-computed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.pl-computed-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pl-computed-value {
+  display: flex;
+  align-items: center;
+  min-height: var(--input-height);
+  padding: 0 var(--control-padding-x);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
   font-size: var(--text-base);
-  padding: 0.35rem 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
-.pl-landed-preview {
-  margin: 0;
+.pl-optional {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.pl-optional > summary {
+  cursor: pointer;
+  padding: var(--space-1) var(--space-3);
   font-size: var(--heading-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pl-optional > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-md);
+}
+
+.pl-optional[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.pl-optional > .pl-field-grid {
+  padding: var(--space-3);
+}
+
+.pl-block-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
+.pl-landed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.pl-landed-value {
+  font-size: var(--heading-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--text-muted);
+}
+
+.pl-landed.is-ready .pl-landed-value {
+  color: var(--color-success);
+}
+
+.pl-landed-sub {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.pl-buying-save {
+  flex-shrink: 0;
 }
 
 .pl-block-error {
@@ -865,42 +1081,26 @@ tr.is-editing .expense-cat-drag-handle {
   background: var(--danger-soft);
 }
 
-.pl-field abbr {
-  color: var(--color-danger);
-  text-decoration: none;
-  font-weight: 700;
+.pl-empty p:last-child {
+  margin-bottom: 0;
 }
 
-.pl-missing-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
+@media (max-width: 480px) {
+  .pl-day-head,
+  .pl-lfr-block,
+  .pl-product-block {
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+  }
 
-.pl-missing-label {
-  min-width: 140px;
-  font-size: var(--heading-sm);
-}
+  .pl-block-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-.pl-buying-input,
-.pl-inv-input,
-.pl-gstin-input,
-.pl-del-total,
-.pl-del-qty,
-.pl-lfr-total,
-.pl-lfr-qty {
-  min-width: 0;
-}
-
-.pl-buying-save {
-  align-self: flex-start;
-  padding: 0.4rem 0.85rem;
-  font-size: var(--heading-sm);
-}
-
-.pl-buying-save.pl-save-success {
-  color: var(--color-success);
+  .pl-buying-save {
+    width: 100%;
+  }
 }
 
 /* App-wide toasts (AppError.showToast) */

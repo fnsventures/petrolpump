@@ -1,4 +1,4 @@
-/* global AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, formatCurrency, formatQuantity, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
+/* global AppError, AppCache, CacheInvalidation, PumpSettings, AppConfig, escapeHtml, html, setHtml, trustedHtml, applyInputUnits, formatDisplayDate, formatCurrency, formatQuantity, normalizeProduct, validateBuyingRateKlInput, buyingRatePerLitreForDb, getPlBuyingPriceFieldLabel, getPurchaseLfrGstPct, ratePerKlFromTotalAndQty, lfrPerKlInclGstFromTaxable, litresToKl, landedBuyingRatePerLitre, DsrQueries */
 
 /**
  * Admin UI: enter pre-VAT rate + invoice delivery/LFR totals on receipt days.
@@ -87,6 +87,8 @@
       local.classList.remove("hidden");
     }
     if (focusEl && typeof focusEl.focus === "function") {
+      const details = focusEl.closest?.("details");
+      if (details) details.open = true;
       try {
         focusEl.focus({ preventScroll: false });
       } catch (_) {
@@ -150,6 +152,15 @@
     listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => updateDayComputed(dayEl));
   }
 
+  /** Pending-days badge in the panel header. */
+  function updateCount(opts) {
+    const { listEl, countEl } = opts || {};
+    if (!countEl) return;
+    const days = listEl?.querySelectorAll(".pl-day-card").length ?? 0;
+    countEl.textContent = days === 1 ? "1 day pending" : `${days} days pending`;
+    countEl.classList.toggle("hidden", days === 0);
+  }
+
   function syncEmptyState(opts) {
     const { listEl, alertEl, emptyEl } = opts || {};
     const hasCards = Boolean(listEl?.querySelector(".pl-day-card"));
@@ -157,10 +168,11 @@
       emptyEl?.classList.add("hidden");
       alertEl?.classList.remove("hidden");
     } else {
-      if (listEl) listEl.innerHTML = "";
+      setHtml(listEl, "");
       alertEl?.classList.add("hidden");
       emptyEl?.classList.remove("hidden");
     }
+    updateCount(opts);
   }
 
   function groupRowsByDate(rows) {
@@ -205,7 +217,7 @@
     const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, lfrGst);
     const lfrOut = dayEl.querySelector(".pl-lfr-per-kl");
     if (lfrOut) {
-      lfrOut.textContent = lfrPerKl != null ? `${formatCurrency(lfrPerKl)}/KL incl. GST` : "—";
+      lfrOut.textContent = lfrPerKl != null ? `${formatCurrency(lfrPerKl)}/KL` : "—";
     }
 
     dayEl.querySelectorAll(".pl-product-block").forEach((block) => {
@@ -218,21 +230,24 @@
       if (delOut) {
         delOut.textContent = delPerKl != null ? `${formatCurrency(delPerKl)}/KL` : "—";
       }
-      const preview = block.querySelector(".pl-landed-preview");
+      const valueEl = block.querySelector(".pl-landed-value");
+      const subEl = block.querySelector(".pl-landed-sub");
+      const landedWrap = block.querySelector(".pl-landed");
       const parsed = validateBuyingRateKlInput(rateKl);
-      if (!parsed.ok || delPerKl == null || lfrPerKl == null) {
-        if (preview) preview.textContent = "Buying price (landed): —";
-        return;
-      }
-      const landed = landedBuyingRatePerLitre(parsed.valuePerLitre, product, date, {
-        deliveryPerKl: delPerKl,
-        lfrPerKl,
-      });
-      if (preview) {
-        preview.textContent =
+      const landed =
+        parsed.ok && delPerKl != null && lfrPerKl != null
+          ? landedBuyingRatePerLitre(parsed.valuePerLitre, product, date, {
+              deliveryPerKl: delPerKl,
+              lfrPerKl,
+            })
+          : null;
+      landedWrap?.classList.toggle("is-ready", landed != null);
+      if (valueEl) valueEl.textContent = landed != null ? `${formatCurrency(landed)}/L` : "—";
+      if (subEl) {
+        subEl.textContent =
           landed != null
-            ? `Buying price (landed) ≈ ${formatCurrency(landed)}/L · ${formatCurrency(landed * 1000)}/KL`
-            : "Buying price (landed): —";
+            ? `${formatCurrency(landed * 1000)}/KL incl. VAT, delivery & LFR`
+            : "Fill rate, delivery and LFR to preview";
       }
     });
   }
@@ -261,29 +276,217 @@
     return [...listEl.querySelectorAll("input")].some((input) => input.value !== input.defaultValue);
   }
 
+  const PRODUCT_META = {
+    petrol: { label: "Petrol (MS)", code: "MS", badge: "badge--petrol" },
+    diesel: { label: "Diesel (HSD)", code: "HSD", badge: "badge--diesel" },
+  };
+
+  /** Input value for a stored number: blank when missing. */
+  function numValue(n) {
+    return n === "" || n == null ? "" : String(n);
+  }
+
+  /**
+   * One labelled input in the app's .form-field pattern. `unit` becomes an input-unit badge
+   * (applyInputUnits in js/utils.js wraps it).
+   */
+  function field({ id, label, cls, value, placeholder, unit, required = true, hint, inputmode = "decimal", maxlength }) {
+    return html`
+      <div class="form-field pl-field">
+        <label for="${id}">${label}${required ? html` <abbr title="required">*</abbr>` : ""}</label>
+        <input
+          id="${id}"
+          type="text"
+          inputmode="${inputmode}"
+          class="${cls}"
+          value="${value}"
+          placeholder="${placeholder}"
+          autocomplete="off"
+          ${trustedHtml(unit ? `data-unit="${escapeHtml(unit)}"` : "")}
+          ${trustedHtml(maxlength ? `maxlength="${Number(maxlength)}"` : "")}
+          ${trustedHtml(required ? 'required aria-required="true"' : "")}
+        />
+        ${hint ? html`<span class="pl-field-hint">${hint}</span>` : ""}
+      </div>`;
+  }
+
+  function computedField(label, cls, note) {
+    return html`
+      <div class="pl-computed" aria-live="polite">
+        <span class="pl-computed-label">${label}</span>
+        <strong class="pl-computed-value ${cls}">—</strong>
+        ${note ? html`<span class="pl-field-hint">${note}</span>` : ""}
+      </div>`;
+  }
+
+  function productBlock(row, defaultGstin) {
+    const product = normalizeProduct(row.product);
+    const meta = PRODUCT_META[product] || PRODUCT_META.diesel;
+    const rowId = String(row.id);
+    const delTotal = Number(row.purchase_delivery_total) > 0 ? row.purchase_delivery_total : "";
+    const receiptsL = Number(row.receipts) || 0;
+    const existingRateL = Number(row.buying_price_per_litre);
+    const existingRateKl =
+      Number.isFinite(existingRateL) && existingRateL > 0 ? Math.round(existingRateL * 1000 * 100) / 100 : "";
+    return html`
+      <section class="pl-product-block pl-product-block--${product}" data-dsr-id="${rowId}" data-product="${product}">
+        <div class="pl-block-head">
+          <span class="badge badge--square ${meta.badge}" aria-hidden="true">${meta.code}</span>
+          <div class="pl-block-titles">
+            <h4 class="pl-block-title">${meta.label}</h4>
+            <p class="pl-block-sub">Fuel tax invoice</p>
+          </div>
+          <span class="badge badge--neutral pl-receipt-badge">${formatQuantity(receiptsL)} L received</span>
+        </div>
+        <div class="pl-field-grid">
+          ${field({
+            id: `pl-buying-${rowId}`,
+            label: "Rate per Unit",
+            cls: "pl-buying-input",
+            value: numValue(existingRateKl),
+            placeholder: "81416.47",
+            unit: "₹",
+            hint: "Pre-VAT, per KL",
+          })}
+          ${field({
+            id: `pl-del-total-${rowId}`,
+            label: "DLY/TAXABLE CHARGE",
+            cls: "pl-del-total",
+            value: numValue(delTotal),
+            placeholder: "2435.80",
+            unit: "₹",
+          })}
+          ${field({
+            id: `pl-del-qty-${rowId}`,
+            label: "Quantity",
+            cls: "pl-del-qty",
+            value: numValue(defaultDeliveryQtyKl(row)),
+            placeholder: "4",
+            unit: "KL",
+          })}
+          ${computedField("Delivery", "pl-del-per-kl", "Charge per KL")}
+        </div>
+        <details class="pl-optional" ${trustedHtml(row.supplier_invoice_no ? "open" : "")}>
+          <summary>Invoice reference <span class="muted">(optional)</span></summary>
+          <div class="pl-field-grid pl-field-grid--2">
+            ${field({
+              id: `pl-inv-${rowId}`,
+              label: "Invoice No.",
+              cls: "pl-inv-input",
+              value: row.supplier_invoice_no || "",
+              placeholder: "1202801092",
+              required: false,
+              inputmode: "text",
+              maxlength: 40,
+              hint: "Links the purchase invoice from the vault",
+            })}
+            ${field({
+              id: `pl-gstin-${rowId}`,
+              label: "Supplier GSTIN",
+              cls: "pl-gstin-input",
+              value: row.supplier_gstin || defaultGstin || "",
+              placeholder: "15-character GSTIN",
+              required: false,
+              inputmode: "text",
+              maxlength: 15,
+            })}
+          </div>
+        </details>
+        <div class="pl-block-foot">
+          <div class="pl-landed">
+            <span class="pl-computed-label">Landed buying price</span>
+            <strong class="pl-landed-value">—</strong>
+            <span class="pl-landed-sub">Fill rate, delivery and LFR to preview</span>
+          </div>
+          <button type="button" class="button-primary pl-buying-save" data-dsr-id="${rowId}" data-product="${product}">
+            Save ${meta.label}
+          </button>
+        </div>
+        <p class="pl-block-error error hidden" role="alert"></p>
+      </section>`;
+  }
+
+  function dayCard(date, dayRows, defaultGstin, lfrGst) {
+    const products = dayRows.map((r) => normalizeProduct(r.product));
+    return html`
+      <li class="pl-day-card" data-date="${date}">
+        <div class="pl-day-head">
+          <div>
+            <p class="pl-day-eyebrow">Receipt day</p>
+            <h3 class="pl-day-title">${formatDisplayDate(date)}</h3>
+          </div>
+          <div class="pl-day-badges">
+            ${products.map((p) => {
+              const meta = PRODUCT_META[p] || PRODUCT_META.diesel;
+              return html`<span class="badge ${meta.badge}">${meta.code}</span>`;
+            })}
+            <span class="badge badge--warning">Cost pending</span>
+          </div>
+        </div>
+        <section class="pl-lfr-block">
+          <div class="pl-block-head">
+            <span class="badge badge--square badge--neutral" aria-hidden="true">LFR</span>
+            <div class="pl-block-titles">
+              <h4 class="pl-block-title">LFR for DC · MS + HSD</h4>
+              <p class="pl-block-sub">LFR tax invoice · shared by both products · CGST+SGST ${String(lfrGst)}% added</p>
+            </div>
+          </div>
+          <div class="pl-field-grid">
+            ${field({
+              id: `pl-lfr-total-${date}`,
+              label: "TAXABLE AMT",
+              cls: "pl-lfr-total",
+              value: numValue(defaultLfrTotal(dayRows)),
+              placeholder: "2133.00",
+              unit: "₹",
+            })}
+            ${field({
+              id: `pl-lfr-qty-${date}`,
+              label: "Total quantity",
+              cls: "pl-lfr-qty",
+              value: numValue(defaultLfrQtyKl(dayRows)),
+              placeholder: "12",
+              unit: "KL",
+              hint: "Whole load, MS + HSD",
+            })}
+            ${computedField("LFR incl. GST", "pl-lfr-per-kl", "Applied to both products")}
+          </div>
+        </section>
+        ${dayRows.map((row) => productBlock(row, defaultGstin))}
+      </li>`;
+  }
+
+  /** Placeholder cards while the list loads (first load only). */
+  function renderLoading(opts) {
+    const { listEl, alertEl, emptyEl } = opts || {};
+    // Only on a cold load: never over existing cards or the "all caught up" state.
+    if (!listEl || listEl.children.length || (emptyEl && !emptyEl.classList.contains("hidden"))) return;
+    emptyEl?.classList.add("hidden");
+    alertEl?.classList.remove("hidden");
+    setHtml(
+      listEl,
+      html`<li class="pl-loading" aria-busy="true">
+        <span class="sr-only">Loading receipt days…</span>
+        <span class="skeleton-row" aria-hidden="true"></span>
+        <span class="skeleton-row" aria-hidden="true"></span>
+      </li>`
+    );
+  }
+
   /**
    * @param {object} opts
    * @param {HTMLElement} opts.listEl
    * @param {HTMLElement} [opts.alertEl]
    * @param {HTMLElement} [opts.emptyEl]
    * @param {HTMLElement} [opts.errorEl]
+   * @param {HTMLElement} [opts.countEl]
    * @param {() => void|Promise<void>} [opts.onSaved]
    */
   function renderMissingBuyingList(rows, opts) {
-    const { listEl, alertEl, emptyEl, errorEl, onSaved } = opts;
+    const { listEl, errorEl } = opts;
     if (!listEl) return;
 
     hideError(errorEl);
-
-    if (!rows?.length) {
-      alertEl?.classList.add("hidden");
-      listEl.innerHTML = "";
-      emptyEl?.classList.remove("hidden");
-      return;
-    }
-
-    emptyEl?.classList.add("hidden");
-    alertEl?.classList.remove("hidden");
 
     const defaultGstin =
       PumpSettings.getCachedSync().reports?.fuelSupplierGstin ||
@@ -292,95 +495,9 @@
     const lfrGst = getPurchaseLfrGstPct();
     const groups = groupRowsByDate(rows);
 
-    listEl.innerHTML = groups
-      .map(([date, dayRows]) => {
-        const lfrQtyDefault = defaultLfrQtyKl(dayRows);
-        const lfrTotalDefault = defaultLfrTotal(dayRows);
-        const productBlocks = dayRows
-          .map((row) => {
-            const product = normalizeProduct(row.product);
-            const productLabel = product === "petrol" ? "Petrol (MS)" : "Diesel (HSD)";
-            const rowId = row.id;
-            const invVal = escapeHtml(row.supplier_invoice_no || "");
-            const gstinVal = escapeHtml(row.supplier_gstin || defaultGstin || "");
-            const delTotal =
-              Number(row.purchase_delivery_total) > 0 ? row.purchase_delivery_total : "";
-            const delQty = defaultDeliveryQtyKl(row);
-            const receiptsL = Number(row.receipts) || 0;
-            const existingRateL = Number(row.buying_price_per_litre);
-            const existingRateKl =
-              Number.isFinite(existingRateL) && existingRateL > 0
-                ? Math.round(existingRateL * 1000 * 100) / 100
-                : "";
-            return `
-            <div class="pl-product-block" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">
-              <div class="pl-product-head">
-                <strong>${escapeHtml(productLabel)}</strong>
-                <span class="muted">${formatQuantity(receiptsL)} L · from fuel invoice</span>
-              </div>
-              <div class="pl-field-grid">
-                <label class="pl-field">
-                  <span>Rate per Unit (₹/KL) <abbr title="required">*</abbr></span>
-                  <input id="pl-buying-${rowId}" type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 81416.47" class="pl-buying-input" value="${escapeHtml(existingRateKl === "" ? "" : String(existingRateKl))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
-                </label>
-                <label class="pl-field">
-                  <span>DLY/TAXABLE CHARGE (₹) <abbr title="required">*</abbr></span>
-                  <input type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2435.80" class="pl-del-total" value="${escapeHtml(delTotal === "" ? "" : String(delTotal))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
-                </label>
-                <label class="pl-field">
-                  <span>Quantity (KL) <abbr title="required">*</abbr></span>
-                  <input type="text" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 4" class="pl-del-qty" value="${escapeHtml(delQty === "" ? "" : String(delQty))}" data-dsr-id="${escapeHtml(rowId)}" required aria-required="true" />
-                </label>
-                <div class="pl-field pl-computed">
-                  <span>Delivery ₹/KL</span>
-                  <strong class="pl-del-per-kl">—</strong>
-                </div>
-                <label class="pl-field">
-                  <span>Invoice No.</span>
-                  <input id="pl-inv-${rowId}" type="text" maxlength="40" placeholder="e.g. 1202801092" class="pl-inv-input" value="${invVal}" data-dsr-id="${escapeHtml(rowId)}" />
-                </label>
-                <label class="pl-field">
-                  <span>Supplier GSTIN</span>
-                  <input id="pl-gstin-${rowId}" type="text" maxlength="15" placeholder="GSTIN" class="pl-gstin-input" value="${gstinVal}" data-dsr-id="${escapeHtml(rowId)}" />
-                </label>
-              </div>
-              <p class="pl-landed-preview muted">Buying price (landed): —</p>
-              <p class="pl-block-error error hidden" role="alert"></p>
-              <button type="button" class="button-secondary pl-buying-save" data-dsr-id="${escapeHtml(rowId)}" data-product="${escapeHtml(product)}">Save ${escapeHtml(productLabel)}</button>
-            </div>`;
-          })
-          .join("");
-
-        return `
-        <li class="pl-day-card" data-date="${escapeHtml(date)}">
-          <div class="pl-day-head">
-            <h3 class="pl-day-title">${escapeHtml(date)}</h3>
-            <p class="muted pl-day-sub">Copy amounts from that day’s fuel invoice and LFR tax invoice. Saved values apply from this receipt onward only.</p>
-          </div>
-          <div class="pl-lfr-block">
-            <div class="pl-product-head">
-              <strong>LFR FOR DC (MS / HSD)</strong>
-              <span class="muted">LFR tax invoice · TAXABLE AMT · CGST+SGST ${escapeHtml(String(lfrGst))}%</span>
-            </div>
-            <div class="pl-field-grid">
-              <label class="pl-field">
-                <span>TAXABLE AMT (₹) <abbr title="required">*</abbr></span>
-                <input type="text" inputmode="decimal" step="0.01" min="0" placeholder="e.g. 2133.00" class="pl-lfr-total" value="${escapeHtml(lfrTotalDefault === "" ? "" : String(lfrTotalDefault))}" required aria-required="true" />
-              </label>
-              <label class="pl-field">
-                <span>Total quantity (KL) <abbr title="required">*</abbr></span>
-                <input type="text" inputmode="decimal" step="0.001" min="0" placeholder="e.g. 12" class="pl-lfr-qty" value="${escapeHtml(lfrQtyDefault === "" ? "" : String(lfrQtyDefault))}" required aria-required="true" />
-              </label>
-              <div class="pl-field pl-computed">
-                <span>LFR ₹/KL (incl. GST)</span>
-                <strong class="pl-lfr-per-kl">—</strong>
-              </div>
-            </div>
-          </div>
-          ${productBlocks}
-        </li>`;
-      })
-      .join("");
+    setHtml(listEl, html`${groups.map(([date, dayRows]) => dayCard(date, dayRows, defaultGstin, lfrGst))}`);
+    applyInputUnits(listEl);
+    syncEmptyState(opts);
 
     listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => bindDayComputed(dayEl));
     listEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
@@ -487,7 +604,7 @@
     const resetBtn = () => {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = btn.dataset.product === "petrol" ? "Save Petrol (MS)" : "Save Diesel (HSD)";
+        btn.textContent = `Save ${(PRODUCT_META[btn.dataset.product] || PRODUCT_META.diesel).label}`;
         btn.classList.remove("pl-save-success");
       }
     };
@@ -547,6 +664,10 @@
     }
     syncEmptyState(opts);
     hideError(errorEl);
+    AppError.showToast?.(
+      `${(PRODUCT_META[product] || PRODUCT_META.diesel).label} cost saved for ${formatDisplayDate(receiptDate)}.`,
+      "success"
+    );
 
     if (typeof AppCache !== "undefined" && AppCache) {
       CacheInvalidation.invalidate("dsr");
@@ -563,17 +684,19 @@
   }
 
   async function refresh(opts = {}) {
-    const { force = false, listEl, alertEl, emptyEl, errorEl, onSaved } = opts;
+    const { force = false, listEl, alertEl, emptyEl, errorEl, countEl, onSaved } = opts;
     // Soft reloads (section revisit, live refresh, landing race) must not wipe typed values.
     if (!force && hasUnsavedEdits(listEl)) {
       return null;
     }
+    renderLoading(opts);
     const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows({ force });
     if (error) {
       AppError.report(error, { context: "BuyingPriceEntry.refresh" });
-      if (listEl) listEl.innerHTML = "";
+      setHtml(listEl, "");
       alertEl?.classList.add("hidden");
       emptyEl?.classList.add("hidden");
+      countEl?.classList.add("hidden");
       showError(errorEl, error.message || "Could not load receipt days needing a buying price.");
       return [];
     }
@@ -582,7 +705,7 @@
       return null;
     }
     const rows = data ?? [];
-    renderMissingBuyingList(rows, { listEl, alertEl, emptyEl, errorEl, onSaved });
+    renderMissingBuyingList(rows, { listEl, alertEl, emptyEl, errorEl, countEl, onSaved });
     return rows;
   }
 
