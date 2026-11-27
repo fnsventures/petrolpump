@@ -1017,11 +1017,23 @@
             <div>
               <h2 class="dashboard-section-title">Purchase cost</h2>
               <p class="muted panel-lead">
-                Enter figures exactly as printed on the BPCL invoices for each receipt day. Delivery ₹/KL, LFR ₹/KL and the
-                landed buying price are calculated for you. A save applies from that receipt onward; earlier days are unchanged.
+                Enter figures exactly as printed on the BPCL invoices for each receipt day. LFR, petrol and diesel are saved
+                separately, in any order. Delivery ₹/KL, LFR ₹/KL and the landed buying price are calculated for you. A save
+                applies from that receipt onward; earlier days are unchanged.
               </p>
             </div>
-            <span id="purchase-cost-count" class="badge badge--warning pl-pending-count hidden" role="status"></span>
+            <div class="pl-panel-actions">
+              <span id="purchase-cost-count" class="badge badge--warning pl-pending-count hidden" role="status"></span>
+              <button
+                type="button"
+                id="purchase-cost-toggle-all"
+                class="button-secondary button-small pl-toggle-all hidden"
+                aria-controls="purchase-cost-missing-list"
+                aria-expanded="false"
+              >
+                Expand all
+              </button>
+            </div>
           </div>
           <p id="purchase-cost-error" class="error hidden" role="alert"></p>
           <div id="purchase-cost-alert" class="pl-buying-price-alert hidden">
@@ -1030,7 +1042,9 @@
                 <span class="pl-guide-step" aria-hidden="true">1</span>
                 <div>
                   <p class="pl-guide-title">LFR tax invoice (once per day)</p>
-                  <p class="pl-guide-text">TAXABLE AMT and total KL for the whole load (MS + HSD). GST is added automatically.</p>
+                  <p class="pl-guide-text">
+                    TAXABLE AMT and total KL for the whole load (MS + HSD), then Save LFR. GST is added automatically.
+                  </p>
                 </div>
               </div>
               <div class="pl-guide-item">

@@ -100,11 +100,18 @@
     }
   }
 
-  function captureDrafts(listEl, excludeDsrId) {
+  /**
+   * Typed values to carry over a re-render. The section just saved is skipped so it shows the
+   * server's values.
+   * @param {HTMLElement} listEl
+   * @param {{ excludeDsrId?: string, excludeLfrDate?: string }} [exclude]
+   */
+  function captureDrafts(listEl, exclude = {}) {
+    const { excludeDsrId, excludeLfrDate } = exclude;
     const drafts = { products: {}, lfrByDate: {} };
     listEl?.querySelectorAll(".pl-day-card").forEach((dayEl) => {
       const date = dayEl.dataset.date;
-      if (date) {
+      if (date && date !== excludeLfrDate) {
         drafts.lfrByDate[date] = {
           total: dayEl.querySelector(".pl-lfr-total")?.value ?? "",
           qty: dayEl.querySelector(".pl-lfr-qty")?.value ?? "",
@@ -152,13 +159,57 @@
     listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => updateDayComputed(dayEl));
   }
 
-  /** Pending-days badge in the panel header. */
+  /** Open/closed per receipt date, kept across re-renders. Unset dates: only the newest is open. */
+  const dayOpenState = new Map();
+
+  /** Pending-days badge in the panel header + the expand/collapse-all control. */
   function updateCount(opts) {
     const { listEl, countEl } = opts || {};
-    if (!countEl) return;
     const days = listEl?.querySelectorAll(".pl-day-card").length ?? 0;
-    countEl.textContent = days === 1 ? "1 day pending" : `${days} days pending`;
-    countEl.classList.toggle("hidden", days === 0);
+    if (countEl) {
+      countEl.textContent = days === 1 ? "1 day pending" : `${days} days pending`;
+      countEl.classList.toggle("hidden", days === 0);
+    }
+    syncToggleAll(opts);
+  }
+
+  function syncToggleAll(opts) {
+    const { listEl, toggleAllEl } = opts || {};
+    if (!toggleAllEl) return;
+    const days = [...(listEl?.querySelectorAll(".pl-day") ?? [])];
+    toggleAllEl.classList.toggle("hidden", days.length < 2);
+    const allOpen = days.length > 0 && days.every((d) => /** @type {HTMLDetailsElement} */ (d).open);
+    toggleAllEl.textContent = allOpen ? "Collapse all" : "Expand all";
+    toggleAllEl.setAttribute("aria-expanded", String(allOpen));
+  }
+
+  function bindToggleAll(opts) {
+    const { listEl, toggleAllEl } = opts || {};
+    if (!toggleAllEl || toggleAllEl.dataset.bound) return;
+    toggleAllEl.dataset.bound = "1";
+    toggleAllEl.addEventListener("click", () => {
+      const open = toggleAllEl.getAttribute("aria-expanded") !== "true";
+      listEl?.querySelectorAll(".pl-day").forEach((d) => {
+        /** @type {HTMLDetailsElement} */ (d).open = open;
+      });
+      syncToggleAll(opts);
+    });
+  }
+
+  /** Rate + delivery saved for this product row (LFR is tracked per day). */
+  function isProductSaved(row) {
+    return Number(row.buying_price_per_litre) > 0 && row.purchase_delivery_per_kl != null;
+  }
+
+  /** Every receipt row on the day carries the shared LFR. */
+  function isLfrSaved(dayRows) {
+    return dayRows.length > 0 && dayRows.every((r) => r.purchase_lfr_per_kl != null);
+  }
+
+  function statusBadge(done) {
+    return done
+      ? html`<span class="badge badge--success pl-status">Saved</span>`
+      : html`<span class="badge badge--warning pl-status">Pending</span>`;
   }
 
   function syncEmptyState(opts) {
@@ -234,29 +285,34 @@
       const subEl = block.querySelector(".pl-landed-sub");
       const landedWrap = block.querySelector(".pl-landed");
       const parsed = validateBuyingRateKlInput(rateKl);
+      // LFR is saved separately; preview without it until the day's LFR is entered.
       const landed =
-        parsed.ok && delPerKl != null && lfrPerKl != null
+        parsed.ok && delPerKl != null
           ? landedBuyingRatePerLitre(parsed.valuePerLitre, product, date, {
               deliveryPerKl: delPerKl,
-              lfrPerKl,
+              lfrPerKl: lfrPerKl ?? 0,
             })
           : null;
-      landedWrap?.classList.toggle("is-ready", landed != null);
+      const complete = landed != null && lfrPerKl != null;
+      landedWrap?.classList.toggle("is-ready", complete);
+      landedWrap?.classList.toggle("is-partial", landed != null && !complete);
       if (valueEl) valueEl.textContent = landed != null ? `${formatCurrency(landed)}/L` : "—";
       if (subEl) {
-        subEl.textContent =
-          landed != null
-            ? `${formatCurrency(landed * 1000)}/KL incl. VAT, delivery & LFR`
-            : "Fill rate, delivery and LFR to preview";
+        subEl.textContent = complete
+          ? `${formatCurrency(landed * 1000)}/KL incl. VAT, delivery & LFR`
+          : landed != null
+            ? "Excludes LFR: enter the day's LFR above"
+            : "Fill rate and delivery to preview";
       }
     });
+
   }
 
   function bindDayComputed(dayEl) {
     dayEl.querySelectorAll("input").forEach((input) => {
       input.addEventListener("input", () => {
         input.classList.remove("pl-field-invalid");
-        const blockErr = input.closest(".pl-product-block")?.querySelector(".pl-block-error");
+        const blockErr = input.closest(".pl-section")?.querySelector(".pl-block-error");
         if (blockErr) {
           blockErr.textContent = "";
           blockErr.classList.add("hidden");
@@ -319,118 +375,162 @@
       </div>`;
   }
 
-  function productBlock(row, defaultGstin) {
+  /** Collapsed one-line view of a saved section, with an Edit button that reopens the form. */
+  function savedSummary(items, editLabel) {
+    return html`
+      <div class="pl-saved-summary">
+        <dl class="pl-saved-figures">
+          ${items.map(
+            ([label, value, cls]) => html`<div><dt>${label}</dt><dd class="${cls || ""}">${value}</dd></div>`
+          )}
+        </dl>
+        <button type="button" class="button-secondary button-small pl-edit" aria-label="${editLabel}">Edit</button>
+      </div>`;
+  }
+
+  function sectionHead({ badgeCls, code, title, sub, extra, done }) {
+    return html`
+      <div class="pl-block-head">
+        <span class="badge badge--square ${badgeCls}" aria-hidden="true">${code}</span>
+        <div class="pl-block-titles">
+          <h4 class="pl-block-title">${title}</h4>
+          <p class="pl-block-sub">${sub}</p>
+        </div>
+        ${extra || ""}
+        ${statusBadge(done)}
+      </div>`;
+  }
+
+  function productBlock(row, defaultGstin, dayLfrSaved) {
     const product = normalizeProduct(row.product);
     const meta = PRODUCT_META[product] || PRODUCT_META.diesel;
     const rowId = String(row.id);
+    const done = isProductSaved(row);
     const delTotal = Number(row.purchase_delivery_total) > 0 ? row.purchase_delivery_total : "";
     const receiptsL = Number(row.receipts) || 0;
     const existingRateL = Number(row.buying_price_per_litre);
     const existingRateKl =
       Number.isFinite(existingRateL) && existingRateL > 0 ? Math.round(existingRateL * 1000 * 100) / 100 : "";
+    const delPerKl = Number(row.purchase_delivery_per_kl);
     return html`
-      <section class="pl-product-block pl-product-block--${product}" data-dsr-id="${rowId}" data-product="${product}">
-        <div class="pl-block-head">
-          <span class="badge badge--square ${meta.badge}" aria-hidden="true">${meta.code}</span>
-          <div class="pl-block-titles">
-            <h4 class="pl-block-title">${meta.label}</h4>
-            <p class="pl-block-sub">Fuel tax invoice</p>
-          </div>
-          <span class="badge badge--neutral pl-receipt-badge">${formatQuantity(receiptsL)} L received</span>
-        </div>
-        <div class="pl-field-grid">
-          ${field({
-            id: `pl-buying-${rowId}`,
-            label: "Rate per Unit",
-            cls: "pl-buying-input",
-            value: numValue(existingRateKl),
-            placeholder: "81416.47",
-            unit: "₹",
-            hint: "Pre-VAT, per KL",
-          })}
-          ${field({
-            id: `pl-del-total-${rowId}`,
-            label: "DLY/TAXABLE CHARGE",
-            cls: "pl-del-total",
-            value: numValue(delTotal),
-            placeholder: "2435.80",
-            unit: "₹",
-          })}
-          ${field({
-            id: `pl-del-qty-${rowId}`,
-            label: "Quantity",
-            cls: "pl-del-qty",
-            value: numValue(defaultDeliveryQtyKl(row)),
-            placeholder: "4",
-            unit: "KL",
-          })}
-          ${computedField("Delivery", "pl-del-per-kl", "Charge per KL")}
-        </div>
-        <details class="pl-optional" ${trustedHtml(row.supplier_invoice_no ? "open" : "")}>
-          <summary>Invoice reference <span class="muted">(optional)</span></summary>
-          <div class="pl-field-grid pl-field-grid--2">
+      <section
+        class="pl-section pl-product-block pl-product-block--${product} ${done ? "is-saved" : ""}"
+        data-dsr-id="${rowId}"
+        data-product="${product}"
+        aria-label="${meta.label} purchase cost"
+      >
+        ${sectionHead({
+          badgeCls: meta.badge,
+          code: meta.code,
+          title: meta.label,
+          sub: "Fuel tax invoice",
+          extra: html`<span class="badge badge--neutral pl-receipt-badge">${formatQuantity(receiptsL)} L received</span>`,
+          done,
+        })}
+        ${done
+          ? savedSummary(
+              [
+                ["Rate per Unit", `${formatCurrency(existingRateKl)}/KL`],
+                ["Delivery", Number.isFinite(delPerKl) ? `${formatCurrency(delPerKl)}/KL` : "—"],
+                ["Invoice No.", row.supplier_invoice_no || "—"],
+                ["LFR", dayLfrSaved ? "Applied" : "Pending", dayLfrSaved ? "" : "pl-text-warning"],
+              ],
+              `Edit ${meta.label}`
+            )
+          : ""}
+        <div class="pl-section-form">
+          <div class="pl-field-grid">
             ${field({
-              id: `pl-inv-${rowId}`,
-              label: "Invoice No.",
-              cls: "pl-inv-input",
-              value: row.supplier_invoice_no || "",
-              placeholder: "1202801092",
-              required: false,
-              inputmode: "text",
-              maxlength: 40,
-              hint: "Links the purchase invoice from the vault",
+              id: `pl-buying-${rowId}`,
+              label: "Rate per Unit",
+              cls: "pl-buying-input",
+              value: numValue(existingRateKl),
+              placeholder: "81416.47",
+              unit: "₹",
+              hint: "Pre-VAT, per KL",
             })}
             ${field({
-              id: `pl-gstin-${rowId}`,
-              label: "Supplier GSTIN",
-              cls: "pl-gstin-input",
-              value: row.supplier_gstin || defaultGstin || "",
-              placeholder: "15-character GSTIN",
-              required: false,
-              inputmode: "text",
-              maxlength: 15,
+              id: `pl-del-total-${rowId}`,
+              label: "DLY/TAXABLE CHARGE",
+              cls: "pl-del-total",
+              value: numValue(delTotal),
+              placeholder: "2435.80",
+              unit: "₹",
             })}
+            ${field({
+              id: `pl-del-qty-${rowId}`,
+              label: "Quantity",
+              cls: "pl-del-qty",
+              value: numValue(defaultDeliveryQtyKl(row)),
+              placeholder: "4",
+              unit: "KL",
+            })}
+            ${computedField("Delivery", "pl-del-per-kl", "Charge per KL")}
           </div>
-        </details>
-        <div class="pl-block-foot">
-          <div class="pl-landed">
-            <span class="pl-computed-label">Landed buying price</span>
-            <strong class="pl-landed-value">—</strong>
-            <span class="pl-landed-sub">Fill rate, delivery and LFR to preview</span>
+          <details class="pl-optional" ${trustedHtml(row.supplier_invoice_no ? "open" : "")}>
+            <summary>Invoice reference <span class="muted">(optional)</span></summary>
+            <div class="pl-field-grid pl-field-grid--2">
+              ${field({
+                id: `pl-inv-${rowId}`,
+                label: "Invoice No.",
+                cls: "pl-inv-input",
+                value: row.supplier_invoice_no || "",
+                placeholder: "1202801092",
+                required: false,
+                inputmode: "text",
+                maxlength: 40,
+                hint: "Links the purchase invoice from the vault",
+              })}
+              ${field({
+                id: `pl-gstin-${rowId}`,
+                label: "Supplier GSTIN",
+                cls: "pl-gstin-input",
+                value: row.supplier_gstin || defaultGstin || "",
+                placeholder: "15-character GSTIN",
+                required: false,
+                inputmode: "text",
+                maxlength: 15,
+              })}
+            </div>
+          </details>
+          <div class="pl-block-foot">
+            <div class="pl-landed">
+              <span class="pl-computed-label">Landed buying price</span>
+              <strong class="pl-landed-value">—</strong>
+              <span class="pl-landed-sub">Fill rate and delivery to preview</span>
+            </div>
+            <button type="button" class="button-primary pl-buying-save" data-dsr-id="${rowId}" data-product="${product}">
+              Save ${meta.code}
+            </button>
           </div>
-          <button type="button" class="button-primary pl-buying-save" data-dsr-id="${rowId}" data-product="${product}">
-            Save ${meta.label}
-          </button>
         </div>
         <p class="pl-block-error error hidden" role="alert"></p>
       </section>`;
   }
 
-  function dayCard(date, dayRows, defaultGstin, lfrGst) {
-    const products = dayRows.map((r) => normalizeProduct(r.product));
+  function lfrBlock(date, dayRows, lfrGst) {
+    const done = isLfrSaved(dayRows);
+    const savedRow = dayRows.find((r) => r.purchase_lfr_per_kl != null);
     return html`
-      <li class="pl-day-card" data-date="${date}">
-        <div class="pl-day-head">
-          <div>
-            <p class="pl-day-eyebrow">Receipt day</p>
-            <h3 class="pl-day-title">${formatDisplayDate(date)}</h3>
-          </div>
-          <div class="pl-day-badges">
-            ${products.map((p) => {
-              const meta = PRODUCT_META[p] || PRODUCT_META.diesel;
-              return html`<span class="badge ${meta.badge}">${meta.code}</span>`;
-            })}
-            <span class="badge badge--warning">Cost pending</span>
-          </div>
-        </div>
-        <section class="pl-lfr-block">
-          <div class="pl-block-head">
-            <span class="badge badge--square badge--neutral" aria-hidden="true">LFR</span>
-            <div class="pl-block-titles">
-              <h4 class="pl-block-title">LFR for DC · MS + HSD</h4>
-              <p class="pl-block-sub">LFR tax invoice · shared by both products · CGST+SGST ${String(lfrGst)}% added</p>
-            </div>
-          </div>
+      <section class="pl-section pl-lfr-block ${done ? "is-saved" : ""}" data-date="${date}" aria-label="LFR for the day">
+        ${sectionHead({
+          badgeCls: "badge--neutral",
+          code: "LFR",
+          title: "LFR for DC · MS + HSD",
+          sub: `LFR tax invoice · shared by both products · CGST+SGST ${String(lfrGst)}% added`,
+          done,
+        })}
+        ${done
+          ? savedSummary(
+              [
+                ["TAXABLE AMT", formatCurrency(Number(savedRow?.purchase_lfr_total) || 0)],
+                ["Total quantity", `${formatQuantity(Number(savedRow?.purchase_lfr_qty_kl) || 0)} KL`],
+                ["LFR incl. GST", `${formatCurrency(Number(savedRow?.purchase_lfr_per_kl) || 0)}/KL`],
+              ],
+              "Edit LFR"
+            )
+          : ""}
+        <div class="pl-section-form">
           <div class="pl-field-grid">
             ${field({
               id: `pl-lfr-total-${date}`,
@@ -451,11 +551,57 @@
             })}
             ${computedField("LFR incl. GST", "pl-lfr-per-kl", "Applied to both products")}
           </div>
-        </section>
-        ${dayRows.map((row) => productBlock(row, defaultGstin))}
-      </li>`;
+          <div class="pl-block-foot pl-block-foot--end">
+            <button type="button" class="button-primary pl-lfr-save" data-date="${date}">Save LFR</button>
+          </div>
+        </div>
+        <p class="pl-block-error error hidden" role="alert"></p>
+      </section>`;
   }
 
+  /** Chips in the collapsed day header: one per section, ticked once saved. */
+  function dayStatusChips(dayRows) {
+    const chips = [{ code: "LFR", badge: "badge--neutral", done: isLfrSaved(dayRows) }];
+    dayRows.forEach((r) => {
+      const meta = PRODUCT_META[normalizeProduct(r.product)] || PRODUCT_META.diesel;
+      chips.push({ code: meta.code, badge: meta.badge, done: isProductSaved(r) });
+    });
+    return chips;
+  }
+
+  function dayCard(date, dayRows, defaultGstin, lfrGst, open) {
+    const chips = dayStatusChips(dayRows);
+    const doneCount = chips.filter((c) => c.done).length;
+    const lfrSaved = isLfrSaved(dayRows);
+    return html`
+      <li class="pl-day-card" data-date="${date}">
+        <details class="pl-day" ${trustedHtml(open ? "open" : "")}>
+          <summary class="pl-day-head">
+            <span class="icon icon--chevron-down pl-day-chevron" aria-hidden="true"></span>
+            <span class="pl-day-heading">
+              <span class="pl-day-eyebrow">Receipt day</span>
+              <span class="pl-day-title">${formatDisplayDate(date)}</span>
+            </span>
+            <span class="pl-day-badges">
+              ${chips.map(
+                (c) => html`<span class="badge ${c.done ? "badge--success" : c.badge} pl-chip ${c.done ? "is-done" : ""}"
+                  title="${c.code}: ${c.done ? "saved" : "pending"}">${c.done ? "✓ " : ""}${c.code}</span>`
+              )}
+              <span class="pl-day-progress" aria-label="${doneCount} of ${chips.length} sections saved">
+                <span class="pl-day-progress-bar" aria-hidden="true">
+                  <span style="${trustedHtml(`width:${Math.round((doneCount / chips.length) * 100)}%`)}"></span>
+                </span>
+                <span class="pl-day-progress-text">${doneCount}/${chips.length} saved</span>
+              </span>
+            </span>
+          </summary>
+          <div class="pl-day-body">
+            ${lfrBlock(date, dayRows, lfrGst)}
+            ${dayRows.map((row) => productBlock(row, defaultGstin, lfrSaved))}
+          </div>
+        </details>
+      </li>`;
+  }
   /** Placeholder cards while the list loads (first load only). */
   function renderLoading(opts) {
     const { listEl, alertEl, emptyEl } = opts || {};
@@ -480,6 +626,7 @@
    * @param {HTMLElement} [opts.emptyEl]
    * @param {HTMLElement} [opts.errorEl]
    * @param {HTMLElement} [opts.countEl]
+   * @param {HTMLElement} [opts.toggleAllEl]
    * @param {() => void|Promise<void>} [opts.onSaved]
    */
   function renderMissingBuyingList(rows, opts) {
@@ -495,32 +642,132 @@
     const lfrGst = getPurchaseLfrGstPct();
     const groups = groupRowsByDate(rows);
 
-    setHtml(listEl, html`${groups.map(([date, dayRows]) => dayCard(date, dayRows, defaultGstin, lfrGst))}`);
+    setHtml(
+      listEl,
+      html`${groups.map(([date, dayRows], i) =>
+        dayCard(date, dayRows, defaultGstin, lfrGst, dayOpenState.get(date) ?? i === 0)
+      )}`
+    );
     applyInputUnits(listEl);
     syncEmptyState(opts);
+    bindToggleAll(opts);
 
     listEl.querySelectorAll(".pl-day-card").forEach((dayEl) => bindDayComputed(dayEl));
+    listEl.querySelectorAll(".pl-day").forEach((d) => {
+      d.addEventListener("toggle", () => {
+        const date = d.closest(".pl-day-card")?.dataset.date;
+        if (date) dayOpenState.set(date, /** @type {HTMLDetailsElement} */ (d).open);
+        syncToggleAll(opts);
+      });
+    });
     listEl.querySelectorAll(".pl-buying-save").forEach((btn) => {
       btn.addEventListener("click", () => handleSaveBuyingPrice(btn.dataset.dsrId, opts));
     });
+    listEl.querySelectorAll(".pl-lfr-save").forEach((btn) => {
+      btn.addEventListener("click", () => handleSaveLfr(btn.dataset.date, opts));
+    });
+    listEl.querySelectorAll(".pl-edit").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const section = btn.closest(".pl-section");
+        section?.classList.remove("is-saved");
+        section?.classList.add("is-editing");
+        section?.querySelector(".pl-section-form input")?.focus();
+      });
+    });
+  }
+
+  /** Disable a save button while its RPC runs; returns a function that restores it. */
+  function busyButton(btn) {
+    if (!btn) return () => {};
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    return () => {
+      btn.disabled = false;
+      btn.textContent = label;
+    };
+  }
+
+  /** After a save: drop the cache, reload the list, put back what the user was typing elsewhere. */
+  async function reloadAfterSave(opts, drafts, context) {
+    const { listEl, onSaved } = opts;
+    if (typeof AppCache !== "undefined" && AppCache) {
+      CacheInvalidation.invalidate("dsr");
+    }
+    try {
+      if (typeof onSaved === "function") await onSaved();
+      else await refresh({ ...opts, force: true });
+    } catch (err) {
+      AppError.report(err, { context, type: "dsr" });
+    }
+    restoreDrafts(listEl, drafts);
+  }
+
+  async function handleSaveLfr(date, opts) {
+    const { listEl, errorEl } = opts;
+    const dayEl = listEl?.querySelector(`.pl-day-card[data-date="${CSS.escape ? CSS.escape(date) : date}"]`);
+    const block = dayEl?.querySelector(".pl-lfr-block");
+    const totalInput = block?.querySelector(".pl-lfr-total");
+    const qtyInput = block?.querySelector(".pl-lfr-qty");
+
+    clearFieldErrors(block);
+    hideError(errorEl);
+
+    const lfrTotal = readNum(totalInput);
+    const lfrQty = readNum(qtyInput);
+    const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, getPurchaseLfrGstPct());
+    if (lfrPerKl == null) {
+      const badTotal = !Number.isFinite(lfrTotal) || lfrTotal < 0;
+      if (badTotal) markInvalid(totalInput);
+      if (!Number.isFinite(lfrQty) || lfrQty <= 0) markInvalid(qtyInput);
+      showSaveError(
+        opts,
+        block,
+        "Enter TAXABLE AMT (₹) and total quantity (KL) from the LFR invoice.",
+        badTotal ? totalInput : qtyInput
+      );
+      return;
+    }
+
+    if (!window.supabaseClient?.rpc) {
+      showSaveError(opts, block, "Not connected. Refresh the page and try again.");
+      return;
+    }
+
+    const restore = busyButton(block?.querySelector(".pl-lfr-save"));
+    const drafts = captureDrafts(listEl, { excludeLfrDate: date });
+    const rpc = await window.supabaseClient.rpc("update_dsr_purchase_lfr", {
+      p_date: date,
+      p_lfr_total: lfrTotal,
+      p_lfr_qty_kl: lfrQty,
+      p_lfr_per_kl: lfrPerKl,
+    });
+    if (rpc.error) {
+      AppError.report(rpc.error, { context: "handleSaveLfr", type: "dsr" });
+      showSaveError(opts, block, rpc.error.message || "Could not save LFR. Ensure you are logged in as admin.");
+      restore();
+      return;
+    }
+
+    AppError.showToast?.(`LFR saved for ${formatDisplayDate(date)}.`, "success");
+    await reloadAfterSave(opts, drafts, "handleSaveLfr.onSaved");
   }
 
   async function handleSaveBuyingPrice(dsrId, opts) {
-    const { listEl, errorEl, onSaved } = opts;
-    const block = listEl?.querySelector(`.pl-product-block[data-dsr-id="${CSS.escape ? CSS.escape(dsrId) : dsrId}"]`);
+    const { listEl, errorEl } = opts;
+    const sel = CSS.escape ? CSS.escape(dsrId) : dsrId;
+    const block = listEl?.querySelector(`.pl-product-block[data-dsr-id="${sel}"]`);
     const dayEl = block?.closest(".pl-day-card");
     const input = document.getElementById(`pl-buying-${dsrId}`);
     const invInput = document.getElementById(`pl-inv-${dsrId}`);
     const gstinInput = document.getElementById(`pl-gstin-${dsrId}`);
     const delTotalInput = block?.querySelector(".pl-del-total");
     const delQtyInput = block?.querySelector(".pl-del-qty");
-    const lfrTotalInput = dayEl?.querySelector(".pl-lfr-total");
-    const lfrQtyInput = dayEl?.querySelector(".pl-lfr-qty");
-    const saveBtn = listEl?.querySelector(`.pl-buying-save[data-dsr-id="${CSS.escape ? CSS.escape(dsrId) : dsrId}"]`);
-    const product = saveBtn?.dataset?.product || block?.dataset?.product;
+    const saveBtn = block?.querySelector(".pl-buying-save");
+    const product = block?.dataset?.product;
     const receiptDate = dayEl?.dataset?.date || null;
 
-    clearFieldErrors(dayEl);
+    clearFieldErrors(block);
     hideError(errorEl);
 
     const valueKl = readNum(input);
@@ -538,12 +785,7 @@
     const value = buyingRatePerLitreForDb(parsed.valuePerLitre, product);
     if (value == null) {
       markInvalid(input);
-      showSaveError(
-        opts,
-        block,
-        `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`,
-        input
-      );
+      showSaveError(opts, block, `Enter a valid ${getPlBuyingPriceFieldLabel().toLowerCase()}.`, input);
       return;
     }
 
@@ -562,21 +804,6 @@
       return;
     }
 
-    const lfrTotal = readNum(lfrTotalInput);
-    const lfrQty = readNum(lfrQtyInput);
-    const lfrPerKl = lfrPerKlInclGstFromTaxable(lfrTotal, lfrQty, getPurchaseLfrGstPct());
-    if (lfrPerKl == null) {
-      if (!Number.isFinite(lfrTotal) || lfrTotal < 0) markInvalid(lfrTotalInput);
-      if (!Number.isFinite(lfrQty) || lfrQty <= 0) markInvalid(lfrQtyInput);
-      showSaveError(
-        opts,
-        block,
-        "Enter LFR TAXABLE AMT (₹) and total KL from the LFR invoice (covers MS + HSD) — required to save.",
-        !Number.isFinite(lfrTotal) || lfrTotal < 0 ? lfrTotalInput : lfrQtyInput
-      );
-      return;
-    }
-
     const supplierInvoiceNo = (invInput?.value ?? "").trim();
     let supplierGstin = (gstinInput?.value ?? "").trim().toUpperCase();
     if (!supplierGstin) {
@@ -591,48 +818,29 @@
     }
     if (supplierGstin && !/^[0-9A-Z]{15}$/.test(supplierGstin)) {
       markInvalid(gstinInput);
-      showSaveError(
-        opts,
-        block,
-        "Supplier GSTIN must be 15 characters (or leave blank).",
-        gstinInput
-      );
+      showSaveError(opts, block, "Supplier GSTIN must be 15 characters (or leave blank).", gstinInput);
       return;
     }
 
-    const btn = saveBtn;
-    const resetBtn = () => {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = `Save ${(PRODUCT_META[btn.dataset.product] || PRODUCT_META.diesel).label}`;
-        btn.classList.remove("pl-save-success");
-      }
-    };
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Saving…";
+    if (!window.supabaseClient?.rpc) {
+      showSaveError(opts, block, "Not connected. Refresh the page and try again.");
+      return;
     }
+
+    const restore = busyButton(saveBtn);
 
     let vaultDocId = null;
     try {
       if (supplierInvoiceNo) {
-        vaultDocId = await findVaultDocumentIdForInvoice(
-          supplierInvoiceNo,
-          receiptDate || null
-        );
+        vaultDocId = await findVaultDocumentIdForInvoice(supplierInvoiceNo, receiptDate || null);
       }
     } catch (_) {
       vaultDocId = null;
     }
 
-    if (!window.supabaseClient?.rpc) {
-      showSaveError(opts, block, "Not connected. Refresh the page and try again.");
-      resetBtn();
-      return;
-    }
+    const drafts = captureDrafts(listEl, { excludeDsrId: dsrId });
 
-    const drafts = captureDrafts(listEl, dsrId);
-
+    // LFR is saved on its own (handleSaveLfr); null LFR args keep whatever is stored.
     const rpc = await window.supabaseClient.rpc("update_dsr_buying_price", {
       p_dsr_id: dsrId,
       p_value: value,
@@ -640,63 +848,50 @@
       p_supplier_gstin: supplierGstin || null,
       p_invoice_document_id: vaultDocId,
       p_purchase_delivery_per_kl: delPerKl,
-      p_purchase_lfr_per_kl: lfrPerKl,
       p_purchase_delivery_total: delTotal,
       p_purchase_delivery_qty_kl: delQty,
-      p_purchase_lfr_total: lfrTotal,
-      p_purchase_lfr_qty_kl: lfrQty,
     });
     if (rpc.error) {
       AppError.report(rpc.error, { context: "handleSaveBuyingPrice", type: "dsr" });
-      showSaveError(
-        opts,
-        block,
-        rpc.error.message || "Could not save. Ensure you are logged in as admin."
-      );
-      resetBtn();
+      showSaveError(opts, block, rpc.error.message || "Could not save. Ensure you are logged in as admin.");
+      restore();
       return;
     }
 
-    // Remove this product from the UI immediately; day card goes away when both are saved.
-    block?.remove();
-    if (dayEl && !dayEl.querySelector(".pl-product-block")) {
-      dayEl.remove();
-    }
-    syncEmptyState(opts);
-    hideError(errorEl);
     AppError.showToast?.(
       `${(PRODUCT_META[product] || PRODUCT_META.diesel).label} cost saved for ${formatDisplayDate(receiptDate)}.`,
       "success"
     );
+    await reloadAfterSave(opts, drafts, "handleSaveBuyingPrice.onSaved");
+  }
 
-    if (typeof AppCache !== "undefined" && AppCache) {
-      CacheInvalidation.invalidate("dsr");
-    }
-
-    try {
-      if (typeof onSaved === "function") await onSaved();
-      else await refresh({ ...opts, force: true });
-      restoreDrafts(listEl, drafts);
-    } catch (err) {
-      AppError.report(err, { context: "handleSaveBuyingPrice.onSaved", type: "dsr" });
-      restoreDrafts(listEl, drafts);
-    }
+  /**
+   * Pending receipt days, each with all of its receipt rows (saved ones too) so the day card
+   * can show LFR / MS / HSD status side by side.
+   */
+  async function fetchPendingDays(force) {
+    const pending = await DsrQueries.fetchMissingBuyingPriceRows({ force });
+    if (pending.error || !pending.data?.length) return pending;
+    const dates = [...new Set(pending.data.map((r) => r.date))];
+    const full = await DsrQueries.fetchReceiptRowsForDates(dates);
+    return full.error ? pending : full;
   }
 
   async function refresh(opts = {}) {
-    const { force = false, listEl, alertEl, emptyEl, errorEl, countEl, onSaved } = opts;
+    const { force = false, listEl, alertEl, emptyEl, errorEl, countEl } = opts;
     // Soft reloads (section revisit, live refresh, landing race) must not wipe typed values.
     if (!force && hasUnsavedEdits(listEl)) {
       return null;
     }
     renderLoading(opts);
-    const { data, error } = await DsrQueries.fetchMissingBuyingPriceRows({ force });
+    const { data, error } = await fetchPendingDays(force);
     if (error) {
       AppError.report(error, { context: "BuyingPriceEntry.refresh" });
       setHtml(listEl, "");
       alertEl?.classList.add("hidden");
       emptyEl?.classList.add("hidden");
       countEl?.classList.add("hidden");
+      opts.toggleAllEl?.classList.add("hidden");
       showError(errorEl, error.message || "Could not load receipt days needing a buying price.");
       return [];
     }
@@ -705,12 +900,15 @@
       return null;
     }
     const rows = data ?? [];
-    renderMissingBuyingList(rows, { listEl, alertEl, emptyEl, errorEl, countEl, onSaved });
+    renderMissingBuyingList(rows, opts);
     return rows;
   }
 
   function focusFirstInput() {
-    document.querySelector(".pl-buying-input")?.focus({ preventScroll: true });
+    const first = document.querySelector(
+      ".pl-day[open] .pl-section:not(.is-saved) .pl-section-form input"
+    );
+    /** @type {HTMLInputElement|null} */ (first)?.focus({ preventScroll: true });
   }
 
   global.BuyingPriceEntry = {
