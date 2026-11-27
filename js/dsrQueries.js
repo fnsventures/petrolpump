@@ -233,6 +233,25 @@
     return req;
   }
 
+  /**
+   * Every receipt row (both products) on the given dates, pending or not. Purchase cost shows a
+   * whole receipt day so a product already saved still appears as "Saved" next to the pending one.
+   * @param {string[]} dates
+   */
+  async function fetchReceiptRowsForDates(dates) {
+    if (!dates?.length) return { data: [], error: null };
+    const { data, error } = await fetchAllRows(() =>
+      window.supabaseClient
+        .from("dsr_cost")
+        .select("id, date, product, receipts, buying_price_per_litre, supplier_invoice_no, supplier_gstin, invoice_document_id, purchase_delivery_per_kl, purchase_lfr_per_kl, purchase_delivery_total, purchase_delivery_qty_kl, purchase_lfr_total, purchase_lfr_qty_kl")
+        .in("date", dates)
+        .gt("receipts", 0)
+        .order("date", { ascending: false })
+        .order("product", { ascending: true })
+    );
+    return { data: data ?? [], error };
+  }
+
   /** Lube/billing invoice totals for P&L (matches Reports trading account). */
   async function fetchLubeSales(startDate, endDate) {
     const { data, error } = await fetchAllRows(() =>
@@ -311,6 +330,7 @@
     extractReceiptRows,
     fetchDsrRows,
     fetchMissingBuyingPriceRows,
+    fetchReceiptRowsForDates,
     fetchExpenses,
     fetchExpenseCategoryTotals,
     fetchExpenseDailyTotals,

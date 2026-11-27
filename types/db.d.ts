@@ -2551,6 +2551,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      update_dsr_purchase_lfr: {
+        Args: {
+          p_date: string
+          p_lfr_per_kl: number
+          p_lfr_qty_kl: number
+          p_lfr_total: number
+        }
+        Returns: Json
+      }
       update_my_avatar: { Args: { p_avatar_url: string }; Returns: undefined }
       upsert_staff: {
         Args: { p_display_name?: string; p_email: string; p_role: string }

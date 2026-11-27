@@ -270,7 +270,7 @@ limit 50;
 
 **RLS:** Same as `dsr_petrol`.
 
-**RPC:** `update_dsr_buying_price(uuid, numeric, text, text)` updates `buying_price_per_litre` and optional `supplier_invoice_no` / `supplier_gstin` on whichever table contains the row id.
+**RPC:** `update_dsr_buying_price(uuid, numeric, text, text)` updates `buying_price_per_litre` and optional `supplier_invoice_no` / `supplier_gstin` on whichever table contains the row id. `update_dsr_purchase_lfr(date, numeric, numeric, numeric)` saves the day's shared LFR on both products' receipt rows.
 
 ---
 
@@ -1021,6 +1021,7 @@ Security-definer RPCs callable by `authenticated` (unless noted). Most call `req
 | `purchase_totals_by_date(start, end)` | Purchase-document totals grouped by date (jsonb) | — |
 | `get_invoice_document_category_counts(start?, end?)` | Invoice vault outline: `category`, `doc_count`, `latest_date` per category. Security invoker, so `invoice_documents` RLS applies | — |
 | `update_dsr_buying_price(id, value)` | Set pre-VAT buying price on DSR row (Meter reading → Purchase cost) | — |
+| `update_dsr_purchase_lfr(date, total, qty_kl, per_kl)` | Set the shared LFR on every receipt row (MS + HSD) for a date, without touching buying price or delivery (Meter reading → Purchase cost → Save LFR). Admin only | — |
 | `generate_invoice_number()` | Next billing invoice number. Provisioned staff only | — |
 | `meter_station_today()` | Station calendar date (IST); use instead of `current_date` (UTC) | — |
 | `save_invoice(..., request_id?)` | Atomic invoice + line items; rejects qty/rate ≤ 0, invalid GST, discount < 0 or > subtotal | — |
