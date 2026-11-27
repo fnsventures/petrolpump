@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co https://*.googleusercontent.com https://drive.google.com; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src 'self' blob:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+        <script>
+      if (window.top !== window.self) {
+        try { window.top.location = window.location.href; } catch (err) {}
+        document.documentElement.replaceChildren();
+      }
+    </script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Login · Bishnupriya Fuels</title>
+    <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1320x2868-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1320x2868-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1206x2622-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1206x2622-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1290x2796-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1290x2796-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1179x2556-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1179x2556-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1284x2778-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1284x2778-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1170x2532-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1170x2532-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1125x2436-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1125x2436-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1242x2688-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1242x2688-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-828x1792-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-828x1792-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1242x2208-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1242x2208-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-750x1334-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-750x1334-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-640x1136-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-640x1136-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-2064x2752-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 1032px) and (device-height: 1376px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-2064x2752-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-2048x2732-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-2048x2732-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1668x2420-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1210px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1668x2420-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1668x2388-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1668x2388-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1640x2360-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1640x2360-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1668x2224-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 834px) and (device-height: 1112px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1668x2224-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1620x2160-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1620x2160-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1536x2048-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1536x2048-dark.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" href="assets/splash/splash-1488x2266-light.png" />
+    <link rel="apple-touch-startup-image" media="(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: dark)" href="assets/splash/splash-1488x2266-dark.png" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0070c0" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111a27" />
+    <meta name="application-name" content="Bishnupriya Fuels" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BPFuels" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <script src="js/theme.js?v=4cf3818844"></script>
+    <link rel="stylesheet" href="css/fonts.css?v=9965543f7a" />
+    <link rel="stylesheet" href="css/app-sidebar.css?v=b9aa9b1e45" />
+    <link rel="stylesheet" href="css/tokens.css?v=614cf9b3a7" />
+    <link rel="stylesheet" href="css/reset.css?v=5c69299123" />
+    <link rel="stylesheet" href="css/components.css?v=aea7558a36" />
+    <link rel="stylesheet" href="css/utilities.css?v=cfd7a641fc" />
+    <link rel="stylesheet" href="css/login.css?v=9e2657ceb9" />
+    <script defer src="js/vendor/supabase-login.min.js?v=9d65ccc61c"></script>
+    <script defer src="js/env.js"></script>
+    <script defer src="js/errorHandler.js?v=fb6ce4b6ee"></script>
+    <script defer src="js/cache.js?v=5863c973ae"></script>
+    <script defer src="js/utils.js?v=99d6f0cb60"></script>
+    <script defer src="js/pwa.js?v=80ebba9662"></script>
+    <script defer src="js/supabase.js?v=09666dbaaf"></script>
+    <script defer src="js/auth.js?v=ac67574f40"></script>
+  </head>
+  <body class="login-page">
+    <main class="login-card card">
+      <header class="login-brand">
+        <span class="login-logo" aria-hidden="true">
+          <picture>
+            <source srcset="assets/logo-104.webp" type="image/webp" />
+            <img
+              src="assets/logo-104.png"
+              alt=""
+              class="login-logo-img"
+              width="104"
+              height="104"
+              decoding="async"
+              fetchpriority="high"
+            />
+          </picture>
+        </span>
+        <div class="login-brand-text">
+          <h1 class="login-brand-title">
+            <span class="login-brand-primary">Bishnupriya Fuels</span>
+            <span class="login-brand-venture">— a F&amp;S Ventures</span>
+          </h1>
+          <p class="login-brand-dealer">Authorized BPCL Dealer</p>
+          <p class="login-brand-portal"><span>Operator Portal</span></p>
+        </div>
+      </header>
+
+      <p class="login-intro">Sign in to manage daily operations, credit, billing, and reports.</p>
+
+      <form id="login-form" class="form login-form" autocomplete="on" novalidate>
+        <div class="login-field">
+          <label for="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            placeholder="operator@fnsventures.in"
+            autocomplete="username"
+            inputmode="email"
+            spellcheck="false"
+            autofocus
+            required
+          />
+        </div>
+
+        <div class="login-field">
+          <label for="password">Password</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            placeholder="Enter password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+          />
+        </div>
+
+        <button class="button-primary" type="submit" id="login-button">Sign in</button>
+        <p class="login-forgot">
+          <a href="#" id="forgot-password-link">Forgot password?</a>
+        </p>
+        <p id="login-error" class="login-error hidden" role="alert" aria-live="polite"></p>
+      </form>
+
+      <form id="reset-password-form" class="form login-form hidden" autocomplete="off" novalidate>
+        <p class="login-reset-copy">Choose a new password for your account.</p>
+        <div class="login-field">
+          <label for="new-password">New password</label>
+          <input
+            id="new-password"
+            name="password"
+            type="password"
+            placeholder="At least 6 characters"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <div class="login-field">
+          <label for="confirm-password">Confirm password</label>
+          <input
+            id="confirm-password"
+            name="confirm"
+            type="password"
+            placeholder="Repeat the new password"
+            autocomplete="new-password"
+            minlength="6"
+            required
+          />
+        </div>
+        <button class="button-primary" type="submit" id="reset-password-button">Set new password</button>
+        <p class="login-forgot">
+          <a href="login.html" id="reset-password-back">Back to sign in</a>
+        </p>
+        <p id="reset-password-error" class="login-error hidden" role="alert" aria-live="polite"></p>
+      </form>
+    </main>
+    <footer class="app-footer app-footer--minimal">
+  <p class="footer-copyright">© <span data-current-year>2026</span> F&amp;S Ventures. All rights reserved.</p>
+<p class="footer-support"><small>Support: <a href="mailto:official@fnsventures.in">official@fnsventures.in</a> · <a href="https://wa.me/919668913299">WhatsApp +91 96689 13299</a></small></p>
+
+</footer>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+# Operator portal — discourage public indexing (auth still required for data)
+User-agent: *
+Disallow: /dashboard.html
+Disallow: /dsr.html
+Disallow: /credit.html
+Disallow: /settings.html
+Disallow: /reports.html
+Disallow: /analysis.html
+Disallow: /staging/
